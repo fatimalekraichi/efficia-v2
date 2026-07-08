@@ -1,0 +1,24 @@
+:root {
+  --white: #ffffff;
+  --navy: #081b3a;
+  --blue: #2563eb;
+  --blue-dark: #1d4ed8;
+  --cyan: #06b6d4;
+  --soft: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+
+  --font: "Manrope", system-ui, sans-serif;
+
+  --container: 1220px;
+
+  --radius-sm: 14px;
+  --radius-md: 22px;
+  --radius-lg: 32px;
+  --radius-full: 999px;
+
+  --shadow-soft: 0 24px 80px rgba(15, 23, 42, 0.10);
+  --shadow-card: 0 14px 40px rgba(15, 23, 42, 0.08);
+  --shadow-blue: 0 18px 44px rgba(37, 99, 235, 0.24);
+}
