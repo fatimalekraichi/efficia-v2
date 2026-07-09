@@ -30,6 +30,7 @@ const createCookieConsent = () => {
   banner.setAttribute("role", "region");
   banner.setAttribute("aria-label", "Consentement aux cookies");
   banner.innerHTML = `
+    <button class="cookie-consent__close" type="button" aria-label="Fermer la bannière cookies" data-cookie-dismiss>×</button>
     <div class="cookie-consent__inner">
       <div>
         <strong>Cookies</strong>
@@ -112,6 +113,10 @@ const setConsentAndClose = (settings) => {
   closeCookiePreferences();
 };
 
+const dismissWithFullConsent = () => {
+  setConsentAndClose({ statistics: true, marketing: true });
+};
+
 if (!readCookieConsent()) {
   showCookieBanner();
 }
@@ -126,6 +131,10 @@ document.addEventListener("click", (event) => {
 
   if (target.matches("[data-cookie-refuse]")) {
     setConsentAndClose({ statistics: false, marketing: false });
+  }
+
+  if (target.matches("[data-cookie-dismiss]")) {
+    dismissWithFullConsent();
   }
 
   if (target.matches("[data-cookie-customize], [data-cookie-preferences]")) {
