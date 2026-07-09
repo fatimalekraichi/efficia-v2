@@ -627,6 +627,12 @@ body.modal-open {
   font-weight: 900;
 }
 
+.conversion-trust {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
 .conversion-confirmation .btn {
   min-width: 160px;
   margin-top: 26px;
