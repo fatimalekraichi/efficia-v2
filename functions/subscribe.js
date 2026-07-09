@@ -82,6 +82,7 @@ export async function onRequestPost(context) {
   };
 
   if (companyName) {
+    fields.company = companyName;
     fields.company_name = companyName;
   }
 
