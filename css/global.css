@@ -278,28 +278,37 @@ body.modal-open {
 }
 
 .conversion-toggle {
-  grid-template-columns: auto 1fr;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #f8fbff;
+  justify-self: start;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
-  transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+  transition: color 200ms ease;
 }
 
 .conversion-toggle:hover {
-  border-color: rgba(37, 99, 235, 0.24);
-  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.05);
+  color: var(--blue);
+}
+
+.conversion-toggle:hover span {
+  color: var(--blue);
 }
 
 .conversion-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
   accent-color: var(--blue);
 }
 
 .conversion-toggle span {
   color: #52627a;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .conversion-fields input,

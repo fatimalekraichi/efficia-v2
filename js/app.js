@@ -55,6 +55,7 @@ const resetModal = () => {
   showStep(1);
   modal?.querySelectorAll(".has-error").forEach((item) => item.classList.remove("has-error"));
   modal?.querySelectorAll(".conversion-submit.is-loading").forEach((button) => button.classList.remove("is-loading"));
+  if (unknownGoogleBusinessField) unknownGoogleBusinessField.checked = false;
   modal?.querySelectorAll(".conversion-form-error").forEach((message) => {
     message.textContent = "";
   });
@@ -184,7 +185,7 @@ const validateDiagnosticLookup = (form) => {
   if (stepTwoErrorMessage) {
     stepTwoErrorMessage.textContent = isValid
       ? ""
-      : "Ajoutez le lien Google Business ou cochez l’option pour indiquer le nom de l’entreprise et son adresse ou sa ville.";
+      : "Ajoutez le lien Google Business ou cochez l’option pour indiquer le nom de l’entreprise et sa ville.";
   }
 
   if (!isValid) {
