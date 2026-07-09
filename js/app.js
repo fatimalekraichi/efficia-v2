@@ -142,9 +142,10 @@ const updateDiagnosticFields = () => {
   const googleBusinessWrapper = stepTwoForm.querySelector("[data-google-business-field]");
   const googleBusinessField = stepTwoForm.querySelector('input[name="googleBusiness"]');
   const fallbackWrappers = stepTwoForm.querySelectorAll("[data-business-fallback]");
-  const fallbackFields = stepTwoForm.querySelectorAll('input[name="company"], input[name="businessLocation"]');
+  const fallbackFields = stepTwoForm.querySelectorAll('input[name="company"], input[name="city"]');
 
   googleBusinessWrapper?.classList.toggle("is-hidden", isUnknown);
+  if (googleBusinessWrapper) googleBusinessWrapper.hidden = isUnknown;
   if (googleBusinessField) {
     googleBusinessField.disabled = isUnknown;
     googleBusinessField.required = !isUnknown;
@@ -152,7 +153,10 @@ const updateDiagnosticFields = () => {
     setFieldState(googleBusinessField, true);
   }
 
-  fallbackWrappers.forEach((wrapper) => wrapper.classList.toggle("is-hidden", !isUnknown));
+  fallbackWrappers.forEach((wrapper) => {
+    wrapper.classList.toggle("is-hidden", !isUnknown);
+    wrapper.hidden = !isUnknown;
+  });
   fallbackFields.forEach((field) => {
     field.disabled = !isUnknown;
     field.required = isUnknown;
@@ -166,17 +170,17 @@ const updateDiagnosticFields = () => {
 const validateDiagnosticLookup = (form) => {
   const googleBusinessField = form.querySelector('input[name="googleBusiness"]');
   const companyField = form.querySelector('input[name="company"]');
-  const businessLocationField = form.querySelector('input[name="businessLocation"]');
+  const cityField = form.querySelector('input[name="city"]');
   const isUnknown = Boolean(form.querySelector('input[name="unknownGoogleBusiness"]')?.checked);
   const hasGoogleBusiness = Boolean(googleBusinessField?.value.trim());
   const hasCompany = Boolean(companyField?.value.trim());
-  const hasBusinessLocation = Boolean(businessLocationField?.value.trim());
+  const hasCity = Boolean(cityField?.value.trim());
   let isValid = true;
 
   if (isUnknown) {
-    isValid = hasCompany && hasBusinessLocation;
+    isValid = hasCompany && hasCity;
     setFieldState(companyField, hasCompany);
-    setFieldState(businessLocationField, hasBusinessLocation);
+    setFieldState(cityField, hasCity);
   } else {
     isValid = hasGoogleBusiness && validateField(googleBusinessField);
     setFieldState(googleBusinessField, isValid);
@@ -236,11 +240,14 @@ const submitLeadRequest = async (payload) => {
   });
 
   if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    console.error("Erreur API /subscribe", response.status, errorText);
     throw new Error("Lead submission failed");
   }
 
   const data = await response.json();
   if (!data.ok) {
+    console.error("Erreur API /subscribe", data);
     throw new Error("Lead submission failed");
   }
 
@@ -289,22 +296,26 @@ stepOneForm?.addEventListener("submit", async (event) => {
   try {
     leadDraft = getFormData(stepOneForm);
     const createdAt = new Date().toISOString();
+    const payload = {
+      step: "lead_capture",
+      first_name: leadDraft.firstName,
+      email: leadDraft.email,
+      lead_status: "étape 1 complétée",
+      source: "Score Efficia gratuit",
+      created_at: createdAt,
+    };
+    console.log("lead_capture envoyé", payload);
     await Promise.all([
-      submitLeadRequest({
-        step: "lead_capture",
-        first_name: leadDraft.firstName,
-        email: leadDraft.email,
-        lead_status: "étape 1 complétée",
-        source: "Score Efficia gratuit",
-        created_at: createdAt,
-      }),
+      submitLeadRequest(payload),
       wait(650),
     ]);
+    console.log("lead_capture succès");
     leadDraft.createdAt = createdAt;
     setLoading(stepOneForm, false);
     showStep(2);
     focusFirstField();
-  } catch {
+  } catch (error) {
+    console.error("lead_capture erreur", error);
     setLoading(stepOneForm, false);
     if (stepOneErrorMessage) {
       stepOneErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
@@ -327,18 +338,21 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       email: leadDraft.email,
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
-      business_location: stepTwoData.businessLocation,
+      city: stepTwoData.city,
       lead_status: "diagnostic demandé",
       completed_step_2: true,
       source: "Score Efficia gratuit",
       created_at: leadDraft.createdAt || new Date().toISOString(),
       submitted_at: new Date().toISOString(),
     };
+    console.log("diagnostic_request envoyé", payload);
     await Promise.all([submitLeadRequest(payload), wait(650)]);
+    console.log("diagnostic_request succès");
     setLoading(stepTwoForm, false);
     showStep(3);
     confirmationStep?.querySelector("button")?.focus({ preventScroll: true });
-  } catch {
+  } catch (error) {
+    console.error("diagnostic_request erreur", error);
     setLoading(stepTwoForm, false);
     if (stepTwoErrorMessage) {
       stepTwoErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";

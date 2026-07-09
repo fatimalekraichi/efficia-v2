@@ -298,10 +298,15 @@ body.modal-open {
   color: var(--blue);
 }
 
-.conversion-toggle input {
-  width: 15px;
-  height: 15px;
+.conversion-fields .conversion-toggle input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
   margin: 0;
+  padding: 0;
+  border-radius: 3px;
   accent-color: var(--blue);
 }
 
