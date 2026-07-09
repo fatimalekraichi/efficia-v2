@@ -318,6 +318,13 @@ body.modal-open {
   font-weight: 750;
 }
 
+.field-help {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
 .has-error .field-error,
 .conversion-radios.has-error .field-error,
 .conversion-search.has-error .field-error {

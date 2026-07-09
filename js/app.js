@@ -127,10 +127,23 @@ const validateForm = (form) => {
   return fieldsValid && radiosValid;
 };
 
-const setLoading = (form, isLoading) => {
+const setLoading = (form, isLoading, loadingLabel = "Envoi en cours…") => {
   const button = form.querySelector(".conversion-submit");
   button?.classList.toggle("is-loading", isLoading);
-  if (button) button.disabled = isLoading;
+  if (!button) return;
+
+  const label = button.querySelector("span:first-child");
+  if (label) {
+    if (isLoading) {
+      button.dataset.defaultLabel = label.textContent;
+      label.textContent = loadingLabel;
+    } else if (button.dataset.defaultLabel) {
+      label.textContent = button.dataset.defaultLabel;
+      delete button.dataset.defaultLabel;
+    }
+  }
+
+  button.disabled = isLoading;
 };
 
 const getFormData = (form) => {
@@ -197,7 +210,7 @@ stepOneForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!validateForm(stepOneForm)) return;
 
-  setLoading(stepOneForm, true);
+  setLoading(stepOneForm, true, "Chargement…");
   window.setTimeout(() => {
     leadDraft = getFormData(stepOneForm);
     setLoading(stepOneForm, false);
@@ -214,10 +227,19 @@ stepTwoForm?.addEventListener("submit", async (event) => {
   if (formErrorMessage) formErrorMessage.textContent = "";
 
   try {
+    const stepTwoData = getFormData(stepTwoForm);
     const payload = {
-      ...leadDraft,
-      ...getFormData(stepTwoForm),
-      problems: getCheckedValues(stepTwoForm, "problems"),
+      first_name: leadDraft.firstName,
+      email: leadDraft.email,
+      company_name: stepTwoData.company,
+      google_business_url: stepTwoData.googleBusiness,
+      city: stepTwoData.city,
+      website: stepTwoData.website,
+      phone: stepTwoData.phone,
+      business_sector: stepTwoData.industry,
+      main_goal: stepTwoData.goal,
+      main_problems: getCheckedValues(stepTwoForm, "problems"),
+      additional_notes: stepTwoData.message,
       source: "score-efficia-modal",
       submittedAt: new Date().toISOString(),
     };

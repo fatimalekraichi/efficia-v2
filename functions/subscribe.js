@@ -35,18 +35,20 @@ export async function onRequestPost({ request, env }) {
   }
 
   const email = normalizeText(payload.email).toLowerCase();
-  const firstName = normalizeText(payload.firstName);
-  const company = normalizeText(payload.company);
-  const googleBusiness = normalizeText(payload.googleBusiness);
+  const firstName = normalizeText(payload.first_name || payload.firstName);
+  const companyName = normalizeText(payload.company_name || payload.company);
+  const googleBusinessUrl = normalizeText(payload.google_business_url || payload.googleBusiness);
   const city = normalizeText(payload.city);
-  const industry = normalizeText(payload.industry);
-  const goal = normalizeText(payload.goal);
-  const comments = normalizeText(payload.message);
   const website = normalizeText(payload.website);
   const phone = normalizeText(payload.phone);
-  const problems = Array.isArray(payload.problems) ? payload.problems.join(", ") : "";
+  const businessSector = normalizeText(payload.business_sector || payload.industry);
+  const mainGoal = normalizeText(payload.main_goal || payload.goal);
+  const additionalNotes = normalizeText(payload.additional_notes || payload.message);
+  const mainProblems = Array.isArray(payload.main_problems || payload.problems)
+    ? (payload.main_problems || payload.problems).map(normalizeText).filter(Boolean).join(", ")
+    : normalizeText(payload.main_problems || payload.problems);
 
-  if (!isValidEmail(email) || !firstName || !company || !googleBusiness || !city || !industry || !goal) {
+  if (!isValidEmail(email) || !firstName || !companyName || !city || !businessSector || !mainGoal) {
     return jsonResponse({ error: "Missing required fields." }, 400);
   }
 
@@ -54,16 +56,25 @@ export async function onRequestPost({ request, env }) {
     email,
     fields: {
       name: firstName,
+      first_name: firstName,
+      company_name: companyName,
+      google_business_url: googleBusinessUrl,
+      city,
+      website,
+      phone,
+      business_sector: businessSector,
+      main_goal: mainGoal,
+      main_problems: mainProblems,
+      additional_notes: additionalNotes,
       prenom: firstName,
-      entreprise: company,
-      google_business_url: googleBusiness,
+      entreprise: companyName,
       ville: city,
-      secteur: industry,
-      objectif: goal,
-      commentaires: comments,
+      secteur: businessSector,
+      objectif: mainGoal,
+      commentaires: additionalNotes,
       site_internet: website,
       telephone: phone,
-      problemes: problems,
+      problemes: mainProblems,
       source: "score-efficia-modal",
     },
     groups: [MAILERLITE_GROUP_ID],
