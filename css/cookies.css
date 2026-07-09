@@ -4,7 +4,7 @@
   bottom: 24px;
   z-index: 2800;
   width: min(100% - 32px, 860px);
-  padding: 18px;
+  padding: 20px 54px 20px 20px;
   border: 1px solid #e2e8f0;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.96);
@@ -18,26 +18,30 @@
 
 .cookie-consent__close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 30px;
-  height: 30px;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  border: 0;
+  border: 1px solid #e2e8f0;
   border-radius: 50%;
-  background: #f8fafc;
-  color: #64748b;
+  background: #ffffff;
+  color: #475569;
   cursor: pointer;
-  font-size: 20px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  font-size: 21px;
   line-height: 1;
-  transition: background 200ms ease, color 200ms ease, transform 200ms ease;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
 }
 
 .cookie-consent__close:hover {
   transform: translateY(-1px);
   background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
   color: var(--blue);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
 }
 
 .cookie-consent.is-visible {
