@@ -100,6 +100,8 @@ export async function onRequestPost(context) {
 
   const mailerLitePayload = {
     email,
+    status: "active",
+    resubscribe: true,
     fields,
     groups: [MAILERLITE_GROUP_ID],
   };
@@ -112,6 +114,8 @@ export async function onRequestPost(context) {
 
     const fallbackPayload = {
       email,
+      status: "active",
+      resubscribe: true,
       fields: {
         name: firstName,
       },
@@ -138,5 +142,17 @@ export async function onRequestPost(context) {
     });
   }
 
-  return jsonResponse({ success: true, group_id: MAILERLITE_GROUP_ID });
+  let mailerLiteData = null;
+  try {
+    mailerLiteData = await response.json();
+  } catch {
+    mailerLiteData = null;
+  }
+
+  return jsonResponse({
+    success: true,
+    group_id: MAILERLITE_GROUP_ID,
+    subscriber_id: mailerLiteData?.data?.id || null,
+    subscriber_status: mailerLiteData?.data?.status || null,
+  });
 }
