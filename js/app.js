@@ -239,14 +239,29 @@ const submitLeadRequest = async (payload) => {
     body: JSON.stringify(payload),
   });
 
+  let data = null;
+  const responseText = await response.text();
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    data = { raw: responseText };
+  }
+
+  console.log("Réponse /subscribe", {
+    status: response.status,
+    ok: response.ok,
+    data,
+  });
+
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    console.error("Erreur API /subscribe", response.status, errorText);
+    console.error("Erreur API /subscribe", {
+      status: response.status,
+      data,
+    });
     throw new Error("Lead submission failed");
   }
 
-  const data = await response.json();
-  if (!data.ok) {
+  if (!data?.success) {
     console.error("Erreur API /subscribe", data);
     throw new Error("Lead submission failed");
   }

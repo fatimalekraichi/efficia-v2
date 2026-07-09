@@ -1,5 +1,6 @@
 const MAILERLITE_GROUP_ID = "192513600183600154";
 const MAILERLITE_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
+const ERROR_MESSAGE = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -12,6 +13,16 @@ const normalizeText = (value) => (typeof value === "string" ? value.trim() : "")
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
+const sendToMailerLite = (apiKey, payload) => fetch(MAILERLITE_ENDPOINT, {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  },
+  body: JSON.stringify(payload),
+});
+
 export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
@@ -22,16 +33,20 @@ export async function onRequestOptions() {
   });
 }
 
-export async function onRequestPost({ request, env }) {
-  if (!env.MAILERLITE_API_KEY) {
-    return jsonResponse({ error: "MailerLite API key is not configured." }, 500);
+export async function onRequestPost(context) {
+  const { request } = context;
+  const apiKey = context.env.MAILERLITE_API_KEY;
+
+  if (!apiKey) {
+    console.error("MailerLite API key is not configured.");
+    return jsonResponse({ success: false, error: ERROR_MESSAGE }, 500);
   }
 
   let payload;
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: "Invalid JSON body." }, 400);
+    return jsonResponse({ success: false, error: "Invalid JSON body." }, 400);
   }
 
   const step = normalizeText(payload.step);
@@ -49,29 +64,25 @@ export async function onRequestPost({ request, env }) {
   const hasBusinessLookup = Boolean(googleBusinessUrl || (companyName && businessLocation));
 
   if (!["lead_capture", "diagnostic_request"].includes(step)) {
-    return jsonResponse({ ok: false, error: "Invalid submission step." }, 400);
+    return jsonResponse({ success: false, error: "Invalid submission step." }, 400);
   }
 
   if (!isValidEmail(email) || !firstName) {
-    return jsonResponse({ ok: false, error: "Missing required fields." }, 400);
+    return jsonResponse({ success: false, error: "Missing required fields." }, 400);
   }
 
   if (step === "diagnostic_request" && !hasBusinessLookup) {
-    return jsonResponse({ ok: false, error: "Missing required fields." }, 400);
+    return jsonResponse({ success: false, error: "Missing required fields." }, 400);
   }
 
   const fields = {
     name: firstName,
-    first_name: firstName,
-    prenom: firstName,
-    created_at: createdAt,
     source,
     lead_status: leadStatus,
   };
 
   if (companyName) {
     fields.company_name = companyName;
-    fields.entreprise = companyName;
   }
 
   if (googleBusinessUrl) {
@@ -79,9 +90,7 @@ export async function onRequestPost({ request, env }) {
   }
 
   if (businessLocation) {
-    fields.business_location = businessLocation;
     fields.city = businessLocation;
-    fields.ville = businessLocation;
   }
 
   if (step === "diagnostic_request") {
@@ -95,21 +104,39 @@ export async function onRequestPost({ request, env }) {
     groups: [MAILERLITE_GROUP_ID],
   };
 
-  const response = await fetch(MAILERLITE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${env.MAILERLITE_API_KEY}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(mailerLitePayload),
-  });
+  const response = await sendToMailerLite(apiKey, mailerLitePayload);
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error("MailerLite request failed", response.status, errorText);
-    return jsonResponse({ ok: false, error: "MailerLite request failed." }, 502);
+
+    const fallbackPayload = {
+      email,
+      fields: {
+        name: firstName,
+      },
+      groups: [MAILERLITE_GROUP_ID],
+    };
+    const fallbackResponse = await sendToMailerLite(apiKey, fallbackPayload);
+
+    if (!fallbackResponse.ok) {
+      const fallbackErrorText = await fallbackResponse.text();
+      console.error("MailerLite fallback request failed", fallbackResponse.status, fallbackErrorText);
+      return jsonResponse({
+        success: false,
+        error: "MailerLite request failed.",
+        status: fallbackResponse.status,
+        details: fallbackErrorText,
+      }, 502);
+    }
+
+    return jsonResponse({
+      success: true,
+      group_id: MAILERLITE_GROUP_ID,
+      warning: "MailerLite custom fields were rejected. Subscriber was saved with standard fields only.",
+      details: errorText,
+    });
   }
 
-  return jsonResponse({ ok: true, group_id: MAILERLITE_GROUP_ID });
+  return jsonResponse({ success: true, group_id: MAILERLITE_GROUP_ID });
 }
