@@ -34,6 +34,7 @@ const stepTwoForm = modal?.querySelector('[data-step="2"]');
 const confirmationStep = modal?.querySelector('[data-step="3"]');
 const messageTextarea = modal?.querySelector('textarea[name="message"]');
 const characterCount = modal?.querySelector("[data-character-count]");
+const formErrorMessage = modal?.querySelector(".conversion-form-error");
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let lastFocusedElement = null;
 let leadDraft = {};
@@ -54,6 +55,7 @@ const resetModal = () => {
   showStep(1);
   modal?.querySelectorAll(".has-error").forEach((item) => item.classList.remove("has-error"));
   modal?.querySelectorAll(".conversion-submit.is-loading").forEach((button) => button.classList.remove("is-loading"));
+  if (formErrorMessage) formErrorMessage.textContent = "";
 };
 
 const openModal = () => {
@@ -140,10 +142,26 @@ const getCheckedValues = (form, name) => (
   Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((input) => input.value)
 );
 
+const wait = (duration) => new Promise((resolve) => {
+  window.setTimeout(resolve, duration);
+});
+
 const submitLeadRequest = async (payload) => {
   window.efficiaLeadPayload = payload;
-  // Future integrations can be connected here: Brevo, Tally, Google Sheets, Make or n8n.
-  return payload;
+  const response = await fetch("/subscribe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error("Lead submission failed");
+  }
+
+  return response.json();
 };
 
 modalTriggers.forEach((trigger) => {
@@ -188,12 +206,14 @@ stepOneForm?.addEventListener("submit", (event) => {
   }, 650);
 });
 
-stepTwoForm?.addEventListener("submit", (event) => {
+stepTwoForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!validateForm(stepTwoForm)) return;
 
   setLoading(stepTwoForm, true);
-  window.setTimeout(() => {
+  if (formErrorMessage) formErrorMessage.textContent = "";
+
+  try {
     const payload = {
       ...leadDraft,
       ...getFormData(stepTwoForm),
@@ -201,11 +221,16 @@ stepTwoForm?.addEventListener("submit", (event) => {
       source: "score-efficia-modal",
       submittedAt: new Date().toISOString(),
     };
-    submitLeadRequest(payload);
+    await Promise.all([submitLeadRequest(payload), wait(650)]);
     setLoading(stepTwoForm, false);
     showStep(3);
     confirmationStep?.querySelector("button")?.focus({ preventScroll: true });
-  }, 650);
+  } catch {
+    setLoading(stepTwoForm, false);
+    if (formErrorMessage) {
+      formErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
+    }
+  }
 });
 
 document.addEventListener("keydown", (event) => {

@@ -330,6 +330,16 @@ body.modal-open {
   position: relative;
 }
 
+.conversion-form-error {
+  min-height: 20px;
+  margin-top: 12px;
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 800;
+  text-align: center;
+}
+
 .conversion-submit.is-loading {
   pointer-events: none;
 }
