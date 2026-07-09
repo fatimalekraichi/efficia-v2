@@ -12,6 +12,30 @@ const normalizeText = (value) => (typeof value === "string" ? value.trim() : "")
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
+const goalLabels = {
+  calls: "Recevoir plus d'appels",
+  clients: "Attirer plus de clients",
+  reviews: "Obtenir plus d'avis",
+  visibility: "Améliorer ma visibilité",
+  unsure: "Je ne sais pas encore",
+};
+
+const problemLabels = {
+  visibility: "Je manque de visibilité",
+  reviews: "Je reçois peu d'avis",
+  incomplete: "Ma fiche est incomplète",
+  competition: "Mes concurrents apparaissent avant moi",
+  unknown: "Je ne sais pas",
+};
+
+const mapChoice = (value, labels) => labels[value] || value;
+
+const mapChoices = (values, labels) => (
+  Array.isArray(values)
+    ? values.map((value) => mapChoice(normalizeText(value), labels)).filter(Boolean).join(", ")
+    : mapChoice(normalizeText(values), labels)
+);
+
 export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
@@ -42,14 +66,13 @@ export async function onRequestPost({ request, env }) {
   const website = normalizeText(payload.website);
   const phone = normalizeText(payload.phone);
   const businessSector = normalizeText(payload.business_sector || payload.industry);
-  const mainGoal = normalizeText(payload.main_goal || payload.goal);
+  const mainGoal = mapChoice(normalizeText(payload.main_goal || payload.goal), goalLabels);
   const additionalNotes = normalizeText(payload.additional_notes || payload.message);
-  const mainProblems = Array.isArray(payload.main_problems || payload.problems)
-    ? (payload.main_problems || payload.problems).map(normalizeText).filter(Boolean).join(", ")
-    : normalizeText(payload.main_problems || payload.problems);
+  const mainProblems = mapChoices(payload.main_problems || payload.problems, problemLabels);
+  const submittedAt = normalizeText(payload.submittedAt || payload.submitted_at) || new Date().toISOString();
 
   if (!isValidEmail(email) || !firstName || !companyName || !city || !businessSector || !mainGoal) {
-    return jsonResponse({ error: "Missing required fields." }, 400);
+    return jsonResponse({ ok: false, error: "Missing required fields." }, 400);
   }
 
   const mailerLitePayload = {
@@ -75,6 +98,7 @@ export async function onRequestPost({ request, env }) {
       site_internet: website,
       telephone: phone,
       problemes: mainProblems,
+      submitted_at: submittedAt,
       source: "score-efficia-modal",
     },
     groups: [MAILERLITE_GROUP_ID],
@@ -92,8 +116,9 @@ export async function onRequestPost({ request, env }) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    return jsonResponse({ error: "MailerLite request failed.", details: errorText }, 502);
+    console.error("MailerLite request failed", response.status, errorText);
+    return jsonResponse({ ok: false, error: "MailerLite request failed." }, 502);
   }
 
-  return jsonResponse({ ok: true });
+  return jsonResponse({ ok: true, group_id: MAILERLITE_GROUP_ID });
 }
