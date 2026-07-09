@@ -253,6 +253,7 @@ body.modal-open {
 }
 
 .conversion-fields label,
+.conversion-toggle,
 .conversion-radios,
 .conversion-checkboxes,
 .conversion-search,
@@ -262,6 +263,7 @@ body.modal-open {
 }
 
 .conversion-fields label > span,
+.conversion-toggle span,
 .conversion-radios legend,
 .conversion-checkboxes legend,
 .conversion-search > span,
@@ -269,6 +271,35 @@ body.modal-open {
   color: var(--navy);
   font-size: 13px;
   font-weight: 800;
+}
+
+.conversion-fields .is-hidden {
+  display: none;
+}
+
+.conversion-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fbff;
+  cursor: pointer;
+  transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+}
+
+.conversion-toggle:hover {
+  border-color: rgba(37, 99, 235, 0.24);
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.05);
+}
+
+.conversion-toggle input {
+  accent-color: var(--blue);
+}
+
+.conversion-toggle span {
+  color: #52627a;
 }
 
 .conversion-fields input,

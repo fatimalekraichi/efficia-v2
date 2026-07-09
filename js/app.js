@@ -32,7 +32,9 @@ const closeButtons = modal?.querySelectorAll("[data-modal-close]") || [];
 const stepOneForm = modal?.querySelector('[data-step="1"]');
 const stepTwoForm = modal?.querySelector('[data-step="2"]');
 const confirmationStep = modal?.querySelector('[data-step="3"]');
-const formErrorMessage = modal?.querySelector(".conversion-form-error");
+const stepOneErrorMessage = modal?.querySelector("[data-step-one-error]");
+const stepTwoErrorMessage = modal?.querySelector("[data-step-two-error]");
+const unknownGoogleBusinessField = stepTwoForm?.querySelector('input[name="unknownGoogleBusiness"]');
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let lastFocusedElement = null;
 let leadDraft = {};
@@ -53,7 +55,10 @@ const resetModal = () => {
   showStep(1);
   modal?.querySelectorAll(".has-error").forEach((item) => item.classList.remove("has-error"));
   modal?.querySelectorAll(".conversion-submit.is-loading").forEach((button) => button.classList.remove("is-loading"));
-  if (formErrorMessage) formErrorMessage.textContent = "";
+  modal?.querySelectorAll(".conversion-form-error").forEach((message) => {
+    message.textContent = "";
+  });
+  updateDiagnosticFields();
 };
 
 const openModal = () => {
@@ -125,24 +130,61 @@ const validateForm = (form) => {
   return fieldsValid && radiosValid;
 };
 
+const setFieldState = (field, isValid) => {
+  field?.closest("label")?.classList.toggle("has-error", !isValid);
+};
+
+const updateDiagnosticFields = () => {
+  if (!stepTwoForm) return;
+
+  const isUnknown = Boolean(unknownGoogleBusinessField?.checked);
+  const googleBusinessWrapper = stepTwoForm.querySelector("[data-google-business-field]");
+  const googleBusinessField = stepTwoForm.querySelector('input[name="googleBusiness"]');
+  const fallbackWrappers = stepTwoForm.querySelectorAll("[data-business-fallback]");
+  const fallbackFields = stepTwoForm.querySelectorAll('input[name="company"], input[name="businessLocation"]');
+
+  googleBusinessWrapper?.classList.toggle("is-hidden", isUnknown);
+  if (googleBusinessField) {
+    googleBusinessField.disabled = isUnknown;
+    googleBusinessField.required = !isUnknown;
+    if (isUnknown) googleBusinessField.value = "";
+    setFieldState(googleBusinessField, true);
+  }
+
+  fallbackWrappers.forEach((wrapper) => wrapper.classList.toggle("is-hidden", !isUnknown));
+  fallbackFields.forEach((field) => {
+    field.disabled = !isUnknown;
+    field.required = isUnknown;
+    if (!isUnknown) field.value = "";
+    setFieldState(field, true);
+  });
+
+  if (stepTwoErrorMessage) stepTwoErrorMessage.textContent = "";
+};
+
 const validateDiagnosticLookup = (form) => {
   const googleBusinessField = form.querySelector('input[name="googleBusiness"]');
   const companyField = form.querySelector('input[name="company"]');
-  const cityField = form.querySelector('input[name="city"]');
+  const businessLocationField = form.querySelector('input[name="businessLocation"]');
+  const isUnknown = Boolean(form.querySelector('input[name="unknownGoogleBusiness"]')?.checked);
   const hasGoogleBusiness = Boolean(googleBusinessField?.value.trim());
   const hasCompany = Boolean(companyField?.value.trim());
-  const hasCity = Boolean(cityField?.value.trim());
-  const urlIsValid = googleBusinessField ? validateField(googleBusinessField) : true;
-  const fallbackIsValid = hasCompany && hasCity;
-  const isValid = urlIsValid && (hasGoogleBusiness || fallbackIsValid);
+  const hasBusinessLocation = Boolean(businessLocationField?.value.trim());
+  let isValid = true;
 
-  companyField?.closest("label")?.classList.toggle("has-error", !hasGoogleBusiness && !hasCompany);
-  cityField?.closest("label")?.classList.toggle("has-error", !hasGoogleBusiness && !hasCity);
+  if (isUnknown) {
+    isValid = hasCompany && hasBusinessLocation;
+    setFieldState(companyField, hasCompany);
+    setFieldState(businessLocationField, hasBusinessLocation);
+  } else {
+    isValid = hasGoogleBusiness && validateField(googleBusinessField);
+    setFieldState(googleBusinessField, isValid);
+  }
 
-  if (formErrorMessage) {
-    formErrorMessage.textContent = isValid
+  if (stepTwoErrorMessage) {
+    stepTwoErrorMessage.textContent = isValid
       ? ""
-      : "Ajoutez le lien Google Business ou indiquez le nom de l’entreprise avec la ville.";
+      : "Ajoutez le lien Google Business ou cochez l’option pour indiquer le nom de l’entreprise et son adresse ou sa ville.";
   }
 
   if (!isValid) {
@@ -196,7 +238,12 @@ const submitLeadRequest = async (payload) => {
     throw new Error("Lead submission failed");
   }
 
-  return response.json();
+  const data = await response.json();
+  if (!data.ok) {
+    throw new Error("Lead submission failed");
+  }
+
+  return data;
 };
 
 modalTriggers.forEach((trigger) => {
@@ -219,8 +266,11 @@ modal?.addEventListener("input", (event) => {
   if (event.target.matches("input[type='radio']")) {
     event.target.closest(".conversion-radios")?.classList.remove("has-error");
   }
-  if (event.target.closest('[data-step="2"]') && formErrorMessage) {
-    formErrorMessage.textContent = "";
+  if (event.target === unknownGoogleBusinessField) {
+    updateDiagnosticFields();
+  }
+  if (event.target.closest('[data-step="2"]') && stepTwoErrorMessage) {
+    stepTwoErrorMessage.textContent = "";
   }
 });
 
@@ -228,17 +278,37 @@ modal?.addEventListener("blur", (event) => {
   if (event.target.matches("input:not([type='radio'])")) validateField(event.target);
 }, true);
 
-stepOneForm?.addEventListener("submit", (event) => {
+stepOneForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!validateForm(stepOneForm)) return;
 
-  setLoading(stepOneForm, true, "Chargement…");
-  window.setTimeout(() => {
+  setLoading(stepOneForm, true, "Enregistrement…");
+  if (stepOneErrorMessage) stepOneErrorMessage.textContent = "";
+
+  try {
     leadDraft = getFormData(stepOneForm);
+    const createdAt = new Date().toISOString();
+    await Promise.all([
+      submitLeadRequest({
+        step: "lead_capture",
+        first_name: leadDraft.firstName,
+        email: leadDraft.email,
+        lead_status: "étape 1 complétée",
+        source: "Score Efficia gratuit",
+        created_at: createdAt,
+      }),
+      wait(650),
+    ]);
+    leadDraft.createdAt = createdAt;
     setLoading(stepOneForm, false);
     showStep(2);
     focusFirstField();
-  }, 650);
+  } catch {
+    setLoading(stepOneForm, false);
+    if (stepOneErrorMessage) {
+      stepOneErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
+    }
+  }
 });
 
 stepTwoForm?.addEventListener("submit", async (event) => {
@@ -246,18 +316,22 @@ stepTwoForm?.addEventListener("submit", async (event) => {
   if (!validateDiagnosticLookup(stepTwoForm)) return;
 
   setLoading(stepTwoForm, true);
-  if (formErrorMessage) formErrorMessage.textContent = "";
+  if (stepTwoErrorMessage) stepTwoErrorMessage.textContent = "";
 
   try {
     const stepTwoData = getFormData(stepTwoForm);
     const payload = {
+      step: "diagnostic_request",
       first_name: leadDraft.firstName,
       email: leadDraft.email,
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
-      city: stepTwoData.city,
+      business_location: stepTwoData.businessLocation,
+      lead_status: "diagnostic demandé",
+      completed_step_2: true,
       source: "Score Efficia gratuit",
-      created_at: new Date().toISOString(),
+      created_at: leadDraft.createdAt || new Date().toISOString(),
+      submitted_at: new Date().toISOString(),
     };
     await Promise.all([submitLeadRequest(payload), wait(650)]);
     setLoading(stepTwoForm, false);
@@ -265,8 +339,8 @@ stepTwoForm?.addEventListener("submit", async (event) => {
     confirmationStep?.querySelector("button")?.focus({ preventScroll: true });
   } catch {
     setLoading(stepTwoForm, false);
-    if (formErrorMessage) {
-      formErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
+    if (stepTwoErrorMessage) {
+      stepTwoErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
     }
   }
 });

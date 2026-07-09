@@ -47,7 +47,7 @@
       class="btn btn-primary header-btn"
       data-form-step="diagnostic-start"
       data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
-      data-optional-fields="lien-google-business,entreprise,ville"
+      data-optional-fields="lien-google-business,entreprise,adresse-ou-ville"
     >
       Analyser ma fiche gratuitement
     </a>
@@ -80,7 +80,7 @@
           class="btn btn-primary"
           data-form-step="diagnostic-start"
           data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
-          data-optional-fields="lien-google-business,entreprise,ville"
+          data-optional-fields="lien-google-business,entreprise,adresse-ou-ville"
         >
           Analyser ma fiche gratuitement
         </a>
@@ -606,7 +606,7 @@
       class="btn btn-light"
       data-form-step="diagnostic-start"
       data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
-      data-optional-fields="lien-google-business,entreprise,ville"
+      data-optional-fields="lien-google-business,entreprise,adresse-ou-ville"
     >Analyser ma fiche gratuitement</a>
     <ul class="final-cta-proof">
       <li>Gratuit</li>
@@ -680,6 +680,7 @@
         <span>Continuer</span>
         <span class="conversion-loader" aria-hidden="true"></span>
       </button>
+      <p class="conversion-form-error" data-step-one-error role="alert" aria-live="polite"></p>
 
       <ul class="conversion-badges">
         <li>Gratuit</li>
@@ -691,23 +692,27 @@
     <form class="conversion-step" data-step="2" novalidate>
       <span class="conversion-label">Diagnostic gratuit</span>
       <h2>Indiquez votre fiche Google Business</h2>
-      <p>Collez le lien de votre fiche Google Business. Si vous ne l’avez pas, indiquez simplement le nom de votre entreprise et votre ville.</p>
+      <p>Collez le lien de votre fiche Google Business. Si vous ne le connaissez pas, cochez l’option ci-dessous.</p>
 
-      <div class="conversion-fields two-columns">
-        <label>
+      <div class="conversion-fields">
+        <label data-google-business-field>
           <span>Lien Google Business</span>
           <input type="url" name="googleBusiness" inputmode="url" placeholder="https://">
-          <small class="field-error">Indiquez un lien valide.</small>
+          <small class="field-error">Indiquez un lien Google Business valide.</small>
         </label>
-        <label>
-          <span>Nom de l'entreprise</span>
+        <label class="conversion-toggle">
+          <input type="checkbox" name="unknownGoogleBusiness" value="1">
+          <span>Je ne connais pas le lien de ma fiche Google Business</span>
+        </label>
+        <label class="is-hidden" data-business-fallback>
+          <span>Nom de l'entreprise *</span>
           <input type="text" name="company" autocomplete="organization">
-          <small class="field-error">Indiquez le nom de votre entreprise avec votre ville.</small>
+          <small class="field-error">Indiquez le nom de votre entreprise.</small>
         </label>
-        <label>
-          <span>Ville</span>
-          <input type="text" name="city" autocomplete="address-level2">
-          <small class="field-error">Indiquez votre ville avec le nom de l’entreprise.</small>
+        <label class="is-hidden" data-business-fallback>
+          <span>Adresse ou ville *</span>
+          <input type="text" name="businessLocation" autocomplete="address-level2">
+          <small class="field-error">Indiquez votre adresse ou votre ville.</small>
         </label>
       </div>
 
@@ -715,7 +720,7 @@
         <span>Recevoir mon Score Efficia™</span>
         <span class="conversion-loader" aria-hidden="true"></span>
       </button>
-      <p class="conversion-form-error" role="alert" aria-live="polite"></p>
+      <p class="conversion-form-error" data-step-two-error role="alert" aria-live="polite"></p>
     </form>
 
     <div class="conversion-step conversion-confirmation" data-step="3">
