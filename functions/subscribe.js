@@ -56,11 +56,8 @@ export async function onRequestPost(context) {
   const googleBusinessUrl = normalizeText(payload.google_business_url || payload.googleBusiness);
   const businessLocation = normalizeText(payload.business_location || payload.city);
   const source = normalizeText(payload.source) || "Score Efficia gratuit";
-  const createdAt = normalizeText(payload.created_at || payload.createdAt) || new Date().toISOString();
-  const leadStatus = normalizeText(payload.lead_status)
-    || (step === "diagnostic_request" ? "diagnostic demandé" : "étape 1 complétée");
-  const submittedAt = normalizeText(payload.submitted_at || payload.submittedAt);
-  const completedStepTwo = payload.completed_step_2 === true || payload.completed_step_2 === "true";
+  const auditStatus = normalizeText(payload.audit_status)
+    || (step === "diagnostic_request" ? "diagnostic demandé" : "lead capturé");
   const hasBusinessLookup = Boolean(googleBusinessUrl || (companyName && businessLocation));
 
   if (!["lead_capture", "diagnostic_request"].includes(step)) {
@@ -78,25 +75,13 @@ export async function onRequestPost(context) {
   const fields = {
     name: firstName,
     source,
-    lead_status: leadStatus,
+    audit_status: auditStatus,
   };
 
-  if (companyName) {
-    fields.company = companyName;
-    fields.company_name = companyName;
-  }
-
-  if (googleBusinessUrl) {
-    fields.google_business_url = googleBusinessUrl;
-  }
-
-  if (businessLocation) {
-    fields.city = businessLocation;
-  }
-
   if (step === "diagnostic_request") {
-    fields.completed_step_2 = completedStepTwo;
-    fields.submitted_at = submittedAt || new Date().toISOString();
+    fields.company = companyName;
+    fields.google_business_url = googleBusinessUrl;
+    fields.city = businessLocation;
   }
 
   const mailerLitePayload = {

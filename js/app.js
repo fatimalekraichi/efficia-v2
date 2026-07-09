@@ -315,7 +315,7 @@ stepOneForm?.addEventListener("submit", async (event) => {
       step: "lead_capture",
       first_name: leadDraft.firstName,
       email: leadDraft.email,
-      lead_status: "étape 1 complétée",
+      audit_status: "lead capturé",
       source: "Score Efficia gratuit",
       created_at: createdAt,
     };
@@ -354,7 +354,7 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
       city: stepTwoData.city,
-      lead_status: "diagnostic demandé",
+      audit_status: "diagnostic demandé",
       completed_step_2: true,
       source: "Score Efficia gratuit",
       created_at: leadDraft.createdAt || new Date().toISOString(),
