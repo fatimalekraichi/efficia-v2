@@ -32,8 +32,6 @@ const closeButtons = modal?.querySelectorAll("[data-modal-close]") || [];
 const stepOneForm = modal?.querySelector('[data-step="1"]');
 const stepTwoForm = modal?.querySelector('[data-step="2"]');
 const confirmationStep = modal?.querySelector('[data-step="3"]');
-const messageTextarea = modal?.querySelector('textarea[name="message"]');
-const characterCount = modal?.querySelector("[data-character-count]");
 const formErrorMessage = modal?.querySelector(".conversion-form-error");
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let lastFocusedElement = null;
@@ -127,6 +125,34 @@ const validateForm = (form) => {
   return fieldsValid && radiosValid;
 };
 
+const validateDiagnosticLookup = (form) => {
+  const googleBusinessField = form.querySelector('input[name="googleBusiness"]');
+  const companyField = form.querySelector('input[name="company"]');
+  const cityField = form.querySelector('input[name="city"]');
+  const hasGoogleBusiness = Boolean(googleBusinessField?.value.trim());
+  const hasCompany = Boolean(companyField?.value.trim());
+  const hasCity = Boolean(cityField?.value.trim());
+  const urlIsValid = googleBusinessField ? validateField(googleBusinessField) : true;
+  const fallbackIsValid = hasCompany && hasCity;
+  const isValid = urlIsValid && (hasGoogleBusiness || fallbackIsValid);
+
+  companyField?.closest("label")?.classList.toggle("has-error", !hasGoogleBusiness && !hasCompany);
+  cityField?.closest("label")?.classList.toggle("has-error", !hasGoogleBusiness && !hasCity);
+
+  if (formErrorMessage) {
+    formErrorMessage.textContent = isValid
+      ? ""
+      : "Ajoutez le lien Google Business ou indiquez le nom de l’entreprise avec la ville.";
+  }
+
+  if (!isValid) {
+    const firstError = form.querySelector(".has-error input");
+    firstError?.focus({ preventScroll: false });
+  }
+
+  return isValid;
+};
+
 const setLoading = (form, isLoading, loadingLabel = "Envoi en cours…") => {
   const button = form.querySelector(".conversion-submit");
   button?.classList.toggle("is-loading", isLoading);
@@ -150,10 +176,6 @@ const getFormData = (form) => {
   const formData = new FormData(form);
   return Object.fromEntries(formData.entries());
 };
-
-const getCheckedValues = (form, name) => (
-  Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((input) => input.value)
-);
 
 const wait = (duration) => new Promise((resolve) => {
   window.setTimeout(resolve, duration);
@@ -197,8 +219,8 @@ modal?.addEventListener("input", (event) => {
   if (event.target.matches("input[type='radio']")) {
     event.target.closest(".conversion-radios")?.classList.remove("has-error");
   }
-  if (event.target === messageTextarea && characterCount) {
-    characterCount.textContent = String(messageTextarea.value.length);
+  if (event.target.closest('[data-step="2"]') && formErrorMessage) {
+    formErrorMessage.textContent = "";
   }
 });
 
@@ -221,7 +243,7 @@ stepOneForm?.addEventListener("submit", (event) => {
 
 stepTwoForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!validateForm(stepTwoForm)) return;
+  if (!validateDiagnosticLookup(stepTwoForm)) return;
 
   setLoading(stepTwoForm, true);
   if (formErrorMessage) formErrorMessage.textContent = "";
@@ -234,14 +256,8 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
       city: stepTwoData.city,
-      website: stepTwoData.website,
-      phone: stepTwoData.phone,
-      business_sector: stepTwoData.industry,
-      main_goal: stepTwoData.goal,
-      main_problems: getCheckedValues(stepTwoForm, "problems"),
-      additional_notes: stepTwoData.message,
-      source: "score-efficia-modal",
-      submittedAt: new Date().toISOString(),
+      source: "Score Efficia gratuit",
+      created_at: new Date().toISOString(),
     };
     await Promise.all([submitLeadRequest(payload), wait(650)]);
     setLoading(stepTwoForm, false);

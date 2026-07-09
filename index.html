@@ -46,8 +46,8 @@
       href="#diagnostic"
       class="btn btn-primary header-btn"
       data-form-step="diagnostic-start"
-      data-required-fields="prenom,email"
-      data-optional-fields="entreprise,lien-google-business,site-internet,ville,secteur-activite,telephone,objectif-principal"
+      data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
+      data-optional-fields="lien-google-business,entreprise,ville"
     >
       Analyser ma fiche gratuitement
     </a>
@@ -79,8 +79,8 @@
           href="#diagnostic"
           class="btn btn-primary"
           data-form-step="diagnostic-start"
-          data-required-fields="prenom,email"
-          data-optional-fields="entreprise,lien-google-business,site-internet,ville,secteur-activite,telephone,objectif-principal"
+          data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
+          data-optional-fields="lien-google-business,entreprise,ville"
         >
           Analyser ma fiche gratuitement
         </a>
@@ -605,8 +605,8 @@
       href="#diagnostic"
       class="btn btn-light"
       data-form-step="diagnostic-start"
-      data-required-fields="prenom,email"
-      data-optional-fields="entreprise,lien-google-business,site-internet,ville,secteur-activite,telephone,objectif-principal"
+      data-required-fields="prenom,email,lien-google-business-ou-entreprise-ville"
+      data-optional-fields="lien-google-business,entreprise,ville"
     >Analyser ma fiche gratuitement</a>
     <ul class="final-cta-proof">
       <li>Gratuit</li>
@@ -690,83 +690,26 @@
 
     <form class="conversion-step" data-step="2" novalidate>
       <span class="conversion-label">Diagnostic gratuit</span>
-      <h2>Parlez-nous de votre entreprise</h2>
-      <p>Ces informations nous permettront de personnaliser votre Score Efficia™.</p>
+      <h2>Indiquez votre fiche Google Business</h2>
+      <p>Collez le lien de votre fiche Google Business. Si vous ne l’avez pas, indiquez simplement le nom de votre entreprise et votre ville.</p>
 
       <div class="conversion-fields two-columns">
         <label>
-          <span>Nom de l'entreprise *</span>
-          <input type="text" name="company" autocomplete="organization" required>
-          <small class="field-error">Indiquez le nom de votre entreprise.</small>
-        </label>
-        <label>
           <span>Lien Google Business</span>
           <input type="url" name="googleBusiness" inputmode="url" placeholder="https://">
-          <small class="field-help">Si vous ne trouvez pas le lien, indiquez simplement le nom de votre entreprise et votre ville.</small>
           <small class="field-error">Indiquez un lien valide.</small>
         </label>
         <label>
-          <span>Ville *</span>
-          <input type="text" name="city" autocomplete="address-level2" required>
-          <small class="field-error">Indiquez votre ville.</small>
+          <span>Nom de l'entreprise</span>
+          <input type="text" name="company" autocomplete="organization">
+          <small class="field-error">Indiquez le nom de votre entreprise avec votre ville.</small>
         </label>
         <label>
-          <span>Site internet</span>
-          <input type="url" name="website" inputmode="url" placeholder="https://">
-          <small class="field-error">Indiquez un lien valide.</small>
-        </label>
-        <label>
-          <span>Téléphone (facultatif)</span>
-          <input type="tel" name="phone" autocomplete="tel">
+          <span>Ville</span>
+          <input type="text" name="city" autocomplete="address-level2">
+          <small class="field-error">Indiquez votre ville avec le nom de l’entreprise.</small>
         </label>
       </div>
-
-      <label class="conversion-search">
-        <span>Quel est votre secteur d'activité&nbsp;? *</span>
-        <input type="text" name="industry" list="industry-options" placeholder="Rechercher un secteur" required>
-        <datalist id="industry-options">
-          <option value="Restaurant"></option>
-          <option value="Boulangerie"></option>
-          <option value="Salon de coiffure"></option>
-          <option value="Institut de beauté"></option>
-          <option value="Profession médicale"></option>
-          <option value="Artisan"></option>
-          <option value="Commerce local"></option>
-          <option value="Service à domicile"></option>
-          <option value="Agence immobilière"></option>
-          <option value="Autre"></option>
-        </datalist>
-        <small class="field-error">Indiquez votre secteur d’activité.</small>
-      </label>
-
-      <fieldset class="conversion-radios card-options">
-        <legend>Quel est votre objectif principal&nbsp;?</legend>
-        <div class="conversion-card-grid">
-          <label><input type="radio" name="goal" value="calls" required><span>Recevoir plus d'appels</span></label>
-          <label><input type="radio" name="goal" value="clients"><span>Attirer plus de clients</span></label>
-          <label><input type="radio" name="goal" value="reviews"><span>Obtenir plus d'avis</span></label>
-          <label><input type="radio" name="goal" value="visibility"><span>Améliorer ma visibilité</span></label>
-          <label><input type="radio" name="goal" value="unsure"><span>Je ne sais pas encore</span></label>
-        </div>
-        <small class="field-error">Sélectionnez un objectif.</small>
-      </fieldset>
-
-      <fieldset class="conversion-checkboxes">
-        <legend>Quel est aujourd'hui votre plus gros problème&nbsp;?</legend>
-        <div class="conversion-check-grid">
-          <label><input type="checkbox" name="problems" value="visibility"> Je manque de visibilité</label>
-          <label><input type="checkbox" name="problems" value="reviews"> Je reçois peu d'avis</label>
-          <label><input type="checkbox" name="problems" value="incomplete"> Ma fiche est incomplète</label>
-          <label><input type="checkbox" name="problems" value="competition"> Mes concurrents apparaissent avant moi</label>
-          <label><input type="checkbox" name="problems" value="unknown"> Je ne sais pas</label>
-        </div>
-      </fieldset>
-
-      <label class="conversion-textarea">
-        <span>Y a-t-il autre chose que nous devrions savoir&nbsp;?</span>
-        <textarea name="message" maxlength="500" rows="4"></textarea>
-        <small><span data-character-count>0</span>/500 caractères</small>
-      </label>
 
       <button class="btn btn-primary conversion-submit" type="submit">
         <span>Recevoir mon Score Efficia™</span>
