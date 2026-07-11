@@ -400,3 +400,73 @@ document.addEventListener("keydown", (event) => {
     firstElement.focus();
   }
 });
+
+const PAYMENTS_ENABLED = false;
+const checkoutButtons = document.querySelectorAll("[data-checkout-product]");
+const pricingError = document.querySelector("[data-pricing-error]");
+
+const checkoutDefaultLabels = new WeakMap();
+
+const setCheckoutButtonState = (button, isLoading, label) => {
+  if (!checkoutDefaultLabels.has(button)) {
+    checkoutDefaultLabels.set(button, button.textContent.trim());
+  }
+
+  button.setAttribute("aria-disabled", String(isLoading));
+  button.textContent = isLoading ? label : checkoutDefaultLabels.get(button);
+};
+
+const showPricingError = (message) => {
+  if (!pricingError) return;
+  pricingError.textContent = message;
+};
+
+const submitCheckoutRequest = async (product) => {
+  const response = await fetch("/create-checkout-session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ product }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  console.log("Réponse /create-checkout-session", {
+    ok: response.ok,
+    status: response.status,
+    data,
+  });
+
+  if (!response.ok || !data.success || !data.url) {
+    throw new Error(data.error || "Checkout session failed.");
+  }
+
+  return data.url;
+};
+
+checkoutButtons.forEach((button) => {
+  checkoutDefaultLabels.set(button, button.textContent.trim());
+
+  if (!PAYMENTS_ENABLED) {
+    setCheckoutButtonState(button, true, "Paiements bientôt disponibles");
+    return;
+  }
+
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const product = button.getAttribute("data-checkout-product");
+    showPricingError("");
+
+    setCheckoutButtonState(button, true, "Redirection vers le paiement…");
+
+    try {
+      const checkoutUrl = await submitCheckoutRequest(product);
+      window.location.href = checkoutUrl;
+    } catch (error) {
+      console.error("Erreur Stripe Checkout", error);
+      setCheckoutButtonState(button, false);
+      showPricingError("Une erreur est survenue. Merci de réessayer dans quelques instants.");
+    }
+  });
+});

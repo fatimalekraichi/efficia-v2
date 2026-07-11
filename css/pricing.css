@@ -124,6 +124,20 @@
   margin-top: auto;
 }
 
+.price-btn[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.82;
+}
+
+.pricing-error {
+  min-height: 20px;
+  margin-top: 18px;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .price-card .btn-secondary {
   transition: all .22s ease;
 }
