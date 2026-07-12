@@ -1,5 +1,5 @@
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups";
+const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
 const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
 const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
 const CANCEL_URL = "https://efficiadigital.com/#offres";
@@ -52,6 +52,8 @@ const splitFullName = (fullName) => {
 };
 
 const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
+  console.log("Purchase checkout: searching MailerLite group", { group_name: groupName });
+
   let response;
   try {
     response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
@@ -81,10 +83,25 @@ const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
   }
 
   const group = data?.data?.find((item) => item?.name === groupName);
-  return normalizeText(group?.id);
+  const groupId = normalizeText(group?.id);
+
+  if (!groupId) {
+    console.error("Purchase checkout: MailerLite group not found by name", {
+      expected_group_name: groupName,
+      available_group_names: Array.isArray(data?.data) ? data.data.map((item) => item?.name).filter(Boolean) : [],
+    });
+  }
+
+  return groupId;
 };
 
 const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) => {
+  console.log("Purchase checkout: sending subscriber to MailerLite", {
+    email,
+    group_id: groupId,
+    field_keys: Object.keys(fields),
+  });
+
   let response;
   try {
     response = await fetch(MAILERLITE_SUBSCRIBERS_ENDPOINT, {
@@ -128,6 +145,14 @@ const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) =>
 };
 
 const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
+  console.log("Purchase checkout: saving prospect before Stripe", {
+    email: lead.email,
+    product: product.name,
+    group_name: product.prospectGroupName,
+    has_google_business_url: Boolean(lead.googleBusinessUrl),
+    has_city: Boolean(lead.city),
+  });
+
   const groupId = await getMailerLiteGroupIdByName({
     apiKey,
     groupName: product.prospectGroupName,
@@ -170,8 +195,17 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   });
 
   if (response.ok) {
+    console.log("Purchase checkout: MailerLite prospect saved with full fields", {
+      email: lead.email,
+      group_id: groupId,
+    });
     return { ok: true, groupId };
   }
+
+  console.log("Purchase checkout: retrying MailerLite with safe fields only", {
+    email: lead.email,
+    group_id: groupId,
+  });
 
   const fallbackResponse = await sendSubscriberToMailerLite({
     apiKey,
@@ -196,6 +230,13 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
 };
 
 const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead }) => {
+  console.log("Purchase checkout: creating Stripe Checkout session", {
+    email: lead.email,
+    product_code: productCode,
+    product: product.name,
+    has_price_id: Boolean(priceId),
+  });
+
   const formData = new URLSearchParams();
   formData.set("mode", "payment");
   formData.set("line_items[0][price]", priceId);
@@ -281,7 +322,21 @@ export async function onRequestPost(context) {
   }
 }
 
+export async function onRequest(context) {
+  if (context.request.method === "OPTIONS") {
+    return onRequestOptions();
+  }
+
+  if (context.request.method !== "POST") {
+    return jsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+  }
+
+  return onRequestPost(context);
+}
+
 const handleCheckoutPreparation = async (context) => {
+  console.log("Purchase checkout: request received");
+
   const stripeSecretKey = context.env.STRIPE_SECRET_KEY;
   const mailerLiteApiKey = context.env.MAILERLITE_API_KEY;
 
@@ -313,19 +368,32 @@ const handleCheckoutPreparation = async (context) => {
   };
 
   if (!product || !priceId) {
+    console.error("Purchase checkout: invalid product or missing Stripe price", {
+      product_code: productCode,
+      has_product: Boolean(product),
+      expected_price_env_key: product?.envKey || null,
+      has_price_id: Boolean(priceId),
+    });
     return jsonResponse({ success: false, error: "Invalid product." }, 400);
   }
 
   if (!lead.fullName || !isValidEmail(lead.email) || !lead.companyName) {
+    console.error("Purchase checkout: validation failed for identity fields", {
+      has_full_name: Boolean(lead.fullName),
+      has_valid_email: isValidEmail(lead.email),
+      has_company_name: Boolean(lead.companyName),
+    });
     return jsonResponse({ success: false, error: "Missing required fields." }, 400);
   }
 
   if (lead.unknownGoogleBusiness) {
     if (!lead.city) {
+      console.error("Purchase checkout: validation failed, city is required when Google link is unknown");
       return jsonResponse({ success: false, error: "Missing required fields." }, 400);
     }
     lead.googleBusinessUrl = "";
   } else if (!lead.googleBusinessUrl || !isValidUrl(lead.googleBusinessUrl)) {
+    console.error("Purchase checkout: validation failed, Google Business URL is required");
     return jsonResponse({ success: false, error: "Missing required fields." }, 400);
   } else {
     lead.city = "";
@@ -351,8 +419,15 @@ const handleCheckoutPreparation = async (context) => {
   });
 
   if (!checkoutResult.ok) {
+    console.error("Purchase checkout: Stripe Checkout creation failed.", checkoutResult);
     return jsonResponse({ success: false, error: checkoutResult.error }, 502);
   }
+
+  console.log("Purchase checkout: completed successfully", {
+    email: lead.email,
+    product: product.name,
+    mailerlite_group_id: mailerLiteResult.groupId,
+  });
 
   return jsonResponse({
     success: true,
