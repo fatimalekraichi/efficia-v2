@@ -401,7 +401,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-const PAYMENTS_ENABLED = false;
+const PAYMENTS_ENABLED = true;
 const checkoutButtons = document.querySelectorAll("[data-checkout-product]");
 const pricingError = document.querySelector("[data-pricing-error]");
 

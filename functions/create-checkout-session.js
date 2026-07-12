@@ -1,22 +1,19 @@
-const PAYMENTS_ENABLED = false;
+const PAYMENTS_ENABLED = true;
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi.html?session_id={CHECKOUT_SESSION_ID}";
+const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
 const CANCEL_URL = "https://efficiadigital.com/#offres";
 
 const PRODUCTS = {
   audit: {
     envKey: "STRIPE_PRICE_AUDIT",
-    priceId: "price_1Ts6wn7gNYuPJ9xf3QqBlARm",
     name: "Audit fiche Google",
   },
   visibility: {
     envKey: "STRIPE_PRICE_VISIBILITY",
-    priceId: "price_1Ts6yB7gNYuPJ9xfVcUuJLd0",
     name: "Pack Visibilité Google",
   },
   performance: {
     envKey: "STRIPE_PRICE_PERFORMANCE",
-    priceId: "price_1Ts71L7gNYuPJ9xfGNZbyho6",
     name: "Pack Performance",
   },
 };
@@ -66,7 +63,7 @@ export async function onRequestPost(context) {
   }
 
   const stripeSecretKey = context.env.STRIPE_SECRET_KEY;
-  const priceId = context.env[product.envKey] || product.priceId;
+  const priceId = context.env[product.envKey];
 
   if (!stripeSecretKey || !priceId) {
     console.error("Stripe configuration is missing.", {
