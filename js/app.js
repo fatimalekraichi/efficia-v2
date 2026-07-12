@@ -449,7 +449,10 @@ checkoutButtons.forEach((button) => {
   checkoutDefaultLabels.set(button, button.textContent.trim());
 
   if (!PAYMENTS_ENABLED) {
-    setCheckoutButtonState(button, true, "Paiements bientôt disponibles");
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      showPricingError("Les paiements seront disponibles prochainement.");
+    });
     return;
   }
 
