@@ -63,7 +63,7 @@ export async function onRequestOptions() {
   });
 }
 
-export async function onRequestPost(context) {
+const handleStripeWebhook = async (context) => {
   const webhookSecret = context.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
@@ -101,5 +101,41 @@ export async function onRequestPost(context) {
     });
   }
 
+  if (event.type === "payment_intent.payment_failed") {
+    const paymentIntent = event.data?.object;
+    console.log("Stripe payment_intent.payment_failed", {
+      payment_intent_id: paymentIntent?.id,
+      email: paymentIntent?.receipt_email || null,
+      payment_status: paymentIntent?.status || null,
+      failure_message: paymentIntent?.last_payment_error?.message || null,
+    });
+  }
+
+  if (event.type === "checkout.session.async_payment_failed") {
+    const session = event.data?.object;
+    console.log("Stripe checkout.session.async_payment_failed", {
+      session_id: session?.id,
+      product: session?.metadata?.product_code || session?.metadata?.product_name || null,
+      email: session?.customer_details?.email || session?.customer_email || null,
+      payment_status: session?.payment_status || null,
+    });
+  }
+
   return jsonResponse({ received: true });
+};
+
+export async function onRequestPost(context) {
+  return handleStripeWebhook(context);
+}
+
+export async function onRequest(context) {
+  if (context.request.method === "OPTIONS") {
+    return onRequestOptions();
+  }
+
+  if (context.request.method !== "POST") {
+    return jsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+  }
+
+  return handleStripeWebhook(context);
 }
