@@ -1,5 +1,6 @@
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
 const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
+const MAILERLITE_FIELDS_ENDPOINT = "https://connect.mailerlite.com/api/fields?limit=100";
 const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
 const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
 const CANCEL_URL = "https://efficiadigital.com/#offres";
@@ -8,17 +9,17 @@ const PRODUCTS = {
   audit: {
     envKey: "STRIPE_PRICE_AUDIT",
     name: "Audit fiche Google",
-    prospectGroupName: "Prospects - Audit fiche Google",
+    mailerLiteGroupName: "Clients - Audit fiche Google",
   },
   visibility: {
     envKey: "STRIPE_PRICE_VISIBILITY",
     name: "Pack Visibilité Google",
-    prospectGroupName: "Prospects - Pack Visibilité Google",
+    mailerLiteGroupName: "Clients - Pack Visibilité Google",
   },
   performance: {
     envKey: "STRIPE_PRICE_PERFORMANCE",
     name: "Pack Performance",
-    prospectGroupName: "Prospects - Pack Performance",
+    mailerLiteGroupName: "Clients - Pack Performance",
   },
 };
 
@@ -101,6 +102,153 @@ const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
   return groupId;
 };
 
+const getMailerLiteFieldKeys = async ({ apiKey }) => {
+  console.log("Purchase checkout: fetching MailerLite custom field keys");
+
+  let response;
+  try {
+    response = await fetch(MAILERLITE_FIELDS_ENDPOINT, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("MailerLite fields request threw an exception.", error);
+    return {
+      ok: false,
+      keys: new Set(),
+    };
+  }
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("MailerLite fields request failed", response.status, responseText);
+    return {
+      ok: false,
+      keys: new Set(),
+    };
+  }
+
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    console.error("MailerLite fields response was not JSON.", responseText);
+    return {
+      ok: false,
+      keys: new Set(),
+    };
+  }
+
+  const keys = new Set(
+    (Array.isArray(data?.data) ? data.data : [])
+      .map((field) => normalizeText(field?.key))
+      .filter(Boolean),
+  );
+
+  console.log("Purchase checkout: MailerLite field keys fetched", {
+    field_keys: Array.from(keys),
+  });
+
+  return {
+    ok: true,
+    keys,
+  };
+};
+
+const setFirstAvailableField = ({ fields, fieldKeys, candidates, value, label }) => {
+  const cleanValue = typeof value === "boolean" ? (value ? "true" : "false") : normalizeText(value);
+  const key = candidates.find((candidate) => fieldKeys.has(candidate));
+
+  if (!key) {
+    console.error("Purchase checkout: MailerLite custom field key not found", {
+      field_label: label,
+      candidate_keys: candidates,
+    });
+    return "";
+  }
+
+  fields[key] = cleanValue;
+  return key;
+};
+
+const buildMailerLiteFields = ({ product, lead, fieldKeys }) => {
+  const { firstName, lastName } = splitFullName(lead.fullName);
+  const googleBusinessLinkKnown = Boolean(lead.googleBusinessUrl);
+  const fields = {
+    name: lead.fullName,
+  };
+  const mappedKeys = {
+    full_name: "name",
+  };
+
+  mappedKeys.first_name = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["first_name", "prenom", "prénom"],
+    value: firstName,
+    label: "prénom",
+  });
+  mappedKeys.last_name = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["last_name", "nom"],
+    value: lastName,
+    label: "nom",
+  });
+  mappedKeys.company = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["company", "company_name", "entreprise"],
+    value: lead.companyName,
+    label: "nom de l'entreprise",
+  });
+  mappedKeys.city = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["city", "ville"],
+    value: lead.city,
+    label: "ville",
+  });
+  mappedKeys.google_business_url = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["google_business_url", "google_business_link", "lien_google_business"],
+    value: lead.googleBusinessUrl,
+    label: "lien Google Business",
+  });
+  mappedKeys.selected_offer = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["selected_offer", "offre_choisie", "offer", "product"],
+    value: product.name,
+    label: "offre choisie",
+  });
+  mappedKeys.prospect_status = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["prospect_status", "audit_status", "lead_status", "statut_prospect"],
+    value: "paiement en cours",
+    label: "statut du prospect",
+  });
+  mappedKeys.google_business_link_known = setFirstAvailableField({
+    fields,
+    fieldKeys,
+    candidates: ["google_business_link_known", "google_business_url_known", "lien_google_business_connu"],
+    value: googleBusinessLinkKnown,
+    label: "google_business_link_known",
+  });
+
+  console.log("Purchase checkout: MailerLite field mapping prepared", {
+    mapped_keys: mappedKeys,
+    sent_field_keys: Object.keys(fields),
+  });
+
+  return fields;
+};
+
 const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) => {
   console.log("Purchase checkout: sending subscriber to MailerLite", {
     email,
@@ -159,107 +307,66 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   console.log("Purchase checkout: saving prospect before Stripe", {
     email: lead.email,
     product: product.name,
-    group_name: product.prospectGroupName,
+    group_name: product.mailerLiteGroupName,
     has_google_business_url: Boolean(lead.googleBusinessUrl),
     has_city: Boolean(lead.city),
   });
 
   const groupId = await getMailerLiteGroupIdByName({
     apiKey,
-    groupName: product.prospectGroupName,
+    groupName: product.mailerLiteGroupName,
   });
 
   if (!groupId) {
-    console.error("Purchase checkout: continuing without MailerLite group because it was not found", {
+    console.error("Purchase checkout: MailerLite group is required but was not found", {
       email: lead.email,
-      group_name: product.prospectGroupName,
+      group_name: product.mailerLiteGroupName,
     });
+    return {
+      ok: false,
+      error: "MailerLite group was not found.",
+    };
   }
 
-  const { firstName, lastName } = splitFullName(lead.fullName);
-  const safeFields = {
-    name: lead.fullName,
-    company: lead.companyName,
-    source: "Achat offre Efficia Digital",
-    audit_status: "prospect avant paiement",
-  };
+  const fieldKeysResult = await getMailerLiteFieldKeys({ apiKey });
 
-  if (lead.city) safeFields.city = lead.city;
-  if (lead.googleBusinessUrl) safeFields.google_business_url = lead.googleBusinessUrl;
+  if (!fieldKeysResult.ok) {
+    console.error("Purchase checkout: could not verify MailerLite custom fields");
+    return {
+      ok: false,
+      error: "MailerLite fields could not be verified.",
+    };
+  }
 
-  const fullFields = {
-    ...safeFields,
-    first_name: firstName,
-    last_name: lastName,
-    prenom: firstName,
-    nom: lastName,
-    entreprise: lead.companyName,
-    offre_choisie: product.name,
-    selected_offer: product.name,
-  };
+  const fields = buildMailerLiteFields({
+    product,
+    lead,
+    fieldKeys: fieldKeysResult.keys,
+  });
 
   const response = await sendSubscriberToMailerLite({
     apiKey,
     email: lead.email,
     groupId,
-    fields: fullFields,
+    fields,
   });
 
-  if (response.ok) {
-    console.log("Purchase checkout: MailerLite prospect saved with full fields", {
-      email: lead.email,
-      group_id: groupId || null,
-    });
-    return { ok: true, groupId };
-  }
-
-  console.log("Purchase checkout: retrying MailerLite with safe fields only", {
-    email: lead.email,
-    group_id: groupId || null,
-  });
-
-  const fallbackResponse = await sendSubscriberToMailerLite({
-    apiKey,
-    email: lead.email,
-    groupId,
-    fields: safeFields,
-  });
-
-  if (!fallbackResponse.ok) {
-    console.log("Purchase checkout: retrying MailerLite with minimal fields only", {
-      email: lead.email,
-      group_id: groupId || null,
-    });
-
-    const minimalResponse = await sendSubscriberToMailerLite({
-      apiKey,
-      email: lead.email,
-      groupId,
-      fields: {
-        name: lead.fullName,
-      },
-    });
-
-    if (minimalResponse.ok) {
-      return {
-        ok: true,
-        groupId,
-        warning: "MailerLite custom fields were rejected. Subscriber was saved with minimal fields only.",
-      };
-    }
-
+  if (!response.ok) {
     return {
       ok: false,
       error: "MailerLite subscriber request failed.",
-      details: minimalResponse.details,
+      details: response.details,
     };
   }
 
-  return {
-    ok: true,
-    groupId,
-    warning: "Some MailerLite custom fields were rejected. Subscriber was saved with known fields only.",
-  };
+  console.log("Purchase checkout: MailerLite prospect saved before Stripe", {
+    email: lead.email,
+    group_id: groupId,
+    group_name: product.mailerLiteGroupName,
+    response_details: response.details,
+  });
+
+  return { ok: true, groupId };
 };
 
 const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead }) => {
