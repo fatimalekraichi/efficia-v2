@@ -1,5 +1,5 @@
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
+const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups";
 const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
 const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
 const CANCEL_URL = "https://efficiadigital.com/#offres";
@@ -52,13 +52,19 @@ const splitFullName = (fullName) => {
 };
 
 const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
-  const response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Accept": "application/json",
-    },
-  });
+  let response;
+  try {
+    response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("MailerLite groups request threw an exception.", error);
+    return "";
+  }
 
   const responseText = await response.text();
   if (!response.ok) {
@@ -79,21 +85,31 @@ const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
 };
 
 const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) => {
-  const response = await fetch(MAILERLITE_SUBSCRIBERS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      status: "active",
-      resubscribe: true,
-      fields,
-      groups: [groupId],
-    }),
-  });
+  let response;
+  try {
+    response = await fetch(MAILERLITE_SUBSCRIBERS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        status: "active",
+        resubscribe: true,
+        fields,
+        groups: [groupId],
+      }),
+    });
+  } catch (error) {
+    console.error("MailerLite subscriber request threw an exception.", error);
+    return {
+      ok: false,
+      status: 0,
+      details: "MailerLite request exception.",
+    };
+  }
 
   const responseText = await response.text();
   if (!response.ok) {
@@ -196,15 +212,24 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
   if (lead.googleBusinessUrl) formData.set("metadata[google_business_url]", lead.googleBusinessUrl);
   if (lead.city) formData.set("metadata[city]", lead.city);
 
-  const response = await fetch(STRIPE_CHECKOUT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-    body: formData,
-  });
+  let response;
+  try {
+    response = await fetch(STRIPE_CHECKOUT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: formData,
+    });
+  } catch (error) {
+    console.error("Stripe Checkout request threw an exception.", error);
+    return {
+      ok: false,
+      error: "Stripe Checkout request failed.",
+    };
+  }
 
   const responseText = await response.text();
   let data = null;
@@ -248,6 +273,15 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost(context) {
+  try {
+    return await handleCheckoutPreparation(context);
+  } catch (error) {
+    console.error("Unhandled checkout preparation error.", error);
+    return jsonResponse({ success: false, error: "Checkout preparation failed." }, 500);
+  }
+}
+
+const handleCheckoutPreparation = async (context) => {
   const stripeSecretKey = context.env.STRIPE_SECRET_KEY;
   const mailerLiteApiKey = context.env.MAILERLITE_API_KEY;
 
@@ -326,4 +360,4 @@ export async function onRequestPost(context) {
     mailerlite_group_id: mailerLiteResult.groupId,
     warning: mailerLiteResult.warning || null,
   });
-}
+};
