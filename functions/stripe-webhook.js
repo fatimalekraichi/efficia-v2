@@ -1,22 +1,25 @@
 const STRIPE_LINE_ITEMS_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups";
+const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
 const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
 
 const PRODUCT_GROUPS = [
   {
     priceEnvKey: "STRIPE_PRICE_AUDIT",
     productName: "Audit fiche Google",
-    mailerLiteGroupName: "Clients - Audit fiche Google",
+    prospectGroupName: "Prospects - Audit (paiement en cours)",
+    clientGroupName: "Clients - Audit",
   },
   {
     priceEnvKey: "STRIPE_PRICE_VISIBILITY",
     productName: "Pack Visibilité Google",
-    mailerLiteGroupName: "Clients - Pack Visibilité Google",
+    prospectGroupName: "Prospects - Pack Visibilité (paiement en cours)",
+    clientGroupName: "Clients - Pack Visibilité",
   },
   {
     priceEnvKey: "STRIPE_PRICE_PERFORMANCE",
     productName: "Pack Performance",
-    mailerLiteGroupName: "Clients - Pack Performance",
+    prospectGroupName: "Prospects - Pack Performance (paiement en cours)",
+    clientGroupName: "Clients - Pack Performance",
   },
 ];
 
@@ -76,6 +79,11 @@ const verifyStripeSignature = async ({ payload, signatureHeader, secret }) => {
 };
 
 const normalizeText = (value) => (typeof value === "string" ? value.trim() : "");
+
+const normalizeForMatch = (value) => normalizeText(value)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase();
 
 const getCustomerEmail = (session) => normalizeText(
   session?.customer_details?.email || session?.customer_email,
@@ -147,8 +155,18 @@ const findMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
     return "";
   }
 
-  const group = data?.data?.find((item) => item?.name === groupName);
-  return normalizeText(group?.id);
+  const expectedName = normalizeForMatch(groupName);
+  const group = data?.data?.find((item) => normalizeForMatch(item?.name) === expectedName);
+  const groupId = normalizeText(group?.id);
+
+  if (!groupId) {
+    console.error("MailerLite group was not found by name.", {
+      expected_group_name: groupName,
+      available_group_names: Array.isArray(data?.data) ? data.data.map((item) => item?.name).filter(Boolean) : [],
+    });
+  }
+
+  return groupId;
 };
 
 const addCustomerToMailerLiteGroup = async ({ apiKey, email, name, groupId }) => {
@@ -174,10 +192,99 @@ const addCustomerToMailerLiteGroup = async ({ apiKey, email, name, groupId }) =>
   const responseText = await response.text();
   if (!response.ok) {
     console.error("MailerLite subscriber request failed", response.status, responseText);
-    return false;
+    return {
+      ok: false,
+      subscriberId: "",
+      details: responseText,
+    };
   }
 
-  return true;
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    data = null;
+  }
+
+  return {
+    ok: true,
+    subscriberId: normalizeText(data?.data?.id),
+    details: responseText,
+  };
+};
+
+const upsertMailerLiteSubscriber = async ({ apiKey, email, name }) => {
+  const fields = {};
+  if (name) fields.name = name;
+
+  const response = await fetch(MAILERLITE_SUBSCRIBERS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      status: "active",
+      resubscribe: true,
+      fields,
+    }),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("MailerLite subscriber upsert request failed", response.status, responseText);
+    return {
+      ok: false,
+      subscriberId: "",
+      details: responseText,
+    };
+  }
+
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    data = null;
+  }
+
+  return {
+    ok: true,
+    subscriberId: normalizeText(data?.data?.id),
+    details: responseText,
+  };
+};
+
+const removeSubscriberFromMailerLiteGroup = async ({ apiKey, subscriberId, groupId }) => {
+  if (!subscriberId || !groupId) {
+    return {
+      ok: false,
+      details: "Missing subscriber or group id.",
+    };
+  }
+
+  const response = await fetch(`${MAILERLITE_SUBSCRIBERS_ENDPOINT}/${subscriberId}/groups/${groupId}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Accept": "application/json",
+    },
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("MailerLite remove group request failed", response.status, responseText);
+    return {
+      ok: false,
+      details: responseText,
+    };
+  }
+
+  return {
+    ok: true,
+    details: responseText,
+  };
 };
 
 const syncPaidCustomerToMailerLite = async ({ session, env }) => {
@@ -212,34 +319,100 @@ const syncPaidCustomerToMailerLite = async ({ session, env }) => {
     return;
   }
 
-  const groupId = await findMailerLiteGroupIdByName({
-    apiKey: mailerLiteApiKey,
-    groupName: product.mailerLiteGroupName,
+  console.log("Paiement confirmé Stripe, déplacement MailerLite en cours", {
+    session_id: session?.id,
+    email,
+    product: product.productName,
   });
 
-  if (!groupId) {
-    console.error("MailerLite group was not found.", {
-      group_name: product.mailerLiteGroupName,
+  const prospectGroupId = await findMailerLiteGroupIdByName({
+    apiKey: mailerLiteApiKey,
+    groupName: product.prospectGroupName,
+  });
+
+  const clientGroupId = await findMailerLiteGroupIdByName({
+    apiKey: mailerLiteApiKey,
+    groupName: product.clientGroupName,
+  });
+
+  if (!prospectGroupId || !clientGroupId) {
+    console.error("MailerLite move failed because one group was not found.", {
+      prospect_group_name: product.prospectGroupName,
+      prospect_group_id: prospectGroupId || null,
+      client_group_name: product.clientGroupName,
+      client_group_id: clientGroupId || null,
     });
     return;
   }
 
-  const synced = await addCustomerToMailerLiteGroup({
+  const subscriber = await upsertMailerLiteSubscriber({
     apiKey: mailerLiteApiKey,
     email,
     name: getCustomerName(session),
-    groupId,
   });
 
-  if (synced) {
-    console.log("Stripe customer synced to MailerLite group", {
+  if (!subscriber.ok || !subscriber.subscriberId) {
+    console.error("MailerLite subscriber lookup/upsert failed after payment.", {
       session_id: session?.id,
       email,
-      product: product.productName,
-      group_name: product.mailerLiteGroupName,
-      group_id: groupId,
+      details: subscriber.details,
     });
+    return;
   }
+
+  const prospectRemoval = await removeSubscriberFromMailerLiteGroup({
+    apiKey: mailerLiteApiKey,
+    subscriberId: subscriber.subscriberId,
+    groupId: prospectGroupId,
+  });
+
+  if (!prospectRemoval.ok) {
+    console.error("Groupe Prospect MailerLite non retiré après paiement.", {
+      session_id: session?.id,
+      email,
+      prospect_group_name: product.prospectGroupName,
+      prospect_group_id: prospectGroupId,
+      subscriber_id: subscriber.subscriberId,
+      details: prospectRemoval.details,
+    });
+    return;
+  }
+
+  console.log("Groupe Prospect MailerLite retiré", {
+    session_id: session?.id,
+    email,
+    product: product.productName,
+    group_name: product.prospectGroupName,
+    group_id: prospectGroupId,
+    subscriber_id: subscriber.subscriberId,
+  });
+
+  const clientSync = await addCustomerToMailerLiteGroup({
+    apiKey: mailerLiteApiKey,
+    email,
+    name: getCustomerName(session),
+    groupId: clientGroupId,
+  });
+
+  if (!clientSync.ok || !clientSync.subscriberId) {
+    console.error("Groupe Client MailerLite non ajouté après paiement.", {
+      session_id: session?.id,
+      email,
+      client_group_name: product.clientGroupName,
+      client_group_id: clientGroupId,
+      details: clientSync.details,
+    });
+    return;
+  }
+
+  console.log("Groupe Client MailerLite ajouté", {
+    session_id: session?.id,
+    email,
+    product: product.productName,
+    group_name: product.clientGroupName,
+    group_id: clientGroupId,
+    subscriber_id: clientSync.subscriberId,
+  });
 };
 
 export async function onRequestOptions() {

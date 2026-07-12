@@ -9,17 +9,17 @@ const PRODUCTS = {
   audit: {
     envKey: "STRIPE_PRICE_AUDIT",
     name: "Audit fiche Google",
-    mailerLiteGroupName: "Clients - Audit fiche Google",
+    mailerLiteGroupName: "Prospects - Audit (paiement en cours)",
   },
   visibility: {
     envKey: "STRIPE_PRICE_VISIBILITY",
     name: "Pack Visibilité Google",
-    mailerLiteGroupName: "Clients - Pack Visibilité Google",
+    mailerLiteGroupName: "Prospects - Pack Visibilité (paiement en cours)",
   },
   performance: {
     envKey: "STRIPE_PRICE_PERFORMANCE",
     name: "Pack Performance",
-    mailerLiteGroupName: "Clients - Pack Performance",
+    mailerLiteGroupName: "Prospects - Pack Performance (paiement en cours)",
   },
 };
 
