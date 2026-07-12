@@ -1,3 +1,25 @@
+const STRIPE_LINE_ITEMS_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
+const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups";
+const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
+
+const PRODUCT_GROUPS = [
+  {
+    priceEnvKey: "STRIPE_PRICE_AUDIT",
+    productName: "Audit fiche Google",
+    mailerLiteGroupName: "Clients - Audit fiche Google",
+  },
+  {
+    priceEnvKey: "STRIPE_PRICE_VISIBILITY",
+    productName: "Pack Visibilité Google",
+    mailerLiteGroupName: "Clients - Pack Visibilité Google",
+  },
+  {
+    priceEnvKey: "STRIPE_PRICE_PERFORMANCE",
+    productName: "Pack Performance",
+    mailerLiteGroupName: "Clients - Pack Performance",
+  },
+];
+
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: {
@@ -53,6 +75,173 @@ const verifyStripeSignature = async ({ payload, signatureHeader, secret }) => {
   return parsedSignature.signatures.some((signature) => timingSafeEqual(signature, expectedSignature));
 };
 
+const normalizeText = (value) => (typeof value === "string" ? value.trim() : "");
+
+const getCustomerEmail = (session) => normalizeText(
+  session?.customer_details?.email || session?.customer_email,
+).toLowerCase();
+
+const getCustomerName = (session) => normalizeText(session?.customer_details?.name);
+
+const getExpandedPriceId = (session) => {
+  const lineItems = session?.line_items?.data || session?.line_items;
+  if (!Array.isArray(lineItems) || !lineItems.length) return "";
+  return normalizeText(lineItems[0]?.price?.id);
+};
+
+const getSessionPriceId = async ({ session, stripeSecretKey }) => {
+  const expandedPriceId = getExpandedPriceId(session);
+  if (expandedPriceId) return expandedPriceId;
+
+  if (!stripeSecretKey || !session?.id) return "";
+
+  const response = await fetch(`${STRIPE_LINE_ITEMS_ENDPOINT}/${session.id}/line_items?limit=10`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${stripeSecretKey}`,
+      "Accept": "application/json",
+    },
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("Stripe line items request failed", response.status, responseText);
+    return "";
+  }
+
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    console.error("Stripe line items response was not JSON.", responseText);
+    return "";
+  }
+
+  return normalizeText(data?.data?.[0]?.price?.id);
+};
+
+const findProductByPriceId = ({ priceId, env }) => PRODUCT_GROUPS.find((product) => (
+  normalizeText(env[product.priceEnvKey]) === priceId
+));
+
+const findMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
+  const response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Accept": "application/json",
+    },
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("MailerLite groups request failed", response.status, responseText);
+    return "";
+  }
+
+  let data = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    console.error("MailerLite groups response was not JSON.", responseText);
+    return "";
+  }
+
+  const group = data?.data?.find((item) => item?.name === groupName);
+  return normalizeText(group?.id);
+};
+
+const addCustomerToMailerLiteGroup = async ({ apiKey, email, name, groupId }) => {
+  const fields = {};
+  if (name) fields.name = name;
+
+  const response = await fetch(MAILERLITE_SUBSCRIBERS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      status: "active",
+      resubscribe: true,
+      fields,
+      groups: [groupId],
+    }),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    console.error("MailerLite subscriber request failed", response.status, responseText);
+    return false;
+  }
+
+  return true;
+};
+
+const syncPaidCustomerToMailerLite = async ({ session, env }) => {
+  const mailerLiteApiKey = env.MAILERLITE_API_KEY;
+  if (!mailerLiteApiKey) {
+    console.error("MailerLite API key is not configured.");
+    return;
+  }
+
+  const email = getCustomerEmail(session);
+  if (!email) {
+    console.error("Stripe checkout session has no customer email.", { session_id: session?.id });
+    return;
+  }
+
+  const priceId = await getSessionPriceId({
+    session,
+    stripeSecretKey: env.STRIPE_SECRET_KEY,
+  });
+
+  if (!priceId) {
+    console.error("Unable to identify Stripe Price ID for checkout session.", { session_id: session?.id });
+    return;
+  }
+
+  const product = findProductByPriceId({ priceId, env });
+  if (!product) {
+    console.error("No MailerLite group mapping found for Stripe Price ID.", {
+      session_id: session?.id,
+      price_id: priceId,
+    });
+    return;
+  }
+
+  const groupId = await findMailerLiteGroupIdByName({
+    apiKey: mailerLiteApiKey,
+    groupName: product.mailerLiteGroupName,
+  });
+
+  if (!groupId) {
+    console.error("MailerLite group was not found.", {
+      group_name: product.mailerLiteGroupName,
+    });
+    return;
+  }
+
+  const synced = await addCustomerToMailerLiteGroup({
+    apiKey: mailerLiteApiKey,
+    email,
+    name: getCustomerName(session),
+    groupId,
+  });
+
+  if (synced) {
+    console.log("Stripe customer synced to MailerLite group", {
+      session_id: session?.id,
+      email,
+      product: product.productName,
+      group_name: product.mailerLiteGroupName,
+      group_id: groupId,
+    });
+  }
+};
+
 export async function onRequestOptions() {
   return new Response(null, {
     status: 204,
@@ -99,6 +288,15 @@ const handleStripeWebhook = async (context) => {
       email: session?.customer_details?.email || session?.customer_email || null,
       payment_status: session?.payment_status || null,
     });
+
+    try {
+      await syncPaidCustomerToMailerLite({
+        session,
+        env: context.env,
+      });
+    } catch (error) {
+      console.error("MailerLite sync failed after Stripe payment.", error);
+    }
   }
 
   if (event.type === "payment_intent.payment_failed") {
