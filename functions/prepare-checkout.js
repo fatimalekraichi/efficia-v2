@@ -31,6 +31,11 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 
 const normalizeText = (value) => (typeof value === "string" ? value.trim() : "");
 
+const normalizeForMatch = (value) => normalizeText(value)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase();
+
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
 const isValidUrl = (value) => {
@@ -82,7 +87,8 @@ const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
     return "";
   }
 
-  const group = data?.data?.find((item) => item?.name === groupName);
+  const expectedName = normalizeForMatch(groupName);
+  const group = data?.data?.find((item) => normalizeForMatch(item?.name) === expectedName);
   const groupId = normalizeText(group?.id);
 
   if (!groupId) {
@@ -98,9 +104,20 @@ const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
 const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) => {
   console.log("Purchase checkout: sending subscriber to MailerLite", {
     email,
-    group_id: groupId,
+    group_id: groupId || null,
     field_keys: Object.keys(fields),
   });
+
+  const requestBody = {
+    email,
+    status: "active",
+    resubscribe: true,
+    fields,
+  };
+
+  if (groupId) {
+    requestBody.groups = [groupId];
+  }
 
   let response;
   try {
@@ -111,13 +128,7 @@ const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) =>
         "Content-Type": "application/json",
         "Accept": "application/json",
       },
-      body: JSON.stringify({
-        email,
-        status: "active",
-        resubscribe: true,
-        fields,
-        groups: [groupId],
-      }),
+      body: JSON.stringify(requestBody),
     });
   } catch (error) {
     console.error("MailerLite subscriber request threw an exception.", error);
@@ -159,10 +170,10 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   });
 
   if (!groupId) {
-    return {
-      ok: false,
-      error: "MailerLite prospect group was not found.",
-    };
+    console.error("Purchase checkout: continuing without MailerLite group because it was not found", {
+      email: lead.email,
+      group_name: product.prospectGroupName,
+    });
   }
 
   const { firstName, lastName } = splitFullName(lead.fullName);
@@ -197,14 +208,14 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   if (response.ok) {
     console.log("Purchase checkout: MailerLite prospect saved with full fields", {
       email: lead.email,
-      group_id: groupId,
+      group_id: groupId || null,
     });
     return { ok: true, groupId };
   }
 
   console.log("Purchase checkout: retrying MailerLite with safe fields only", {
     email: lead.email,
-    group_id: groupId,
+    group_id: groupId || null,
   });
 
   const fallbackResponse = await sendSubscriberToMailerLite({
@@ -215,10 +226,32 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   });
 
   if (!fallbackResponse.ok) {
+    console.log("Purchase checkout: retrying MailerLite with minimal fields only", {
+      email: lead.email,
+      group_id: groupId || null,
+    });
+
+    const minimalResponse = await sendSubscriberToMailerLite({
+      apiKey,
+      email: lead.email,
+      groupId,
+      fields: {
+        name: lead.fullName,
+      },
+    });
+
+    if (minimalResponse.ok) {
+      return {
+        ok: true,
+        groupId,
+        warning: "MailerLite custom fields were rejected. Subscriber was saved with minimal fields only.",
+      };
+    }
+
     return {
       ok: false,
       error: "MailerLite subscriber request failed.",
-      details: fallbackResponse.details,
+      details: minimalResponse.details,
     };
   }
 

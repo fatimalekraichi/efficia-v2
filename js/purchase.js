@@ -167,6 +167,6 @@ form?.addEventListener("submit", async (event) => {
   } catch (error) {
     console.error("Erreur préparation paiement", error);
     setLoading(false);
-    setError("Une erreur est survenue. Merci de réessayer dans quelques instants.");
+    setError(`Une erreur est survenue. Merci de réessayer dans quelques instants. (${error.message})`);
   }
 });
