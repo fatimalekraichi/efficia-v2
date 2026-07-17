@@ -533,7 +533,9 @@
       <div class="actions-ligne">
         <button class="btn-mini" onclick="reprendreDiagnostic()" type="button">Reprendre le dernier diagnostic</button>
         <button class="btn-mini" onclick="effacerDiagnostic()" type="button">Effacer le diagnostic enregistré</button>
+        <button class="btn-mini" onclick="reessayerEnregistrementAudit()" type="button">Réessayer l'enregistrement</button>
       </div>
+      <div id="statut-archive-d1" class="mini-statut" style="display:none;margin-top:12px"></div>
       <div id="statut"></div>
       <div id="candidats"></div>
     </div>
@@ -1071,6 +1073,9 @@ let auditPublicIdActif = null;
 let dernierPayloadAuditComplete = "";
 let timerAuditComplete = null;
 let analysisVersionActif = null;
+let dernierNomPdfGenere = "";
+let auditSourceActif = null;
+let auditFallbackLocalId = null;
 const LOGO_RAPPORT_PNG_DATA_URL = [
   "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",
@@ -2404,6 +2409,8 @@ function reinitialiserAnalyse(){
   });
   donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
   auditPublicIdActif = null;
+  auditSourceActif = null;
+  auditFallbackLocalId = null;
   analysisVersionActif = null;
   dernierPayloadAuditComplete = "";
   calc();
@@ -2655,6 +2662,7 @@ async function analyseScraping(){
     if(r.erreur){ statut("Connecteur : " + r.erreur, "erreur"); btn.disabled = false; return; }
     if(r.auditPublicId){
       auditPublicIdActif = String(r.auditPublicId);
+      auditSourceActif = "scraping";
       dernierPayloadAuditComplete = "";
     }
     if(estNombre(r.analysisVersion)) analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
@@ -2842,17 +2850,105 @@ function collecterCriteresAudit(){
   return criteria;
 }
 
-function construirePayloadAuditComplete(){
+function valeurNumeriqueOuNull(value){
+  return estNombre(value) ? Number(value) : null;
+}
+
+function metricAudit(key, value, {unit = null, source = "score_efficia", verificationStatus = "manually_confirmed", rawField = key} = {}){
+  const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
+  const textValue = typeof value === "string" && value.trim() ? value.trim() : null;
+  const booleanValue = typeof value === "boolean" ? value : null;
+  if(numericValue === null && textValue === null && booleanValue === null) return null;
+  return {key, numericValue, textValue, booleanValue, unit, source, verificationStatus, rawField};
+}
+
+function collecterMetricsAudit(){
+  const d = donneesAnalyse || {};
+  return [
+    metricAudit("rating", valeurNumeriqueOuNull(d.note), {unit:"stars", rawField:"note"}),
+    metricAudit("reviews_count", valeurNumeriqueOuNull(d.nbAvis), {unit:"count", rawField:"nbAvis"}),
+    metricAudit("photos_count", valeurNumeriqueOuNull(d.nbPhotos), {unit:"count", rawField:"nbPhotos"}),
+    metricAudit("description_length", valeurNumeriqueOuNull(d.descriptionLongueur), {unit:"characters", rawField:"descriptionLongueur"}),
+    metricAudit("local_position", valeurNumeriqueOuNull(d.position), {unit:"rank", rawField:"position"}),
+    metricAudit("tested_query", d.requeteTestee || document.getElementById("d-requete")?.value || "", {unit:null, rawField:"requeteTestee"}),
+    metricAudit("competitors_count", (d.concurrents || []).length, {unit:"count", rawField:"concurrents"}),
+    metricAudit("services_count", valeurNumeriqueOuNull(d.nbServices), {unit:"count", rawField:"nbServices"}),
+    metricAudit("posts_count", valeurNumeriqueOuNull(d.nbPublications), {unit:"count", rawField:"nbPublications"}),
+    metricAudit("owner_responses_count", valeurNumeriqueOuNull(d.reponsesProprietaire), {unit:"count", rawField:"reponsesProprietaire"}),
+    metricAudit("reviews_analyzed_count", valeurNumeriqueOuNull(d.avisAnalyses), {unit:"count", rawField:"avisAnalyses"})
+  ].filter(Boolean);
+}
+
+function collecterConcurrentsAudit(){
+  return (donneesAnalyse.concurrents || []).slice(0, 10).map((c, index) => ({
+    name: c.label || c.name || `Concurrent ${index + 1}`,
+    rating: valeurNumeriqueOuNull(c.note ?? c.rating),
+    reviewsCount: valeurNumeriqueOuNull(c.avis ?? c.reviews ?? c.reviews_count),
+    photosCount: valeurNumeriqueOuNull(c.photos ?? c.photos_count),
+    observedPosition: valeurNumeriqueOuNull(c.position) || index + 1,
+    city: document.getElementById("p-ville")?.value || ""
+  }));
+}
+
+function collecterRecommandationsAudit(){
+  const ctx = contexteRapport();
+  const candidats = [];
+  GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    const points = lirePoints(cr.id);
+    if(points !== null && points < cr.max) candidats.push({critere:cr, points, perdu:cr.max - points});
+  }));
+  return selectionnerPrioritesDynamiques(candidats).slice(0, 3).map((item, index) => {
+    const details = detailsPriorite(item);
+    return {
+      key: item.critere?.key || `priority_${index + 1}`,
+      title: titrePriorite(item),
+      impact: niveauImpactPriorite(item, index).label,
+      observation: constatObservePriorite(item, ctx),
+      recommendation: recommandationPriorite(item, ctx),
+      firstAction: details.action,
+      estimatedTime: tempsPriorite(item),
+      priorityRank: index + 1
+    };
+  });
+}
+
+function contexteArchiveAudit(){
+  const admin = window.efficiaAdminOrderContext || {};
+  const source = admin.orderId ? "paid_order" : (auditSourceActif || "manual");
+  return {
+    requestName: document.getElementById("p-entreprise")?.value || "",
+    requestCity: document.getElementById("p-ville")?.value || "",
+    requestActivity: document.getElementById("p-activite")?.value || "",
+    testedQuery: donneesAnalyse.requeteTestee || document.getElementById("d-requete")?.value || "",
+    source,
+    environment: "test",
+    orderId: admin.orderId || "",
+    manualOverridesJson: JSON.stringify({
+      observedData: donneesAnalyse,
+      answers: collecterReponses(),
+      savedAt: new Date().toISOString()
+    })
+  };
+}
+
+function construirePayloadAuditComplete(options = {}){
   const detail = calculScoreDetail();
   const indices = indicesProspect();
+  const contexte = contexteArchiveAudit();
   return {
+    ...contexte,
     scoreEfficia: Math.round(detail.total),
     visibilityScore: indices.visibilite,
     trustScore: indices.confiance,
     conversionScore: indices.conversion,
     sectorProfile: profilActif || "default",
     scoringVersion: SCORING_VERSION,
-    criteria: collecterCriteresAudit()
+    auditStatus: "generated",
+    pdfFilename: options.pdfFilename || dernierNomPdfGenere || "",
+    criteria: collecterCriteresAudit(),
+    metrics: collecterMetricsAudit(),
+    competitors: collecterConcurrentsAudit(),
+    recommendations: collecterRecommandationsAudit()
   };
 }
 
@@ -2872,8 +2968,68 @@ function obtenirVersionAnalyseRapport(){
   }
   return {
     ok:false,
-    message:"Version d'analyse absente : relancez l'analyse approfondie via le connecteur avant de générer le PDF."
+    message:"Version d'analyse absente : enregistrement de l'audit requis avant de générer le PDF."
   };
+}
+
+function assurerVersionLocaleSecours(){
+  if(!auditFallbackLocalId){
+    const entreprise = document.getElementById("p-entreprise")?.value || "entreprise";
+    const ville = document.getElementById("p-ville")?.value || "ville";
+    auditFallbackLocalId = `local-${sanitizeFilenamePart(entreprise)}-${sanitizeFilenamePart(ville)}`;
+  }
+  analysisVersionActif = obtenirVersionCompatibiliteAudit(auditFallbackLocalId);
+  majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
+  sauvegarderDiagnostic();
+  return true;
+}
+
+function majStatutArchiveD1(message, type = "info"){
+  const el = document.getElementById("statut-archive-d1");
+  if(!el) return;
+  el.style.display = "block";
+  el.textContent = message;
+  el.style.color = type === "erreur" ? "#dc2626" : "#64748b";
+  el.style.background = type === "erreur" ? "#fef2f2" : "#f8fbff";
+  el.style.border = type === "erreur" ? "1px solid #fecaca" : "1px solid #bfdbfe";
+  el.style.borderRadius = "10px";
+  el.style.padding = "10px 12px";
+}
+
+async function creerAuditProvisoireSiNecessaire(){
+  if(auditPublicIdActif) return true;
+  const urlConnecteur = document.getElementById("url-connecteur")?.value.trim().replace(/\/+$/, "");
+  const tokenConnecteur = document.getElementById("token-connecteur")?.value.trim();
+  if(!urlConnecteur || !tokenConnecteur){
+    majStatutArchiveD1("PDF généré, archivage D1 non confirmé : connecteur ou jeton absent.", "erreur");
+    return false;
+  }
+  const contexte = contexteArchiveAudit();
+  try{
+    const rep = await fetch(`${urlConnecteur}/audit/provisional`, {
+      method:"POST",
+      headers:{
+        Authorization:`Bearer ${tokenConnecteur}`,
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify(contexte)
+    });
+    let r = {};
+    try{ r = await rep.json(); }catch(_){ r = {}; }
+    if(rep.ok && r.success && r.auditPublicId){
+      auditPublicIdActif = String(r.auditPublicId);
+      auditSourceActif = contexte.source || "manual";
+      if(estNombre(r.analysisVersion)) analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
+      dernierPayloadAuditComplete = "";
+      sauvegarderDiagnostic();
+      majStatutArchiveD1(`Audit provisoire créé dans D1 — public_id : ${auditPublicIdActif}`);
+      return true;
+    }
+  }catch(e){
+    console.warn("Création audit provisoire impossible", e);
+  }
+  majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
+  return false;
 }
 
 function programmerCompletionAuditEfficia(){
@@ -2889,7 +3045,7 @@ async function envoyerCompletionAuditEfficia(){
   const urlConnecteur = document.getElementById("url-connecteur")?.value.trim().replace(/\/+$/, "");
   const tokenConnecteur = document.getElementById("token-connecteur")?.value.trim();
   if(!urlConnecteur || !tokenConnecteur) return "";
-  const payload = construirePayloadAuditComplete();
+  const payload = construirePayloadAuditComplete({pdfFilename:dernierNomPdfGenere});
   const payloadTexte = JSON.stringify(payload);
   if(payloadTexte === dernierPayloadAuditComplete) return "";
   dernierPayloadAuditComplete = payloadTexte;
@@ -2909,12 +3065,15 @@ async function envoyerCompletionAuditEfficia(){
         analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
         sauvegarderDiagnostic();
       }
+      majStatutArchiveD1(`Audit enregistré dans la base de connaissances — public_id : ${auditPublicIdActif}${analysisVersionActif ? " · V" + nEntier(analysisVersionActif) : ""}`);
       return "Analyse enregistrée dans la base Efficia";
     } else {
+      majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
       return "Analyse terminée, mais archivage impossible";
     }
   }catch(e){
     console.warn("Archivage Efficia impossible", e);
+    majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
     return "Analyse terminée, mais archivage impossible";
   }
 }
@@ -2922,13 +3081,20 @@ async function envoyerCompletionAuditEfficia(){
 async function assurerVersionAnalyseRapport(){
   const versionInfo = obtenirVersionAnalyseRapport();
   if(versionInfo.ok) return true;
+  await creerAuditProvisoireSiNecessaire();
   if(auditPublicIdActif){
     const msg = await envoyerCompletionAuditEfficia();
     if(msg) statut(msg, msg.includes("enregistrée") ? "info" : "erreur");
     if(obtenirVersionAnalyseRapport().ok) return true;
   }
-  statut("Version d'analyse absente : relancez l'analyse approfondie via le connecteur avant de générer le PDF.", "erreur");
-  return false;
+  statut("D1 indisponible : le PDF continue avec une version locale non confirmée. Utilisez « Réessayer l'enregistrement » dès que possible.", "erreur");
+  return assurerVersionLocaleSecours();
+}
+
+async function reessayerEnregistrementAudit(){
+  await creerAuditProvisoireSiNecessaire();
+  const msg = await envoyerCompletionAuditEfficia();
+  if(msg) statut(msg, msg.includes("enregistrée") ? "info" : "erreur");
 }
 
 function appliquerReponses(reponses){
@@ -2965,6 +3131,8 @@ function sauvegarderDiagnostic(){
       profilActif,
       auditPublicIdActif,
       analysisVersionActif,
+      auditSourceActif,
+      auditFallbackLocalId,
       reponses:collecterReponses(),
       score:Math.round(calculScoreDetail().total),
       date:new Date().toISOString(),
@@ -2991,6 +3159,8 @@ function reprendreDiagnostic(){
     profilActif = data.profilActif || "default";
     auditPublicIdActif = data.auditPublicIdActif || null;
     analysisVersionActif = estNombre(data.analysisVersionActif) ? Math.max(1, nEntier(data.analysisVersionActif)) : null;
+    auditSourceActif = data.auditSourceActif || null;
+    auditFallbackLocalId = data.auditFallbackLocalId || null;
     appliquerReponses(data.reponses);
     afficherProfilUtilise();
     calc();
@@ -4763,6 +4933,7 @@ async function telechargerPDF(){
   await chargerLogoRapportDataUrl();
   if(!genererRapport()) return;
   const filename = nomFichierDiagnosticPDF();
+  dernierNomPdfGenere = filename;
   const originalLabels = btns.map(btn => btn.textContent);
   btns.forEach(btn => { btn.disabled = true; btn.textContent = "Génération du PDF en cours…"; });
   try{
@@ -4806,6 +4977,8 @@ async function telechargerPDF(){
       return;
     }
     pdf.save(filename);
+    const msgArchive = await envoyerCompletionAuditEfficia();
+    if(msgArchive && !msgArchive.includes("enregistrée")) statut(msgArchive, "erreur");
     await enregistrerPdfGenereBackOffice(filename);
   }catch(e){
     console.error("Génération PDF échouée", e);
