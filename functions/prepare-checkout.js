@@ -32,6 +32,20 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 
 const normalizeText = (value) => (typeof value === "string" ? value.trim() : "");
 
+const getSecretMode = (value) => {
+  const cleanValue = normalizeText(value);
+  if (cleanValue.startsWith("sk_test_")) return "sk_test_";
+  if (cleanValue.startsWith("sk_live_")) return "sk_live_";
+  return cleanValue ? "other" : "missing";
+};
+
+const getValuePrefix = (value) => {
+  const cleanValue = normalizeText(value);
+  if (cleanValue.startsWith("price_")) return "price_";
+  if (cleanValue.startsWith("prod_")) return "prod_";
+  return cleanValue ? "other" : "missing";
+};
+
 const normalizeForMatch = (value) => normalizeText(value)
   .normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "")
@@ -375,6 +389,9 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
     product_code: productCode,
     product: product.name,
     has_price_id: Boolean(priceId),
+    price_prefix: getValuePrefix(priceId),
+    price_length: normalizeText(priceId).length,
+    stripe_key_mode: getSecretMode(apiKey),
   });
 
   const formData = new URLSearchParams();
@@ -421,11 +438,22 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
   }
 
   if (!response.ok) {
-    console.error("Stripe Checkout request failed", response.status, responseText);
+    const stripeError = data?.error || {};
+    console.error("Stripe Checkout request failed", {
+      statusCode: response.status,
+      error_type: stripeError.type || null,
+      error_code: stripeError.code || null,
+      error_message: stripeError.message || responseText,
+    });
     return {
       ok: false,
       error: "Stripe Checkout request failed.",
       status: response.status,
+      stripeError: {
+        type: stripeError.type || "",
+        code: stripeError.code || "",
+        message: stripeError.message || "",
+      },
     };
   }
 
@@ -498,6 +526,25 @@ const handleCheckoutPreparation = async (context) => {
   const productCode = normalizeText(payload.product);
   const product = PRODUCTS[productCode];
   const priceId = product ? normalizeText(context.env[product.envKey]) : "";
+  const priceEnvKey = product?.envKey || "";
+
+  console.log("Purchase checkout: product diagnostics", {
+    received_offer: productCode,
+    expected_price_env_key: priceEnvKey || null,
+    has_product: Boolean(product),
+    has_STRIPE_PRICE_AUDIT: Boolean(normalizeText(context.env.STRIPE_PRICE_AUDIT)),
+    selected_price_present: Boolean(priceId),
+    selected_price_prefix: getValuePrefix(priceId),
+    selected_price_length: priceId.length,
+    has_STRIPE_SECRET_KEY: Boolean(normalizeText(context.env.STRIPE_SECRET_KEY)),
+    stripe_secret_key_mode: getSecretMode(context.env.STRIPE_SECRET_KEY),
+    expected_variables: [
+      "STRIPE_PRICE_AUDIT",
+      "STRIPE_PRICE_VISIBILITY",
+      "STRIPE_PRICE_PERFORMANCE",
+    ],
+  });
+
   const lead = {
     fullName: normalizeText(payload.full_name),
     email: normalizeText(payload.email).toLowerCase(),
@@ -507,14 +554,44 @@ const handleCheckoutPreparation = async (context) => {
     unknownGoogleBusiness: Boolean(payload.unknown_google_business),
   };
 
-  if (!product || !priceId) {
-    console.error("Purchase checkout: invalid product or missing Stripe price", {
+  if (!product) {
+    console.error("Purchase checkout: unknown offer received", {
       product_code: productCode,
-      has_product: Boolean(product),
-      expected_price_env_key: product?.envKey || null,
-      has_price_id: Boolean(priceId),
+      expected_offers: Object.keys(PRODUCTS),
     });
-    return jsonResponse({ success: false, error: "Invalid product." }, 400);
+    return jsonResponse({
+      success: false,
+      error: "INVALID_PRODUCT",
+      message: "L'offre reçue ne correspond à aucune offre configurée.",
+    }, 400);
+  }
+
+  if (!priceId) {
+    console.error("Purchase checkout: Stripe price env variable is missing", {
+      product_code: productCode,
+      expected_price_env_key: priceEnvKey,
+      has_STRIPE_PRICE_AUDIT: Boolean(normalizeText(context.env.STRIPE_PRICE_AUDIT)),
+      selected_price_present: false,
+    });
+    return jsonResponse({
+      success: false,
+      error: "MISSING_STRIPE_PRICE",
+      message: `${priceEnvKey} est absente dans l’environnement Production.`,
+    }, 400);
+  }
+
+  if (!priceId.startsWith("price_")) {
+    console.error("Purchase checkout: Stripe price has invalid format", {
+      product_code: productCode,
+      expected_price_env_key: priceEnvKey,
+      selected_price_prefix: getValuePrefix(priceId),
+      selected_price_length: priceId.length,
+    });
+    return jsonResponse({
+      success: false,
+      error: "INVALID_STRIPE_PRICE_FORMAT",
+      message: "La valeur configurée doit commencer par price_.",
+    }, 400);
   }
 
   if (!lead.fullName || !isValidEmail(lead.email) || !lead.companyName) {
@@ -560,7 +637,12 @@ const handleCheckoutPreparation = async (context) => {
 
   if (!checkoutResult.ok) {
     console.error("Purchase checkout: Stripe Checkout creation failed.", checkoutResult);
-    return jsonResponse({ success: false, error: checkoutResult.error }, 502);
+    return jsonResponse({
+      success: false,
+      error: "STRIPE_CHECKOUT_FAILED",
+      message: checkoutResult.error,
+      stripe: checkoutResult.stripeError || null,
+    }, 502);
   }
 
   console.log("Purchase checkout: completed successfully", {
