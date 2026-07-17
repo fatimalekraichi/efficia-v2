@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENGINE_HTML = path.resolve(__dirname, "../../outil-score-efficia-auto-v5.html");
+const CRITERIA_CATALOG = path.resolve(__dirname, "../../src/decision-engine/criteria.catalog.js");
 
 const PACK_CRITERES = [
   "revendiquee", "categoriePrincipale", "categoriesSecondaires", "horaires", "contact", "adresse", "attributs", "nap",
@@ -95,15 +96,15 @@ function extractConstLiteral(source, constName, open, close) {
 
 function loadEngineConstants() {
   const html = fs.readFileSync(ENGINE_HTML, "utf8");
+  const catalog = fs.readFileSync(CRITERIA_CATALOG, "utf8");
   const configSource = extractConstLiteral(html, "CONFIG", "{", "}");
-  const grilleSource = extractConstLiteral(html, "GRILLE", "[", "]");
   const scoringMatch = html.match(/const\s+SCORING_VERSION\s*=\s*["']([^"']+)["']/);
   const context = { console, Math, String, Number };
 
   vm.runInNewContext(
     `
       const CONFIG = ${configSource};
-      const GRILLE = ${grilleSource};
+      ${catalog}
       globalThis.__EFF = {
         CONFIG,
         GRILLE,
