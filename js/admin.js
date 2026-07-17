@@ -25,10 +25,14 @@ const formatDate = (value) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "medium",
-    timeStyle: "short",
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  const time = new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date);
+  if (isToday) return `Aujourd'hui<br><span class="admin-muted">${time}</span>`;
+  return `${new Intl.DateTimeFormat("fr-FR").format(date)}<br><span class="admin-muted">${time}</span>`;
 };
 
 const formatRelativeTime = (value) => {
@@ -53,6 +57,14 @@ const escapeHtml = (value) => String(value ?? "")
   .replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&#039;");
+
+const formatCustomerName = (value) => {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 2 && parts[0] === parts[0].toUpperCase() && parts[1] !== parts[1].toUpperCase()) {
+    return `${parts[1]} ${parts[0]}`;
+  }
+  return parts.join(" ");
+};
 
 const redirectToLogin = () => {
   window.location.href = "/admin-login";
@@ -102,6 +114,8 @@ const getBusinessState = (order) => (
   businessStateLabels[order.offer_code]?.[order.task_status || "todo"] || "🟡 À traiter"
 );
 
+const hasAuditEmailBeenMarkedSent = (order) => String(order.notes || "").includes("[audit_email_sent]");
+
 const getFilterQuery = () => {
   const params = new URLSearchParams();
   const formData = new FormData(filtersForm);
@@ -121,25 +135,25 @@ const renderOrders = (orders) => {
   }
 
   ordersBody.innerHTML = orders.map((order) => `
-    <tr class="admin-clickable-row" data-order-url="/admin-order?id=${encodeURIComponent(order.order_id)}">
+    <tr class="admin-clickable-row ${order.task_status === "completed" ? "is-completed-row" : ""}" data-order-url="/admin-order?id=${encodeURIComponent(order.order_id)}">
       <td>
         <strong>${escapeHtml(order.company_name || "—")}</strong>
         <div class="admin-muted">${escapeHtml(order.email || "")}</div>
       </td>
       <td>${escapeHtml(order.city || "—")}</td>
-      <td>${escapeHtml(order.customer_name || "—")}</td>
+      <td>${escapeHtml(formatCustomerName(order.customer_name) || "—")}</td>
       <td>${escapeHtml(offerLabels[order.offer_code] || order.offer_name || "—")}</td>
       <td>${formatMoney(order.amount_total, order.currency)}</td>
       <td>${formatDate(order.created_at)}</td>
       <td><span class="admin-muted">${escapeHtml(formatRelativeTime(order.created_at))}</span></td>
       <td><span class="admin-badge is-${escapeHtml(order.task_status || "todo")}">${escapeHtml(statusLabels[order.task_status] || "À faire")}</span></td>
-      <td><span class="admin-badge is-business">${escapeHtml(getBusinessState(order))}</span></td>
+      <td><span class="admin-badge is-business is-business-${escapeHtml(order.task_status || "todo")}">${escapeHtml(getBusinessState(order))}</span></td>
       <td><span class="admin-badge is-${escapeHtml(order.environment)}">${escapeHtml(String(order.environment || "unknown").toUpperCase())}</span></td>
       <td>
         <div class="admin-row-actions">
           <a class="admin-icon-button" href="/admin-order?id=${encodeURIComponent(order.order_id)}" title="Voir la commande" aria-label="Voir la commande">👁</a>
           <a class="admin-icon-button" href="${escapeHtml(buildGoogleBusinessUrl(order))}" target="_blank" rel="noopener" title="Ouvrir Google" aria-label="Ouvrir Google">🌍</a>
-          <a class="admin-icon-button" href="mailto:${escapeHtml(order.email || "")}" title="Envoyer audit" aria-label="Envoyer audit">📧</a>
+          <a class="admin-icon-button ${hasAuditEmailBeenMarkedSent(order) ? "is-mail-sent" : ""}" href="mailto:${escapeHtml(order.email || "")}" data-email-action="${escapeHtml(order.task_id || "")}" data-current-status="${escapeHtml(order.task_status || "todo")}" data-current-notes="${escapeHtml(order.notes || "")}" title="Envoyer audit" aria-label="Envoyer audit">✉️</a>
           <button class="admin-icon-button" type="button" data-quick-complete="${escapeHtml(order.task_id || "")}" title="Marquer terminé" aria-label="Marquer terminé" ${order.task_id ? "" : "disabled"}>✔</button>
         </div>
       </td>
@@ -164,6 +178,24 @@ const markTaskCompleted = async (taskId) => {
   }
 
   if (response.ok) loadOrders();
+};
+
+const markEmailSent = async ({ taskId, currentStatus, currentNotes }) => {
+  if (!taskId || String(currentNotes || "").includes("[audit_email_sent]")) return;
+  const stamp = new Date().toISOString();
+  const notes = `${String(currentNotes || "").trim()}${currentNotes ? "\n" : ""}[audit_email_sent] Audit ouvert pour envoi le ${stamp}`;
+
+  await fetch(`/admin/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      status: currentStatus || "todo",
+      notes,
+    }),
+  }).catch(() => {});
 };
 
 const loadOrders = async () => {
@@ -214,6 +246,15 @@ ordersBody?.addEventListener("click", (event) => {
     if (taskId) {
       event.preventDefault();
       markTaskCompleted(taskId);
+    }
+    const emailTaskId = actionTarget.getAttribute("data-email-action");
+    if (emailTaskId) {
+      markEmailSent({
+        taskId: emailTaskId,
+        currentStatus: actionTarget.getAttribute("data-current-status") || "todo",
+        currentNotes: actionTarget.getAttribute("data-current-notes") || "",
+      });
+      actionTarget.classList.add("is-mail-sent");
     }
     return;
   }

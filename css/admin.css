@@ -305,6 +305,16 @@
   background: #f8fbff;
 }
 
+.admin-clickable-row.is-completed-row {
+  background: #f8fafc;
+  opacity: .72;
+}
+
+.admin-clickable-row.is-completed-row:hover {
+  background: #f1f5f9;
+  opacity: .86;
+}
+
 .admin-row-actions {
   display: flex;
   align-items: center;
@@ -344,6 +354,12 @@
   opacity: .45;
   cursor: not-allowed;
   transform: none;
+}
+
+.admin-icon-button.is-mail-sent {
+  border-color: rgba(22, 163, 74, 0.25);
+  background: #eef8f1;
+  color: #166534;
 }
 
 .admin-muted {
@@ -388,6 +404,30 @@
   background: #f8fbff;
   color: #0f172a;
   border: 1px solid #dbeafe;
+}
+
+.admin-badge.is-business-todo {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.admin-badge.is-business-in_progress {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.admin-badge.is-business-waiting {
+  background: #f8fbff;
+  color: #2563eb;
+  border-color: #dbeafe;
+}
+
+.admin-badge.is-business-completed {
+  background: #eef8f1;
+  color: #166534;
+  border-color: rgba(22, 163, 74, 0.2);
 }
 
 .admin-badge.is-test {
