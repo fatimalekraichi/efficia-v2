@@ -6,7 +6,15 @@ import {
   requireOrdersDb,
 } from "./_shared.js";
 
-const ALLOWED_STATUSES = new Set(["todo", "in_progress", "waiting", "completed"]);
+const ALLOWED_STATUSES = new Set([
+  "todo",
+  "in_progress",
+  "waiting",
+  "pdf_generated",
+  "pdf_reviewed",
+  "sent",
+  "completed",
+]);
 const ALLOWED_OFFERS = new Set(["audit", "visibility", "performance"]);
 const ALLOWED_ENVIRONMENTS = new Set(["test", "live"]);
 

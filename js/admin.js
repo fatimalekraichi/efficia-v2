@@ -7,6 +7,9 @@ const statusLabels = {
   todo: "🟡 À faire",
   in_progress: "🟠 En cours",
   waiting: "🔵 En attente",
+  pdf_generated: "📄 PDF généré",
+  pdf_reviewed: "🔍 PDF vérifié",
+  sent: "🟢 Audit envoyé",
   completed: "🟢 Terminé",
 };
 
@@ -92,20 +95,29 @@ const buildGoogleBusinessUrl = (order) => {
 const businessStateLabels = {
   audit: {
     todo: "🟡 Audit à faire",
-    in_progress: "🟠 Audit commencé",
+    in_progress: "🔵 Audit en cours",
     waiting: "🔵 Audit en attente",
-    completed: "🟢 Audit envoyé",
+    pdf_generated: "📄 PDF généré",
+    pdf_reviewed: "🔍 PDF vérifié",
+    sent: "🟢 Audit envoyé",
+    completed: "✔ Dossier terminé",
   },
   visibility: {
     todo: "🟡 Optimisation à faire",
-    in_progress: "🟠 Optimisation commencée",
+    in_progress: "🔵 Optimisation en cours",
     waiting: "🔵 Validation attendue",
+    pdf_generated: "📄 PDF généré",
+    pdf_reviewed: "🔍 PDF vérifié",
+    sent: "🟢 Audit envoyé",
     completed: "✔ Clos",
   },
   performance: {
     todo: "🟡 Pack Performance à faire",
-    in_progress: "🟠 Pack commencé",
+    in_progress: "🔵 Pack en cours",
     waiting: "🔵 Validation attendue",
+    pdf_generated: "📄 PDF généré",
+    pdf_reviewed: "🔍 PDF vérifié",
+    sent: "🟢 Audit envoyé",
     completed: "✔ Clos",
   },
 };

@@ -8,16 +8,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
-  <link rel="stylesheet" href="css/reset.css">
-  <link rel="stylesheet" href="css/variables.css">
-  <link rel="stylesheet" href="css/admin.css">
+  <link rel="icon" href="/assets/favicon/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="/css/reset.css">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/admin.css">
 </head>
 <body class="admin-page">
   <header class="admin-header">
     <div class="admin-header__inner">
       <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
-        <img src="assets/logo/logo-efficia-web.png" alt="Efficia Digital">
+        <img src="/assets/logo/logo-efficia-web.png" alt="Efficia Digital">
       </a>
       <nav class="admin-nav">
         <a class="admin-button is-secondary" href="/admin">Retour aux commandes</a>
@@ -55,6 +55,18 @@
       </section>
 
       <section class="admin-card">
+        <h2>Production de l’audit</h2>
+        <div class="admin-info-list admin-production-grid" data-production-info></div>
+        <div class="admin-task-actions">
+          <a class="admin-button" href="#" target="_blank" rel="noopener" data-open-score-tool>Ouvrir l’outil Score Efficia</a>
+          <button class="admin-button is-secondary" type="button" data-production-status="pdf_generated">Marquer PDF généré</button>
+          <button class="admin-button is-secondary" type="button" data-production-status="pdf_reviewed">Marquer PDF vérifié</button>
+          <button class="admin-button is-secondary" type="button" data-production-status="sent">Marquer audit envoyé</button>
+          <button class="admin-button" type="button" data-production-status="completed">Marquer dossier terminé</button>
+        </div>
+      </section>
+
+      <section class="admin-card">
         <label class="admin-notes">
           <span>Notes internes</span>
           <textarea data-task-notes placeholder="Ajouter une note interne..."></textarea>
@@ -67,7 +79,6 @@
     </div>
   </main>
 
-  <script src="js/admin-order.js"></script>
+  <script src="/js/admin-order.js"></script>
 </body>
 </html>
-

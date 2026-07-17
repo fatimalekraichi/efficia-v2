@@ -400,6 +400,21 @@
   color: #3a7a4b;
 }
 
+.admin-badge.is-pdf_generated {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.admin-badge.is-pdf_reviewed {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.admin-badge.is-sent {
+  background: #ecfdf5;
+  color: #047857;
+}
+
 .admin-badge.is-business {
   background: #f8fbff;
   color: #0f172a;
@@ -430,6 +445,24 @@
   border-color: rgba(22, 163, 74, 0.2);
 }
 
+.admin-badge.is-business-pdf_generated {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.admin-badge.is-business-pdf_reviewed {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+.admin-badge.is-business-sent {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #bbf7d0;
+}
+
 .admin-badge.is-test {
   background: #fef2f2;
   color: #b91c1c;
@@ -444,6 +477,15 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
+}
+
+.admin-production-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-button.is-disabled {
+  opacity: .55;
+  pointer-events: none;
 }
 
 .admin-info-list {

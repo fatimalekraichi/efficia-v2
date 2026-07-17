@@ -4,15 +4,21 @@ const orderSubtitle = document.querySelector("[data-order-subtitle]");
 const orderInfo = document.querySelector("[data-order-info]");
 const taskInfo = document.querySelector("[data-task-info]");
 const taskNotes = document.querySelector("[data-task-notes]");
+const productionInfo = document.querySelector("[data-production-info]");
+const openScoreToolButton = document.querySelector("[data-open-score-tool]");
+const productionButtons = document.querySelectorAll("[data-production-status]");
 const errorBox = document.querySelector("[data-order-error]");
 const taskButtons = document.querySelectorAll("[data-task-status]");
 const saveNotesButton = document.querySelector("[data-save-notes]");
 
 const statusLabels = {
-  todo: "À faire",
-  in_progress: "En cours",
+  todo: "Audit à faire",
+  in_progress: "Audit en cours",
   waiting: "En attente",
-  completed: "Terminé",
+  pdf_generated: "PDF généré",
+  pdf_reviewed: "PDF vérifié",
+  sent: "Audit envoyé",
+  completed: "Dossier terminé",
 };
 
 const formatMoney = (amount, currency = "eur") => new Intl.NumberFormat("fr-FR", {
@@ -58,6 +64,29 @@ const buildGoogleBusinessUrl = (order) => {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 };
 
+const getFirstName = (order) => {
+  if (order.first_name) return order.first_name;
+  const parts = String(order.customer_name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  if (parts.length === 2 && parts[0] === parts[0].toUpperCase() && parts[1] !== parts[1].toUpperCase()) {
+    return parts[1];
+  }
+  return parts[0];
+};
+
+const buildScoreToolUrl = (order, task) => {
+  const params = new URLSearchParams({
+    company: order.company_name || "",
+    city: order.city || "",
+    firstName: getFirstName(order),
+    email: order.email || "",
+    offer: order.offer_code || "",
+    orderId: order.order_id || "",
+    taskId: task?.task_id || "",
+  });
+  return `/outil-score-efficia-auto-v5.html?${params.toString()}`;
+};
+
 let currentTask = null;
 let currentOrder = null;
 
@@ -96,11 +125,36 @@ const renderOrder = ({ order, tasks }) => {
     ].join("") : `<p class="admin-empty">Aucune tâche liée à cette commande.</p>`;
   }
 
+  if (productionInfo) {
+    productionInfo.innerHTML = [
+      infoItem("Entreprise", order.company_name),
+      infoItem("Ville", order.city),
+      infoItem("Prénom", getFirstName(order)),
+      infoItem("Email", order.email),
+      infoItem("Offre", order.offer_name),
+      infoItem("Order ID", order.order_id),
+      infoItem("Task ID", currentTask?.task_id),
+      infoItem("Statut actuel", currentTask ? (statusLabels[currentTask.status] || currentTask.status) : "—"),
+      infoItem("Nom du fichier PDF", currentTask?.pdf_filename),
+      infoItem("Date de génération", formatDate(currentTask?.pdf_generated_at)),
+      infoItem("Date d’envoi", formatDate(currentTask?.sent_at)),
+      infoItem("Notes internes", currentTask?.notes),
+    ].join("");
+  }
+
+  if (openScoreToolButton) {
+    openScoreToolButton.href = currentTask ? buildScoreToolUrl(order, currentTask) : "#";
+    openScoreToolButton.classList.toggle("is-disabled", !currentTask);
+  }
+
   if (taskNotes) taskNotes.value = currentTask?.notes || "";
   taskButtons.forEach((button) => {
     button.disabled = !currentTask;
   });
   if (saveNotesButton) saveNotesButton.disabled = !currentTask;
+  productionButtons.forEach((button) => {
+    button.disabled = !currentTask;
+  });
 };
 
 const loadOrder = async () => {
@@ -174,6 +228,15 @@ taskButtons.forEach((button) => {
   button.addEventListener("click", () => {
     updateTask({
       status: button.getAttribute("data-task-status"),
+      notes: taskNotes?.value,
+    });
+  });
+});
+
+productionButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    updateTask({
+      status: button.getAttribute("data-production-status"),
       notes: taskNotes?.value,
     });
   });

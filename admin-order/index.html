@@ -55,6 +55,18 @@
       </section>
 
       <section class="admin-card">
+        <h2>Production de l’audit</h2>
+        <div class="admin-info-list admin-production-grid" data-production-info></div>
+        <div class="admin-task-actions">
+          <a class="admin-button" href="#" target="_blank" rel="noopener" data-open-score-tool>Ouvrir l’outil Score Efficia</a>
+          <button class="admin-button is-secondary" type="button" data-production-status="pdf_generated">Marquer PDF généré</button>
+          <button class="admin-button is-secondary" type="button" data-production-status="pdf_reviewed">Marquer PDF vérifié</button>
+          <button class="admin-button is-secondary" type="button" data-production-status="sent">Marquer audit envoyé</button>
+          <button class="admin-button" type="button" data-production-status="completed">Marquer dossier terminé</button>
+        </div>
+      </section>
+
+      <section class="admin-card">
         <label class="admin-notes">
           <span>Notes internes</span>
           <textarea data-task-notes placeholder="Ajouter une note interne..."></textarea>
@@ -70,4 +82,3 @@
   <script src="/js/admin-order.js"></script>
 </body>
 </html>
-
