@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion admin | Efficia Digital</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-page">
+  <main class="admin-login">
+    <section class="admin-login-card" aria-labelledby="admin-login-title">
+      <span class="admin-kicker">Back-office Efficia</span>
+      <h1 id="admin-login-title">Connexion interne</h1>
+      <p>Accédez aux commandes, tâches et notes internes du tunnel de paiement.</p>
+
+      <form class="admin-form" data-admin-login-form>
+        <label class="admin-field">
+          <span>Mot de passe admin</span>
+          <input type="password" name="password" autocomplete="current-password" required autofocus>
+        </label>
+        <button class="admin-button" type="submit" data-admin-login-submit>Se connecter</button>
+        <p class="admin-error" data-admin-login-error role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="js/admin-login.js"></script>
+</body>
+</html>
+

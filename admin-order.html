@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Détail commande | Efficia Digital</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <div class="admin-header__inner">
+      <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
+        <img src="assets/logo/logo-efficia-web.png" alt="Efficia Digital">
+      </a>
+      <nav class="admin-nav">
+        <a class="admin-button is-secondary" href="/admin">Retour aux commandes</a>
+        <button class="admin-button is-danger" type="button" data-admin-logout>Déconnexion</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <div class="admin-layout" data-admin-order-root>
+      <section class="admin-title">
+        <div>
+          <span class="admin-kicker">Détail commande</span>
+          <h1 data-order-title>Commande</h1>
+          <p data-order-subtitle>Chargement...</p>
+        </div>
+      </section>
+
+      <section class="admin-detail-grid">
+        <article class="admin-card">
+          <h2>Client</h2>
+          <div class="admin-info-list" data-order-info></div>
+        </article>
+
+        <article class="admin-card">
+          <h2>Tâche interne</h2>
+          <div class="admin-info-list" data-task-info></div>
+          <div class="admin-task-actions">
+            <button class="admin-button" type="button" data-task-status="in_progress">Commencer</button>
+            <button class="admin-button is-secondary" type="button" data-task-status="waiting">Mettre en attente</button>
+            <button class="admin-button" type="button" data-task-status="completed">Marquer comme terminé</button>
+            <button class="admin-button is-secondary" type="button" data-task-status="todo">Revenir à À faire</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="admin-card">
+        <label class="admin-notes">
+          <span>Notes internes</span>
+          <textarea data-task-notes placeholder="Ajouter une note interne..."></textarea>
+        </label>
+        <div class="admin-task-actions">
+          <button class="admin-button" type="button" data-save-notes>Sauvegarder les notes</button>
+          <p class="admin-error" data-order-error role="alert"></p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/admin-order.js"></script>
+</body>
+</html>
+

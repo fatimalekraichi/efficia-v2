@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Back-office | Efficia Digital</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <div class="admin-header__inner">
+      <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
+        <img src="assets/logo/logo-efficia-web.png" alt="Efficia Digital">
+      </a>
+      <nav class="admin-nav">
+        <a class="admin-button is-secondary" href="/">Voir le site</a>
+        <button class="admin-button is-danger" type="button" data-admin-logout>Déconnexion</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <div class="admin-layout">
+      <section class="admin-title">
+        <div>
+          <span class="admin-kicker">Commandes Stripe</span>
+          <h1>Back-office interne</h1>
+          <p>Suivi simple des commandes payées et des tâches à traiter.</p>
+        </div>
+      </section>
+
+      <section class="admin-stats" aria-label="Statistiques">
+        <article class="admin-stat"><span>Commandes aujourd'hui</span><strong data-stat="ordersToday">0</strong></article>
+        <article class="admin-stat"><span>CA aujourd'hui</span><strong data-stat="revenueToday">0,00 €</strong></article>
+        <article class="admin-stat"><span>CA du mois</span><strong data-stat="revenueMonth">0,00 €</strong></article>
+        <article class="admin-stat"><span>Audits à faire</span><strong data-stat="auditTodo">0</strong></article>
+        <article class="admin-stat"><span>Optimisations à faire</span><strong data-stat="visibilityTodo">0</strong></article>
+        <article class="admin-stat"><span>Pack Performance à faire</span><strong data-stat="performanceTodo">0</strong></article>
+      </section>
+
+      <section class="admin-card">
+        <form class="admin-filters" data-admin-filters>
+          <label class="admin-filter">
+            <span>Recherche</span>
+            <input type="search" name="search" placeholder="Entreprise, prénom, nom, email, ville...">
+          </label>
+          <label class="admin-filter">
+            <span>Statut</span>
+            <select name="status">
+              <option value="">Tous</option>
+              <option value="todo">À faire</option>
+              <option value="in_progress">En cours</option>
+              <option value="waiting">En attente</option>
+              <option value="completed">Terminé</option>
+            </select>
+          </label>
+          <label class="admin-filter">
+            <span>Offre</span>
+            <select name="offer">
+              <option value="">Toutes</option>
+              <option value="audit">Audit</option>
+              <option value="visibility">Pack Visibilité</option>
+              <option value="performance">Pack Performance</option>
+            </select>
+          </label>
+          <label class="admin-filter">
+            <span>Environnement</span>
+            <select name="environment">
+              <option value="">Tous</option>
+              <option value="live">LIVE</option>
+              <option value="test">TEST</option>
+            </select>
+          </label>
+          <button class="admin-button" type="submit">Actualiser</button>
+        </form>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Entreprise</th>
+                <th>Ville</th>
+                <th>Client</th>
+                <th>Offre</th>
+                <th>Montant</th>
+                <th>Date</th>
+                <th>Délai</th>
+                <th>Statut</th>
+                <th>État métier</th>
+                <th>Env.</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody data-admin-orders>
+              <tr><td colspan="11" class="admin-empty">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>
