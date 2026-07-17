@@ -35,6 +35,11 @@ Dans l'environnement Codex actuel, la commande utilisée est :
 - `photos-recency`
 - `pack-projection`
 
+Ces valeurs attendues représentent le comportement actuel du moteur. Elles ne
+constituent pas une vérité métier définitive : si une incohérence est détectée,
+elle doit d'abord être discutée, puis modifiée volontairement dans le moteur et
+dans les snapshots.
+
 ## Fonctions couvertes
 
 - `calculScoreDetail()`
@@ -70,3 +75,29 @@ node tests/decision-engine/generate-fixtures.mjs
 
 Cette commande réécrit les fichiers JSON dans `fixtures/` avec les attendus
 capturés depuis le moteur courant.
+
+## Politique de modification
+
+Les snapshots ne doivent jamais être régénérés pour faire passer les tests.
+
+Ils ne sont mis à jour que lorsque :
+
+1. une évolution du moteur a été décidée et validée ;
+2. le changement attendu est documenté ;
+3. les nouvelles valeurs ont été vérifiées.
+
+En cas d'échec d'un test, il faut d'abord rechercher la cause de la régression
+avant de modifier les fixtures.
+
+## Ajouter une fixture
+
+1. Ajouter le cas dans `generate-fixtures.mjs` avec un `id`, un profil, les
+   critères renseignés, les critères non évalués et les données observées.
+2. Exécuter `node tests/decision-engine/generate-fixtures.mjs`.
+3. Vérifier le JSON généré dans `fixtures/`.
+4. Ajouter si besoin une assertion ciblée dans `decision-engine.test.mjs`.
+5. Relancer le banc complet avant toute modification du moteur.
+
+Ces tests doivent être exécutés avant toute extraction ou refactorisation de
+`CONFIG`, `GRILLE` ou des fonctions de score, car ils servent de filet de
+sécurité sur le comportement actuel.
