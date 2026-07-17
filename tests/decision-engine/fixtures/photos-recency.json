@@ -1,0 +1,199 @@
+{
+  "id": "photos-recency",
+  "businessName": "Atelier Photos Recentes",
+  "city": "Dippach",
+  "activity": "Garage",
+  "profile": "default",
+  "data": {
+    "note": 4.4,
+    "nbAvis": 42,
+    "nbPhotos": 23,
+    "descriptionLongueur": 500,
+    "position": 2,
+    "moyennesConcurrents": {
+      "avis": 38,
+      "note": 4.5,
+      "photos": 22
+    },
+    "requeteTestee": "garage dippach"
+  },
+  "criteria": {
+    "revendiquee": 3,
+    "categoriePrincipale": 4,
+    "categoriesSecondaires": 2,
+    "horaires": 3,
+    "contact": 3,
+    "adresse": 2,
+    "attributs": 2,
+    "nap": 3,
+    "logoCouverture": 3,
+    "nombrePhotos": 3,
+    "photoRecente": 0,
+    "varietePhotos": 3,
+    "qualitePhotos": 2,
+    "noteMoyenne": 6,
+    "volumeAvis": 5,
+    "recenceAvis": 4,
+    "tauxReponseAvis": 6,
+    "qualiteReponsesAvis": 4,
+    "descriptionRemplie": 4,
+    "descriptionQualite": 4,
+    "servicesPresents": 3,
+    "servicesDecrits": 3,
+    "questionsReponses": 3,
+    "liensAction": 4,
+    "publicationRecente": 1,
+    "rythmePublication": 1,
+    "classementLocal": 6,
+    "attractiviteConcurrents": 4,
+    "recherchesSpecifiques": 2
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual",
+    "logoCouverture": "manual",
+    "nombrePhotos": "observed",
+    "photoRecente": "manual",
+    "varietePhotos": "manual",
+    "qualitePhotos": "manual",
+    "noteMoyenne": "observed",
+    "volumeAvis": "observed",
+    "recenceAvis": "manual",
+    "tauxReponseAvis": "manual",
+    "qualiteReponsesAvis": "manual",
+    "descriptionRemplie": "manual",
+    "descriptionQualite": "manual",
+    "servicesPresents": "manual",
+    "servicesDecrits": "manual",
+    "questionsReponses": "manual",
+    "liensAction": "manual",
+    "publicationRecente": "manual",
+    "rythmePublication": "manual",
+    "classementLocal": "observed",
+    "attractiviteConcurrents": "observed",
+    "recherchesSpecifiques": "manual"
+  },
+  "expected": {
+    "globalScore": 93,
+    "rawScore": 93,
+    "answeredCriteria": 29,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations",
+      "photos",
+      "avis",
+      "contenu",
+      "activite",
+      "visibilite"
+    ],
+    "denominatorWeight": 100,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 22,
+        "weightedPoints": 22,
+        "percent": 1
+      },
+      {
+        "key": "photos",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 15,
+        "profileWeight": 15,
+        "weightedPoints": 11,
+        "percent": 0.733333
+      },
+      {
+        "key": "avis",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 25,
+        "profileWeight": 25,
+        "weightedPoints": 25,
+        "percent": 1
+      },
+      {
+        "key": "contenu",
+        "evaluated": 6,
+        "unevaluated": 0,
+        "maxEvaluated": 21,
+        "profileWeight": 21,
+        "weightedPoints": 21,
+        "percent": 1
+      },
+      {
+        "key": "activite",
+        "evaluated": 2,
+        "unevaluated": 0,
+        "maxEvaluated": 5,
+        "profileWeight": 5,
+        "weightedPoints": 2,
+        "percent": 0.4
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 3,
+        "unevaluated": 0,
+        "maxEvaluated": 12,
+        "profileWeight": 12,
+        "weightedPoints": 12,
+        "percent": 1
+      }
+    ],
+    "indices": {
+      "visibilite": 88,
+      "confiance": 100,
+      "conversion": 100
+    },
+    "priorities": [
+      {
+        "family": "photos",
+        "criterion": "photoRecente",
+        "lost": 4,
+        "score": 10.8
+      },
+      {
+        "family": "activite",
+        "criterion": "publicationRecente",
+        "lost": 2,
+        "score": 7.633333
+      }
+    ],
+    "projectedPack": {
+      "projete": 97,
+      "corriges": 1,
+      "ameliorables": 3
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "compliant": 26,
+        "deficient": 1,
+        "partial": 2
+      },
+      "verification": {
+        "manually_confirmed": 24,
+        "observed": 5
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 93,
+      "visibilityScore": 88,
+      "trustScore": 100,
+      "conversionScore": 100,
+      "sectorProfile": "default",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}

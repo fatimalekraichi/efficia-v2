@@ -1,0 +1,204 @@
+{
+  "id": "average-business",
+  "businessName": "Commerce Test Moyen",
+  "city": "Namur",
+  "activity": "Commerce",
+  "profile": "default",
+  "data": {
+    "note": 4.2,
+    "nbAvis": 28,
+    "nbPhotos": 8,
+    "descriptionLongueur": 420,
+    "position": 4,
+    "moyennesConcurrents": {
+      "avis": 35,
+      "note": 4.4,
+      "photos": 12
+    },
+    "requeteTestee": "commerce namur"
+  },
+  "criteria": {
+    "revendiquee": 3,
+    "categoriePrincipale": 2,
+    "categoriesSecondaires": 2,
+    "horaires": 1,
+    "contact": 3,
+    "adresse": 2,
+    "attributs": 1,
+    "nap": 3,
+    "logoCouverture": 1,
+    "nombrePhotos": 1,
+    "photoRecente": 2,
+    "varietePhotos": 1,
+    "qualitePhotos": 1,
+    "noteMoyenne": 4,
+    "volumeAvis": 3,
+    "recenceAvis": 2,
+    "tauxReponseAvis": 3,
+    "qualiteReponsesAvis": 2,
+    "descriptionRemplie": 2,
+    "descriptionQualite": 2,
+    "servicesPresents": 1,
+    "servicesDecrits": 1,
+    "questionsReponses": 1,
+    "liensAction": 4,
+    "publicationRecente": 1,
+    "rythmePublication": 1,
+    "classementLocal": 3,
+    "attractiviteConcurrents": 2,
+    "recherchesSpecifiques": 1
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual",
+    "logoCouverture": "manual",
+    "nombrePhotos": "observed",
+    "photoRecente": "manual",
+    "varietePhotos": "manual",
+    "qualitePhotos": "manual",
+    "noteMoyenne": "observed",
+    "volumeAvis": "observed",
+    "recenceAvis": "manual",
+    "tauxReponseAvis": "manual",
+    "qualiteReponsesAvis": "manual",
+    "descriptionRemplie": "manual",
+    "descriptionQualite": "manual",
+    "servicesPresents": "manual",
+    "servicesDecrits": "manual",
+    "questionsReponses": "manual",
+    "liensAction": "manual",
+    "publicationRecente": "manual",
+    "rythmePublication": "manual",
+    "classementLocal": "observed",
+    "attractiviteConcurrents": "observed",
+    "recherchesSpecifiques": "manual"
+  },
+  "expected": {
+    "globalScore": 56,
+    "rawScore": 56,
+    "answeredCriteria": 29,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations",
+      "photos",
+      "avis",
+      "contenu",
+      "activite",
+      "visibilite"
+    ],
+    "denominatorWeight": 100,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 22,
+        "weightedPoints": 17,
+        "percent": 0.772727
+      },
+      {
+        "key": "photos",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 15,
+        "profileWeight": 15,
+        "weightedPoints": 6,
+        "percent": 0.4
+      },
+      {
+        "key": "avis",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 25,
+        "profileWeight": 25,
+        "weightedPoints": 14,
+        "percent": 0.56
+      },
+      {
+        "key": "contenu",
+        "evaluated": 6,
+        "unevaluated": 0,
+        "maxEvaluated": 21,
+        "profileWeight": 21,
+        "weightedPoints": 11,
+        "percent": 0.52381
+      },
+      {
+        "key": "activite",
+        "evaluated": 2,
+        "unevaluated": 0,
+        "maxEvaluated": 5,
+        "profileWeight": 5,
+        "weightedPoints": 2,
+        "percent": 0.4
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 3,
+        "unevaluated": 0,
+        "maxEvaluated": 12,
+        "profileWeight": 12,
+        "weightedPoints": 6,
+        "percent": 0.5
+      }
+    ],
+    "indices": {
+      "visibilite": 58,
+      "confiance": 68,
+      "conversion": 50
+    },
+    "priorities": [
+      {
+        "family": "offre",
+        "criterion": "servicesPresents",
+        "lost": 2,
+        "score": 9.833333
+      },
+      {
+        "family": "reputation",
+        "criterion": "tauxReponseAvis",
+        "lost": 3,
+        "score": 9.25
+      },
+      {
+        "family": "infos",
+        "criterion": "horaires",
+        "lost": 2,
+        "score": 8.833333
+      }
+    ],
+    "projectedPack": {
+      "projete": 85,
+      "corriges": 15,
+      "ameliorables": 23
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "compliant": 6,
+        "partial": 23
+      },
+      "verification": {
+        "manually_confirmed": 24,
+        "observed": 5
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 56,
+      "visibilityScore": 58,
+      "trustScore": 68,
+      "conversionScore": 50,
+      "sectorProfile": "default",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}

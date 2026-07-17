@@ -1,0 +1,204 @@
+{
+  "id": "strong-business",
+  "businessName": "Entreprise Test Solide",
+  "city": "Bruxelles",
+  "activity": "Service local",
+  "profile": "default",
+  "data": {
+    "note": 4.8,
+    "nbAvis": 146,
+    "nbPhotos": 38,
+    "descriptionLongueur": 720,
+    "position": 1,
+    "moyennesConcurrents": {
+      "avis": 92,
+      "note": 4.6,
+      "photos": 31
+    },
+    "requeteTestee": "service local bruxelles"
+  },
+  "criteria": {
+    "revendiquee": 3,
+    "categoriePrincipale": 4,
+    "categoriesSecondaires": 2,
+    "horaires": 3,
+    "contact": 3,
+    "adresse": 2,
+    "attributs": 2,
+    "nap": 3,
+    "logoCouverture": 3,
+    "nombrePhotos": 3,
+    "photoRecente": 4,
+    "varietePhotos": 3,
+    "qualitePhotos": 2,
+    "noteMoyenne": 6,
+    "volumeAvis": 5,
+    "recenceAvis": 4,
+    "tauxReponseAvis": 6,
+    "qualiteReponsesAvis": 4,
+    "descriptionRemplie": 4,
+    "descriptionQualite": 4,
+    "servicesPresents": 3,
+    "servicesDecrits": 3,
+    "questionsReponses": 1,
+    "liensAction": 4,
+    "publicationRecente": 3,
+    "rythmePublication": 1,
+    "classementLocal": 6,
+    "attractiviteConcurrents": 4,
+    "recherchesSpecifiques": 1
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual",
+    "logoCouverture": "manual",
+    "nombrePhotos": "observed",
+    "photoRecente": "manual",
+    "varietePhotos": "manual",
+    "qualitePhotos": "manual",
+    "noteMoyenne": "observed",
+    "volumeAvis": "observed",
+    "recenceAvis": "manual",
+    "tauxReponseAvis": "manual",
+    "qualiteReponsesAvis": "manual",
+    "descriptionRemplie": "manual",
+    "descriptionQualite": "manual",
+    "servicesPresents": "manual",
+    "servicesDecrits": "manual",
+    "questionsReponses": "manual",
+    "liensAction": "manual",
+    "publicationRecente": "manual",
+    "rythmePublication": "manual",
+    "classementLocal": "observed",
+    "attractiviteConcurrents": "observed",
+    "recherchesSpecifiques": "manual"
+  },
+  "expected": {
+    "globalScore": 96,
+    "rawScore": 96,
+    "answeredCriteria": 29,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations",
+      "photos",
+      "avis",
+      "contenu",
+      "activite",
+      "visibilite"
+    ],
+    "denominatorWeight": 100,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 22,
+        "weightedPoints": 22,
+        "percent": 1
+      },
+      {
+        "key": "photos",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 15,
+        "profileWeight": 15,
+        "weightedPoints": 15,
+        "percent": 1
+      },
+      {
+        "key": "avis",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 25,
+        "profileWeight": 25,
+        "weightedPoints": 25,
+        "percent": 1
+      },
+      {
+        "key": "contenu",
+        "evaluated": 6,
+        "unevaluated": 0,
+        "maxEvaluated": 21,
+        "profileWeight": 21,
+        "weightedPoints": 19,
+        "percent": 0.904762
+      },
+      {
+        "key": "activite",
+        "evaluated": 2,
+        "unevaluated": 0,
+        "maxEvaluated": 5,
+        "profileWeight": 5,
+        "weightedPoints": 4,
+        "percent": 0.8
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 3,
+        "unevaluated": 0,
+        "maxEvaluated": 12,
+        "profileWeight": 12,
+        "weightedPoints": 11,
+        "percent": 0.916667
+      }
+    ],
+    "indices": {
+      "visibilite": 92,
+      "confiance": 100,
+      "conversion": 92
+    },
+    "priorities": [
+      {
+        "family": "offre",
+        "criterion": "questionsReponses",
+        "lost": 2,
+        "score": 9.833333
+      },
+      {
+        "family": "visibilite",
+        "criterion": "recherchesSpecifiques",
+        "lost": 1,
+        "score": 8.25
+      },
+      {
+        "family": "activite",
+        "criterion": "rythmePublication",
+        "lost": 1,
+        "score": 6.55
+      }
+    ],
+    "projectedPack": {
+      "projete": 97,
+      "corriges": 1,
+      "ameliorables": 3
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "compliant": 26,
+        "partial": 3
+      },
+      "verification": {
+        "manually_confirmed": 24,
+        "observed": 5
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 96,
+      "visibilityScore": 92,
+      "trustScore": 100,
+      "conversionScore": 92,
+      "sectorProfile": "default",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}

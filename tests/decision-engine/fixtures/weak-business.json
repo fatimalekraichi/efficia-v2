@@ -1,0 +1,204 @@
+{
+  "id": "weak-business",
+  "businessName": "Garage Test Faible",
+  "city": "Arlon",
+  "activity": "Garage",
+  "profile": "default",
+  "data": {
+    "note": 3.6,
+    "nbAvis": 4,
+    "nbPhotos": 2,
+    "descriptionLongueur": 80,
+    "position": 0,
+    "moyennesConcurrents": {
+      "avis": 52,
+      "note": 4.6,
+      "photos": 24
+    },
+    "requeteTestee": "garage arlon"
+  },
+  "criteria": {
+    "revendiquee": 0,
+    "categoriePrincipale": 0,
+    "categoriesSecondaires": 0,
+    "horaires": 1,
+    "contact": 1,
+    "adresse": 0,
+    "attributs": 0,
+    "nap": 0,
+    "logoCouverture": 0,
+    "nombrePhotos": 0,
+    "photoRecente": 0,
+    "varietePhotos": 0,
+    "qualitePhotos": 0,
+    "noteMoyenne": 2,
+    "volumeAvis": 0,
+    "recenceAvis": 0,
+    "tauxReponseAvis": 0,
+    "qualiteReponsesAvis": 0,
+    "descriptionRemplie": 0,
+    "descriptionQualite": 0,
+    "servicesPresents": 0,
+    "servicesDecrits": 0,
+    "questionsReponses": 0,
+    "liensAction": 0,
+    "publicationRecente": 0,
+    "rythmePublication": 0,
+    "classementLocal": 0,
+    "attractiviteConcurrents": 0,
+    "recherchesSpecifiques": 0
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual",
+    "logoCouverture": "manual",
+    "nombrePhotos": "observed",
+    "photoRecente": "manual",
+    "varietePhotos": "manual",
+    "qualitePhotos": "manual",
+    "noteMoyenne": "observed",
+    "volumeAvis": "observed",
+    "recenceAvis": "manual",
+    "tauxReponseAvis": "manual",
+    "qualiteReponsesAvis": "manual",
+    "descriptionRemplie": "manual",
+    "descriptionQualite": "manual",
+    "servicesPresents": "manual",
+    "servicesDecrits": "manual",
+    "questionsReponses": "manual",
+    "liensAction": "manual",
+    "publicationRecente": "manual",
+    "rythmePublication": "manual",
+    "classementLocal": "observed",
+    "attractiviteConcurrents": "observed",
+    "recherchesSpecifiques": "manual"
+  },
+  "expected": {
+    "globalScore": 4,
+    "rawScore": 4,
+    "answeredCriteria": 29,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations",
+      "photos",
+      "avis",
+      "contenu",
+      "activite",
+      "visibilite"
+    ],
+    "denominatorWeight": 100,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 22,
+        "weightedPoints": 2,
+        "percent": 0.090909
+      },
+      {
+        "key": "photos",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 15,
+        "profileWeight": 15,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "avis",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 25,
+        "profileWeight": 25,
+        "weightedPoints": 2,
+        "percent": 0.08
+      },
+      {
+        "key": "contenu",
+        "evaluated": 6,
+        "unevaluated": 0,
+        "maxEvaluated": 21,
+        "profileWeight": 21,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "activite",
+        "evaluated": 2,
+        "unevaluated": 0,
+        "maxEvaluated": 5,
+        "profileWeight": 5,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 3,
+        "unevaluated": 0,
+        "maxEvaluated": 12,
+        "profileWeight": 12,
+        "weightedPoints": 0,
+        "percent": 0
+      }
+    ],
+    "indices": {
+      "visibilite": 0,
+      "confiance": 10,
+      "conversion": 0
+    },
+    "priorities": [
+      {
+        "family": "reputation",
+        "criterion": "tauxReponseAvis",
+        "lost": 6,
+        "score": 12.5
+      },
+      {
+        "family": "visibilite",
+        "criterion": "classementLocal",
+        "lost": 6,
+        "score": 12
+      },
+      {
+        "family": "offre",
+        "criterion": "descriptionRemplie",
+        "lost": 4,
+        "score": 12
+      }
+    ],
+    "projectedPack": {
+      "projete": 70,
+      "corriges": 21,
+      "ameliorables": 29
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "deficient": 26,
+        "partial": 3
+      },
+      "verification": {
+        "manually_confirmed": 24,
+        "observed": 5
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 4,
+      "visibilityScore": 0,
+      "trustScore": 10,
+      "conversionScore": 0,
+      "sectorProfile": "default",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}

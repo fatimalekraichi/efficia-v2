@@ -1,0 +1,141 @@
+{
+  "id": "incomplete-data",
+  "businessName": "Fiche Incomplete",
+  "city": "Liege",
+  "activity": "Artisan",
+  "profile": "default",
+  "data": {
+    "note": null,
+    "nbAvis": null,
+    "nbPhotos": null,
+    "descriptionLongueur": null,
+    "position": null,
+    "requeteTestee": "artisan liege"
+  },
+  "criteria": {
+    "revendiquee": 3,
+    "categoriePrincipale": 4,
+    "categoriesSecondaires": 2,
+    "horaires": 3,
+    "contact": 1,
+    "adresse": 2,
+    "attributs": 1,
+    "nap": 3
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual"
+  },
+  "expected": {
+    "globalScore": 86,
+    "rawScore": 86.363636,
+    "answeredCriteria": 8,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations"
+    ],
+    "denominatorWeight": 22,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 22,
+        "weightedPoints": 19,
+        "percent": 0.863636
+      },
+      {
+        "key": "photos",
+        "evaluated": 0,
+        "unevaluated": 5,
+        "maxEvaluated": 0,
+        "profileWeight": 15,
+        "weightedPoints": null,
+        "percent": null
+      },
+      {
+        "key": "avis",
+        "evaluated": 0,
+        "unevaluated": 5,
+        "maxEvaluated": 0,
+        "profileWeight": 25,
+        "weightedPoints": null,
+        "percent": null
+      },
+      {
+        "key": "contenu",
+        "evaluated": 0,
+        "unevaluated": 6,
+        "maxEvaluated": 0,
+        "profileWeight": 21,
+        "weightedPoints": null,
+        "percent": null
+      },
+      {
+        "key": "activite",
+        "evaluated": 0,
+        "unevaluated": 2,
+        "maxEvaluated": 0,
+        "profileWeight": 5,
+        "weightedPoints": null,
+        "percent": null
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 0,
+        "unevaluated": 3,
+        "maxEvaluated": 0,
+        "profileWeight": 12,
+        "weightedPoints": null,
+        "percent": null
+      }
+    ],
+    "indices": {
+      "visibilite": 100,
+      "confiance": 75,
+      "conversion": null
+    },
+    "priorities": [
+      {
+        "family": "infos",
+        "criterion": "contact",
+        "lost": 2,
+        "score": 8.833333
+      }
+    ],
+    "projectedPack": {
+      "projete": 97,
+      "corriges": 2,
+      "ameliorables": 2
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "compliant": 6,
+        "partial": 2,
+        "not_evaluated": 21
+      },
+      "verification": {
+        "manually_confirmed": 8,
+        "not_verified": 21
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 86,
+      "visibilityScore": 100,
+      "trustScore": 75,
+      "conversionScore": null,
+      "sectorProfile": "default",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}

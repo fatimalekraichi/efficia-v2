@@ -1,0 +1,204 @@
+{
+  "id": "pack-projection",
+  "businessName": "Pack Projection",
+  "city": "Charleroi",
+  "activity": "Artisan",
+  "profile": "artisan",
+  "data": {
+    "note": 4.9,
+    "nbAvis": 120,
+    "nbPhotos": 4,
+    "descriptionLongueur": 120,
+    "position": 1,
+    "moyennesConcurrents": {
+      "avis": 70,
+      "note": 4.5,
+      "photos": 18
+    },
+    "requeteTestee": "artisan charleroi"
+  },
+  "criteria": {
+    "revendiquee": 0,
+    "categoriePrincipale": 0,
+    "categoriesSecondaires": 0,
+    "horaires": 0,
+    "contact": 0,
+    "adresse": 0,
+    "attributs": 0,
+    "nap": 0,
+    "logoCouverture": 0,
+    "nombrePhotos": 0,
+    "photoRecente": 0,
+    "varietePhotos": 0,
+    "qualitePhotos": 0,
+    "noteMoyenne": 6,
+    "volumeAvis": 5,
+    "recenceAvis": 4,
+    "tauxReponseAvis": 0,
+    "qualiteReponsesAvis": 0,
+    "descriptionRemplie": 0,
+    "descriptionQualite": 0,
+    "servicesPresents": 0,
+    "servicesDecrits": 0,
+    "questionsReponses": 0,
+    "liensAction": 0,
+    "publicationRecente": 3,
+    "rythmePublication": 2,
+    "classementLocal": 6,
+    "attractiviteConcurrents": 4,
+    "recherchesSpecifiques": 2
+  },
+  "verification": {
+    "revendiquee": "manual",
+    "categoriePrincipale": "manual",
+    "categoriesSecondaires": "manual",
+    "horaires": "manual",
+    "contact": "manual",
+    "adresse": "manual",
+    "attributs": "manual",
+    "nap": "manual",
+    "logoCouverture": "manual",
+    "nombrePhotos": "observed",
+    "photoRecente": "manual",
+    "varietePhotos": "manual",
+    "qualitePhotos": "manual",
+    "noteMoyenne": "observed",
+    "volumeAvis": "observed",
+    "recenceAvis": "manual",
+    "tauxReponseAvis": "manual",
+    "qualiteReponsesAvis": "manual",
+    "descriptionRemplie": "manual",
+    "descriptionQualite": "manual",
+    "servicesPresents": "manual",
+    "servicesDecrits": "manual",
+    "questionsReponses": "manual",
+    "liensAction": "manual",
+    "publicationRecente": "manual",
+    "rythmePublication": "manual",
+    "classementLocal": "observed",
+    "attractiviteConcurrents": "observed",
+    "recherchesSpecifiques": "manual"
+  },
+  "expected": {
+    "globalScore": 31,
+    "rawScore": 31.2,
+    "answeredCriteria": 29,
+    "totalCriteria": 29,
+    "evaluatedCategories": [
+      "informations",
+      "photos",
+      "avis",
+      "contenu",
+      "activite",
+      "visibilite"
+    ],
+    "denominatorWeight": 100,
+    "categories": [
+      {
+        "key": "informations",
+        "evaluated": 8,
+        "unevaluated": 0,
+        "maxEvaluated": 22,
+        "profileWeight": 24,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "photos",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 15,
+        "profileWeight": 12,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "avis",
+        "evaluated": 5,
+        "unevaluated": 0,
+        "maxEvaluated": 25,
+        "profileWeight": 27,
+        "weightedPoints": 16.2,
+        "percent": 0.6
+      },
+      {
+        "key": "contenu",
+        "evaluated": 6,
+        "unevaluated": 0,
+        "maxEvaluated": 21,
+        "profileWeight": 22,
+        "weightedPoints": 0,
+        "percent": 0
+      },
+      {
+        "key": "activite",
+        "evaluated": 2,
+        "unevaluated": 0,
+        "maxEvaluated": 5,
+        "profileWeight": 3,
+        "weightedPoints": 3,
+        "percent": 1
+      },
+      {
+        "key": "visibilite",
+        "evaluated": 3,
+        "unevaluated": 0,
+        "maxEvaluated": 12,
+        "profileWeight": 12,
+        "weightedPoints": 12,
+        "percent": 1
+      }
+    ],
+    "indices": {
+      "visibilite": 65,
+      "confiance": 35,
+      "conversion": 0
+    },
+    "priorities": [
+      {
+        "family": "reputation",
+        "criterion": "tauxReponseAvis",
+        "lost": 6,
+        "score": 12.5
+      },
+      {
+        "family": "offre",
+        "criterion": "descriptionRemplie",
+        "lost": 4,
+        "score": 12
+      },
+      {
+        "family": "visibilite",
+        "criterion": "categoriePrincipale",
+        "lost": 4,
+        "score": 11.5
+      }
+    ],
+    "projectedPack": {
+      "projete": 97,
+      "corriges": 21,
+      "ameliorables": 21
+    },
+    "criteriaStatusCounts": {
+      "evaluation": {
+        "deficient": 21,
+        "compliant": 8
+      },
+      "verification": {
+        "manually_confirmed": 24,
+        "observed": 5
+      }
+    },
+    "payloadSummary": {
+      "scoreEfficia": 31,
+      "visibilityScore": 65,
+      "trustScore": 35,
+      "conversionScore": 0,
+      "sectorProfile": "artisan",
+      "scoringVersion": "score-efficia-v4",
+      "criteriaCount": 29,
+      "metricsCount": 5,
+      "notEvaluatedNullPoints": true
+    }
+  }
+}
