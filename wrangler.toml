@@ -1,0 +1,13 @@
+name = "efficia-v2"
+compatibility_date = "2026-07-15"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "efficia_knowledge_base"
+database_id = "deabe0a6-d130-418b-8b88-59b9ead17970"
+
+[[d1_databases]]
+binding = "ORDERS_DB"
+database_name = "efficia_orders"
+database_id = "216a7d6a-56d2-4a08-b472-c3462f3280f7"

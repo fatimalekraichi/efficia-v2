@@ -4,22 +4,31 @@ const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subs
 
 const PRODUCT_GROUPS = [
   {
+    code: "audit",
     priceEnvKey: "STRIPE_PRICE_AUDIT",
     productName: "Audit fiche Google",
     prospectGroupName: "Prospects - Audit (paiement en cours)",
     clientGroupName: "Clients - Audit",
+    taskType: "audit_to_do",
+    taskTitle: "Audit à réaliser",
   },
   {
+    code: "visibility",
     priceEnvKey: "STRIPE_PRICE_VISIBILITY",
     productName: "Pack Visibilité Google",
     prospectGroupName: "Prospects - Pack Visibilité (paiement en cours)",
     clientGroupName: "Clients - Pack Visibilité",
+    taskType: "google_optimization_to_do",
+    taskTitle: "Optimisation Google à réaliser",
   },
   {
+    code: "performance",
     priceEnvKey: "STRIPE_PRICE_PERFORMANCE",
     productName: "Pack Performance",
     prospectGroupName: "Prospects - Pack Performance (paiement en cours)",
     clientGroupName: "Clients - Pack Performance",
+    taskType: "performance_pack_to_do",
+    taskTitle: "Pack Performance à réaliser",
   },
 ];
 
@@ -91,6 +100,8 @@ const getCustomerEmail = (session) => normalizeText(
 
 const getCustomerName = (session) => normalizeText(session?.customer_details?.name);
 
+const splitFirstName = (fullName) => normalizeText(fullName).split(/\s+/).filter(Boolean)[0] || "";
+
 const getExpandedPriceId = (session) => {
   const lineItems = session?.line_items?.data || session?.line_items;
   if (!Array.isArray(lineItems) || !lineItems.length) return "";
@@ -131,6 +142,297 @@ const getSessionPriceId = async ({ session, stripeSecretKey }) => {
 const findProductByPriceId = ({ priceId, env }) => PRODUCT_GROUPS.find((product) => (
   normalizeText(env[product.priceEnvKey]) === priceId
 ));
+
+const findProductByCode = (code) => PRODUCT_GROUPS.find((product) => product.code === normalizeText(code));
+
+const getProductForSession = async ({ session, env }) => {
+  const metadataProductCode = normalizeText(session?.metadata?.product_code);
+  const priceId = await getSessionPriceId({
+    session,
+    stripeSecretKey: env.STRIPE_SECRET_KEY,
+  });
+
+  const metadataProduct = findProductByCode(metadataProductCode);
+  if (metadataProduct) {
+    return {
+      product: metadataProduct,
+      priceId,
+    };
+  }
+
+  return {
+    product: priceId ? findProductByPriceId({ priceId, env }) : null,
+    priceId,
+  };
+};
+
+const isoNow = () => new Date().toISOString();
+
+const getPaidAt = (session) => {
+  if (Number.isFinite(Number(session?.created))) {
+    return new Date(Number(session.created) * 1000).toISOString();
+  }
+  return isoNow();
+};
+
+const getOrderLeadData = (session) => {
+  const metadata = session?.metadata || {};
+  const customerName = normalizeText(metadata.customer_name || getCustomerName(session));
+  return {
+    email: getCustomerEmail(session),
+    firstName: splitFirstName(customerName),
+    customerName,
+    companyName: normalizeText(metadata.company_name),
+    city: normalizeText(metadata.city),
+    googleBusinessUrl: normalizeText(metadata.google_business_url),
+  };
+};
+
+const toSafeJson = (value) => {
+  try {
+    return JSON.stringify(value || {});
+  } catch {
+    return "{}";
+  }
+};
+
+const createOrderTaskForProduct = async ({ db, orderId, product, now }) => {
+  if (!product?.taskType || !product?.taskTitle) {
+    console.log("Order task skipped, no task mapping for product", {
+      order_id: orderId,
+      product_code: product?.code || null,
+    });
+    return {
+      created: false,
+      skipped: true,
+    };
+  }
+
+  const taskId = crypto.randomUUID();
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO order_tasks (
+      task_id,
+      order_id,
+      task_type,
+      title,
+      status,
+      offer_code,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, 'todo', ?, ?, ?)
+  `).bind(
+    taskId,
+    orderId,
+    product.taskType,
+    product.taskTitle,
+    product.code,
+    now,
+    now,
+  ).run();
+
+  const created = Number(result?.meta?.changes || 0) > 0;
+  console.log(created ? "Order task created" : "Order task already exists, skipped duplicate", {
+    order_id: orderId,
+    task_type: product.taskType,
+    task_title: product.taskTitle,
+  });
+
+  return {
+    created,
+    taskId: created ? taskId : "",
+  };
+};
+
+const createOrderItem = async ({ db, orderId, session, product, priceId, now }) => {
+  const itemId = crypto.randomUUID();
+  const amountTotal = Number(session?.amount_total || 0);
+  const currency = normalizeText(session?.currency || "eur").toLowerCase();
+
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO order_items (
+      order_item_id,
+      order_id,
+      stripe_price_id,
+      offer_code,
+      offer_name,
+      quantity,
+      amount_total,
+      currency,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).bind(
+    itemId,
+    orderId,
+    priceId || normalizeText(session?.metadata?.stripe_price_id),
+    product.code,
+    product.productName,
+    amountTotal,
+    currency,
+    now,
+  ).run();
+
+  console.log(Number(result?.meta?.changes || 0) > 0 ? "Order item recorded" : "Order item already recorded", {
+    order_id: orderId,
+    offer_code: product.code,
+    price_id: priceId || null,
+  });
+};
+
+const createTraceableOrder = async ({ session, env }) => {
+  const db = env.ORDERS_DB;
+  if (!db) {
+    throw new Error("missing_orders_db_binding");
+  }
+
+  const sessionId = normalizeText(session?.id);
+  if (!sessionId) {
+    throw new Error("missing_stripe_session_id");
+  }
+
+  const { product, priceId } = await getProductForSession({ session, env });
+  if (!product) {
+    throw new Error("unknown_product_for_order");
+  }
+
+  const lead = getOrderLeadData(session);
+  if (!lead.email) {
+    throw new Error("missing_customer_email_for_order");
+  }
+
+  const now = isoNow();
+  const paidAt = getPaidAt(session);
+  const orderId = crypto.randomUUID();
+  const amountTotal = Number(session?.amount_total || 0);
+  const currency = normalizeText(session?.currency || "eur").toLowerCase();
+  const paymentIntentId = normalizeText(session?.payment_intent);
+
+  console.log("Order persistence started", {
+    stripe_session_id: sessionId,
+    email: lead.email,
+    offer_code: product.code,
+    amount_total: amountTotal,
+    currency,
+  });
+
+  await db.prepare(`
+    INSERT OR IGNORE INTO orders (
+      order_id,
+      stripe_session_id,
+      stripe_payment_intent_id,
+      email,
+      first_name,
+      customer_name,
+      company_name,
+      city,
+      google_business_url,
+      offer_code,
+      offer_name,
+      amount_total,
+      currency,
+      status,
+      paid_at,
+      created_at,
+      updated_at,
+      raw_metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?)
+  `).bind(
+    orderId,
+    sessionId,
+    paymentIntentId,
+    lead.email,
+    lead.firstName,
+    lead.customerName,
+    lead.companyName,
+    lead.city,
+    lead.googleBusinessUrl,
+    product.code,
+    product.productName,
+    amountTotal,
+    currency,
+    paidAt,
+    now,
+    now,
+    toSafeJson(session?.metadata),
+  ).run();
+
+  const order = await db.prepare(`
+    SELECT order_id, stripe_session_id, offer_code, status
+    FROM orders
+    WHERE stripe_session_id = ?
+    LIMIT 1
+  `).bind(sessionId).first();
+
+  if (!order?.order_id) {
+    throw new Error("order_lookup_failed_after_insert");
+  }
+
+  await db.prepare(`
+    UPDATE orders
+    SET
+      stripe_payment_intent_id = COALESCE(NULLIF(?, ''), stripe_payment_intent_id),
+      email = ?,
+      first_name = ?,
+      customer_name = ?,
+      company_name = ?,
+      city = ?,
+      google_business_url = ?,
+      offer_code = ?,
+      offer_name = ?,
+      amount_total = ?,
+      currency = ?,
+      status = 'paid',
+      paid_at = ?,
+      updated_at = ?,
+      raw_metadata = ?
+    WHERE stripe_session_id = ?
+  `).bind(
+    paymentIntentId,
+    lead.email,
+    lead.firstName,
+    lead.customerName,
+    lead.companyName,
+    lead.city,
+    lead.googleBusinessUrl,
+    product.code,
+    product.productName,
+    amountTotal,
+    currency,
+    paidAt,
+    now,
+    toSafeJson(session?.metadata),
+    sessionId,
+  ).run();
+
+  await createOrderItem({
+    db,
+    orderId: order.order_id,
+    session,
+    product,
+    priceId,
+    now,
+  });
+
+  const taskResult = await createOrderTaskForProduct({
+    db,
+    orderId: order.order_id,
+    product,
+    now,
+  });
+
+  console.log("Order persistence completed", {
+    order_id: order.order_id,
+    stripe_session_id: sessionId,
+    offer_code: product.code,
+    status: "paid",
+    task_created: taskResult.created,
+    task_skipped: taskResult.skipped || false,
+  });
+
+  return {
+    orderId: order.order_id,
+    product,
+  };
+};
 
 const findMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
   const response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
@@ -461,6 +763,27 @@ const handleStripeWebhook = async (context) => {
       email: session?.customer_details?.email || session?.customer_email || null,
       payment_status: session?.payment_status || null,
     });
+
+    try {
+      const orderResult = await createTraceableOrder({
+        session,
+        env: context.env,
+      });
+      console.log("Stripe order workflow secured", {
+        session_id: session?.id,
+        order_id: orderResult.orderId,
+        offer_code: orderResult.product?.code || null,
+      });
+    } catch (error) {
+      console.error("Order persistence failed after Stripe payment. Stripe should retry this webhook.", {
+        session_id: session?.id || null,
+        error: error?.message || String(error),
+      });
+      return jsonResponse({
+        received: false,
+        error: "Order persistence failed.",
+      }, 500);
+    }
 
     try {
       await syncPaidCustomerToMailerLite({
