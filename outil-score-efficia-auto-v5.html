@@ -465,13 +465,82 @@
     h1,h2,h3{break-after:avoid;page-break-after:avoid}
   }
 </style>
+<style>
+/* ===== Audit Efficia Premium — produit payant, mise en page fluide ===== */
+.aud-page{background:#fff;color:#0b1526;padding:14mm 16mm 20mm}
+.aud-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:9mm}
+.aud-etiquette{color:#1e3a8a;font-weight:800}
+.aud-body{display:block}
+.aud-block{margin:0 0 7mm}
+.aud-pied span:first-child{font-weight:700;color:#94a3b8}
+.aud-h2{font-size:1.32rem;font-weight:800;letter-spacing:-.01em;margin:0 0 4mm;padding-bottom:3mm;border-bottom:2px solid #eef2f7;color:#0b1526}
+.aud-p{color:#33445c;line-height:1.6;font-size:.9rem;margin:0 0 3mm}
+.aud-lead{color:#26374d;line-height:1.65;font-size:1rem;margin:0 0 4mm}
+.aud-cover{padding-top:4mm}
+.aud-cover-badge{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#1e3a8a;background:#eff4ff;border:1px solid #dbe6ff;border-radius:999px;padding:5px 14px;margin-bottom:9mm}
+.aud-cover-title{font-size:2.3rem;font-weight:800;letter-spacing:-.02em;margin:0 0 3mm}
+.aud-cover-sub{font-size:1.05rem;color:#5b6b81;margin:0 0 1mm}
+.aud-cover-date{font-size:.84rem;color:#94a3b8;margin:0 0 9mm}
+.aud-cover-score{display:flex;align-items:center;gap:24px;margin-bottom:8mm}
+.aud-band{font-size:1.12rem;font-weight:800;margin-bottom:2mm}
+.aud-cover-lead{font-size:.98rem;color:#33445c;line-height:1.5;max-width:98mm}
+.aud-chips{display:flex;flex-wrap:wrap;gap:8px}
+.aud-chip{font-size:.8rem;color:#33445c;background:#f6f9ff;border:1px solid #e3ecfb;border-radius:8px;padding:6px 11px}
+.aud-chip b{color:#0b1526}
+.aud-kpis{display:flex;gap:14px;margin-top:2mm}
+.aud-kpi{flex:1;background:#f8fbff;border:1px solid #e6eef9;border-radius:12px;padding:12px 14px}
+.aud-kpi .n{font-size:1.5rem;font-weight:800;line-height:1.1}
+.aud-kpi .l{font-size:.68rem;color:#7c8aa0;text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.aud-pillar{background:#fff;border:1px solid #e8edf4;border-left:4px solid #1e3a8a;border-radius:12px;padding:5mm 6mm}
+.aud-pillar-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm}
+.aud-pillar-head h3{font-size:1.08rem;font-weight:800;margin:0}
+.aud-score-badge{font-size:.9rem;font-weight:800;padding:3px 11px;border-radius:8px}
+.aud-bars .aud-bar{margin-bottom:4mm}
+.aud-bar-top{display:flex;justify-content:space-between;font-size:.86rem;margin-bottom:4px}
+.aud-bar-track{height:9px;background:#eef2f7;border-radius:6px;overflow:hidden}
+.aud-bar-fill{height:100%;border-radius:6px}
+.aud-list{list-style:none;margin:0;padding:0}
+.aud-li{display:flex;gap:9px;padding:2.6mm 0;border-bottom:1px solid #f1f5f9;font-size:.89rem;color:#33445c;line-height:1.5}
+.aud-li .mk{flex:none;font-weight:800}
+.aud-li--strong .mk{color:#059669}
+.aud-li--weak .mk{color:#d97706}
+.aud-rec{border:1px solid #e8edf4;border-radius:12px;padding:5mm 6mm}
+.aud-rec-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:3mm}
+.aud-rec-head h3{font-size:1.02rem;font-weight:800;margin:0}
+.aud-impact{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.aud-impact--high{background:#fef2f2;color:#dc2626}
+.aud-impact--mid{background:#fffbeb;color:#d97706}
+.aud-impact--low{background:#eff6ff;color:#2563eb}
+.aud-rec p{margin:0 0 2mm;font-size:.89rem;color:#33445c;line-height:1.55}
+.aud-rec .gain{font-size:.82rem;color:#0b7a5b;font-weight:700;margin:0}
+.aud-tier-title{font-size:.95rem;font-weight:800;color:#0b1526;margin:0 0 4mm}
+.aud-proj{display:flex;align-items:center;justify-content:center;gap:26px;background:#f4faf7;border:1px solid #cdeadd;border-radius:14px;padding:6mm}
+.aud-proj .col{text-align:center}
+.aud-proj .lab{font-size:.7rem;color:#7c8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2mm}
+.aud-proj .num{font-size:2rem;font-weight:800}
+.aud-proj .arrow{font-size:1.6rem;color:#059669}
+.aud-close{background:#0b1e3a;color:#eaf1ff;border-radius:14px;padding:7mm;font-size:.96rem;line-height:1.62}
+.aud-sign{margin-top:4mm;font-size:.84rem;color:#5b6b81;line-height:1.5}
+.aud-opps{list-style:none;margin:2mm 0 0;padding:0}
+.aud-opps li{padding:2.6mm 0 2.6mm 22px;position:relative;font-size:.89rem;color:#33445c;line-height:1.5;border-bottom:1px solid #f1f5f9}
+.aud-opps li:before{content:"\2192";position:absolute;left:0;color:#1e3a8a;font-weight:800}
+.aud-prob-lead{font-weight:600;color:#0b1526}
+.aud-reco{background:#f4f8ff;border:1px solid #dbe6ff;border-left:3px solid #1e3a8a;border-radius:8px;padding:9px 12px;margin:1mm 0 2mm;font-size:.89rem;color:#1e3a5f;line-height:1.5}
+.aud-cmp{margin:1mm 0 3mm}
+.aud-cmp-row{display:flex;align-items:center;gap:9px;margin:4px 0;font-size:.82rem}
+.aud-cmp-lab{flex:none;width:38mm;color:#5b6b81}
+.aud-cmp-track{flex:1;height:13px;background:#eef2f7;border-radius:6px;overflow:hidden}
+.aud-cmp-fill{height:100%;border-radius:6px}
+.aud-cmp-val{flex:none;width:16mm;text-align:right;font-weight:800;color:#0b1526}
+</style>
 </head>
 <body>
 <div id="formulaire">
   <div class="score-flottant">
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
     <div class="val"><span id="score-live">0</span>/100</div>
-    <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer et télécharger le PDF</button>
+    <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
+    <button class="btn btn-vert" id="btn-audit-premium" onclick="telechargerAuditPremium()">★ Générer l'Audit Premium (99 €)</button>
     <button class="btn btn-blanc" onclick="apercuImpression()">Aperçu avant impression</button>
   </div>
 
@@ -567,7 +636,8 @@
 
 <div id="rapport">
   <div class="actions-rapport" style="padding-top:20px">
-    <button class="btn" id="btn-pdf-rapport" onclick="telechargerPDF()">Générer et télécharger le PDF</button>
+    <button class="btn" id="btn-pdf-rapport" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
+    <button class="btn btn-vert" id="btn-audit-premium-rapport" onclick="telechargerAuditPremium()">★ Générer l'Audit Premium (99 €)</button>
     <button class="btn" onclick="window.print()">Aperçu avant impression</button>
     <button class="btn" style="background:var(--gris)" onclick="document.body.classList.remove('mode-rapport')">← Revenir à l'analyse</button>
   </div>
@@ -4806,6 +4876,366 @@ function ajouterLiensPdfPourPage(pdf, page){
     const height = (rect.height / pageRect.height) * 297;
     pdf.link(x, y, width, height, {url});
   });
+}
+
+/* ================= AUDIT EFFICIA PREMIUM (produit payant) =================
+   Chemin de génération DÉDIÉ, indépendant du diagnostic gratuit.
+   - contenu par sections, sans page de vente ni CTA commercial ;
+   - pagination automatique : autant de pages A4 que nécessaire, sans
+     jamais couper un bloc (empilement jusqu'au pied de page, puis saut) ;
+   - réutilise les calculs, scores, priorités et données existants. */
+
+function auditHeaderHtml(){
+  return `<header class="rapport-header aud-header">${logoRapportHtml()}<span class="rap-etiquette aud-etiquette">Audit Efficia™</span></header>`;
+}
+function auditFooterHtml(){
+  return `<div class="pied aud-pied"><span>Efficia Digital — Audit Efficia™</span><span class="pagination-rapport">Page</span></div>`;
+}
+function auditStatutIndice(v){
+  if(v === null || v === undefined) return {label:"À confirmer", couleur:"#64748b", fond:"#f1f5f9"};
+  if(v >= 75) return {label:"Solide", couleur:"#059669", fond:"#ecfdf5"};
+  if(v >= 50) return {label:"À renforcer", couleur:"#d97706", fond:"#fffbeb"};
+  return {label:"Prioritaire", couleur:"#dc2626", fond:"#fef2f2"};
+}
+
+function construireBlocsAuditPremium(){
+  const detail = calculScoreDetail();
+  const score = Math.round(detail.total);
+  const bande = BANDES.find(b => score >= b.min) || BANDES[BANDES.length - 1];
+  const entreprise = document.getElementById("p-entreprise").value || "Votre entreprise";
+  const activite = corrigerLibelleRapport(document.getElementById("p-activite").value || "");
+  const ville = document.getElementById("p-ville").value || "";
+  const dateStr = new Date().toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
+  const indices = indicesProspect();
+  const proj = scoreProjetePack();
+  const d = donneesAnalyse || {};
+  const chunk = (arr, n) => { const out = []; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; };
+
+  const forces = [];
+  const faiblesses = [];
+  const categoriesTriees = [];
+  detail.categories.forEach(c => {
+    const pct = c.pct === null ? 0 : Math.round(100 * c.pct);
+    categoriesTriees.push({nom:c.cat.cat, key:c.cat.key, pct, evalue:!!c.maxEvalue, pts:Math.round(c.pointsPonderes || 0), max:c.poidsProfil});
+    c.cat.criteres.forEach(cr => {
+      const p = lirePoints(cr.id);
+      if(p === null) return;
+      if(p >= cr.max) forces.push(cr);
+      else faiblesses.push({critere:cr, perdu:cr.max - p});
+    });
+  });
+  const catsEval = categoriesTriees.filter(c => c.evalue);
+  const fort = [...catsEval].sort((a,b) => b.pct - a.pct)[0];
+  const faible = [...catsEval].sort((a,b) => a.pct - b.pct)[0];
+
+  const parFamille = new Map();
+  faiblesses.forEach(f => {
+    const fam = FAMILLES_PRIORITES.find(x => x.criteres.includes(f.critere.key));
+    if(!fam) return;
+    const cur = parFamille.get(fam.key) || {fam, perdu:0};
+    cur.perdu += f.perdu;
+    parFamille.set(fam.key, cur);
+  });
+  const famList = [...parFamille.values()].sort((a,b) => b.perdu - a.perdu);
+
+  const blocs = [];
+  const push = (html) => blocs.push(html);
+
+  /* ---- Couverture ---- */
+  const chips = [];
+  if(estNombre(d.note)) chips.push(`<span class="aud-chip">Note <b>${fmtNote(d.note)} ★</b></span>`);
+  if(estNombre(d.nbAvis)) chips.push(`<span class="aud-chip">Avis <b>${nEntier(d.nbAvis)}</b></span>`);
+  if(estNombre(d.nbPhotos)) chips.push(`<span class="aud-chip">Photos <b>${nEntier(d.nbPhotos)}</b></span>`);
+  if(estNombre(d.position)) chips.push(`<span class="aud-chip">Position <b>${d.position === 0 ? "non visible" : d.position + "e"}</b></span>`);
+  push(`<section class="aud-block aud-cover">
+    <div class="aud-cover-badge">Audit Efficia™</div>
+    <h1 class="aud-cover-title">${entreprise}</h1>
+    <p class="aud-cover-sub">${[activite, ville].filter(Boolean).join(" · ") || "Fiche Google Business"}</p>
+    <p class="aud-cover-date">Audit réalisé le ${dateStr}</p>
+    <div class="aud-cover-score">${scoreGaugeHtml(score)}
+      <div><div class="aud-band" style="color:${bande.couleur}">${bande.nom}</div>
+      <div class="aud-cover-lead">${phraseDirecteScore(score).texte}</div></div>
+    </div>
+    ${chips.length ? `<div class="aud-chips">${chips.join("")}</div>` : ""}
+  </section>`);
+
+  /* ---- Résumé exécutif ---- */
+  const resume = `La fiche Google Business de ${entreprise} obtient un Score Efficia™ de ${score}/100, ce qui la situe dans la catégorie « ${bande.nom} ». ${fort ? `Son principal point d'appui est « ${fort.nom.toLowerCase()} ». ` : ""}${faible ? `Le levier de progression le plus important concerne « ${faible.nom.toLowerCase()} ». ` : ""}Ce rapport analyse les trois piliers de performance de la fiche, la situe face à son environnement concurrentiel, puis détaille un plan d'action priorisé pour renforcer sa visibilité, sa crédibilité et sa capacité à convertir une recherche en prise de contact.`;
+  push(`<section class="aud-block">
+    <h2 class="aud-h2">Résumé exécutif</h2>
+    <p class="aud-lead">${resume}</p>
+    <div class="aud-kpis">
+      <div class="aud-kpi"><div class="n" style="color:${bande.couleur}">${score}</div><div class="l">Score actuel / 100</div></div>
+      <div class="aud-kpi"><div class="n" style="color:#059669">${proj.projete}</div><div class="l">Potentiel atteignable</div></div>
+      ${(d.concurrents && d.concurrents.length) ? `<div class="aud-kpi"><div class="n">${d.concurrents.length}</div><div class="l">Concurrents analysés</div></div>` : ""}
+    </div>
+  </section>`);
+
+  /* ---- Trois piliers ---- */
+  push(`<section class="aud-block"><h2 class="aud-h2">Vos trois piliers de performance</h2>
+    <p class="aud-p">Le Score Efficia™ se décompose en trois piliers qui suivent le parcours d'un prospect : être trouvé (<b>Visibilité</b>), inspirer confiance (<b>Confiance</b>), puis déclencher le contact (<b>Performance</b>).</p></section>`);
+  const pil = (label, val, txt) => {
+    const s = auditStatutIndice(val);
+    return `<section class="aud-block aud-pillar"><div class="aud-pillar-head"><h3>${label}</h3>
+      <span class="aud-score-badge" style="background:${s.fond};color:${s.couleur}">${val === null ? "À confirmer" : val + " / 100"}</span></div>
+      <p class="aud-p" style="margin:0">${txt}</p></section>`;
+  };
+  const txtVis = indices.visibilite === null ? "La visibilité locale n'a pas pu être entièrement mesurée automatiquement ; plusieurs critères demandent une confirmation."
+    : indices.visibilite >= 75 ? `Votre fiche ressort bien sur les recherches locales pertinentes${estNombre(d.position) && d.position > 0 ? ` (position observée : ${d.position === 1 ? "1re" : d.position + "e"})` : ""}.`
+    : indices.visibilite >= 50 ? "Votre présence locale est correcte mais perfectible : catégories, mots-clés locaux et classement peuvent être renforcés."
+    : `Premier chantier : la fiche n'apparaît pas assez sur les recherches de ${activite || "votre activité"}${ville ? " à " + ville : ""}.`;
+  const txtConf = indices.confiance === null ? "Les signaux de confiance demandent une vérification complémentaire."
+    : indices.confiance >= 75 ? `Vos avis et signaux de réputation inspirent confiance${estNombre(d.note) && estNombre(d.nbAvis) ? ` (${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis)` : ""}.`
+    : indices.confiance >= 50 ? "Votre réputation est correcte mais peut être consolidée : volume, récence et réponses aux avis."
+    : "Vos signaux de confiance sont à renforcer en priorité : volume d'avis, réponses et note visible.";
+  const txtPerf = indices.conversion === null ? "Plusieurs éléments de conversion nécessitent une confirmation manuelle."
+    : indices.conversion >= 75 ? "Votre fiche facilite le passage à l'action : offre claire et contact accessible."
+    : indices.conversion >= 50 ? "La conversion peut être améliorée : description, services et liens de contact plus complets."
+    : "La fiche transforme encore mal les visites en contacts : description, services et liens d'action sont à compléter.";
+  push(pil("Visibilité", indices.visibilite, txtVis));
+  push(pil("Confiance", indices.confiance, txtConf));
+  push(pil("Performance", indices.conversion, txtPerf));
+
+  /* ---- Analyse détaillée par domaine ---- */
+  push(`<section class="aud-block"><h2 class="aud-h2">Analyse détaillée par domaine</h2>
+    <div class="aud-bars">${[...categoriesTriees].sort((a,b) => a.pct - b.pct).map(c => {
+      const col = c.pct >= 70 ? "#059669" : c.pct >= 45 ? "#d97706" : "#dc2626";
+      return `<div class="aud-bar"><div class="aud-bar-top"><span>${c.nom}</span><strong>${c.evalue ? c.pts + "/" + c.max : "À confirmer"}</strong></div>
+        <div class="aud-bar-track"><div class="aud-bar-fill" style="width:${c.pct}%;background:${c.evalue ? col : "#cbd5e1"}"></div></div></div>`;
+    }).join("")}</div></section>`);
+
+  /* ---- Points forts ---- */
+  if(forces.length){
+    const items = forces.map(cr => `<li class="aud-li aud-li--strong"><span class="mk">✓</span><span>${forceRapport(cr) || "Point maîtrisé sur votre fiche."}</span></li>`);
+    chunk(items, 5).forEach((grp, i) => push(`<section class="aud-block">${i === 0 ? '<h2 class="aud-h2">Vos points forts</h2>' : ''}<ul class="aud-list">${grp.join("")}</ul></section>`));
+  }
+
+  /* ---- Benchmark (seulement si données concurrentielles réelles) ---- */
+  const benchTable = benchmarkTableHtml();
+  if(benchTable){
+    push(`<section class="aud-block"><h2 class="aud-h2">Comparaison concurrentielle</h2>
+      <p class="aud-p">Votre fiche est comparée aux fiches concurrentes visibles sur votre recherche locale principale${estTexte(d.requeteTestee) ? ` (« ${libelleRechercheRapport(d.requeteTestee)} »)` : ""}.</p>${benchTable}</section>`);
+    const ecarts = ecartsExpliquesHtml();
+    if(ecarts) push(`<section class="aud-block">${ecarts}</section>`);
+  }
+
+  /* ---- Diagnostic des freins : constat → explication → illustration → reco ---- */
+  const compAvg = (key) => {
+    const arr = (d.concurrents || []).map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0);
+    return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+  };
+  const barreComparative = (valVous, valEux, unite) => {
+    const mx = Math.max(valVous, valEux, 1);
+    const ok = valVous >= valEux;
+    return `<div class="aud-cmp">
+      <div class="aud-cmp-row"><span class="aud-cmp-lab">Votre fiche</span><div class="aud-cmp-track"><div class="aud-cmp-fill" style="width:${Math.round(100*valVous/mx)}%;background:${ok ? "#059669" : "#dc2626"}"></div></div><span class="aud-cmp-val">${valVous}${unite || ""}</span></div>
+      <div class="aud-cmp-row"><span class="aud-cmp-lab">Moyenne concurrents</span><div class="aud-cmp-track"><div class="aud-cmp-fill" style="width:${Math.round(100*valEux/mx)}%;background:#94a3b8"></div></div><span class="aud-cmp-val">${valEux}${unite || ""}</span></div>
+    </div>`;
+  };
+  const rqTest = estTexte(d.requeteTestee) ? libelleRechercheRapport(d.requeteTestee) : "";
+  const contenuProbleme = (key) => {
+    if(key === "reputation"){
+      const avg = compAvg("avis");
+      let constat, illustration = "";
+      if(estNombre(d.nbAvis) && estNombre(avg)){
+        const a = Math.round(avg);
+        constat = `Votre fiche affiche ${nEntier(d.nbAvis)} avis${estNombre(d.note) ? ` pour une note de ${fmtNote(d.note)}/5` : ""}, contre ${a} avis en moyenne chez les concurrents analysés.`;
+        illustration = barreComparative(nEntier(d.nbAvis), a, "");
+      } else if(estNombre(d.nbAvis)){
+        constat = `Votre fiche compte ${nEntier(d.nbAvis)} avis${estNombre(d.note) ? `, note ${fmtNote(d.note)}/5` : ""}${estNombre(d.reponsesProprietaire) ? `, avec ${nEntier(d.reponsesProprietaire)} réponse(s) du propriétaire` : ""}.`;
+      } else {
+        constat = "Le signal de réputation (nombre d'avis, réponses, récence) est faible ou incomplet sur votre fiche.";
+      }
+      return {constat, explication:"Les avis sont le premier élément qu'un prospect compare entre deux fiches. Un volume ou une fraîcheur inférieurs à la concurrence le poussent souvent à contacter l'autre entreprise avant même de vous appeler.", illustration};
+    }
+    if(key === "photos"){
+      const avg = compAvg("photos");
+      let constat, illustration = "";
+      if(estNombre(d.nbPhotos) && estNombre(avg)){
+        const p = Math.round(avg);
+        constat = `Votre fiche présente ${nEntier(d.nbPhotos)} photos, contre ${p} en moyenne chez les concurrents analysés.`;
+        illustration = barreComparative(nEntier(d.nbPhotos), p, "");
+      } else if(estNombre(d.nbPhotos)){
+        constat = `Votre fiche présente ${nEntier(d.nbPhotos)} photos.`;
+      } else {
+        constat = "Le volume et la variété de vos photos ne sont pas suffisants pour rassurer un prospect qui compare.";
+      }
+      return {constat, explication:"Les photos sont la première preuve visuelle de votre sérieux. Une fiche moins fournie que ses concurrentes paraît moins active et moins fiable au moment du choix.", illustration};
+    }
+    if(key === "visibilite"){
+      let constat;
+      if(estNombre(d.position) && d.position > 0){
+        constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche apparaît en position ${d.position === 1 ? "1re" : d.position + "e"}.`;
+      } else if(estNombre(d.position) && d.position === 0){
+        constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
+      } else {
+        constat = "La cohérence de votre fiche (catégorie, mots-clés locaux, zone desservie) limite sa visibilité sur les recherches qui comptent.";
+      }
+      return {constat, explication:"La grande majorité des clics se concentre sur les trois premières fiches locales. Être plus bas — ou absent — signifie que des prospects choisissent un concurrent sans même voir votre fiche.", illustration:""};
+    }
+    if(key === "offre"){
+      const bits = [];
+      if(estNombre(d.descriptionLongueur)) bits.push(d.descriptionLongueur < 200 ? `une description très courte (${nEntier(d.descriptionLongueur)} caractères)` : `une description de ${nEntier(d.descriptionLongueur)} caractères`);
+      if(estNombre(d.nbServices)) bits.push(`${nEntier(d.nbServices)} service(s) listé(s)`);
+      const constat = bits.length ? `Votre fiche présente ${bits.join(" et ")}.` : "Votre offre (description, services, raisons de vous contacter) n'est pas assez explicite sur la fiche.";
+      return {constat, explication:"Un prospect décide en quelques secondes. Si votre spécialité et vos services ne sont pas clairs immédiatement, il ne fait pas l'effort de comprendre : il passe à la fiche suivante.", illustration:""};
+    }
+    if(key === "infos"){
+      return {constat:"Certaines informations essentielles de la fiche (revendication, horaires, contact, adresse) sont incomplètes ou à confirmer.", explication:"Une information manquante ou incohérente crée un doute. Sur une décision aussi rapide, le doute se traduit presque toujours par un appel au concurrent.", illustration:""};
+    }
+    if(key === "activite"){
+      return {constat:"Votre fiche montre peu de signes d'activité récente (publications, actualités).", explication:"Une fiche sans activité récente peut sembler à l'abandon. À l'inverse, une fiche vivante rassure et signale, à Google comme aux clients, que l'entreprise est bien en activité.", illustration:""};
+    }
+    return {constat:"Ce point présente une marge de progression mesurable.", explication:"Le corriger renforce la lisibilité et la crédibilité de la fiche auprès d'un prospect qui compare.", illustration:""};
+  };
+
+  push(`<section class="aud-block"><h2 class="aud-h2">Diagnostic : vos freins, expliqués et priorisés</h2>
+    <p class="aud-p">Pour chaque frein identifié : ce que nous avons observé, pourquoi il vous coûte des clients, et l'action prioritaire pour le corriger. Les freins sont classés par impact.</p></section>`);
+  if(famList.length){
+    const tiers = {high:[], mid:[], low:[]};
+    famList.forEach(r => {
+      const t = (r.fam.impact >= 4.5 || r.perdu >= 4) ? "high" : (r.fam.impact >= 3.5 || r.perdu >= 2) ? "mid" : "low";
+      tiers[t].push(r);
+    });
+    const meta = {high:["Impact élevé","aud-impact--high"], mid:["Impact moyen","aud-impact--mid"], low:["Impact faible","aud-impact--low"]};
+    ["high","mid","low"].forEach(t => {
+      tiers[t].forEach((r, i) => {
+        const c = contenuProbleme(r.fam.key);
+        push(`<section class="aud-block aud-rec">${i === 0 ? `<h3 class="aud-tier-title">${meta[t][0]}</h3>` : ""}
+          <div class="aud-rec-head"><h3>${r.fam.label}</h3><span class="aud-impact ${meta[t][1]}">${meta[t][0]}</span></div>
+          <p class="aud-prob-lead">Constat — ${c.constat}</p>
+          <p>Pourquoi c'est un frein — ${c.explication}</p>
+          ${c.illustration}
+          <div class="aud-reco"><b>Recommandation :</b> ${r.fam.action}</div>
+          <p class="gain">≈ ${Math.round(r.perdu)} points de score à regagner</p></section>`);
+      });
+    });
+  } else {
+    push(`<section class="aud-block aud-rec"><p>Votre fiche est remarquablement bien tenue : aucun frein majeur n'a été détecté. Les optimisations restantes relèvent de l'entretien régulier — photos récentes, réponses aux avis, publications.</p></section>`);
+  }
+
+  /* ---- Conclusion (pilotée par les données) ---- */
+  const topProblemes = famList.slice(0, 3).map(x => x.fam.label.toLowerCase());
+  const conclusionText = famList.length
+    ? `Les freins identifiés ci-dessus ne relèvent pas du hasard : ils correspondent aux points précis où votre fiche perd aujourd'hui des clients. En les traitant dans l'ordre de priorité — à commencer par « ${topProblemes[0]} » — la fiche de ${entreprise} peut viser un Score Efficia™ de l'ordre de ${proj.projete}/100.`
+    : `La fiche de ${entreprise} est déjà solide (${score}/100). L'enjeu n'est plus la correction mais l'entretien : maintenir la fraîcheur des avis, des photos et des publications pour conserver l'avantage sur vos concurrents locaux.`;
+  push(`<section class="aud-block"><h2 class="aud-h2">Conclusion</h2><p class="aud-lead">${conclusionText}</p></section>`);
+  if(proj.projete > score + 2){
+    push(`<section class="aud-block aud-proj">
+      <div class="col"><div class="lab">Aujourd'hui</div><div class="num" style="color:${bande.couleur}">${score}<span style="font-size:1rem;color:#94a3b8">/100</span></div></div>
+      <div class="arrow">→</div>
+      <div class="col"><div class="lab">Objectif atteignable</div><div class="num" style="color:#059669">${proj.projete}<span style="font-size:1rem;color:#94a3b8">/100</span></div></div>
+    </section>`);
+  }
+  push(`<section class="aud-block aud-sign">Audit réalisé par l'équipe Efficia Digital — analyse fondée sur l'état public de la fiche Google Business au ${dateStr}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</section>`);
+
+  return blocs;
+}
+
+/* Paginateur : empile les blocs en pages A4 sans jamais couper un bloc. */
+function genererEtPaginerAuditPremium(){
+  const blocs = construireBlocsAuditPremium();
+  const container = document.getElementById("rapport-contenu");
+  document.body.classList.add("mode-rapport");
+  container.innerHTML = "";
+  const makePage = () => {
+    const page = document.createElement("div");
+    page.className = "page aud-page";
+    page.innerHTML = auditHeaderHtml() + `<div class="aud-body"></div>` + auditFooterHtml();
+    container.appendChild(page);
+    return page;
+  };
+  const deborde = (page) => {
+    const footer = page.querySelector(".pied");
+    const body = page.querySelector(".aud-body");
+    const kids = [...body.children];
+    if(!kids.length) return false;
+    const bas = kids.reduce((m, el) => Math.max(m, el.offsetTop + el.offsetHeight), 0);
+    return bas > footer.offsetTop - 10;
+  };
+  let page = makePage();
+  for(const html of blocs){
+    const wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    const el = wrap.firstElementChild;
+    if(!el) continue;
+    let body = page.querySelector(".aud-body");
+    body.appendChild(el);
+    if(deborde(page)){
+      if(body.children.length === 1){
+        // bloc seul plus haut qu'une page : on l'accepte tel quel pour ne rien perdre
+      } else {
+        body.removeChild(el);
+        page = makePage();
+        page.querySelector(".aud-body").appendChild(el);
+      }
+    }
+  }
+  const pages = [...container.querySelectorAll(".page")];
+  pages.forEach((pg, i) => {
+    const tag = pg.querySelector(".pagination-rapport");
+    if(tag){ tag.textContent = `Page ${i + 1} / ${pages.length}`; tag.setAttribute("data-page", i + 1); }
+  });
+  window.scrollTo(0, 0);
+  return pages.length > 0;
+}
+
+function nomFichierAuditPremium(){
+  const entreprise = document.getElementById("p-entreprise").value || "Entreprise";
+  const ville = document.getElementById("p-ville").value || "Ville";
+  const date = new Date().toISOString().slice(0, 10);
+  const versionInfo = obtenirVersionAnalyseRapport();
+  if(!versionInfo.ok) throw new Error("missing_analysis_version");
+  const ent = sanitizeFilenamePart(entreprise) || "Entreprise";
+  const vil = sanitizeFilenamePart(ville) || "Ville";
+  const v = Number(analysisVersionActif);
+  const version = (Number.isInteger(v) && v >= 1) ? v : 1;
+  return `Audit-Efficia_${ent}_${vil}_${date}_V${version}.pdf`;
+}
+
+async function telechargerAuditPremium(){
+  const btns = [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")].filter(Boolean);
+  if(!await assurerVersionAnalyseRapport()) return;
+  await chargerLogoRapportDataUrl();
+  if(!genererEtPaginerAuditPremium()){ statut("Impossible de générer l'audit premium (données insuffisantes).", "erreur"); return; }
+  const filename = nomFichierAuditPremium();
+  dernierNomPdfGenere = filename;
+  const original = btns.map(b => b.textContent);
+  btns.forEach(b => { b.disabled = true; b.textContent = "Génération de l'audit…"; });
+  try{
+    const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+    if(!jsPDFCtor || !html2canvasFn){
+      alert("La génération du PDF est indisponible pour le moment. Vérifiez votre connexion internet puis réessayez.");
+      return;
+    }
+    await waitForReportImages(document.getElementById("rapport-contenu"));
+    const pages = [...document.querySelectorAll("#rapport-contenu .page")];
+    if(!pages.length){ alert("Aucune page à générer."); return; }
+    const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+    for(const [index, page] of pages.entries()){
+      const canvas = await html2canvasFn(page, {
+        scale:2, useCORS:true, allowTaint:false, backgroundColor:"#ffffff",
+        onclone: clonedDoc => {
+          clonedDoc.querySelectorAll("#rapport-contenu .rapport-logo .fallback").forEach(el => {
+            el.style.fontWeight = "850";
+            el.style.color = "#071a3a";
+          });
+        }
+      });
+      if(index > 0) pdf.addPage("a4", "portrait");
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
+    }
+    pdf.save(filename);
+    const msgArchive = await envoyerCompletionAuditEfficia();
+    if(msgArchive && !msgArchive.includes("enregistrée")) statut(msgArchive, "erreur");
+    await enregistrerPdfGenereBackOffice(filename);
+    statut(`Audit Premium généré (${pages.length} pages).`, "info");
+  }catch(e){
+    console.error("Génération Audit Premium échouée", e);
+    alert("La génération de l'audit a échoué. Réessayez, ou utilisez l'aperçu avant impression.");
+  }finally{
+    btns.forEach((b, i) => { b.disabled = false; b.textContent = original[i]; });
+  }
 }
 
 async function telechargerPDF(){
