@@ -3083,7 +3083,8 @@ function contexteCommandeAdminDepuisUrl(){
     email: (params.get("email") || "").trim(),
     offer: (params.get("offer") || "").trim(),
     orderId: (params.get("orderId") || "").trim(),
-    taskId: (params.get("taskId") || "").trim()
+    taskId: (params.get("taskId") || "").trim(),
+    googleBusinessUrl: (params.get("googleBusinessUrl") || "").trim()
   };
   return Object.values(contexte).some(Boolean) ? contexte : null;
 }
@@ -3097,6 +3098,12 @@ function initialiserContexteCommandeAdmin(){
   definirSiVide("p-ville", contexte.city);
   definirSiVide("p-contact", contexte.firstName);
 
+  const urlGoogle = contexte.googleBusinessUrl || "";
+  const urlGoogleValide = /^https?:\/\//i.test(urlGoogle);
+  const ligneGoogle = urlGoogleValide
+    ? `<br>Fiche Google : <a href="${escapeHtml(urlGoogle)}" target="_blank" rel="noopener">ouvrir la fiche transmise par le client</a>`
+    : "";
+
   const bloc = document.getElementById("commande-admin-liee");
   if(bloc){
     bloc.style.display = "block";
@@ -3104,7 +3111,7 @@ function initialiserContexteCommandeAdmin(){
       <strong>Commande liée au back-office</strong><br>
       Entreprise : ${escapeHtml(contexte.company || "—")} · Ville : ${escapeHtml(contexte.city || "—")}<br>
       Contact : ${escapeHtml(contexte.firstName || "—")} · Email : ${escapeHtml(contexte.email || "—")}<br>
-      Offre : ${escapeHtml(contexte.offer || "—")} · Order ID : <code>${escapeHtml(contexte.orderId || "—")}</code> · Task ID : <code>${escapeHtml(contexte.taskId || "—")}</code>
+      Offre : ${escapeHtml(contexte.offer || "—")} · Order ID : <code>${escapeHtml(contexte.orderId || "—")}</code> · Task ID : <code>${escapeHtml(contexte.taskId || "—")}</code>${ligneGoogle}
     `;
   }
 }

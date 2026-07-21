@@ -83,6 +83,7 @@ const buildScoreToolUrl = (order, task) => {
     offer: order.offer_code || "",
     orderId: order.order_id || "",
     taskId: task?.task_id || "",
+    googleBusinessUrl: order.google_business_url || "",
   });
   return `/outil-score-efficia-auto-v5.html?${params.toString()}`;
 };
