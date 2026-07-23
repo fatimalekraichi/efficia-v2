@@ -4910,14 +4910,6 @@ function construireBlocsAuditPremium(){
   const proj = scoreProjetePack();
   const d = donneesAnalyse || {};
   const chunk = (arr, n) => { const out = []; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; };
-  const moyConc = (key) => { const arr = (d.concurrents || []).map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0); return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null; };
-  const familleEnAvantageAudit = (key) => {
-    if(key === "reputation"){ const a = moyConc("avis"), n = moyConc("note"); const avisOk = estNombre(d.nbAvis) && estNombre(a) ? Number(d.nbAvis) >= a : null; const noteOk = estNombre(d.note) && estNombre(n) ? Number(d.note) >= n - 0.05 : null; if(avisOk === true && noteOk !== false) return true; if(noteOk === true && avisOk !== false) return true; return false; }
-    if(key === "photos"){ const p = moyConc("photos"); return estNombre(d.nbPhotos) && estNombre(p) && Number(d.nbPhotos) >= p; }
-    if(key === "offre"){ const sv = moyConc("services"); return estNombre(d.nbServices) && estNombre(sv) && Number(d.nbServices) >= sv; }
-    if(key === "visibilite"){ return estNombre(d.position) && Number(d.position) >= 1 && Number(d.position) <= 3; }
-    return false;
-  };
 
   const forces = [];
   const faiblesses = [];
@@ -4944,9 +4936,7 @@ function construireBlocsAuditPremium(){
     cur.perdu += f.perdu;
     parFamille.set(fam.key, cur);
   });
-  let famList = [...parFamille.values()].sort((a,b) => b.perdu - a.perdu);
-  // Fix logique : un domaine où la fiche devance la concurrence ne peut pas être un frein.
-  famList = famList.filter(r => !familleEnAvantageAudit(r.fam.key));
+  const famList = [...parFamille.values()].sort((a,b) => b.perdu - a.perdu);
 
   const blocs = [];
   const push = (html) => blocs.push(html);
@@ -4970,9 +4960,7 @@ function construireBlocsAuditPremium(){
   </section>`);
 
   /* ---- Résumé exécutif ---- */
-  const domNonConf = categoriesTriees.filter(c => !c.evalue);
-  const mentionBaseScore = domNonConf.length ? ` Ce score est calculé sur les ${categoriesTriees.length - domNonConf.length} domaines mesurables automatiquement ; ${domNonConf.length} domaine${domNonConf.length > 1 ? "s" : ""} (${domNonConf.map(c => c.nom.toLowerCase()).join(", ")}) rest${domNonConf.length > 1 ? "ent" : "e"} à confirmer et peu${domNonConf.length > 1 ? "vent" : "t"} faire évoluer la note.` : "";
-  const resume = `La fiche Google Business de ${entreprise} obtient un Score Efficia™ de ${score}/100, ce qui la situe dans la catégorie « ${bande.nom} ». ${fort ? `Son principal point d'appui est « ${fort.nom.toLowerCase()} ». ` : ""}${faible ? `Le levier de progression le plus important concerne « ${faible.nom.toLowerCase()} ». ` : ""}Ce rapport analyse les trois piliers de performance de la fiche, la situe face à son environnement concurrentiel, puis détaille un plan d'action priorisé pour renforcer sa visibilité, sa crédibilité et sa capacité à convertir une recherche en prise de contact.${mentionBaseScore}`;
+  const resume = `La fiche Google Business de ${entreprise} obtient un Score Efficia™ de ${score}/100, ce qui la situe dans la catégorie « ${bande.nom} ». ${fort ? `Son principal point d'appui est « ${fort.nom.toLowerCase()} ». ` : ""}${faible ? `Le levier de progression le plus important concerne « ${faible.nom.toLowerCase()} ». ` : ""}Ce rapport analyse les trois piliers de performance de la fiche, la situe face à son environnement concurrentiel, puis détaille un plan d'action priorisé pour renforcer sa visibilité, sa crédibilité et sa capacité à convertir une recherche en prise de contact.`;
   push(`<section class="aud-block">
     <h2 class="aud-h2">Résumé exécutif</h2>
     <p class="aud-lead">${resume}</p>
@@ -4985,7 +4973,7 @@ function construireBlocsAuditPremium(){
 
   /* ---- Trois piliers ---- */
   push(`<section class="aud-block"><h2 class="aud-h2">Vos trois piliers de performance</h2>
-    <p class="aud-p">Le Score Efficia™ se décompose en trois piliers qui suivent le parcours d'un prospect : <b>Être trouvé</b> (ressortir sur les recherches locales), <b>Inspirer confiance</b> (avis et réputation), puis <b>Déclencher le contact</b> (transformer la visite en appel).</p></section>`);
+    <p class="aud-p">Le Score Efficia™ se décompose en trois piliers qui suivent le parcours d'un prospect : être trouvé (<b>Visibilité</b>), inspirer confiance (<b>Confiance</b>), puis déclencher le contact (<b>Performance</b>).</p></section>`);
   const pil = (label, val, txt) => {
     const s = auditStatutIndice(val);
     return `<section class="aud-block aud-pillar"><div class="aud-pillar-head"><h3>${label}</h3>
@@ -5004,9 +4992,9 @@ function construireBlocsAuditPremium(){
     : indices.conversion >= 75 ? "Votre fiche facilite le passage à l'action : offre claire et contact accessible."
     : indices.conversion >= 50 ? "La conversion peut être améliorée : description, services et liens de contact plus complets."
     : "La fiche transforme encore mal les visites en contacts : description, services et liens d'action sont à compléter.";
-  push(pil("Être trouvé", indices.visibilite, txtVis));
-  push(pil("Inspirer confiance", indices.confiance, txtConf));
-  push(pil("Déclencher le contact", indices.conversion, txtPerf));
+  push(pil("Visibilité", indices.visibilite, txtVis));
+  push(pil("Confiance", indices.confiance, txtConf));
+  push(pil("Performance", indices.conversion, txtPerf));
 
   /* ---- Analyse détaillée par domaine ---- */
   push(`<section class="aud-block"><h2 class="aud-h2">Analyse détaillée par domaine</h2>
@@ -5017,13 +5005,8 @@ function construireBlocsAuditPremium(){
     }).join("")}</div></section>`);
 
   /* ---- Points forts ---- */
-  const forcesAff = forces.filter(cr => {
-    if(cr.key === "nombrePhotos"){ const p = moyConc("photos"); if(estNombre(d.nbPhotos) && estNombre(p) && Number(d.nbPhotos) < p) return false; }
-    if(cr.key === "volumeAvis"){ const a = moyConc("avis"); if(estNombre(d.nbAvis) && estNombre(a) && Number(d.nbAvis) < a) return false; }
-    return true;
-  });
-  if(forcesAff.length){
-    const items = forcesAff.map(cr => `<li class="aud-li aud-li--strong"><span class="mk">✓</span><span>${forceRapport(cr) || "Point maîtrisé sur votre fiche."}</span></li>`);
+  if(forces.length){
+    const items = forces.map(cr => `<li class="aud-li aud-li--strong"><span class="mk">✓</span><span>${forceRapport(cr) || "Point maîtrisé sur votre fiche."}</span></li>`);
     chunk(items, 5).forEach((grp, i) => push(`<section class="aud-block">${i === 0 ? '<h2 class="aud-h2">Vos points forts</h2>' : ''}<ul class="aud-list">${grp.join("")}</ul></section>`));
   }
 
@@ -5063,8 +5046,7 @@ function construireBlocsAuditPremium(){
       } else {
         constat = "Le signal de réputation (nombre d'avis, réponses, récence) est faible ou incomplet sur votre fiche.";
       }
-      const enAvanceAvis = estNombre(d.nbAvis) && estNombre(avg) && Number(d.nbAvis) >= Math.round(avg);
-      return {constat, explication: enAvanceAvis ? "Les avis sont le premier élément qu'un prospect compare. Votre volume est un atout : l'enjeu n'est pas de rattraper un retard mais de préserver cette avance en maintenant un flux régulier d'avis récents et de réponses visibles." : "Les avis sont le premier élément qu'un prospect compare entre deux fiches. Un volume ou une fraîcheur inférieurs à la concurrence le poussent souvent à contacter l'autre entreprise avant même de vous appeler.", illustration};
+      return {constat, explication:"Les avis sont le premier élément qu'un prospect compare entre deux fiches. Un volume ou une fraîcheur inférieurs à la concurrence le poussent souvent à contacter l'autre entreprise avant même de vous appeler.", illustration};
     }
     if(key === "photos"){
       const avg = compAvg("photos");
