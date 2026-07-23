@@ -2621,22 +2621,12 @@ async function analyseScraping(){
     if(estNombre(f.descriptionLongueur)) d.descriptionLongueur = Number(f.descriptionLongueur);
     if(estNombre(r.position)) d.position = Number(r.position);
     if(estTexte(r.requete)) d.requeteTestee = r.requete;
-    if(estTexte(f.description)) d.descriptionTexte = f.description;
-    if(Array.isArray(avis.textes)) d.avisTextes = avis.textes.filter(estTexte);
-    else if(Array.isArray(r.avisTextes)) d.avisTextes = r.avisTextes.filter(estTexte);
-    if(estNombre(f.nbServices)) d.nbServices = Number(f.nbServices);
-    if(estNombre(f.nbPublications)) d.nbPublications = Number(f.nbPublications);
-    else if(estNombre(f.posts)) d.nbPublications = Number(f.posts);
     if(estNombre(avis.dernierAvisTimestamp)) d.dernierAvis = new Date(avis.dernierAvisTimestamp * 1000).toISOString();
     const avisAnalyses = avis.avisAnalyses ?? avis.reviewsAnalyzed ?? avis.nbAvisAnalyses ?? avis.count ?? avis.total;
     const reponsesProprietaire = avis.reponsesProprietaire ?? avis.ownerResponses ?? avis.ownerResponsesCount ?? avis.nbReponsesProprietaire;
     if(estNombre(avisAnalyses)) d.avisAnalyses = Number(avisAnalyses);
     if(estNombre(reponsesProprietaire)) d.reponsesProprietaire = Number(reponsesProprietaire);
     if(Array.isArray(r.concurrents) && r.concurrents.length) d.concurrents = r.concurrents;
-    if(d.concurrents && d.concurrents.length){
-      const moy = (key) => { const a = d.concurrents.map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0); return a.length ? a.reduce((x,v)=>x+v,0)/a.length : null; };
-      d.moyennesConcurrents = {note:moy("note"), avis:moy("avis"), photos:moy("photos"), services:moy("services"), pubs:moy("pubs")};
-    }
     if(estTexte(f.nom)) document.getElementById("p-entreprise").value = f.nom;
     preRemplirDonneesObservees();
     const setSiVide = (id, v) => { const el = document.getElementById(id); if(el && !el.value && estNombre(v)) el.value = String(nEntier(v)); };
@@ -2687,14 +2677,6 @@ async function analyseScraping(){
         cocheSur("volumeAvis", d.nbAvis > moyC ? cr.max : d.nbAvis >= moyC * 0.6 ? Math.round(cr.max*0.6) : 0,
           nEntier(d.nbAvis) + " avis vs " + nEntier(moyC) + " en moyenne chez les concurrents");
       }
-    }
-    if(estNombre(f.nbServices) && K.servicesPresents !== undefined){
-      const crS = trouverCritere(K.servicesPresents);
-      if(crS) cocheSur("servicesPresents", f.nbServices >= 4 ? crS.max : f.nbServices >= 1 ? Math.round(crS.max/2) : 0, nEntier(f.nbServices) + " service(s) list\u00e9(s)", "prefill");
-    }
-    if(estNombre(d.nbPublications)){
-      if(K.publicationRecente !== undefined){ const crP = trouverCritere(K.publicationRecente); if(crP) cocheSur("publicationRecente", d.nbPublications >= 1 ? crP.max : 0, nEntier(d.nbPublications) + " publication(s) visible(s)", "prefill"); }
-      if(K.rythmePublication !== undefined && d.nbPublications >= 3){ const crR = trouverCritere(K.rythmePublication); if(crR) cocheSur("rythmePublication", crR.max, "Plusieurs publications visibles", "prefill"); }
     }
     calc();
     const messageArchivage = await envoyerCompletionAuditEfficia();
@@ -4903,40 +4885,6 @@ function ajouterLiensPdfPourPage(pdf, page){
      jamais couper un bloc (empilement jusqu'au pied de page, puis saut) ;
    - réutilise les calculs, scores, priorités et données existants. */
 
-/* ===== Analyse sémantique avis <-> description : moteur de la page « déclic » ===== */
-const STOPWORDS_FR = new Set("alors ainsi aussi autre avant avec avoir bien bonne c car ce cela ces cet cette ceux chaque chez comme dans de des donc dont du elle elles en encore est et etaient etais etait etant ete etre eux fait faire il ils j je jamais l la le les leur leurs lui ma mais me meme mes moi mon nos notre nous on ont ou par pas peu plus pour pourquoi quand que quel quelle qui sa sans se ses si son sont sur ta te tes toi ton toujours tous tout toute toutes tres tu un une vos votre vous y a ont trop deja rien tout etc merci super genial top bon".split(" "));
-function normaliserMot(w){ return (w||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z]/g,""); }
-function motsFrequentsAvis(textes){
-  const freq = new Map();
-  (textes||[]).forEach(t => String(t||"").split(/\s+/).forEach(w => {
-    const m = normaliserMot(w);
-    if(m.length < 4 || STOPWORDS_FR.has(m)) return;
-    freq.set(m, (freq.get(m)||0)+1);
-  }));
-  return [...freq.entries()].filter(([,n]) => n >= 3).sort((a,b) => b[1]-a[1]);
-}
-function motsAbsentsDescription(motsFreq, descriptionTexte){
-  const descNorm = " " + String(descriptionTexte||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"") + " ";
-  return motsFreq.filter(([m]) => descNorm.indexOf(m) === -1);
-}
-function observationsDeclic(){
-  const d = donneesAnalyse || {}, m = d.moyennesConcurrents || {}, obs = [];
-  if(Array.isArray(d.avisTextes) && d.avisTextes.length && estTexte(d.descriptionTexte)){
-    const absents = motsAbsentsDescription(motsFrequentsAvis(d.avisTextes), d.descriptionTexte).slice(0,3);
-    if(absents.length){
-      const liste = absents.map(([mot,n]) => "\u00ab\u00a0" + mot + "\u00a0\u00bb (" + n + " fois)").join(", ");
-      obs.push("Vos clients reviennent souvent sur " + liste + " dans leurs avis \u2014 " + (absents.length > 1 ? "ces mots n'apparaissent" : "ce mot n'appara\u00eet") + " pourtant nulle part dans votre description Google. Vous d\u00e9crivez votre activit\u00e9 autrement que vos clients ne la vivent.");
-    }
-  }
-  if(estNombre(d.position) && d.position > 1 && estNombre(d.nbAvis) && estNombre(m.avis) && Number(d.nbAvis) >= Number(m.avis)){
-    obs.push("Vous apparaissez en " + d.position + "e position alors que vous avez plus d'avis que la moyenne de vos concurrents (" + nEntier(d.nbAvis) + " contre " + nEntier(m.avis) + "). Ce n'est donc pas votre r\u00e9putation qui vous fait passer derri\u00e8re \u2014 le levier est ailleurs : cat\u00e9gories, description ou coh\u00e9rence locale.");
-  }
-  if(estNombre(d.nbPhotos) && estNombre(m.photos) && Number(m.photos) > Number(d.nbPhotos) * 1.3){
-    obs.push("Vos concurrents publient en moyenne " + nEntier(m.photos) + " photos, contre " + nEntier(d.nbPhotos) + " sur votre fiche. Sur une d\u00e9cision qui se joue au premier coup d'\u0153il, celui qui montre le plus rassure le plus.");
-  }
-  return obs;
-}
-
 function auditHeaderHtml(){
   return `<header class="rapport-header aud-header">${logoRapportHtml()}<span class="rap-etiquette aud-etiquette">Audit Efficia™</span></header>`;
 }
@@ -5159,12 +5107,6 @@ function construireBlocsAuditPremium(){
     return {constat:"Ce point présente une marge de progression mesurable.", explication:"Le corriger renforce la lisibilité et la crédibilité de la fiche auprès d'un prospect qui compare.", illustration:""};
   };
 
-  const declics = observationsDeclic();
-  if(declics.length){
-    push(`<section class="aud-block"><h2 class="aud-h2">Ce que notre analyse a repéré</h2>
-      <p class="aud-p">Des observations propres à votre fiche, que seule une analyse détaillée fait ressortir.</p>
-      <ul class="aud-list">${declics.map(o => `<li class="aud-li aud-li--strong"><span class="mk">→</span><span>${o}</span></li>`).join("")}</ul></section>`);
-  }
   push(`<section class="aud-block"><h2 class="aud-h2">Diagnostic : vos freins, expliqués et priorisés</h2>
     <p class="aud-p">Pour chaque frein identifié : ce que nous avons observé, pourquoi il vous coûte des clients, et l'action prioritaire pour le corriger. Les freins sont classés par impact.</p></section>`);
   if(famList.length){
