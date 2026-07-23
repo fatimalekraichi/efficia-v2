@@ -51,7 +51,9 @@ export async function onRequestGet(context) {
     return jsonResponse({ success: false, error: "Missing required parameters: nom, ville." }, 400);
   }
 
-  if (!env.OUTSCRAPER_API_KEY) {
+  // .trim() : évite un 401 si le secret a été stocké avec un espace / retour ligne final.
+  const apiKey = (env.OUTSCRAPER_API_KEY || "").trim();
+  if (!apiKey) {
     console.error("outscraper: OUTSCRAPER_API_KEY manquant dans l'environnement.");
     return jsonResponse({ success: false, error: "Server configuration error." }, 500);
   }
@@ -66,6 +68,9 @@ export async function onRequestGet(context) {
   outscraperUrl.searchParams.set("async", "false");
   outscraperUrl.searchParams.set("language", "fr");
 
+  // --- LOG TEMPORAIRE (diagnostic 401) — À RETIRER ensuite. Ne loggue jamais la clé. ---
+  console.log("[outscraper][debug] method=GET url=" + outscraperUrl.toString() + " body=none apiKeyLen=" + apiKey.length);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -75,7 +80,7 @@ export async function onRequestGet(context) {
     outscraperResponse = await fetch(outscraperUrl.toString(), {
       method: "GET",
       headers: {
-        "X-API-KEY": env.OUTSCRAPER_API_KEY,
+        "X-API-KEY": apiKey,
         "Accept": "application/json",
       },
       signal: controller.signal,
@@ -87,6 +92,9 @@ export async function onRequestGet(context) {
   } finally {
     clearTimeout(timeout);
   }
+
+  // --- LOG TEMPORAIRE (diagnostic 401) — À RETIRER ensuite. ---
+  console.log("[outscraper][debug] status=" + outscraperResponse.status + " body=" + (bodyText || "").slice(0, 800));
 
   if (!outscraperResponse.ok) {
     console.error("outscraper: réponse amont non OK", outscraperResponse.status);
