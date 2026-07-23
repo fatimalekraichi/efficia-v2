@@ -2616,25 +2616,43 @@ async function analyseScraping(){
     /* — Alimente les données observées (elles irriguent tout le rapport) — */
     const d = donneesAnalyse;
     if(estNombre(f.note)) d.note = Number(f.note);
+    else if(estNombre(f.rating)) d.note = Number(f.rating);
     if(estNombre(f.nbAvis)) d.nbAvis = Number(f.nbAvis);
+    else if(estNombre(f.reviews)) d.nbAvis = Number(f.reviews);
     if(estNombre(f.nbPhotos)) d.nbPhotos = Number(f.nbPhotos);
+    else if(estNombre(f.photos_count)) d.nbPhotos = Number(f.photos_count);
     if(estNombre(f.descriptionLongueur)) d.descriptionLongueur = Number(f.descriptionLongueur);
+    else if(estTexte(f.description)) d.descriptionLongueur = f.description.length;
     if(estNombre(r.position)) d.position = Number(r.position);
     if(estTexte(r.requete)) d.requeteTestee = r.requete;
     if(estTexte(f.description)) d.descriptionTexte = f.description;
     if(Array.isArray(avis.textes)) d.avisTextes = avis.textes.filter(estTexte);
     else if(Array.isArray(r.avisTextes)) d.avisTextes = r.avisTextes.filter(estTexte);
+    else { const rd = avis.reviews_data || r.reviews_data || f.reviews_data; if(Array.isArray(rd)) d.avisTextes = rd.map(x => x && (x.review_text || x.reviewText || x.text)).filter(estTexte); }
     if(estNombre(f.nbServices)) d.nbServices = Number(f.nbServices);
     if(estNombre(f.nbPublications)) d.nbPublications = Number(f.nbPublications);
     else if(estNombre(f.posts)) d.nbPublications = Number(f.posts);
+    if(Array.isArray(f.photoUrls)) d.photosUrls = f.photoUrls.filter(estTexte);
+    else if(Array.isArray(f.photos) && f.photos.every(x => typeof x === "string")) d.photosUrls = f.photos.filter(estTexte);
+    else if(Array.isArray(f.photos_sample)) d.photosUrls = f.photos_sample.map(p => typeof p === "string" ? p : (p && (p.photo_url_big || p.photo_url || p.url))).filter(estTexte);
+    if(estTexte(r.captureRecherche)) d.captureRecherche = r.captureRecherche;
+    else if(estTexte(r.screenshotUrl)) d.captureRecherche = r.screenshotUrl;
     if(estNombre(avis.dernierAvisTimestamp)) d.dernierAvis = new Date(avis.dernierAvisTimestamp * 1000).toISOString();
     const avisAnalyses = avis.avisAnalyses ?? avis.reviewsAnalyzed ?? avis.nbAvisAnalyses ?? avis.count ?? avis.total;
     const reponsesProprietaire = avis.reponsesProprietaire ?? avis.ownerResponses ?? avis.ownerResponsesCount ?? avis.nbReponsesProprietaire;
     if(estNombre(avisAnalyses)) d.avisAnalyses = Number(avisAnalyses);
     if(estNombre(reponsesProprietaire)) d.reponsesProprietaire = Number(reponsesProprietaire);
-    if(Array.isArray(r.concurrents) && r.concurrents.length) d.concurrents = r.concurrents;
+    if(Array.isArray(r.concurrents) && r.concurrents.length) d.concurrents = r.concurrents.map(c => ({
+      label: c.label || c.name || c.title || "",
+      note: estNombre(c.note) ? Number(c.note) : (estNombre(c.rating) ? Number(c.rating) : null),
+      avis: estNombre(c.avis) ? Number(c.avis) : (estNombre(c.reviews) ? Number(c.reviews) : null),
+      photos: estNombre(c.photos) ? Number(c.photos) : (estNombre(c.photos_count) ? Number(c.photos_count) : null),
+      services: estNombre(c.services) ? Number(c.services) : null,
+      pubs: estNombre(c.pubs) ? Number(c.pubs) : null,
+      image: estTexte(c.image) ? c.image : (estTexte(c.photo) ? c.photo : (Array.isArray(c.photos_sample) && c.photos_sample[0] ? (c.photos_sample[0].photo_url_big || c.photos_sample[0].photo_url) : null))
+    }));
     if(d.concurrents && d.concurrents.length){
-      const moy = (key) => { const a = d.concurrents.map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0); return a.length ? a.reduce((x,v)=>x+v,0)/a.length : null; };
+      const moy = (key) => { const a = d.concurrents.map(c => c && c[key]).filter(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0).map(Number); return a.length ? a.reduce((x,v)=>x+v,0)/a.length : null; };
       d.moyennesConcurrents = {note:moy("note"), avis:moy("avis"), photos:moy("photos"), services:moy("services"), pubs:moy("pubs")};
     }
     if(estTexte(f.nom)) document.getElementById("p-entreprise").value = f.nom;
@@ -4922,10 +4940,13 @@ function motsAbsentsDescription(motsFreq, descriptionTexte){
 function observationsDeclic(){
   const d = donneesAnalyse || {}, m = d.moyennesConcurrents || {}, obs = [];
   if(Array.isArray(d.avisTextes) && d.avisTextes.length && estTexte(d.descriptionTexte)){
-    const absents = motsAbsentsDescription(motsFrequentsAvis(d.avisTextes), d.descriptionTexte).slice(0,3);
+    const total = d.avisTextes.length;
+    const absents = motsAbsentsDescription(motsFrequentsAvis(d.avisTextes), d.descriptionTexte);
     if(absents.length){
-      const liste = absents.map(([mot,n]) => "\u00ab\u00a0" + mot + "\u00a0\u00bb (" + n + " fois)").join(", ");
-      obs.push("Vos clients reviennent souvent sur " + liste + " dans leurs avis \u2014 " + (absents.length > 1 ? "ces mots n'apparaissent" : "ce mot n'appara\u00eet") + " pourtant nulle part dans votre description Google. Vous d\u00e9crivez votre activit\u00e9 autrement que vos clients ne la vivent.");
+      const mot = absents[0][0];
+      const nbAvisMot = d.avisTextes.filter(t => (" " + String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"") + " ").indexOf(mot) !== -1).length;
+      const pct = Math.round(100 * nbAvisMot / total);
+      obs.push("Vos clients \u00e9voquent \u00ab\u00a0" + mot + "\u00a0\u00bb dans " + pct + "% de leurs avis \u2014 pourtant ce mot n'appara\u00eet nulle part dans votre description Google. Vous d\u00e9crivez votre activit\u00e9 autrement que vos clients ne la vivent.");
     }
   }
   if(estNombre(d.position) && d.position > 1 && estNombre(d.nbAvis) && estNombre(m.avis) && Number(d.nbAvis) >= Number(m.avis)){
@@ -4937,6 +4958,38 @@ function observationsDeclic(){
   return obs;
 }
 
+/* ===== Rendu des preuves visuelles (images) — silencieux si aucune URL ===== */
+function estUrlImage(u){ return estTexte(u) && /^https?:\/\//i.test(u); }
+function photosFicheHtml(){
+  const d = donneesAnalyse || {}, m = d.moyennesConcurrents || {};
+  const urls = (d.photosUrls || []).filter(estUrlImage).slice(0,5);
+  if(!urls.length) return "";
+  const cmp = (estNombre(d.nbPhotos) && estNombre(m.photos)) ? " Vous en affichez " + nEntier(d.nbPhotos) + ", contre " + nEntier(m.photos) + " en moyenne chez vos concurrents." : "";
+  return `<section class="aud-block"><h2 class="aud-h2">Vos photos, telles qu'un client les voit</h2>
+    <p class="aud-p">Les premières images de votre fiche, dans l'ordre où Google les présente.${cmp}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${urls.map(u => `<img src="${u}" alt="" style="width:150px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0" loading="lazy">`).join("")}</div></section>`;
+}
+function concurrentsVisuelsHtml(){
+  const d = donneesAnalyse || {};
+  const cs = (d.concurrents || []).filter(c => c && (estUrlImage(c.image) || estUrlImage(c.photoUrl))).slice(0,3);
+  if(!cs.length) return "";
+  const card = (c, i) => {
+    const img = estUrlImage(c.image) ? c.image : c.photoUrl;
+    const meta = [estNombre(c.note) ? fmtNote(c.note) + " \u2605" : "", estNombre(c.avis) ? nEntier(c.avis) + " avis" : "", estNombre(c.photos) ? nEntier(c.photos) + " photos" : ""].filter(Boolean).join(" \u00b7 ");
+    return `<div style="flex:1;min-width:150px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden"><img src="${img}" alt="" style="width:100%;height:100px;object-fit:cover" loading="lazy"><div style="padding:8px"><div style="font-weight:700;font-size:.9rem">${escapeHtml(c.label || ("Concurrent " + (i+1)))}</div><div style="color:#475569;font-size:.82rem;margin-top:2px">${meta}</div></div></div>`;
+  };
+  return `<section class="aud-block"><h2 class="aud-h2">Vos concurrents, côte à côte</h2>
+    <p class="aud-p">Les fiches que vos clients comparent à la vôtre au moment de choisir.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${cs.map(card).join("")}</div></section>`;
+}
+function captureRechercheHtml(){
+  const d = donneesAnalyse || {};
+  if(!estUrlImage(d.captureRecherche)) return "";
+  const rq = estTexte(d.requeteTestee) ? libelleRechercheRapport(d.requeteTestee) : "";
+  const pos = estNombre(d.position) && d.position > 0 ? "Votre fiche appara\u00eet en " + (d.position === 1 ? "1re" : d.position + "e") + " position" + (rq ? " sur \u00ab\u00a0" + rq + "\u00a0\u00bb" : "") + "." : "";
+  return `<section class="aud-block"><h2 class="aud-h2">Ce que voit un client qui vous cherche</h2>${pos ? `<p class="aud-p">${pos}</p>` : ""}<img src="${d.captureRecherche}" alt="Résultat de recherche Google" style="width:100%;max-width:520px;border-radius:10px;border:1px solid #e2e8f0;margin-top:8px" loading="lazy"></section>`;
+}
+
 function auditHeaderHtml(){
   return `<header class="rapport-header aud-header">${logoRapportHtml()}<span class="rap-etiquette aud-etiquette">Audit Efficia™</span></header>`;
 }
@@ -4944,7 +4997,7 @@ function auditFooterHtml(){
   return `<div class="pied aud-pied"><span>Efficia Digital — Audit Efficia™</span><span class="pagination-rapport">Page</span></div>`;
 }
 function auditStatutIndice(v){
-  if(v === null || v === undefined) return {label:"À confirmer", couleur:"#64748b", fond:"#f1f5f9"};
+  if(v === null || v === undefined) return {label:"Vérifié à l'optimisation", couleur:"#2563eb", fond:"#eff6ff"};
   if(v >= 75) return {label:"Solide", couleur:"#059669", fond:"#ecfdf5"};
   if(v >= 50) return {label:"À renforcer", couleur:"#d97706", fond:"#fffbeb"};
   return {label:"Prioritaire", couleur:"#dc2626", fond:"#fef2f2"};
@@ -4962,7 +5015,7 @@ function construireBlocsAuditPremium(){
   const proj = scoreProjetePack();
   const d = donneesAnalyse || {};
   const chunk = (arr, n) => { const out = []; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; };
-  const moyConc = (key) => { const arr = (d.concurrents || []).map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0); return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null; };
+  const moyConc = (key) => { const arr = (d.concurrents || []).map(c => c && c[key]).filter(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0).map(Number); return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null; };
   const familleEnAvantageAudit = (key) => {
     if(key === "reputation"){ const a = moyConc("avis"), n = moyConc("note"); const avisOk = estNombre(d.nbAvis) && estNombre(a) ? Number(d.nbAvis) >= a : null; const noteOk = estNombre(d.note) && estNombre(n) ? Number(d.note) >= n - 0.05 : null; if(avisOk === true && noteOk !== false) return true; if(noteOk === true && avisOk !== false) return true; return false; }
     if(key === "photos"){ const p = moyConc("photos"); return estNombre(d.nbPhotos) && estNombre(p) && Number(d.nbPhotos) >= p; }
@@ -5023,7 +5076,7 @@ function construireBlocsAuditPremium(){
 
   /* ---- Résumé exécutif ---- */
   const domNonConf = categoriesTriees.filter(c => !c.evalue);
-  const mentionBaseScore = domNonConf.length ? ` Ce score est calculé sur les ${categoriesTriees.length - domNonConf.length} domaines mesurables automatiquement ; ${domNonConf.length} domaine${domNonConf.length > 1 ? "s" : ""} (${domNonConf.map(c => c.nom.toLowerCase()).join(", ")}) rest${domNonConf.length > 1 ? "ent" : "e"} à confirmer et peu${domNonConf.length > 1 ? "vent" : "t"} faire évoluer la note.` : "";
+  const mentionBaseScore = domNonConf.length ? ` ${domNonConf.length} levier${domNonConf.length > 1 ? "s" : ""} supplémentaire${domNonConf.length > 1 ? "s" : ""} (${domNonConf.map(c => c.nom.toLowerCase()).join(", ")}) ${domNonConf.length > 1 ? "sont affinés" : "est affiné"} lors de l'optimisation de votre fiche.` : "";
   const resume = `La fiche Google Business de ${entreprise} obtient un Score Efficia™ de ${score}/100, ce qui la situe dans la catégorie « ${bande.nom} ». ${fort ? `Son principal point d'appui est « ${fort.nom.toLowerCase()} ». ` : ""}${faible ? `Le levier de progression le plus important concerne « ${faible.nom.toLowerCase()} ». ` : ""}Ce rapport analyse les trois piliers de performance de la fiche, la situe face à son environnement concurrentiel, puis détaille un plan d'action priorisé pour renforcer sa visibilité, sa crédibilité et sa capacité à convertir une recherche en prise de contact.${mentionBaseScore}`;
   push(`<section class="aud-block">
     <h2 class="aud-h2">Résumé exécutif</h2>
@@ -5041,30 +5094,31 @@ function construireBlocsAuditPremium(){
   const pil = (label, val, txt) => {
     const s = auditStatutIndice(val);
     return `<section class="aud-block aud-pillar"><div class="aud-pillar-head"><h3>${label}</h3>
-      <span class="aud-score-badge" style="background:${s.fond};color:${s.couleur}">${val === null ? "À confirmer" : val + " / 100"}</span></div>
+      <span class="aud-score-badge" style="background:${s.fond};color:${s.couleur}">${val === null ? "Vérifié à l'optimisation" : val + " / 100"}</span></div>
       <p class="aud-p" style="margin:0">${txt}</p></section>`;
   };
-  const txtVis = indices.visibilite === null ? "La visibilité locale n'a pas pu être entièrement mesurée automatiquement ; plusieurs critères demandent une confirmation."
+  const txtVis = indices.visibilite === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
     : indices.visibilite >= 75 ? `Votre fiche ressort bien sur les recherches locales pertinentes${estNombre(d.position) && d.position > 0 ? ` (position observée : ${d.position === 1 ? "1re" : d.position + "e"})` : ""}.`
     : indices.visibilite >= 50 ? "Votre présence locale est correcte mais perfectible : catégories, mots-clés locaux et classement peuvent être renforcés."
     : `Premier chantier : la fiche n'apparaît pas assez sur les recherches de ${activite || "votre activité"}${ville ? " à " + ville : ""}.`;
-  const txtConf = indices.confiance === null ? "Les signaux de confiance demandent une vérification complémentaire."
+  const txtConf = indices.confiance === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
     : indices.confiance >= 75 ? `Vos avis et signaux de réputation inspirent confiance${estNombre(d.note) && estNombre(d.nbAvis) ? ` (${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis)` : ""}.`
     : indices.confiance >= 50 ? "Votre réputation est correcte mais peut être consolidée : volume, récence et réponses aux avis."
     : "Vos signaux de confiance sont à renforcer en priorité : volume d'avis, réponses et note visible.";
-  const txtPerf = indices.conversion === null ? "Plusieurs éléments de conversion nécessitent une confirmation manuelle."
+  const txtPerf = indices.conversion === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
     : indices.conversion >= 75 ? "Votre fiche facilite le passage à l'action : offre claire et contact accessible."
     : indices.conversion >= 50 ? "La conversion peut être améliorée : description, services et liens de contact plus complets."
     : "La fiche transforme encore mal les visites en contacts : description, services et liens d'action sont à compléter.";
   push(pil("Être trouvé", indices.visibilite, txtVis));
   push(pil("Inspirer confiance", indices.confiance, txtConf));
   push(pil("Déclencher le contact", indices.conversion, txtPerf));
+  { const capt = captureRechercheHtml(); if(capt) push(capt); }
 
   /* ---- Analyse détaillée par domaine ---- */
   push(`<section class="aud-block"><h2 class="aud-h2">Analyse détaillée par domaine</h2>
     <div class="aud-bars">${[...categoriesTriees].sort((a,b) => a.pct - b.pct).map(c => {
       const col = c.pct >= 70 ? "#059669" : c.pct >= 45 ? "#d97706" : "#dc2626";
-      return `<div class="aud-bar"><div class="aud-bar-top"><span>${c.nom}</span><strong>${c.evalue ? c.pts + "/" + c.max : "À confirmer"}</strong></div>
+      return `<div class="aud-bar"><div class="aud-bar-top"><span>${c.nom}</span><strong>${c.evalue ? c.pts + "/" + c.max : "À l'optimisation"}</strong></div>
         <div class="aud-bar-track"><div class="aud-bar-fill" style="width:${c.pct}%;background:${c.evalue ? col : "#cbd5e1"}"></div></div></div>`;
     }).join("")}</div></section>`);
 
@@ -5080,6 +5134,7 @@ function construireBlocsAuditPremium(){
   }
 
   /* ---- Benchmark (seulement si données concurrentielles réelles) ---- */
+  { const ph = photosFicheHtml(); if(ph) push(ph); }
   const benchTable = benchmarkTableHtml();
   if(benchTable){
     push(`<section class="aud-block"><h2 class="aud-h2">Comparaison concurrentielle</h2>
@@ -5090,7 +5145,7 @@ function construireBlocsAuditPremium(){
 
   /* ---- Diagnostic des freins : constat → explication → illustration → reco ---- */
   const compAvg = (key) => {
-    const arr = (d.concurrents || []).map(c => Number(c && c[key])).filter(v => Number.isFinite(v) && v >= 0);
+    const arr = (d.concurrents || []).map(c => c && c[key]).filter(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0).map(Number);
     return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
   };
   const barreComparative = (valVous, valEux, unite) => {
@@ -5159,6 +5214,7 @@ function construireBlocsAuditPremium(){
     return {constat:"Ce point présente une marge de progression mesurable.", explication:"Le corriger renforce la lisibilité et la crédibilité de la fiche auprès d'un prospect qui compare.", illustration:""};
   };
 
+  { const cv = concurrentsVisuelsHtml(); if(cv) push(cv); }
   const declics = observationsDeclic();
   if(declics.length){
     push(`<section class="aud-block"><h2 class="aud-h2">Ce que notre analyse a repéré</h2>
@@ -5196,6 +5252,25 @@ function construireBlocsAuditPremium(){
     ? `Les freins identifiés ci-dessus ne relèvent pas du hasard : ils correspondent aux points précis où votre fiche perd aujourd'hui des clients. En les traitant dans l'ordre de priorité — à commencer par « ${topProblemes[0]} » — la fiche de ${entreprise} peut viser un Score Efficia™ de l'ordre de ${proj.projete}/100.`
     : `La fiche de ${entreprise} est déjà solide (${score}/100). L'enjeu n'est plus la correction mais l'entretien : maintenir la fraîcheur des avis, des photos et des publications pour conserver l'avantage sur vos concurrents locaux.`;
   push(`<section class="aud-block"><h2 class="aud-h2">Conclusion</h2><p class="aud-lead">${conclusionText}</p></section>`);
+  /* ---- Vos points à récupérer : le chemin concret, action par action ---- */
+  if(famList.length){
+    const actionsCourtes = {infos:"Compléter les informations essentielles", reputation:"Renforcer la réputation (avis, réponses)", photos:"Renforcer les photos stratégiques", offre:"Optimiser la description et les services", visibilite:"Optimiser catégories et mots-clés locaux", activite:"Publier régulièrement"};
+    const potentiel = Math.max(1, proj.projete - score);
+    const famTop = famList.slice(0, Math.max(1, Math.min(5, potentiel)));
+    const sommePerdu = famTop.reduce((x,r) => x + r.perdu, 0) || 1;
+    const ptsTop = famTop.map(r => ({label:actionsCourtes[r.fam.key] || r.fam.label, gain:Math.max(1, Math.round(potentiel * r.perdu / sommePerdu))}));
+    let diffPts = potentiel - ptsTop.reduce((x,p) => x + p.gain, 0);
+    if(ptsTop.length) ptsTop[0].gain = Math.max(1, ptsTop[0].gain + diffPts);
+    const totalPts = ptsTop.reduce((x,p) => x + p.gain, 0);
+    const rowsPts = ptsTop.map(p => `<tr><td style="padding:7px 6px;border-bottom:1px solid #f1f5f9">${p.label}</td><td style="text-align:right;padding:7px 6px;border-bottom:1px solid #f1f5f9;color:#059669;font-weight:700">+${p.gain}</td></tr>`).join("");
+    push(`<section class="aud-block"><h2 class="aud-h2">Vos points à récupérer</h2>
+      <p class="aud-p">Le chemin concret de votre score actuel (${score}/100) vers votre potentiel (${proj.projete}/100), levier par levier.</p>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:.92rem">
+        <thead><tr><th style="text-align:left;padding:8px 6px;border-bottom:2px solid #e2e8f0">Action</th><th style="text-align:right;padding:8px 6px;border-bottom:2px solid #e2e8f0">Gain estimé</th></tr></thead>
+        <tbody>${rowsPts}</tbody>
+        <tfoot><tr><td style="padding:8px 6px;border-top:2px solid #e2e8f0;font-weight:700">Total estimé</td><td style="text-align:right;padding:8px 6px;border-top:2px solid #e2e8f0;color:#059669;font-weight:800">+${totalPts}</td></tr></tfoot>
+      </table></section>`);
+  }
   if(proj.projete > score + 2){
     push(`<section class="aud-block aud-proj">
       <div class="col"><div class="lab">Aujourd'hui</div><div class="num" style="color:${bande.couleur}">${score}<span style="font-size:1rem;color:#94a3b8">/100</span></div></div>
