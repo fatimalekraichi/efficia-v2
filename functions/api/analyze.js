@@ -4,11 +4,12 @@
 //
 // Méthode : POST  (crée une analyse)
 // Auth    : Authorization: Bearer <CONNECTOR_TOKEN>
-// Entrée  : { "nom": "...", "ville": "..." } (JSON body ; à défaut, paramètres ?nom=&ville=)
+// Entrée  : { "nom": "...", "ville": "...", "activite": "..." } (JSON body ; à défaut, paramètres ?nom=&ville=&activite=)
 // Secrets : CONNECTOR_TOKEN (+ OUTSCRAPER_API_KEY utilisé par /api/outscraper)
 // D1      : binding ORDERS_DB, table `analyses` (migration 0003_analyses.sql)
 
 import { collectFiche } from "../lib/collectFiche.js";
+import { collectCompetitors } from "../lib/collectCompetitors.js";
 import { verifyConnectorToken } from "./_auth.js";
 
 const CORS_HEADERS = {
@@ -71,18 +72,19 @@ export async function onRequestPost(context) {
   // Entrée : body JSON, sinon paramètres d'URL.
   let nom = "";
   let ville = "";
+  let activite = "";
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
     ville = typeof payload?.ville === "string" ? payload.ville.trim() : "";
+    activite = typeof payload?.activite === "string" ? payload.activite.trim() : "";
   } catch {
     // pas de body JSON : on tentera les paramètres d'URL
   }
-  if (!nom || !ville) {
-    const url = new URL(request.url);
-    nom = nom || (url.searchParams.get("nom") || "").trim();
-    ville = ville || (url.searchParams.get("ville") || "").trim();
-  }
+  const url = new URL(request.url);
+  nom = nom || (url.searchParams.get("nom") || "").trim();
+  ville = ville || (url.searchParams.get("ville") || "").trim();
+  activite = activite || (url.searchParams.get("activite") || "").trim();
   if (!nom || !ville) {
     return jsonResponse({ error: "Missing required parameters: nom, ville." }, 400);
   }
@@ -102,6 +104,29 @@ export async function onRequestPost(context) {
   console.log("analyze:normalizing");
   const fiche = result.fiche;
   const normalized = normaliserFiche(fiche);
+  let competitorData = {
+    requete: activite ? `${activite} ${ville}` : "",
+    position: null,
+    concurrents: [],
+  };
+  if (activite) {
+    console.log("analyze:calling-competitors");
+    const competitorsResult = await collectCompetitors({
+      activite,
+      ville,
+      placeIdCible: normalized.place_id,
+      apiKey: env.OUTSCRAPER_API_KEY,
+    });
+    if (competitorsResult.ok) {
+      competitorData = {
+        requete: competitorsResult.requete,
+        position: competitorsResult.position,
+        concurrents: competitorsResult.concurrents,
+      };
+    } else {
+      console.error("analyze: collecte concurrents échouée", competitorsResult.code, competitorsResult.error);
+    }
+  }
 
   // 3) Enregistrement en D1.
   const analysisId = crypto.randomUUID();
@@ -114,8 +139,9 @@ export async function onRequestPost(context) {
       INSERT INTO analyses (
         analysis_id, nom, ville, query, place_id, name,
         rating, reviews, photos_count, description_length,
+        activity, search_query, local_position, competitors_json,
         status, fiche_json, normalized_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'collected', ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'collected', ?, ?, ?, ?)
     `).bind(
       analysisId,
       nom,
@@ -127,6 +153,10 @@ export async function onRequestPost(context) {
       normalized.reviews,
       normalized.photos_count,
       normalized.description_length,
+      activite || null,
+      competitorData.requete || null,
+      competitorData.position,
+      JSON.stringify(competitorData.concurrents || []),
       JSON.stringify(fiche),
       JSON.stringify(normalized),
       now,
