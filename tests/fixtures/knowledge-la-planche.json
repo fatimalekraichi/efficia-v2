@@ -1,0 +1,42 @@
+{
+  "analysisId": "knowledge-la-planche-001",
+  "business": {
+    "name": "La planche des saveurs",
+    "category": "restaurant",
+    "rating": 4.6,
+    "reviews": 449,
+    "photos_count": 10,
+    "has_description": true,
+    "description_length": 92,
+    "secondary_categories": 1,
+    "position": 2,
+    "last_review_age_days": 9,
+    "owner_response_rate": 0.78
+  },
+  "benchmark": {
+    "benchmark_score": 90,
+    "panel_size": 3,
+    "confidence": "established",
+    "percentiles": {
+      "rating": 55,
+      "reviews": 92,
+      "photos": 20
+    },
+    "gaps": {
+      "rating": 0,
+      "reviews": 53,
+      "photos": -21
+    },
+    "competitor_median": {
+      "rating": 4.6,
+      "reviews": 396,
+      "photos": 31
+    },
+    "top_competitor": {
+      "name": "Le Sanglier des Ardennes",
+      "rating": 4.6,
+      "reviews": 410,
+      "photos": 34
+    }
+  }
+}

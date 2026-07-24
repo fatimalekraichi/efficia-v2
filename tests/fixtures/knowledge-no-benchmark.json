@@ -1,0 +1,17 @@
+{
+  "analysisId": "knowledge-no-benchmark-001",
+  "business": {
+    "name": "Garage Central",
+    "category": "garage",
+    "rating": 3.8,
+    "reviews": 12,
+    "photos_count": 6,
+    "has_description": false,
+    "description_length": 0,
+    "secondary_categories": 0,
+    "position": null,
+    "last_review_age_days": 180,
+    "owner_response_rate": 0.2
+  },
+  "benchmark": null
+}

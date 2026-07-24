@@ -1,0 +1,42 @@
+{
+  "analysisId": "knowledge-strong-profile-001",
+  "business": {
+    "name": "Maison Très Visible",
+    "category": "restaurant",
+    "rating": 4.9,
+    "reviews": 620,
+    "photos_count": 85,
+    "has_description": true,
+    "description_length": 420,
+    "secondary_categories": 3,
+    "position": 1,
+    "last_review_age_days": 5,
+    "owner_response_rate": 0.92
+  },
+  "benchmark": {
+    "benchmark_score": 96,
+    "panel_size": 3,
+    "confidence": "established",
+    "percentiles": {
+      "rating": 95,
+      "reviews": 98,
+      "photos": 94
+    },
+    "gaps": {
+      "rating": 0.3,
+      "reviews": 280,
+      "photos": 40
+    },
+    "competitor_median": {
+      "rating": 4.6,
+      "reviews": 340,
+      "photos": 45
+    },
+    "top_competitor": {
+      "name": "Concurrent Premium",
+      "rating": 4.8,
+      "reviews": 500,
+      "photos": 60
+    }
+  }
+}

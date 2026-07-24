@@ -1,0 +1,42 @@
+{
+  "analysisId": "knowledge-weak-profile-001",
+  "business": {
+    "name": "Petit Atelier Local",
+    "category": "artisan",
+    "rating": 3.6,
+    "reviews": 8,
+    "photos_count": 4,
+    "has_description": true,
+    "description_length": 120,
+    "secondary_categories": 0,
+    "position": 6,
+    "last_review_age_days": 240,
+    "owner_response_rate": 0.1
+  },
+  "benchmark": {
+    "benchmark_score": 35,
+    "panel_size": 3,
+    "confidence": "established",
+    "percentiles": {
+      "rating": 10,
+      "reviews": 12,
+      "photos": 8
+    },
+    "gaps": {
+      "rating": -0.7,
+      "reviews": -52,
+      "photos": -24
+    },
+    "competitor_median": {
+      "rating": 4.3,
+      "reviews": 60,
+      "photos": 28
+    },
+    "top_competitor": {
+      "name": "Concurrent Fort",
+      "rating": 4.7,
+      "reviews": 90,
+      "photos": 45
+    }
+  }
+}
