@@ -4,6 +4,7 @@
     "test:analysis": "node --test tests/analysisReader.test.js",
     "test:knowledge": "node --test tests/knowledgeEngine.test.js",
     "test:pipeline": "node --test tests/pipelineEngine.test.js",
-    "test:renderer": "node --test tests/renderAnalysisHtml.test.js"
+    "test:renderer": "node --test tests/renderAnalysisHtml.test.js",
+    "test:render-route": "node --test tests/renderRoute.test.js"
   }
 }
