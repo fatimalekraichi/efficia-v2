@@ -2,3 +2,15 @@
 .DS_Store
 *.bak-*
 .DS_Store
+
+# Cloudflare local state
+.wrangler-state/
+.wrangler/
+
+# Local databases
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Generated audit files
+audit-efficia.pdf

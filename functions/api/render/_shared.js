@@ -4,8 +4,11 @@ import {
   jsonResponse,
   loadAnalysisById,
   loadLatestAnalysis,
+  verifyAnalysisRequest,
 } from "../analysis/_shared.js";
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
+import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
+import { addPdfPrintStyles, addPreviewToolbar } from "../../lib/pdfRenderer.js";
 
 const HTML_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -19,41 +22,36 @@ export function htmlResponse(html, status = 200) {
   });
 }
 
-function getReadDatabase(context) {
-  const db = context.env.ORDERS_DB;
-  if (!db) {
-    console.error("analysis-render: binding ORDERS_DB indisponible.");
-    return null;
-  }
-  return db;
-}
-
 export async function renderAnalysisById(context, analysisId) {
+  const verified = verifyAnalysisRequest(context);
+  if (!verified.ok) return verified.response;
+
   if (!isValidAnalysisId(analysisId)) {
     return jsonResponse({ success: false, error: "Invalid analysisId." }, 400);
   }
 
-  const db = getReadDatabase(context);
-  if (!db) return jsonResponse({ success: false, error: "Server configuration error." }, 500);
-
-  const analysis = await loadAnalysisById(db, analysisId);
+  const analysis = await loadAnalysisById(verified.db, analysisId);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
 
-  return htmlResponse(renderAnalysisHtml(analysis));
+  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId);
+  return htmlResponse(html);
 }
 
 export async function renderLatestAnalysis(context) {
-  const db = getReadDatabase(context);
-  if (!db) return jsonResponse({ success: false, error: "Server configuration error." }, 500);
+  const verified = verifyAnalysisRequest(context);
+  if (!verified.ok) return verified.response;
 
-  const analysis = await loadLatestAnalysis(db);
+  const analysis = await loadLatestAnalysis(verified.db);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
 
-  return htmlResponse(renderAnalysisHtml(analysis));
+  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), "latest");
+  return htmlResponse(html);
 }
 
 export { CORS_HEADERS };

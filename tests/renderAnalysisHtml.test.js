@@ -2,121 +2,140 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderAnalysisHtml } from "../functions/lib/renderAnalysisHtml.js";
 
-function makeAnalysis(overrides = {}) {
+function makeDocumentModel(overrides = {}) {
   return {
-    analysisId: "analysis-1",
-    status: "completed",
-    business: {
-      name: "La Planche des Saveurs",
-      ville: "Dinant",
-      activity: "restaurant",
-      rating: 4.6,
-      reviews: 449,
-      photosCount: 623,
-      competitors: [
-        {
-          name: "L'Inattendu",
-          rating: 4.8,
-          reviews: 324,
-          photos_count: 234,
-        },
-      ],
-    },
-    benchmark: {
-      score: 97,
-      topCompetitor: {
-        name: "L'Inattendu",
-        rating: 4.8,
-        reviews: 324,
+    composerVersion: "1.0.0",
+    generatedAt: "2026-07-24T07:00:00.000Z",
+    locale: "fr",
+    hero: {
+      businessName: "La Planche des Saveurs",
+      category: "restaurant",
+      city: "Dinant",
+      date: "24 juillet 2026",
+      score: 80,
+      scoreBand: "Solide",
+      headline: "Votre établissement inspire déjà confiance. Le principal enjeu est maintenant de rendre cette réputation plus visible au bon moment.",
+      improvementPotential: {
+        title: "Potentiel d'amélioration",
+        score: 48,
+        label: "Modéré",
+        stars: 3,
+        driversTitle: "Ce qui explique ce potentiel",
+        drivers: [
+          { signal: "position", label: "Visibilité locale" },
+          { signal: "description", label: "Description" },
+        ],
+        note: "Estimation interne destinée à orienter les priorités.",
       },
     },
-    knowledge: {
-      version: "1.0.0",
-      summary: "La fiche obtient une base solide.",
-      strengths: [
-        {
-          id: "FORCE_REVIEWS",
-          signal: "reviews",
-          message: "Votre réputation est portée par un volume d'avis solide.",
-        },
-      ],
-      weaknesses: [
-        {
-          id: "WEAK_POSITION",
-          signal: "position",
-          message: "Votre fiche peut progresser sur la visibilité locale.",
-        },
-      ],
-      opportunities: [
-        {
-          id: "OPP_DESCRIPTION",
-          signal: "description",
-          message: "Votre description peut être mieux exploitée.",
-        },
-      ],
-      top_priorities: [
-        {
-          id: "WEAK_POSITION",
-          signal: "position",
-          message: "Renforcer la visibilité sur la recherche locale.",
-        },
-      ],
+    executiveSummary: {
+      text: "Votre établissement bénéficie déjà d'une réputation solide. Les principaux gains se situent désormais au niveau de votre visibilité locale.",
     },
-    timestamps: {
-      createdAt: "2026-07-24T07:00:00.000Z",
-      knowledgeCompletedAt: "2026-07-24T07:01:00.000Z",
+    strengths: [
+      {
+        id: "FORCE_REVIEWS",
+        signal: "reviews",
+        title: "Votre réputation est portée par un volume d'avis solide",
+        message: "Lorsqu'un prospect compare plusieurs entreprises affichées côte à côte, ce volume d'avis augmente vos chances d'être choisi.",
+        evidence: { value: 449, competitorMedian: 340, unit: "avis", source: "Observation + Benchmark" },
+      },
+    ],
+    weaknesses: [
+      {
+        id: "WEAK_POSITION",
+        signal: "position",
+        title: "Votre visibilité locale peut progresser",
+        message: "Votre fiche n'apparaît pas dans les trois premiers résultats, là où partent souvent les premiers contacts.",
+        evidence: { value: 4, competitorMedian: null, unit: "position", source: "Observation" },
+      },
+    ],
+    opportunities: [
+      {
+        id: "OPP_DESCRIPTION",
+        signal: "description",
+        title: "Votre description peut mieux guider le choix",
+        message: "Une description plus claire peut aider le prospect à comprendre pourquoi vous contacter.",
+        evidence: { value: 0, competitorMedian: null, unit: "caractères", source: "Observation" },
+      },
+    ],
+    priorities: [
+      {
+        rank: 1,
+        id: "WEAK_POSITION",
+        signal: "position",
+        title: "Renforcer la visibilité locale",
+        reasoning: "Être visible dans les premiers résultats augmente les chances d'être contacté au moment où le besoin est exprimé.",
+        severity: "high",
+        evidence: { value: 4, competitorMedian: null, unit: "position", source: "Observation" },
+        actionability: { estimatedTime: "30 à 45 minutes" },
+      },
+    ],
+    actionPlan: [
+      {
+        order: 1,
+        id: "OPP_DESCRIPTION",
+        action: "Clarifier la description de la fiche",
+        difficulty: "easy",
+        estimatedTime: "20 à 30 minutes",
+        canEfficiaAutomate: true,
+        impactType: "conversion",
+      },
+    ],
+    whyNow: {
+      text: "Chaque semaine où votre fiche reste dans cette configuration, une partie des internautes peut contacter une entreprise mieux positionnée.",
+    },
+    footer: {
+      methodology: "Analyse issue des observations publiques · comparaison à 3 concurrents locaux.",
+      disclaimer: "Efficia Digital n'est pas affilié à Google. Le Potentiel d'amélioration est une estimation interne, pas une garantie de résultat.",
+      versions: {
+        reasoning: "1.0.0",
+        composer: "1.0.0",
+      },
     },
     ...overrides,
   };
 }
 
 test("renderAnalysisHtml produit un document HTML complet avec les sections attendues", () => {
-  const html = renderAnalysisHtml(makeAnalysis());
+  const html = renderAnalysisHtml(makeDocumentModel());
 
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /<html lang="fr">/);
   assert.match(html, /La Planche des Saveurs/);
-  assert.match(html, /Dinant · restaurant/);
-  assert.match(html, /97\/100/);
+  assert.match(html, /restaurant · Dinant · 24 juillet 2026/);
+  assert.match(html, /80/);
   assert.match(html, /Résumé exécutif/);
-  assert.match(html, /Forces/);
-  assert.match(html, /Faiblesses/);
-  assert.match(html, /Opportunités prioritaires/);
-  assert.match(html, /Priorités/);
-  assert.match(html, /Benchmark/);
-  assert.match(html, /Meilleur concurrent/);
-  assert.match(html, /Version du moteur : 1.0.0/);
+  assert.match(html, /Les 3 priorités/);
+  assert.match(html, /Vos points forts/);
+  assert.match(html, /Ce qui limite aujourd'hui votre visibilité/);
+  assert.match(html, /Plan d&#39;action/);
+  assert.match(html, /Pourquoi agir maintenant/);
+  assert.match(html, /@page/);
+  assert.match(html, /break-inside: avoid/);
 });
 
-test("renderAnalysisHtml affiche uniquement les données reçues sans recalculer le benchmark", () => {
-  const html = renderAnalysisHtml(makeAnalysis());
+test("renderAnalysisHtml affiche uniquement le documentModel et ignore les sources brutes", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    business: { name: "NE_DOIT_PAS_APPARAITRE" },
+    benchmark: { score: 12 },
+    knowledge: { summary: "NE_DOIT_PAS_APPARAITRE_NON_PLUS" },
+    reasoning: { reasonings: [] },
+  }));
 
-  assert.match(html, /<td>4\.6<\/td>/);
-  assert.match(html, /<td>4\.8<\/td>/);
-  assert.match(html, /<td>449<\/td>/);
-  assert.match(html, /<td>324<\/td>/);
-  assert.match(html, /<td>623<\/td>/);
-  assert.match(html, /<td>234<\/td>/);
+  assert.match(html, /Votre établissement bénéficie déjà d&#39;une réputation solide/);
+  assert.doesNotMatch(html, /NE_DOIT_PAS_APPARAITRE/);
+  assert.doesNotMatch(html, /NE_DOIT_PAS_APPARAITRE_NON_PLUS/);
+  assert.doesNotMatch(html, /12\/100/);
 });
 
 test("renderAnalysisHtml échappe les contenus externes", () => {
-  const html = renderAnalysisHtml(makeAnalysis({
-    business: {
-      name: "<script>alert('x')</script>",
-      ville: "Dinant",
-      activity: "restaurant",
-      rating: 4.6,
-      reviews: 449,
-      photosCount: 623,
-      competitors: [],
+  const html = renderAnalysisHtml(makeDocumentModel({
+    hero: {
+      ...makeDocumentModel().hero,
+      businessName: "<script>alert('x')</script>",
     },
-    knowledge: {
-      version: "1.0.0",
-      summary: "Résumé <b>important</b>",
-      strengths: [],
-      weaknesses: [],
-      opportunities: [],
-      top_priorities: [],
+    executiveSummary: {
+      text: "Résumé <b>important</b>",
     },
   }));
 

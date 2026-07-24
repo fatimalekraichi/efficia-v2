@@ -5,6 +5,9 @@
     "test:knowledge": "node --test tests/knowledgeEngine.test.js",
     "test:pipeline": "node --test tests/pipelineEngine.test.js",
     "test:renderer": "node --test tests/renderAnalysisHtml.test.js",
-    "test:render-route": "node --test tests/renderRoute.test.js"
+    "test:render-route": "node --test tests/renderRoute.test.js",
+    "test:pdf-route": "node --test tests/pdfRoute.test.js",
+    "test:reasoning": "node --test tests/reasoningEngine.test.js",
+    "test:composer": "node --test tests/composerEngine.test.js"
   }
 }

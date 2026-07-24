@@ -1,0 +1,94 @@
+{
+  "analysisId": "reasoning-la-planche-001",
+  "generatedAt": "2026-07-24T08:00:00.000Z",
+  "context": {
+    "business": {
+      "name": "La planche des saveurs",
+      "category": "restaurant",
+      "rating": 4.6,
+      "reviews": 449,
+      "photos_count": 10,
+      "description_length": 0,
+      "secondary_categories": 1,
+      "position": 4
+    },
+    "benchmark": {
+      "benchmark_score": 80,
+      "panel_size": 3,
+      "confidence": "established",
+      "percentiles": {
+        "rating": 50,
+        "reviews": 67,
+        "photos": 20
+      },
+      "gaps": {
+        "rating": -0.03,
+        "reviews": -7,
+        "photos": -191
+      },
+      "competitor_median": {
+        "rating": 4.7,
+        "reviews": 340,
+        "photos": 234
+      },
+      "top_competitor": {
+        "name": "Concurrent anonymisé",
+        "rating": 4.8,
+        "reviews": 324,
+        "photos": 234
+      }
+    }
+  },
+  "knowledge": {
+    "version": "1.0.0",
+    "confidence": "established",
+    "strengths": [
+      {
+        "id": "FORCE_REVIEWS",
+        "signal": "reviews",
+        "businessImpact": "trust",
+        "priority": 13.5,
+        "severity": "positive",
+        "message": "Votre réputation est portée par un volume d'avis solide."
+      }
+    ],
+    "weaknesses": [
+      {
+        "id": "WEAK_POSITION",
+        "signal": "position",
+        "businessImpact": "visibility",
+        "priority": 9,
+        "severity": "high",
+        "message": "Votre fiche n'apparaît pas dans les trois premiers résultats."
+      }
+    ],
+    "opportunities": [
+      {
+        "id": "OPP_PHOTOS",
+        "signal": "photos",
+        "businessImpact": "conversion",
+        "priority": 7.5,
+        "severity": "medium",
+        "message": "Votre galerie peut mieux montrer votre activité."
+      },
+      {
+        "id": "OPP_DESCRIPTION",
+        "signal": "description",
+        "businessImpact": "conversion",
+        "priority": 9,
+        "severity": "high",
+        "message": "Votre description est peu développée."
+      }
+    ],
+    "top_priorities": [
+      {
+        "id": "WEAK_POSITION",
+        "signal": "position",
+        "businessImpact": "visibility",
+        "priority": 9,
+        "severity": "high",
+        "message": "Votre fiche n'apparaît pas dans les trois premiers résultats."
+      }
+    ]
+  }
+}
