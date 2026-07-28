@@ -14,7 +14,7 @@ function silentLogger() {
   };
 }
 
-test("pipeline completed : exécute observation, benchmark et knowledge dans l'ordre", async () => {
+test("pipeline completed : exécute observation, benchmark, knowledge, reasoning et composer dans l'ordre", async () => {
   const calls = [];
   const { logs, logger } = silentLogger();
 
@@ -35,11 +35,15 @@ test("pipeline completed : exécute observation, benchmark et knowledge dans l'o
       observation: "ok",
       benchmark: "ok",
       knowledge: "ok",
+      reasoning: "ok",
+      composer: "ok",
     },
   });
-  assert.deepEqual(calls.map((call) => call.stage), ["observation", "benchmark", "knowledge"]);
+  assert.deepEqual(calls.map((call) => call.stage), ["observation", "benchmark", "knowledge", "reasoning", "composer"]);
   assert.deepEqual(calls[1].payload, { analysisId: "analysis-123" });
   assert.deepEqual(calls[2].payload, { analysisId: "analysis-123" });
+  assert.deepEqual(calls[3].payload, { analysisId: "analysis-123" });
+  assert.deepEqual(calls[4].payload, { analysisId: "analysis-123" });
   assert.deepEqual(logs, [
     "pipeline:start",
     "pipeline:observation:start",
@@ -48,6 +52,10 @@ test("pipeline completed : exécute observation, benchmark et knowledge dans l'o
     "pipeline:benchmark:done",
     "pipeline:knowledge:start",
     "pipeline:knowledge:done",
+    "pipeline:reasoning:start",
+    "pipeline:reasoning:done",
+    "pipeline:composer:start",
+    "pipeline:composer:done",
     "pipeline:success",
   ]);
 });
@@ -71,6 +79,8 @@ test("pipeline failed : stoppe immédiatement si observation échoue", async () 
     observation: "failed",
     benchmark: "pending",
     knowledge: "pending",
+    reasoning: "pending",
+    composer: "pending",
   });
   assert.deepEqual(calls, ["observation"]);
 });

@@ -1,5 +1,5 @@
 // Cloudflare Pages Function — /api/pipeline
-// Orchestre Observation → Benchmark → Knowledge sans dupliquer leur logique.
+// Orchestre Observation → Benchmark → Knowledge → Reasoning → Composer sans dupliquer leur logique.
 
 import { verifyConnectorToken } from "./_auth.js";
 import { runPipelineEngine } from "../lib/pipelineEngine.js";
@@ -48,6 +48,8 @@ function endpointForStage(origin, stage) {
   if (stage === "observation") return `${origin}/api/analyze`;
   if (stage === "benchmark") return `${origin}/api/benchmark`;
   if (stage === "knowledge") return `${origin}/api/knowledge`;
+  if (stage === "reasoning") return `${origin}/api/reasoning`;
+  if (stage === "composer") return `${origin}/api/composer`;
   throw new Error(`Unknown pipeline stage: ${stage}`);
 }
 

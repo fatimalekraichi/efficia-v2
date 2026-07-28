@@ -8,6 +8,10 @@
     "test:render-route": "node --test tests/renderRoute.test.js",
     "test:pdf-route": "node --test tests/pdfRoute.test.js",
     "test:reasoning": "node --test tests/reasoningEngine.test.js",
-    "test:composer": "node --test tests/composerEngine.test.js"
+    "test:composer": "node --test tests/composerEngine.test.js",
+    "test:composition": "node --test tests/compositionRoutes.test.js",
+    "test:admin-audit": "node --test tests/adminAuditLauncher.test.js",
+    "test:manual-review": "node --test tests/manualReviewGate.test.js",
+    "test:score-efficia": "node --test tests/scoreEfficiaHistorical.test.js"
   }
 }

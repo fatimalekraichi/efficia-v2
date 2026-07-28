@@ -8,7 +8,7 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestGet(context) {
-  const verified = verifyAnalysisRequest(context);
+  const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
 
   const analysisId = context.params?.analysisId;

@@ -23,6 +23,24 @@ function safeNumber(value, fallback = "Non disponible") {
   return escapeHtml(Number.isInteger(parsed) ? parsed : parsed.toFixed(1));
 }
 
+const LABEL_TRANSLATIONS = {
+  high: "Élevé",
+  medium: "Moyen",
+  low: "Faible",
+  easy: "Facile",
+  moderate: "Modéré",
+  hard: "Difficile",
+  trust: "Confiance",
+  conversion: "Conversion",
+  visibility: "Visibilité",
+  completeness: "Complétude",
+};
+
+function safeLabel(value, fallback = "Non disponible") {
+  if (!present(value)) return escapeHtml(fallback);
+  return safeText(LABEL_TRANSLATIONS[String(value)] || value, fallback);
+}
+
 function stars(count) {
   const value = Number(count);
   const total = Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : 0;
@@ -75,6 +93,17 @@ function header(label = "Diagnostic Efficia™") {
   `;
 }
 
+function methodologyProofItems(model) {
+  const methodology = model.footer?.methodology || "";
+  return [
+    "120+ signaux analysés",
+    methodology.includes("comparaison")
+      ? methodology.replace(/^Analyse issue des observations publiques ·\s*/i, "")
+      : "comparaison concurrentielle selon les données disponibles",
+    "méthode Efficia™",
+  ];
+}
+
 function footer(model, label = "") {
   return `
     <footer class="doc-footer">
@@ -114,6 +143,7 @@ function scoreGauge(score) {
 function heroSection(model) {
   const hero = model.hero || {};
   const potential = hero.improvementPotential || {};
+  const proofItems = methodologyProofItems(model);
   return `
     <section class="page cover-page">
       ${header()}
@@ -158,9 +188,7 @@ function heroSection(model) {
           <article class="method-proof-card">
             <p>Analyse réalisée à partir de</p>
             <ul>
-              <li>${icon("check")}<span>120+ signaux analysés</span></li>
-              <li>${icon("check")}<span>comparaison avec 3 concurrents locaux</span></li>
-              <li>${icon("check")}<span>méthode Efficia™</span></li>
+              ${proofItems.map((item) => `<li>${icon("check")}<span>${safeText(item)}</span></li>`).join("")}
             </ul>
           </article>
         </div>
@@ -187,7 +215,7 @@ function priorityCard(item) {
           </div>
           <div>
             <span>Impact</span>
-            <p>${safeText(item.severity)}</p>
+            <p>${safeLabel(item.severity)}</p>
           </div>
           <div>
             <span>Temps estimé</span>
@@ -294,10 +322,10 @@ function actionCard(item) {
       <div class="action-content">
         <h3>${safeText(item.action)}</h3>
         <dl>
-          <div><dt>Difficulté</dt><dd>${safeText(item.difficulty)}</dd></div>
+          <div><dt>Difficulté</dt><dd>${safeLabel(item.difficulty)}</dd></div>
           <div><dt>Temps</dt><dd>${safeText(item.estimatedTime)}</dd></div>
           <div><dt>Automatisable par Efficia</dt><dd>${boolLabel(item.canEfficiaAutomate)}</dd></div>
-          <div><dt>Impact attendu</dt><dd>${safeText(item.impactType)}</dd></div>
+          <div><dt>Impact attendu</dt><dd>${safeLabel(item.impactType)}</dd></div>
         </dl>
       </div>
     </article>

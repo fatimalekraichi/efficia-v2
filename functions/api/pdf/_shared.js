@@ -37,18 +37,40 @@ function pdfErrorResponse(result) {
   }, status);
 }
 
-async function renderAnalysisPdf(context, analysis) {
+function canGeneratePdf(analysis) {
+  return analysis?.status === "approved" || analysis?.status === "pdf_generated";
+}
+
+async function markPdfGenerated(db, analysisId) {
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE analyses
+    SET status = 'pdf_generated', pdf_generated_at = ?, updated_at = ?
+    WHERE analysis_id = ?
+  `).bind(now, now, analysisId).run();
+}
+
+async function renderAnalysisPdf(context, db, analysis) {
+  if (!canGeneratePdf(analysis)) {
+    return jsonResponse({
+      success: false,
+      error: "REPORT_NOT_APPROVED",
+      message: "Le rapport doit être approuvé avant de générer le PDF.",
+    }, 409);
+  }
+
   const documentModel = buildDocumentModelFromAnalysis(analysis);
   const html = renderAnalysisHtml(documentModel);
   const result = await renderPdfWithCloudflareBrowserRun({ html, env: context.env });
   if (!result.ok) return pdfErrorResponse(result);
 
+  await markPdfGenerated(db, analysis.analysisId);
   const filename = buildAuditPdfFilename(analysis);
   return pdfResponse(result.pdf, filename);
 }
 
 export async function renderPdfById(context, analysisId) {
-  const verified = verifyAnalysisRequest(context);
+  const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
 
   if (!isValidAnalysisId(analysisId)) {
@@ -60,11 +82,11 @@ export async function renderPdfById(context, analysisId) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
 
-  return renderAnalysisPdf(context, analysis);
+  return renderAnalysisPdf(context, verified.db, analysis);
 }
 
 export async function renderLatestPdf(context) {
-  const verified = verifyAnalysisRequest(context);
+  const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
 
   const analysis = await loadLatestAnalysis(verified.db);
@@ -72,7 +94,11 @@ export async function renderLatestPdf(context) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
 
-  return renderAnalysisPdf(context, analysis);
+  return renderAnalysisPdf(context, verified.db, analysis);
 }
 
 export { CORS_HEADERS };
+export const __test__ = {
+  canGeneratePdf,
+  markPdfGenerated,
+};

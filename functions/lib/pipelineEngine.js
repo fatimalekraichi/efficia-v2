@@ -2,6 +2,8 @@ export const PIPELINE_STAGES = {
   observation: "observation",
   benchmark: "benchmark",
   knowledge: "knowledge",
+  reasoning: "reasoning",
+  composer: "composer",
 };
 
 function okStages() {
@@ -9,6 +11,8 @@ function okStages() {
     observation: "pending",
     benchmark: "pending",
     knowledge: "pending",
+    reasoning: "pending",
+    composer: "pending",
   };
 }
 
@@ -53,6 +57,24 @@ export async function runPipelineEngine(input, runStage, logger = console) {
   }
   stages.knowledge = "ok";
   logger.log("pipeline:knowledge:done");
+
+  logger.log("pipeline:reasoning:start");
+  const reasoning = await runStage(PIPELINE_STAGES.reasoning, { analysisId });
+  if (!reasoning.ok) {
+    stages.reasoning = "failed";
+    return failed(PIPELINE_STAGES.reasoning, stages, reasoning.error || "Reasoning failed.");
+  }
+  stages.reasoning = "ok";
+  logger.log("pipeline:reasoning:done");
+
+  logger.log("pipeline:composer:start");
+  const composer = await runStage(PIPELINE_STAGES.composer, { analysisId });
+  if (!composer.ok) {
+    stages.composer = "failed";
+    return failed(PIPELINE_STAGES.composer, stages, composer.error || "Composer failed.");
+  }
+  stages.composer = "ok";
+  logger.log("pipeline:composer:done");
 
   logger.log("pipeline:success");
   return {

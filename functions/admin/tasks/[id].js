@@ -10,6 +10,7 @@ const ALLOWED_STATUSES = new Set([
   "todo",
   "in_progress",
   "waiting",
+  "audit_generated",
   "pdf_generated",
   "pdf_reviewed",
   "sent",

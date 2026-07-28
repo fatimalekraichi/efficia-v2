@@ -63,13 +63,38 @@ export function addPdfPrintStyles(html) {
   return `${css}${html}`;
 }
 
-export function addPreviewToolbar(html, analysisId) {
+export function addPreviewToolbar(html, analysisId, status = "") {
   const safeAnalysisId = encodeURIComponent(String(analysisId || "latest"));
+  const approved = status === "approved" || status === "pdf_generated";
   const toolbar = `
     <div class="efficia-preview-toolbar no-print">
-      <button type="button" onclick="window.print()">Télécharger le PDF</button>
-      <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur">PDF serveur</a>
+      <button type="button" onclick="window.print()" ${approved ? "" : "disabled"}>${approved ? "Télécharger le PDF" : "PDF après approbation"}</button>
+      <a href="/admin/audit-review/${safeAnalysisId}">Retourner à la validation</a>
+      <button type="button" data-efficia-approve-report="${safeAnalysisId}" ${approved ? "disabled" : ""}>Approuver le rapport</button>
+      <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur" class="${approved ? "" : "is-disabled"}" aria-disabled="${approved ? "false" : "true"}">Générer le PDF</a>
     </div>
+    <script>
+      document.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-efficia-approve-report]");
+        if (!button || button.disabled) return;
+        button.disabled = true;
+        button.textContent = "Approbation...";
+        try {
+          const response = await fetch("/api/admin/audit-review/" + button.dataset.efficiaApproveReport, {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "approve" })
+          });
+          if (!response.ok) throw new Error("approval_failed");
+          window.location.reload();
+        } catch {
+          button.disabled = false;
+          button.textContent = "Approuver le rapport";
+          alert("Impossible d’approuver le rapport pour le moment.");
+        }
+      });
+    </script>
     <style id="efficia-preview-toolbar-css">
       .efficia-preview-toolbar {
         position: sticky;
@@ -105,6 +130,16 @@ export function addPreviewToolbar(html, analysisId) {
         background: #ffffff;
         color: #2563eb;
         box-shadow: none;
+      }
+
+      .efficia-preview-toolbar a.is-disabled {
+        pointer-events: none;
+        opacity: 0.45;
+      }
+
+      .efficia-preview-toolbar button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
       }
     </style>
   `;

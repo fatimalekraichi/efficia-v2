@@ -63,7 +63,11 @@ export async function loadKnowledgeAnalysis(db, analysisId) {
       top_competitor_name,
       top_competitor_rating,
       top_competitor_reviews,
-      benchmark_completed_at
+      benchmark_completed_at,
+      reviewed_observation_json,
+      reviewed_benchmark_json,
+      reviewed_score_json,
+      scoring_version
     FROM analyses
     WHERE analysis_id = ?
     LIMIT 1
@@ -86,42 +90,71 @@ function parseCompetitorCount(competitorsJson) {
   }
 }
 
+function parseJson(value) {
+  if (!value) return null;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export function buildKnowledgeInput(analysis) {
   const descriptionLength = toNumber(analysis.description_length);
+  const reviewedObservation = parseJson(analysis.reviewed_observation_json);
+  const reviewedBenchmark = parseJson(analysis.reviewed_benchmark_json);
+  const reviewedScore = parseJson(analysis.reviewed_score_json);
+  const scoreEfficia = toNumber(reviewedScore?.roundedScore) ?? toNumber(reviewedScore?.score);
+  const reviewedDescriptionLength = toNumber(reviewedObservation?.descriptionLength);
+  const finalDescriptionLength = reviewedDescriptionLength ?? descriptionLength;
+  const descriptionStatus = reviewedObservation?.descriptionStatus || null;
+  const competitorCount = toNumber(reviewedBenchmark?.competitorCount);
+  const avg = reviewedBenchmark?.averages || {};
+  const gaps = reviewedBenchmark?.gaps || {};
 
   return {
     analysisId: analysis.analysis_id,
     business: {
-      name: analysis.name || null,
-      category: analysis.activity || null,
-      rating: toNumber(analysis.rating),
-      reviews: toNumber(analysis.reviews),
-      photos_count: toNumber(analysis.photos_count),
-      has_description: descriptionLength === null ? null : descriptionLength > 0,
-      description_length: descriptionLength,
-      secondary_categories: null,
-      position: toNumber(analysis.local_position),
+      name: reviewedObservation?.name || analysis.name || null,
+      category: reviewedObservation?.category || analysis.activity || null,
+      rating: toNumber(reviewedObservation?.rating) ?? toNumber(analysis.rating),
+      reviews: toNumber(reviewedObservation?.reviews) ?? toNumber(analysis.reviews),
+      photos_count: toNumber(reviewedObservation?.photosCount) ?? toNumber(analysis.photos_count),
+      has_description: descriptionStatus === "absent" ? false : finalDescriptionLength === null ? null : finalDescriptionLength > 0,
+      description_length: finalDescriptionLength,
+      description_status: descriptionStatus,
+      secondary_categories: reviewedObservation?.secondaryCategories || null,
+      position: toNumber(reviewedObservation?.localPosition) ?? toNumber(analysis.local_position),
       last_review_age_days: null,
-      owner_response_rate: null,
+      owner_response_rate: reviewedObservation?.reviewResponseStatus === "unknown" ? null : null,
+      review_response_status: reviewedObservation?.reviewResponseStatus || "unknown",
+      photo_quality: reviewedObservation?.photoQuality || "unknown",
+      photo_relevance: reviewedObservation?.photoRelevance || "unknown",
+      profile_completeness: reviewedObservation?.profileCompleteness || "unknown",
+      category_relevance: reviewedObservation?.categoryRelevance || "unknown",
+      hours_accuracy: reviewedObservation?.hoursAccuracy || "unknown",
+      visual_consistency: reviewedObservation?.visualConsistency || "unknown",
     },
     benchmark: {
-      benchmark_score: toNumber(analysis.benchmark_score),
-      panel_size: parseCompetitorCount(analysis.competitors_json),
-      confidence: "established",
+      benchmark_score: scoreEfficia ?? toNumber(analysis.benchmark_score),
+      scoring_version: reviewedScore?.scoringVersion || analysis.scoring_version || null,
+      panel_size: competitorCount ?? parseCompetitorCount(analysis.competitors_json),
+      confidence: reviewedBenchmark?.benchmarkConfidence || "established",
       percentiles: {
         rating: toNumber(analysis.rating_percentile),
         reviews: toNumber(analysis.reviews_percentile),
         photos: toNumber(analysis.photos_percentile),
       },
       gaps: {
-        rating: toNumber(analysis.rating_gap),
-        reviews: toNumber(analysis.reviews_gap),
-        photos: toNumber(analysis.photos_gap),
+        rating: toNumber(gaps.rating) ?? toNumber(analysis.rating_gap),
+        reviews: toNumber(gaps.reviews) ?? toNumber(analysis.reviews_gap),
+        photos: toNumber(gaps.photos) ?? toNumber(analysis.photos_gap),
       },
       competitor_median: {
-        rating: toNumber(analysis.avg_rating),
-        reviews: toNumber(analysis.avg_reviews),
-        photos: toNumber(analysis.avg_photos),
+        rating: toNumber(avg.rating) ?? toNumber(analysis.avg_rating),
+        reviews: toNumber(avg.reviews) ?? toNumber(analysis.avg_reviews),
+        photos: toNumber(avg.photos) ?? toNumber(analysis.avg_photos),
       },
       top_competitor: {
         name: analysis.top_competitor_name || null,

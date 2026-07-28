@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nouvel audit | Efficia Digital</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/assets/favicon/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="/css/reset.css">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <div class="admin-header__inner">
+      <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
+        <img src="/assets/logo/logo-efficia-web.png" alt="Efficia Digital">
+      </a>
+      <nav class="admin-nav">
+        <a class="admin-button is-secondary" href="/admin">Commandes</a>
+        <button class="admin-button is-danger" type="button" data-admin-logout>Déconnexion</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <div class="admin-layout admin-audit-shell">
+      <section class="admin-title">
+        <div>
+          <span class="admin-kicker">Audit interne</span>
+          <h1>Générer un audit Efficia</h1>
+          <p>Lancez le pipeline complet depuis une URL Google Business. L’analyse, le benchmark, la connaissance métier et le rapport premium sont produits côté serveur.</p>
+        </div>
+      </section>
+
+      <section class="admin-card admin-audit-card">
+        <div class="admin-order-context" data-order-context hidden>
+          <div class="admin-section-heading">
+            <span class="admin-kicker">Commande</span>
+            <h2 data-order-context-title>Commande liée</h2>
+          </div>
+          <div class="admin-info-list admin-production-grid" data-order-context-info></div>
+        </div>
+
+        <form class="admin-form admin-audit-form" data-admin-audit-form>
+          <fieldset class="admin-report-choice">
+            <legend>Type de rapport</legend>
+            <label>
+              <input type="radio" name="reportType" value="free">
+              <span>
+                <strong>Diagnostic gratuit</strong>
+                <small>Version courte pour un premier retour client.</small>
+              </span>
+            </label>
+            <label>
+              <input type="radio" name="reportType" value="premium" checked>
+              <span>
+                <strong>Audit Premium 99 €</strong>
+                <small>Version complète à contrôler avant livraison.</small>
+              </span>
+            </label>
+          </fieldset>
+
+          <label class="admin-field admin-field-wide">
+            <span>URL Google Maps / Google Business *</span>
+            <input type="url" name="googleBusinessUrl" placeholder="https://www.google.com/maps/place/..." required autocomplete="off">
+          </label>
+
+          <div class="admin-form-grid">
+            <label class="admin-field">
+              <span>Nom de l’entreprise</span>
+              <input type="text" name="companyName" placeholder="Ex. Efficia Digital" autocomplete="organization">
+            </label>
+            <label class="admin-field">
+              <span>Ville</span>
+              <input type="text" name="city" placeholder="Ex. Arlon" autocomplete="address-level2">
+            </label>
+          </div>
+
+          <label class="admin-field">
+            <span>Email prospect</span>
+            <input type="email" name="email" placeholder="contact@exemple.com" autocomplete="email">
+          </label>
+
+          <label class="admin-notes">
+            <span>Notes internes</span>
+            <textarea name="internalNotes" placeholder="Contexte, demande spécifique, source du prospect..."></textarea>
+          </label>
+
+          <button class="admin-button admin-audit-submit" type="submit" data-admin-audit-submit>Générer l’audit</button>
+          <p class="admin-error" data-admin-audit-error role="alert"></p>
+        </form>
+      </section>
+
+      <section class="admin-card admin-progress-card" data-admin-audit-progress hidden>
+        <div class="admin-section-heading">
+          <span class="admin-kicker">Pipeline Efficia</span>
+          <h2>Progression</h2>
+        </div>
+        <ol class="admin-pipeline-list" aria-live="polite">
+          <li data-pipeline-stage="observation"><span>Observation</span><strong>En attente</strong></li>
+          <li data-pipeline-stage="benchmark"><span>Benchmark</span><strong>En attente</strong></li>
+          <li data-pipeline-stage="knowledge"><span>Knowledge</span><strong>En attente</strong></li>
+          <li data-pipeline-stage="reasoning"><span>Reasoning</span><strong>En attente</strong></li>
+          <li data-pipeline-stage="composer"><span>Composer</span><strong>En attente</strong></li>
+        </ol>
+      </section>
+
+      <section class="admin-card admin-result-card" data-admin-audit-result hidden>
+        <div class="admin-section-heading">
+          <span class="admin-kicker">Audit généré</span>
+          <h2>Résultat</h2>
+        </div>
+        <div class="admin-info-list admin-production-grid" data-admin-audit-result-info></div>
+        <div class="admin-task-actions">
+          <a class="admin-button" href="#" target="_blank" rel="noopener" data-admin-audit-report>Valider l’audit</a>
+          <a class="admin-button is-secondary" href="#" target="_blank" rel="noopener" data-admin-audit-data>Voir les données</a>
+          <a class="admin-button is-secondary" href="#" data-admin-audit-order hidden>Retour à la commande</a>
+          <button class="admin-button is-secondary" type="button" data-admin-audit-reset>Relancer</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/js/admin-new-audit.js"></script>
+</body>
+</html>

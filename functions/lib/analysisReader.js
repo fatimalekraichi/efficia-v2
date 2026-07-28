@@ -21,10 +21,18 @@ export function formatAnalysisRow(row) {
   const normalized = parseJson(row.normalized_json);
   const competitors = parseJson(row.competitors_json);
   const knowledge = parseJson(row.knowledge_json);
+  const reasoning = parseJson(row.reasoning_json);
+  const documentModel = parseJson(row.document_model_json);
+  const manualReview = parseJson(row.manual_review_json);
+  const reviewedObservation = parseJson(row.reviewed_observation_json);
+  const reviewedBenchmark = parseJson(row.reviewed_benchmark_json);
+  const scoreInputs = parseJson(row.score_inputs_json);
+  const reviewedScore = parseJson(row.reviewed_score_json);
 
   return {
     analysisId: row.analysis_id,
     status: row.status || null,
+    reportType: row.report_type || null,
     business: {
       nom: row.nom || null,
       ville: row.ville || null,
@@ -41,6 +49,7 @@ export function formatAnalysisRow(row) {
       fiche,
       normalized,
       competitors,
+      reviewed: reviewedObservation,
     },
     benchmark: {
       score: toNumber(row.benchmark_score),
@@ -65,13 +74,25 @@ export function formatAnalysisRow(row) {
         reviews: toNumber(row.top_competitor_reviews),
       },
       completedAt: row.benchmark_completed_at || null,
+      reviewed: reviewedBenchmark,
     },
     knowledge,
+    reasoning,
+    documentModel,
+    manualReview,
+    scoreInputs,
+    reviewedScore,
+    scoringVersion: row.scoring_version || null,
     timestamps: {
       createdAt: row.created_at || null,
       updatedAt: row.updated_at || null,
       benchmarkCompletedAt: row.benchmark_completed_at || null,
       knowledgeCompletedAt: row.knowledge_completed_at || null,
+      reasoningCompletedAt: row.reasoning_completed_at || null,
+      composerCompletedAt: row.composer_completed_at || null,
+      reviewCompletedAt: row.review_completed_at || null,
+      approvedAt: row.approved_at || null,
+      pdfGeneratedAt: row.pdf_generated_at || null,
     },
   };
 }
@@ -112,6 +133,20 @@ export const ANALYSIS_SELECT = `
     top_competitor_reviews,
     benchmark_completed_at,
     knowledge_json,
-    knowledge_completed_at
+    knowledge_completed_at,
+    reasoning_json,
+    document_model_json,
+    manual_review_json,
+    reviewed_observation_json,
+    reviewed_benchmark_json,
+    score_inputs_json,
+    reviewed_score_json,
+    scoring_version,
+    reasoning_completed_at,
+    composer_completed_at,
+    review_completed_at,
+    approved_at,
+    pdf_generated_at,
+    report_type
   FROM analyses
 `;

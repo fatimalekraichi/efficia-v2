@@ -15,6 +15,7 @@ const statusLabels = {
   todo: "Audit à faire",
   in_progress: "Audit en cours",
   waiting: "En attente",
+  audit_generated: "Audit généré",
   pdf_generated: "PDF généré",
   pdf_reviewed: "PDF vérifié",
   sent: "Audit envoyé",
@@ -74,18 +75,11 @@ const getFirstName = (order) => {
   return parts[0];
 };
 
-const buildScoreToolUrl = (order, task) => {
+const buildScoreToolUrl = (order) => {
   const params = new URLSearchParams({
-    company: order.company_name || "",
-    city: order.city || "",
-    firstName: getFirstName(order),
-    email: order.email || "",
-    offer: order.offer_code || "",
     orderId: order.order_id || "",
-    taskId: task?.task_id || "",
-    googleBusinessUrl: order.google_business_url || "",
   });
-  return `/outil-score-efficia-auto-v5.html?${params.toString()}`;
+  return `/admin/new-audit/?${params.toString()}`;
 };
 
 let currentTask = null;
@@ -144,7 +138,7 @@ const renderOrder = ({ order, tasks }) => {
   }
 
   if (openScoreToolButton) {
-    openScoreToolButton.href = currentTask ? buildScoreToolUrl(order, currentTask) : "#";
+    openScoreToolButton.href = currentTask ? buildScoreToolUrl(order) : "#";
     openScoreToolButton.classList.toggle("is-disabled", !currentTask);
   }
 
@@ -207,7 +201,7 @@ const updateTask = async ({ status, notes }) => {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
     setError("Impossible de mettre à jour la tâche.");
-    return;
+    return null;
   }
 
   currentTask = data.task;
@@ -215,6 +209,17 @@ const updateTask = async ({ status, notes }) => {
     order: currentOrder,
     tasks: [currentTask],
   });
+  return currentTask;
+};
+
+const startAuditFromOrder = async () => {
+  if (!currentOrder?.order_id || !currentTask?.task_id) return;
+  const updatedTask = await updateTask({
+    status: "in_progress",
+    notes: taskNotes?.value,
+  });
+  if (!updatedTask) return;
+  window.location.href = buildScoreToolUrl(currentOrder);
 };
 
 const logout = async () => {
@@ -227,6 +232,10 @@ const logout = async () => {
 
 taskButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    if (button.hasAttribute("data-start-audit")) {
+      startAuditFromOrder();
+      return;
+    }
     updateTask({
       status: button.getAttribute("data-task-status"),
       notes: taskNotes?.value,

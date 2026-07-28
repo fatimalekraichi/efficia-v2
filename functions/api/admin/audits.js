@@ -1,0 +1,513 @@
+import { loadAnalysisById } from "../analysis/_shared.js";
+import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../admin/_shared.js";
+
+const GOOGLE_HOST_PATTERN = /(^|\.)google\.[a-z.]+$/i;
+const GOOGLE_MAPS_HOST_PATTERN = /(^|\.)googleapis\.com$|(^|\.)goo\.gl$|(^|\.)maps\.app\.goo\.gl$/i;
+const REPORT_TYPES = new Set(["free", "premium"]);
+
+function isValidGoogleBusinessUrl(value) {
+  const raw = normalizeText(value);
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    return GOOGLE_HOST_PATTERN.test(host)
+      || GOOGLE_MAPS_HOST_PATTERN.test(host)
+      || host.includes("google.com")
+      || host.includes("googleusercontent.com");
+  } catch {
+    return false;
+  }
+}
+
+function cleanInput(value, maxLength = 240) {
+  return normalizeText(value).slice(0, maxLength);
+}
+
+function normalizeReportType(value, order = {}) {
+  const clean = cleanInput(value, 40).toLowerCase();
+  if (REPORT_TYPES.has(clean)) return clean;
+
+  const orderText = `${order.offer_code || ""} ${order.offer_name || ""}`.toLowerCase();
+  if (orderText.includes("diagnostic") || orderText.includes("gratuit") || orderText.includes("free")) return "free";
+  return "premium";
+}
+
+async function loadOrderContext(db, orderId) {
+  const cleanOrderId = cleanInput(orderId, 120);
+  if (!cleanOrderId) return null;
+
+  const order = await db.prepare(`
+    SELECT *
+    FROM orders
+    WHERE order_id = ?
+    LIMIT 1
+  `).bind(cleanOrderId).first();
+
+  if (!order) return null;
+
+  const task = await db.prepare(`
+    SELECT *
+    FROM order_tasks
+    WHERE order_id = ?
+    ORDER BY created_at ASC
+    LIMIT 1
+  `).bind(cleanOrderId).first();
+
+  return { order, task };
+}
+
+function extractBusinessNameFromGoogleUrl(value) {
+  try {
+    const parsed = new URL(value);
+    const query = parsed.searchParams.get("q") || parsed.searchParams.get("query");
+    if (query) return cleanInput(query.replace(/\+/g, " "), 180);
+
+    const segments = parsed.pathname
+      .split("/")
+      .map((segment) => decodeURIComponent(segment.replace(/\+/g, " ")).trim())
+      .filter(Boolean);
+    const placeIndex = segments.findIndex((segment) => segment.toLowerCase() === "place");
+    if (placeIndex >= 0 && segments[placeIndex + 1]) return cleanInput(segments[placeIndex + 1], 180);
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function buildPipelineInput(payload, orderContext = null) {
+  const order = orderContext?.order || {};
+  const task = orderContext?.task || {};
+  const googleBusinessUrl = cleanInput(
+    payload?.googleBusinessUrl || payload?.google_business_url || order.google_business_url,
+    2000,
+  );
+  const companyName = cleanInput(payload?.companyName || payload?.company_name || order.company_name, 180);
+  const city = cleanInput(payload?.city || payload?.ville || order.city, 120);
+  const email = cleanInput(payload?.email || payload?.prospectEmail || order.email, 180);
+  const internalNotes = cleanInput(payload?.internalNotes || payload?.notes || task.notes, 2000);
+  const orderId = cleanInput(payload?.orderId || payload?.order_id || order.order_id, 120);
+  const taskId = cleanInput(payload?.taskId || payload?.task_id || task.task_id, 120);
+  const reportType = normalizeReportType(payload?.reportType || payload?.report_type, order);
+
+  if (!isValidGoogleBusinessUrl(googleBusinessUrl)) {
+    return {
+      ok: false,
+      status: 400,
+      error: "INVALID_GOOGLE_BUSINESS_URL",
+      message: "Renseignez une URL Google Maps ou Google Business valide.",
+    };
+  }
+
+  const inferredName = extractBusinessNameFromGoogleUrl(googleBusinessUrl);
+  const nom = companyName || inferredName || googleBusinessUrl;
+  const hasCity = Boolean(city);
+  const ville = city || "Non renseignée";
+  const activite = hasCity ? (companyName || inferredName || "entreprise locale") : "";
+  const pipelineInput = {
+    nom,
+    ville,
+    activite,
+  };
+
+  if (!hasCity && (companyName || inferredName)) {
+    pipelineInput.observationQuery = companyName || inferredName;
+  } else if (!hasCity) {
+    pipelineInput.googleBusinessUrl = googleBusinessUrl;
+  }
+
+  return {
+    ok: true,
+    requestMetadata: {
+      googleBusinessUrl,
+      companyName,
+      city,
+      email,
+      internalNotes,
+      orderId,
+      taskId,
+      reportType,
+    },
+    pipelineInput,
+  };
+}
+
+async function attachAnalysisToOrder(db, { analysisId, orderId, taskId, notes }) {
+  if (!analysisId || !orderId) return null;
+
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE analyses
+    SET order_id = ?, updated_at = ?
+    WHERE analysis_id = ?
+  `).bind(orderId, now, analysisId).run();
+
+  const resolvedTask = taskId
+    ? { task_id: taskId }
+    : await db.prepare(`
+      SELECT task_id
+      FROM order_tasks
+      WHERE order_id = ?
+      ORDER BY created_at ASC
+      LIMIT 1
+    `).bind(orderId).first();
+
+  if (!resolvedTask?.task_id) return null;
+
+  const hasNotes = notes !== undefined && notes !== null;
+  await db.prepare(`
+    UPDATE order_tasks
+    SET
+      status = 'in_progress',
+      analysis_id = ?,
+      notes = CASE WHEN ? = 1 THEN ? ELSE notes END,
+      updated_at = ?
+    WHERE task_id = ?
+  `).bind(
+    analysisId,
+    hasNotes ? 1 : 0,
+    hasNotes ? notes : "",
+    now,
+    resolvedTask.task_id,
+  ).run();
+
+  return resolvedTask.task_id;
+}
+
+async function markAwaitingReview(db, analysisId, reportType = "premium") {
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE analyses
+    SET status = 'awaiting_review', report_type = ?, updated_at = ?
+    WHERE analysis_id = ?
+  `).bind(normalizeReportType(reportType), now, analysisId).run();
+}
+
+async function parseJsonResponse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function endpointForStage(origin, stage) {
+  if (stage === "observation") return `${origin}/api/analyze`;
+  if (stage === "benchmark") return `${origin}/api/benchmark`;
+  if (stage === "knowledge") return `${origin}/api/knowledge`;
+  if (stage === "reasoning") return `${origin}/api/reasoning`;
+  if (stage === "composer") return `${origin}/api/composer`;
+  throw new Error(`Unknown pipeline stage: ${stage}`);
+}
+
+async function callPipelineStage({ origin, connectorToken }, stage, payload) {
+  const response = await fetch(endpointForStage(origin, stage), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${connectorToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await parseJsonResponse(response);
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: {
+        status: response.status,
+        body: data,
+      },
+    };
+  }
+
+  return { ok: true, data };
+}
+
+async function runCollectionForReview(pipelineInput, callStage) {
+  const stages = {};
+  console.log("admin-audits:observation:start");
+  const observation = await callStage("observation", pipelineInput);
+  if (!observation.ok) {
+    stages.observation = "failed";
+    return {
+      status: "failed",
+      stage: "observation",
+      stages,
+      error: observation.error,
+    };
+  }
+
+  const analysisId = observation.data?.analysisId;
+  stages.observation = "ok";
+  console.log("admin-audits:observation:done", { analysis_id: analysisId });
+
+  console.log("admin-audits:benchmark:start");
+  const benchmark = await callStage("benchmark", { analysisId });
+  if (!benchmark.ok) {
+    stages.benchmark = "failed";
+    return {
+      status: "failed",
+      stage: "benchmark",
+      analysisId,
+      stages,
+      error: benchmark.error,
+    };
+  }
+
+  stages.benchmark = "ok";
+  console.log("admin-audits:benchmark:done", { analysis_id: analysisId });
+
+  return {
+    analysisId,
+    status: "awaiting_review",
+    stages,
+  };
+}
+
+function summarizeAnalysis(analysis) {
+  const documentModel = analysis?.documentModel || null;
+  const hero = documentModel?.hero || {};
+  return {
+    businessName: hero.businessName || analysis?.business?.name || analysis?.business?.nom || null,
+    city: hero.city || analysis?.business?.ville || null,
+    score: hero.score ?? analysis?.benchmark?.score ?? null,
+    status: analysis?.status || null,
+    analysisId: analysis?.analysisId || null,
+    reportType: analysis?.reportType || null,
+    hasDocumentModel: Boolean(documentModel),
+  };
+}
+
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error || "");
+  return message.includes("no such column") && message.includes(columnName);
+}
+
+function migrationForMissingColumn(error) {
+  const migrations = [
+    {
+      columns: [
+        "manual_review_json",
+        "reviewed_observation_json",
+        "reviewed_benchmark_json",
+        "review_completed_at",
+        "approved_at",
+        "pdf_generated_at",
+      ],
+      migration: "0009_manual_review_gate.sql",
+    },
+    {
+      columns: ["report_type"],
+      migration: "0010_analysis_report_type.sql",
+    },
+    {
+      columns: ["score_inputs_json", "reviewed_score_json", "scoring_version"],
+      migration: "0011_score_efficia_historical.sql",
+    },
+  ];
+
+  for (const group of migrations) {
+    if (group.columns.some((column) => isMissingColumnError(error, column))) {
+      return group.migration;
+    }
+  }
+
+  return null;
+}
+
+function missingMigrationResponse({ error, analysisId, stages, stage = "review" }) {
+  const migration = migrationForMissingColumn(error);
+  if (!migration) return null;
+
+  return jsonResponse({
+    success: false,
+    error: "MISSING_D1_MIGRATION",
+    stage,
+    analysisId,
+    stages,
+    message: `La base locale n’est pas à jour. Appliquez la migration ${migration}, puis relancez l’audit.`,
+  }, 500);
+}
+
+export async function onRequestOptions() {
+  return onOptions();
+}
+
+export async function onRequestPost(context) {
+  const auth = await requireAdminSession(context);
+  if (!auth.ok) return auth.response;
+
+  let payload;
+  try {
+    payload = await context.request.json();
+  } catch {
+    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
+  }
+
+  const connectorToken = normalizeText(context.env.CONNECTOR_TOKEN);
+  if (!connectorToken) {
+    console.error("admin-audits: CONNECTOR_TOKEN manquant dans l'environnement.");
+    return jsonResponse({ success: false, error: "SERVER_CONFIGURATION_ERROR" }, 500);
+  }
+
+  const db = requireOrdersDb(context.env);
+  const orderId = cleanInput(payload?.orderId || payload?.order_id, 120);
+  let orderContext = null;
+  if (orderId) {
+    orderContext = await loadOrderContext(db, orderId);
+    if (!orderContext) {
+      return jsonResponse({ success: false, error: "ORDER_NOT_FOUND" }, 404);
+    }
+  }
+
+  const prepared = buildPipelineInput(payload, orderContext);
+  if (!prepared.ok) {
+    return jsonResponse({
+      success: false,
+      error: prepared.error,
+      message: prepared.message,
+    }, prepared.status);
+  }
+
+  const origin = new URL(context.request.url).origin;
+
+  console.log("admin-audits:start", {
+    has_google_url: true,
+    has_company: Boolean(prepared.requestMetadata.companyName),
+    has_city: Boolean(prepared.requestMetadata.city),
+    report_type: prepared.requestMetadata.reportType,
+  });
+
+  const result = await runCollectionForReview(
+    prepared.pipelineInput,
+    (stage, stagePayload) => callPipelineStage({ origin, connectorToken }, stage, stagePayload),
+  );
+
+  if (result.status === "failed") {
+    const upstreamMessage = result.error?.body?.message
+      || result.error?.body?.error
+      || result.error?.body?.success === false && "Une étape serveur a échoué."
+      || null;
+    console.error("admin-audits:pipeline-failed", {
+      stage: result.stage,
+      status: result.error?.status || null,
+      upstream_error: result.error?.body?.error || null,
+    });
+    return jsonResponse({
+      success: false,
+      error: "PIPELINE_FAILED",
+      stage: result.stage,
+      stages: result.stages,
+      message: upstreamMessage
+        ? `Échec ${result.stage} : ${upstreamMessage}`
+        : "Une erreur est survenue pendant la génération.",
+    }, 502);
+  }
+
+  try {
+    await markAwaitingReview(db, result.analysisId, prepared.requestMetadata.reportType);
+  } catch (error) {
+    console.error("admin-audits:mark-awaiting-review-failed", {
+      analysis_id: result.analysisId,
+      missing_report_type_column: isMissingColumnError(error, "report_type"),
+    });
+    return jsonResponse({
+      success: false,
+      error: isMissingColumnError(error, "report_type")
+        ? "MISSING_D1_MIGRATION"
+        : "D1_UPDATE_FAILED",
+      stage: "review",
+      stages: result.stages,
+      message: isMissingColumnError(error, "report_type")
+        ? "La base locale n’est pas à jour. Appliquez la migration 0010_analysis_report_type.sql, puis relancez l’audit."
+        : "L’analyse a été collectée, mais son passage en validation a échoué.",
+    }, 500);
+  }
+
+  let analysis;
+  try {
+    analysis = await loadAnalysisById(db, result.analysisId);
+  } catch (error) {
+    console.error("admin-audits:analysis-read-failed", {
+      analysis_id: result.analysisId,
+      missing_migration: migrationForMissingColumn(error),
+    });
+    const migrationResponse = missingMigrationResponse({
+      error,
+      analysisId: result.analysisId,
+      stages: result.stages,
+    });
+    if (migrationResponse) return migrationResponse;
+
+    return jsonResponse({
+      success: false,
+      error: "D1_READ_FAILED",
+      stage: "review",
+      analysisId: result.analysisId,
+      stages: result.stages,
+      message: "L’analyse a été collectée, mais sa lecture avant validation a échoué.",
+    }, 500);
+  }
+  if (!analysis) {
+    return jsonResponse({
+      success: false,
+      error: "ANALYSIS_NOT_FOUND_AFTER_PIPELINE",
+      analysisId: result.analysisId,
+      stages: result.stages,
+    }, 502);
+  }
+
+  console.log("admin-audits:success", {
+    analysis_id: result.analysisId,
+    awaiting_review: true,
+  });
+
+  const linkedTaskId = await attachAnalysisToOrder(db, {
+    analysisId: result.analysisId,
+    orderId: prepared.requestMetadata.orderId,
+    taskId: prepared.requestMetadata.taskId,
+    notes: prepared.requestMetadata.internalNotes,
+  });
+
+  return jsonResponse({
+    success: true,
+    analysisId: result.analysisId,
+    status: result.status,
+    reportType: prepared.requestMetadata.reportType,
+    stages: result.stages,
+    analysis: summarizeAnalysis(analysis),
+    links: {
+      review: `/admin/audit-review/${encodeURIComponent(result.analysisId)}`,
+      report: `/api/render/${encodeURIComponent(result.analysisId)}`,
+      data: `/api/analysis/${encodeURIComponent(result.analysisId)}`,
+      order: prepared.requestMetadata.orderId
+        ? `/admin-order?id=${encodeURIComponent(prepared.requestMetadata.orderId)}`
+        : null,
+    },
+    order: prepared.requestMetadata.orderId ? {
+      orderId: prepared.requestMetadata.orderId,
+      taskId: linkedTaskId || prepared.requestMetadata.taskId || null,
+      status: linkedTaskId ? "in_progress" : null,
+    } : null,
+  });
+}
+
+export function onRequest(context) {
+  if (context.request.method === "OPTIONS") return onRequestOptions(context);
+  return jsonResponse({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
+}
+
+export const __test__ = {
+  buildPipelineInput,
+  loadOrderContext,
+  extractBusinessNameFromGoogleUrl,
+  isValidGoogleBusinessUrl,
+  normalizeReportType,
+  migrationForMissingColumn,
+  summarizeAnalysis,
+  attachAnalysisToOrder,
+  runCollectionForReview,
+  markAwaitingReview,
+};

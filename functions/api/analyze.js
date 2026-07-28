@@ -4,7 +4,8 @@
 //
 // Méthode : POST  (crée une analyse)
 // Auth    : Authorization: Bearer <CONNECTOR_TOKEN>
-// Entrée  : { "nom": "...", "ville": "...", "activite": "..." } (JSON body ; à défaut, paramètres ?nom=&ville=&activite=)
+// Entrée  : { "nom": "...", "ville": "...", "activite": "...", "observationQuery": "..." }
+//           (JSON body ; à défaut, paramètres ?nom=&ville=&activite=&observationQuery=)
 // Secrets : CONNECTOR_TOKEN (+ OUTSCRAPER_API_KEY utilisé par /api/outscraper)
 // D1      : binding ORDERS_DB, table `analyses` (migration 0003_analyses.sql)
 
@@ -73,11 +74,19 @@ export async function onRequestPost(context) {
   let nom = "";
   let ville = "";
   let activite = "";
+  let googleBusinessUrl = "";
+  let observationQuery = "";
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
     ville = typeof payload?.ville === "string" ? payload.ville.trim() : "";
     activite = typeof payload?.activite === "string" ? payload.activite.trim() : "";
+    googleBusinessUrl = typeof payload?.googleBusinessUrl === "string"
+      ? payload.googleBusinessUrl.trim()
+      : (typeof payload?.google_business_url === "string" ? payload.google_business_url.trim() : "");
+    observationQuery = typeof payload?.observationQuery === "string"
+      ? payload.observationQuery.trim()
+      : (typeof payload?.queryOverride === "string" ? payload.queryOverride.trim() : "");
   } catch {
     // pas de body JSON : on tentera les paramètres d'URL
   }
@@ -85,13 +94,20 @@ export async function onRequestPost(context) {
   nom = nom || (url.searchParams.get("nom") || "").trim();
   ville = ville || (url.searchParams.get("ville") || "").trim();
   activite = activite || (url.searchParams.get("activite") || "").trim();
-  if (!nom || !ville) {
-    return jsonResponse({ error: "Missing required parameters: nom, ville." }, 400);
+  googleBusinessUrl = googleBusinessUrl || (url.searchParams.get("googleBusinessUrl") || url.searchParams.get("google_business_url") || "").trim();
+  observationQuery = observationQuery || (url.searchParams.get("observationQuery") || url.searchParams.get("queryOverride") || "").trim();
+  if (!observationQuery && !googleBusinessUrl && (!nom || !ville)) {
+    return jsonResponse({ error: "Missing required parameters: nom, ville or observationQuery." }, 400);
   }
 
   // 1) Collecte directe via le module partagé (plus d'auto-appel HTTP vers /api/outscraper).
   console.log("analyze:calling-outscraper");
-  const result = await collectFiche({ nom, ville, apiKey: env.OUTSCRAPER_API_KEY });
+  const result = await collectFiche({
+    nom,
+    ville,
+    queryOverride: observationQuery || googleBusinessUrl,
+    apiKey: env.OUTSCRAPER_API_KEY,
+  });
   if (!result.ok) {
     if (result.code === 404) {
       return jsonResponse({ error: "No business found." }, 404);
@@ -109,7 +125,7 @@ export async function onRequestPost(context) {
     position: null,
     concurrents: [],
   };
-  if (activite) {
+  if (activite && ville && ville !== "Non renseignée") {
     console.log("analyze:calling-competitors");
     const competitorsResult = await collectCompetitors({
       activite,
@@ -131,7 +147,9 @@ export async function onRequestPost(context) {
   // 3) Enregistrement en D1.
   const analysisId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const query = `${nom} ${ville}`;
+  const storedNom = nom || normalized.name || googleBusinessUrl;
+  const storedVille = ville || "Non renseignée";
+  const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
 
   console.log("analyze:saving-d1");
   try {
@@ -144,8 +162,8 @@ export async function onRequestPost(context) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'collected', ?, ?, ?, ?)
     `).bind(
       analysisId,
-      nom,
-      ville,
+      storedNom,
+      storedVille,
       query,
       normalized.place_id || null,
       normalized.name || null,

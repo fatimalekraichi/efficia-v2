@@ -36,7 +36,14 @@ test("formatAnalysisRow parse les colonnes JSON et ne renvoie pas de chaîne JSO
     top_competitor_reviews: 324,
     benchmark_completed_at: "2026-07-24T07:00:00.000Z",
     knowledge_json: "{\"summary\":\"OK\"}",
+    reasoning_json: "{\"reasonings\":[]}",
+    document_model_json: "{\"hero\":{\"score\":97}}",
+    score_inputs_json: "{\"answers\":{\"revendiquee\":3}}",
+    reviewed_score_json: "{\"roundedScore\":88}",
+    scoring_version: "score-efficia-v4",
     knowledge_completed_at: "2026-07-24T07:01:00.000Z",
+    reasoning_completed_at: "2026-07-24T07:02:00.000Z",
+    composer_completed_at: "2026-07-24T07:03:00.000Z",
     created_at: "2026-07-24T06:59:00.000Z",
     updated_at: "2026-07-24T07:01:00.000Z",
   });
@@ -46,6 +53,13 @@ test("formatAnalysisRow parse les colonnes JSON et ne renvoie pas de chaîne JSO
   assert.equal(output.business.normalized.photos_sample_count, 3);
   assert.equal(output.business.competitors[0].name, "Concurrent");
   assert.equal(output.knowledge.summary, "OK");
+  assert.deepEqual(output.reasoning.reasonings, []);
+  assert.equal(output.documentModel.hero.score, 97);
+  assert.equal(output.scoreInputs.answers.revendiquee, 3);
+  assert.equal(output.reviewedScore.roundedScore, 88);
+  assert.equal(output.scoringVersion, "score-efficia-v4");
+  assert.equal(output.timestamps.reasoningCompletedAt, "2026-07-24T07:02:00.000Z");
+  assert.equal(output.timestamps.composerCompletedAt, "2026-07-24T07:03:00.000Z");
   assert.equal(typeof output.business.fiche, "object");
   assert.equal(typeof output.knowledge, "object");
 });
@@ -58,10 +72,14 @@ test("formatAnalysisRow retourne null pour les JSON vides", () => {
     normalized_json: null,
     competitors_json: "",
     knowledge_json: null,
+    reasoning_json: null,
+    document_model_json: null,
   });
 
   assert.equal(output.business.fiche, null);
   assert.equal(output.business.normalized, null);
   assert.equal(output.business.competitors, null);
   assert.equal(output.knowledge, null);
+  assert.equal(output.reasoning, null);
+  assert.equal(output.documentModel, null);
 });

@@ -23,7 +23,7 @@ export function htmlResponse(html, status = 200) {
 }
 
 export async function renderAnalysisById(context, analysisId) {
-  const verified = verifyAnalysisRequest(context);
+  const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
 
   if (!isValidAnalysisId(analysisId)) {
@@ -34,23 +34,39 @@ export async function renderAnalysisById(context, analysisId) {
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
+  if (analysis.status === "awaiting_review") {
+    return jsonResponse({
+      success: false,
+      error: "MANUAL_REVIEW_REQUIRED",
+      message: "La validation humaine est obligatoire avant de préparer l’aperçu du rapport.",
+      reviewUrl: `/admin/audit-review/${encodeURIComponent(analysis.analysisId)}`,
+    }, 409);
+  }
 
   const documentModel = buildDocumentModelFromAnalysis(analysis);
-  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId);
+  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
   return htmlResponse(html);
 }
 
 export async function renderLatestAnalysis(context) {
-  const verified = verifyAnalysisRequest(context);
+  const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
 
   const analysis = await loadLatestAnalysis(verified.db);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
+  if (analysis.status === "awaiting_review") {
+    return jsonResponse({
+      success: false,
+      error: "MANUAL_REVIEW_REQUIRED",
+      message: "La validation humaine est obligatoire avant de préparer l’aperçu du rapport.",
+      reviewUrl: `/admin/audit-review/${encodeURIComponent(analysis.analysisId)}`,
+    }, 409);
+  }
 
   const documentModel = buildDocumentModelFromAnalysis(analysis);
-  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), "latest");
+  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
   return htmlResponse(html);
 }
 
