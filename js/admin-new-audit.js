@@ -12,6 +12,8 @@ const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const orderContext = document.querySelector("[data-order-context]");
 const orderContextTitle = document.querySelector("[data-order-context-title]");
 const orderContextInfo = document.querySelector("[data-order-context-info]");
+const popupFallback = document.querySelector("[data-admin-audit-popup-fallback]");
+const popupFallbackLink = document.querySelector("[data-admin-audit-popup-link]");
 
 let isSubmitting = false;
 let linkedOrder = null;
@@ -243,6 +245,16 @@ async function submitAudit(event) {
     return;
   }
 
+  // Onglet vide ouvert immédiatement, dans le prolongement direct du clic : un window.open()
+  // déclenché plus tard (après le fetch) est presque systématiquement bloqué par le navigateur.
+  // On y injectera l'URL de validation dès que analysisId sera disponible.
+  let pendingReviewTab = null;
+  try {
+    pendingReviewTab = window.open("about:blank", "_blank");
+  } catch {
+    pendingReviewTab = null;
+  }
+
   isSubmitting = true;
   submitButton.disabled = true;
   submitButton.textContent = "Génération en cours...";
@@ -259,6 +271,7 @@ async function submitAudit(event) {
     const data = await response.json().catch(() => ({}));
 
     if (response.status === 401) {
+      if (pendingReviewTab) pendingReviewTab.close();
       redirectToLogin();
       return;
     }
@@ -277,7 +290,22 @@ async function submitAudit(event) {
 
     applyStages(data.stages || {});
     renderResult(data);
+
+    // Le pipeline (observation + benchmark) est terminé : on remplace l'URL de l'onglet déjà
+    // ouvert par la page de validation. Aucun nouvel appel à window.open() ici.
+    if (data.analysisId) {
+      const reviewUrl = data.links?.review || `/admin/audit-review/${encodeURIComponent(data.analysisId)}`;
+      if (pendingReviewTab) {
+        pendingReviewTab.location.replace(reviewUrl);
+        if (popupFallback) popupFallback.hidden = true;
+      } else if (popupFallback) {
+        if (popupFallbackLink) popupFallbackLink.href = reviewUrl;
+        popupFallback.hidden = false;
+      }
+    }
   } catch (error) {
+    // Le pipeline a échoué : on referme l'onglet vide et on affiche l'erreur sur la page actuelle.
+    if (pendingReviewTab) pendingReviewTab.close();
     setError(error.message || "Une erreur est survenue. Merci de réessayer dans quelques instants.");
   } finally {
     isSubmitting = false;
