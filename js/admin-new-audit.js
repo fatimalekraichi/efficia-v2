@@ -14,18 +14,19 @@ const orderContextTitle = document.querySelector("[data-order-context-title]");
 const orderContextInfo = document.querySelector("[data-order-context-info]");
 const popupFallback = document.querySelector("[data-admin-audit-popup-fallback]");
 const popupFallbackLink = document.querySelector("[data-admin-audit-popup-link]");
+const readyIndicator = document.querySelector("[data-admin-audit-ready]");
 
 let isSubmitting = false;
 let linkedOrder = null;
 let linkedTask = null;
 
-const STAGES = ["observation", "benchmark", "knowledge", "reasoning", "composer"];
+// Seules Observation et Benchmark s'exécutent réellement lors de la génération d'un nouvel audit.
+// Knowledge/Reasoning/Composer ne tournent qu'après validation humaine, sur la page de génération
+// du rapport : ils ne font donc plus partie de cette page.
+const STAGES = ["observation", "benchmark"];
 const STAGE_LABELS = {
   observation: "Observation",
   benchmark: "Benchmark",
-  knowledge: "Knowledge",
-  reasoning: "Reasoning",
-  composer: "Composer",
 };
 const REPORT_TYPE_LABELS = {
   free: "Diagnostic gratuit",
@@ -88,6 +89,7 @@ function applyStages(stages = {}) {
 function markPipelineRunning() {
   progressCard.hidden = false;
   resultCard.hidden = true;
+  if (readyIndicator) readyIndicator.hidden = true;
   resetProgress();
   setStage("observation", "running", "En cours");
 }
@@ -289,6 +291,7 @@ async function submitAudit(event) {
     }
 
     applyStages(data.stages || {});
+    if (readyIndicator) readyIndicator.hidden = false;
     renderResult(data);
 
     // Le pipeline (observation + benchmark) est terminé : on remplace l'URL de l'onglet déjà
