@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createSessionCookie } from "../functions/admin/_shared.js";
 import { renderAnalysisById, renderLatestAnalysis } from "../functions/api/render/_shared.js";
 
 const TOKEN = "test-token";
+const ADMIN_SECRET = "admin-secret";
 
 const analysisRow = {
   analysis_id: "analysis-1",
@@ -105,6 +107,7 @@ function makeContext(row, analysisId = "analysis-1") {
     params: { analysisId },
     env: {
       CONNECTOR_TOKEN: TOKEN,
+      ADMIN_SESSION_SECRET: ADMIN_SECRET,
       ORDERS_DB: db,
     },
   };
@@ -140,6 +143,18 @@ test("renderAnalysisById retourne 404 si l'analyse est inconnue", async () => {
   assert.deepEqual(json, { success: false, error: "Analysis not found." });
 });
 
+test("renderAnalysisById bloque l'aperçu tant que la validation humaine est attendue", async () => {
+  const response = await renderAnalysisById(makeContext({
+    ...analysisRow,
+    status: "awaiting_review",
+  }), "analysis-1");
+  const json = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(json.error, "MANUAL_REVIEW_REQUIRED");
+  assert.equal(json.reviewUrl, "/admin/audit-review/analysis-1");
+});
+
 test("renderAnalysisById exige le Bearer token", async () => {
   const context = makeContext(analysisRow);
   context.request = new Request("http://local.test/api/render/analysis-1");
@@ -151,8 +166,25 @@ test("renderAnalysisById exige le Bearer token", async () => {
   assert.deepEqual(json, { success: false, error: "Unauthorized." });
 });
 
+test("renderAnalysisById accepte aussi la session admin sans exposer le Bearer technique", async () => {
+  const context = makeContext(analysisRow);
+  const cookie = await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET });
+  context.request = new Request("http://local.test/api/render/analysis-1", {
+    headers: { Cookie: cookie.split(";")[0] },
+  });
+
+  const response = await renderAnalysisById(context, "analysis-1");
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(html, /La Planche des Saveurs/);
+});
+
 test("renderAnalysisById ajoute un bouton de téléchargement masqué à l'impression", async () => {
-  const response = await renderAnalysisById(makeContext(analysisRow), "analysis-1");
+  const response = await renderAnalysisById(makeContext({
+    ...analysisRow,
+    status: "approved",
+  }), "analysis-1");
   const html = await response.text();
 
   assert.match(html, /Télécharger le PDF/);

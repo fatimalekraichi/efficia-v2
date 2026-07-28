@@ -8,7 +8,7 @@ const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\n%Efficia test\n");
 
 const analysisRow = {
   analysis_id: "analysis-1",
-  status: "completed",
+  status: "approved",
   nom: "Garage Étoile & Fils",
   ville: "Arlon / Belgique",
   activity: "garage",
@@ -37,6 +37,9 @@ function makeContext({ row = analysisRow, token = TOKEN, env = {} } = {}) {
           return {
             async first() {
               return row;
+            },
+            async run() {
+              return { success: true };
             },
           };
         },
@@ -72,6 +75,19 @@ test("renderPdfById retourne 404 si l'analyse n'existe pas", async () => {
 
   assert.equal(response.status, 404);
   assert.deepEqual(json, { success: false, error: "Analysis not found." });
+});
+
+test("renderPdfById refuse la génération avant approbation", async () => {
+  const response = await renderPdfById(makeContext({
+    row: {
+      ...analysisRow,
+      status: "preview_ready",
+    },
+  }), "analysis-1");
+  const json = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(json.error, "REPORT_NOT_APPROVED");
 });
 
 test("renderPdfById retourne un PDF et un nom de fichier nettoyé", async () => {

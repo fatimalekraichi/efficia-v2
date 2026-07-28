@@ -1,4 +1,5 @@
 import { verifyConnectorToken } from "../_auth.js";
+import { isAdminSessionValid } from "../../admin/_shared.js";
 import { ANALYSIS_SELECT, formatAnalysisRow } from "../../lib/analysisReader.js";
 
 export const CORS_HEADERS = {
@@ -12,9 +13,14 @@ export const jsonResponse = (body, status = 200) => new Response(JSON.stringify(
   headers: { "Content-Type": "application/json", ...CORS_HEADERS },
 });
 
-export function verifyAnalysisRequest(context) {
+export async function verifyAnalysisRequest(context) {
   const auth = verifyConnectorToken(context);
-  if (!auth.ok) return { ok: false, response: jsonResponse({ success: false, error: auth.error }, auth.status) };
+  if (!auth.ok) {
+    const isAdmin = await isAdminSessionValid(context.request, context.env);
+    if (!isAdmin) {
+      return { ok: false, response: jsonResponse({ success: false, error: auth.error }, auth.status) };
+    }
+  }
 
   const db = context.env.ORDERS_DB;
   if (!db) {

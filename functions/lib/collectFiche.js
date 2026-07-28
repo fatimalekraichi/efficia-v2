@@ -44,10 +44,11 @@ function mapPlace(place) {
   };
 }
 
-export async function collectFiche({ nom, ville, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function collectFiche({ nom, ville, queryOverride, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const nomTrim = (nom || "").trim();
   const villeTrim = (ville || "").trim();
-  if (!nomTrim || !villeTrim) {
+  const directQuery = (queryOverride || "").trim();
+  if (!directQuery && (!nomTrim || !villeTrim)) {
     return { ok: false, code: 400, error: "Missing required parameters: nom, ville." };
   }
 
@@ -58,7 +59,7 @@ export async function collectFiche({ nom, ville, apiKey, timeoutMs = DEFAULT_TIM
     return { ok: false, code: 500, error: "Server configuration error." };
   }
 
-  const query = `${nomTrim} ${villeTrim}`;
+  const query = directQuery || `${nomTrim} ${villeTrim}`;
   const url = new URL(OUTSCRAPER_HOST + OUTSCRAPER_SEARCH_PATH);
   url.searchParams.set("query", query);
   url.searchParams.set("organizationsPerQueryLimit", "1");

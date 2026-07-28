@@ -10,6 +10,7 @@ const ALLOWED_STATUSES = new Set([
   "todo",
   "in_progress",
   "waiting",
+  "audit_generated",
   "pdf_generated",
   "pdf_reviewed",
   "sent",
@@ -121,6 +122,7 @@ const mapOrderRow = (row) => ({
   task_title: row.task_title,
   task_status: row.task_status,
   task_updated_at: row.task_updated_at,
+  analysis_id: row.analysis_id,
   notes: row.notes,
   environment: getEnvironmentFromSession(row.stripe_session_id),
 });
@@ -161,6 +163,7 @@ export async function onRequestGet(context) {
       t.title AS task_title,
       t.status AS task_status,
       t.updated_at AS task_updated_at,
+      t.analysis_id,
       t.notes
     FROM orders o
     LEFT JOIN order_tasks t ON t.order_id = o.order_id

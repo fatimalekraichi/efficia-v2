@@ -59,7 +59,7 @@ export const KNOWLEDGE_MESSAGES = {
     "Ajouter des photos concrètes permettrait de mieux montrer votre activité avant le premier contact.",
   ],
   OPP_DESCRIPTION: [
-    "Votre description est peu développée ({description_length} caractères sur 750) : l'espace qui explique pourquoi vous choisir est sous-exploité.",
+    "Votre description est absente ou peu développée ({description_length} caractères sur 750) : l'espace qui explique pourquoi vous choisir est sous-exploité.",
     "Une description travaillée aiderait un client à comprendre votre offre avant même d'appeler.",
   ],
   OPP_CATEGORIES: [
