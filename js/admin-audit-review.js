@@ -952,13 +952,17 @@ function renderObservation(analysis) {
   const benchmark = analysis.benchmark || {};
   const normalized = business.normalized || {};
   const competitors = business.competitors || [];
+  // "location_link" est la clé réelle renvoyée par Outscraper (et stockée telle quelle) pour le lien Google Maps.
+  const secondaryCategoriesList = Array.isArray(normalized.categories) && normalized.categories.length
+    ? normalized.categories
+    : (Array.isArray(normalized.subtypes) && normalized.subtypes.length ? normalized.subtypes : null);
   const rows = [
     ["Nom", business.name || business.nom],
     ["Type de rapport", reportTypeLabel(analysis.manualReview?.reportType || analysis.reportType)],
-    ["URL Google", normalized.google_url || normalized.url || normalized.place_link],
+    ["URL Google", normalized.google_url || normalized.url || normalized.place_link || normalized.location_link],
     ["Ville", business.ville],
     ["Catégorie principale", business.activity || normalized.category || normalized.type],
-    ["Catégories secondaires", Array.isArray(normalized.categories) ? normalized.categories.join(", ") : normalized.secondary_categories],
+    ["Catégories secondaires", secondaryCategoriesList ? secondaryCategoriesList.join(", ") : normalized.secondary_categories],
     ["Note", business.rating],
     ["Nombre d’avis", business.reviews],
     ["Nombre de photos", business.photosCount],

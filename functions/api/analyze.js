@@ -51,6 +51,12 @@ function normaliserFiche(fiche) {
     working_hours: fiche.working_hours ?? null,
     subtypes,
     location_link: fiche.location_link || "",
+    // Passage direct des champs collectés par collectFiche() (déjà nettoyés côté Outscraper).
+    category: fiche.category || "",
+    type: fiche.type || "",
+    phone: fiche.phone || "",
+    site: fiche.site || "",
+    address: fiche.address || "",
   };
 }
 
