@@ -57,8 +57,16 @@ function normaliserFiche(fiche) {
     phone: fiche.phone || "",
     site: fiche.site || "",
     address: fiche.address || "",
+    city: fiche.city || "",
+    borough: fiche.borough || "",
   };
 }
+
+// Espace réservé au fallback d'activité généré par admin/audits.js quand aucune ville/activité
+// réelle n'est fournie (cf. buildPipelineInput). Ce n'est pas une vraie activité : dès qu'une
+// catégorie réelle est détectée côté Outscraper, elle doit primer sur ce texte générique.
+const GENERIC_ACTIVITY_PLACEHOLDER = "entreprise locale";
+const VILLE_PLACEHOLDER = "Non renseignée";
 
 export async function onRequestPost(context) {
   try {
@@ -126,16 +134,38 @@ export async function onRequestPost(context) {
   console.log("analyze:normalizing");
   const fiche = result.fiche;
   const normalized = normaliserFiche(fiche);
+
+  // Ville : priorité absolue à la saisie manuelle. À défaut, ville détectée par Outscraper
+  // (city, puis borough/county en repli). Jamais inventée : si ni l'une ni l'autre n'existe,
+  // le champ reste vide (le placeholder "Non renseignée" n'est appliqué qu'au moment du stockage).
+  const villeSaisie = ville && ville !== VILLE_PLACEHOLDER ? ville : "";
+  const villeDetectee = normalized.city || normalized.borough || "";
+  const resolvedVille = villeSaisie || villeDetectee;
+
+  // Activité de benchmark : priorité à une activité réellement saisie. Le fallback générique
+  // "entreprise locale" (posé par admin/audits.js quand rien n'est connu) ne compte pas comme une
+  // activité réelle : la catégorie principale détectée par Outscraper (category, puis type) prime.
+  const activiteSaisie = activite && activite.toLowerCase() !== GENERIC_ACTIVITY_PLACEHOLDER ? activite : "";
+  const categorieDetectee = normalized.category || normalized.type || "";
+  const resolvedActivite = activiteSaisie || categorieDetectee;
+
+  console.log("analyze:location-resolution", {
+    ville_saisie: Boolean(villeSaisie),
+    ville_detectee: villeDetectee || null,
+    activite_saisie: Boolean(activiteSaisie),
+    categorie_detectee: categorieDetectee || null,
+  });
+
   let competitorData = {
-    requete: activite ? `${activite} ${ville}` : "",
+    requete: resolvedActivite && resolvedVille ? `${resolvedActivite} ${resolvedVille}` : "",
     position: null,
     concurrents: [],
   };
-  if (activite && ville && ville !== "Non renseignée") {
-    console.log("analyze:calling-competitors");
+  if (resolvedActivite && resolvedVille) {
+    console.log("analyze:calling-competitors", { activite: resolvedActivite, ville: resolvedVille });
     const competitorsResult = await collectCompetitors({
-      activite,
-      ville,
+      activite: resolvedActivite,
+      ville: resolvedVille,
       placeIdCible: normalized.place_id,
       apiKey: env.OUTSCRAPER_API_KEY,
     });
@@ -154,7 +184,7 @@ export async function onRequestPost(context) {
   const analysisId = crypto.randomUUID();
   const now = new Date().toISOString();
   const storedNom = nom || normalized.name || googleBusinessUrl;
-  const storedVille = ville || "Non renseignée";
+  const storedVille = resolvedVille || VILLE_PLACEHOLDER;
   const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
 
   console.log("analyze:saving-d1");
@@ -177,7 +207,7 @@ export async function onRequestPost(context) {
       normalized.reviews,
       normalized.photos_count,
       normalized.description_length,
-      activite || null,
+      resolvedActivite || null,
       competitorData.requete || null,
       competitorData.position,
       JSON.stringify(competitorData.concurrents || []),
