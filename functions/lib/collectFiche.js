@@ -47,7 +47,12 @@ function mapPlace(place) {
     type: place.type || "",
     phone: place.phone || "",
     site: place.site || place.website || "",
-    address: place.address || "",
+    address: place.address || place.full_address || "",
+    // Localisation : city (ville) et borough/county (repli) — permettent de déduire automatiquement
+    // la ville quand elle n'a pas été saisie manuellement. Jamais utilisés pour inventer une valeur :
+    // si Outscraper ne les renvoie pas, ces champs restent vides.
+    city: place.city || "",
+    borough: place.borough || place.county || "",
   };
 }
 
