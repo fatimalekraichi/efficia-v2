@@ -103,10 +103,8 @@
         <ol class="admin-pipeline-list" aria-live="polite">
           <li data-pipeline-stage="observation"><span>Observation</span><strong>En attente</strong></li>
           <li data-pipeline-stage="benchmark"><span>Benchmark</span><strong>En attente</strong></li>
-          <li data-pipeline-stage="knowledge"><span>Knowledge</span><strong>En attente</strong></li>
-          <li data-pipeline-stage="reasoning"><span>Reasoning</span><strong>En attente</strong></li>
-          <li data-pipeline-stage="composer"><span>Composer</span><strong>En attente</strong></li>
         </ol>
+        <p class="admin-pipeline-ready" data-admin-audit-ready hidden>✓ Audit prêt</p>
       </section>
 
       <section class="admin-card admin-result-card" data-admin-audit-result hidden>
@@ -121,6 +119,10 @@
           <a class="admin-button is-secondary" href="#" data-admin-audit-order hidden>Retour à la commande</a>
           <button class="admin-button is-secondary" type="button" data-admin-audit-reset>Relancer</button>
         </div>
+        <p class="admin-error" data-admin-audit-popup-fallback hidden>
+          L’ouverture automatique du nouvel onglet a été bloquée par le navigateur.
+          <a href="#" target="_blank" rel="noopener" data-admin-audit-popup-link>Ouvrir l’audit</a>
+        </p>
       </section>
     </div>
   </main>
