@@ -878,14 +878,14 @@ function fillCriteriaFromAnalysis(analysis) {
       const value = CRITERIA_VALUES.has(source.value) ? source.value : "not_verified";
       const sourceIndex = integerOrNull(source.selectedOptionIndex);
       const radio = sourceIndex !== null
-        ? form?.querySelector(`input[name="criterion:${criterion.key}"][data-option-index="${sourceIndex}"]`)
-        : form?.querySelector(`input[name="criterion:${criterion.key}"][value="${value}"]`);
+        ? criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"][data-option-index="${sourceIndex}"]`)
+        : criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"][value="${value}"]`);
       if (radio) radio.checked = true;
 
       const checklist = new Set(Array.isArray(saved?.checklist)
         ? saved.checklist
         : (Array.isArray(source.checklist) ? source.checklist : []));
-      form?.querySelectorAll(`[data-criteria-checklist="${criterion.key}"]`).forEach((checkbox) => {
+      criteriaGroupsBox?.querySelectorAll(`[data-criteria-checklist="${criterion.key}"]`).forEach((checkbox) => {
         checkbox.checked = checklist.has(checkbox.value);
       });
     });
@@ -899,8 +899,8 @@ function collectCriteriaReview() {
 
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
-      const selected = form?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
-      const checklist = [...(form?.querySelectorAll(`[data-criteria-checklist="${criterion.key}"]:checked`) || [])]
+      const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
+      const checklist = [...(criteriaGroupsBox?.querySelectorAll(`[data-criteria-checklist="${criterion.key}"]:checked`) || [])]
         .map((input) => input.value);
 
       if (!selected && !checklist.length) return;
@@ -930,17 +930,17 @@ function collectCriteriaReview() {
 function updateCriteriaSummary() {
   if (!criteriaSummaryBox) return;
   const total = getCriteriaGroups().reduce((sum, group) => sum + getGroupCriteria(group).length, 0);
-  const answered = form?.querySelectorAll("[data-criteria-option]:checked").length || 0;
-  const notVerified = form?.querySelectorAll('[data-criteria-option]:checked[value="not_verified"]').length || 0;
+  const answered = criteriaGroupsBox?.querySelectorAll("[data-criteria-option]:checked").length || 0;
+  const notVerified = criteriaGroupsBox?.querySelectorAll('[data-criteria-option]:checked[value="not_verified"]').length || 0;
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
 }
 
 function markUnansweredCriteriaAsNotVerified() {
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
-      const selected = form?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
+      const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
       if (selected) return;
-      const fallback = form?.querySelector(`input[name="criterion:${criterion.key}"][value="not_verified"]`);
+      const fallback = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"][value="not_verified"]`);
       if (fallback) fallback.checked = true;
     });
   });
