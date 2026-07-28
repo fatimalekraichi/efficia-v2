@@ -41,6 +41,13 @@ function mapPlace(place) {
     working_hours: place.working_hours ?? null,
     subtypes,
     location_link: place.location_link || "",
+    // Champs Outscraper documentés (dictionnaire Google Maps) mais jusqu'ici jamais extraits :
+    // category/type (catégorie), phone (téléphone), site/website (site web), address (adresse).
+    category: place.category || "",
+    type: place.type || "",
+    phone: place.phone || "",
+    site: place.site || place.website || "",
+    address: place.address || "",
   };
 }
 
