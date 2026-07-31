@@ -1,6 +1,13 @@
 import { COMPOSER_CONFIG } from "./composerConfig.js";
 import { buildKeyFindingLine } from "./keyFindingTemplates.js";
 
+// cap === null/undefined signifie "pas de plafond" (palier premium) : on ne
+// tronque alors jamais une liste, elle reste bornée uniquement par les constats
+// réellement produits par Knowledge/Reasoning.
+function applyCap(list, cap) {
+  return cap === null || cap === undefined ? list : list.slice(0, cap);
+}
+
 function byPriorityDesc(a, b) {
   const priorityDiff = (Number(b.priority) || 0) - (Number(a.priority) || 0);
   if (priorityDiff !== 0) return priorityDiff;
@@ -51,19 +58,15 @@ function selectUniqueBySignal(items, blockedSignals = new Set()) {
   return { selected, usedSignals };
 }
 
-function selectIssueCards(bundle, strengthSignals) {
+function selectIssueCards(bundle, strengthSignals, caps) {
   const issueCandidates = [
     ...reasoningsByType(bundle, "weakness"),
     ...reasoningsByType(bundle, "opportunity"),
   ].sort(byPriorityDesc);
 
   const { selected } = selectUniqueBySignal(issueCandidates, strengthSignals);
-  const weaknesses = selected
-    .filter((item) => item.type === "weakness")
-    .slice(0, COMPOSER_CONFIG.caps.weaknesses);
-  const opportunities = selected
-    .filter((item) => item.type === "opportunity")
-    .slice(0, COMPOSER_CONFIG.caps.opportunities);
+  const weaknesses = applyCap(selected.filter((item) => item.type === "weakness"), caps.weaknesses);
+  const opportunities = applyCap(selected.filter((item) => item.type === "opportunity"), caps.opportunities);
 
   return { weaknesses, opportunities };
 }
@@ -72,23 +75,22 @@ function reasoningsById(bundle = {}) {
   return new Map((bundle.reasoning?.reasonings || []).map((item) => [item.id, item]));
 }
 
-function selectPriorities(bundle) {
+function selectPriorities(bundle, caps) {
   const byId = reasoningsById(bundle);
-  return (bundle.knowledge?.top_priorities || [])
+  const ranked = (bundle.knowledge?.top_priorities || [])
     .map((item) => byId.get(item.id))
     .filter(Boolean)
     .filter((item) => item.type === "weakness" || item.type === "opportunity")
-    .sort(byPriorityDesc)
-    .slice(0, COMPOSER_CONFIG.caps.priorities)
-    .map((item, index) => ({ ...item, rank: index + 1 }));
+    .sort(byPriorityDesc);
+  return applyCap(ranked, caps.priorities).map((item, index) => ({ ...item, rank: index + 1 }));
 }
 
 function easeFactor(actionability = {}) {
   return COMPOSER_CONFIG.actionEaseFactor[actionability.difficulty] || 1;
 }
 
-function selectActionPlan(bundle) {
-  return (bundle.reasoning?.reasonings || [])
+function selectActionPlan(bundle, caps) {
+  const ranked = (bundle.reasoning?.reasonings || [])
     .filter((item) => item.type !== "strength")
     .filter((item) => item.actionability)
     .map((item) => ({
@@ -99,8 +101,8 @@ function selectActionPlan(bundle) {
       const composeDiff = b.composeScore - a.composeScore;
       if (composeDiff !== 0) return composeDiff;
       return byPriorityDesc(a, b);
-    })
-    .slice(0, COMPOSER_CONFIG.caps.actionPlan)
+    });
+  return applyCap(ranked, caps.actionPlan)
     .map((item, index) => ({
       order: index + 1,
       id: item.id,
@@ -116,15 +118,13 @@ function selectActionPlan(bundle) {
     }));
 }
 
-export function selectComposerItems(bundle = {}) {
-  const strengths = reasoningsByType(bundle, "strength")
-    .sort(byWeightDesc)
-    .slice(0, COMPOSER_CONFIG.caps.strengths);
+export function selectComposerItems(bundle = {}, caps = COMPOSER_CONFIG.caps) {
+  const strengths = applyCap(reasoningsByType(bundle, "strength").sort(byWeightDesc), caps.strengths);
 
   const strengthSignals = new Set(strengths.map((item) => item.signal).filter(Boolean));
-  const issues = selectIssueCards(bundle, strengthSignals);
-  const priorities = selectPriorities(bundle);
-  const actionPlan = selectActionPlan(bundle);
+  const issues = selectIssueCards(bundle, strengthSignals, caps);
+  const priorities = selectPriorities(bundle, caps);
+  const actionPlan = selectActionPlan(bundle, caps);
 
   return {
     strengths,

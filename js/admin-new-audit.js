@@ -99,19 +99,15 @@ function collectPayload() {
   return {
     orderId: linkedOrder?.order_id || new URLSearchParams(window.location.search).get("orderId") || "",
     taskId: linkedTask?.task_id || "",
-    reportType: String(data.get("reportType") || "premium").trim(),
+    // Cette page ne sert plus qu'à lancer des Audits Premium : la valeur est
+    // fixée en arrière-plan, il n'existe plus aucun contrôle pour la changer.
+    reportType: "premium",
     googleBusinessUrl: String(data.get("googleBusinessUrl") || "").trim(),
     companyName: String(data.get("companyName") || "").trim(),
     city: String(data.get("city") || "").trim(),
     email: String(data.get("email") || "").trim(),
     internalNotes: String(data.get("internalNotes") || "").trim(),
   };
-}
-
-function setReportType(value) {
-  const reportType = REPORT_TYPE_LABELS[value] ? value : "premium";
-  const field = form?.querySelector(`input[name="reportType"][value="${reportType}"]`);
-  if (field) field.checked = true;
 }
 
 function inferReportTypeFromOrder(order = {}) {
@@ -178,7 +174,6 @@ async function loadOrderFromQuery() {
   if (!linkedOrder) return;
 
   renderOrderContext({ order: linkedOrder, task: linkedTask });
-  setReportType(inferReportTypeFromOrder(linkedOrder));
   fillIfEmpty("googleBusinessUrl", linkedOrder.google_business_url);
   fillIfEmpty("companyName", linkedOrder.company_name);
   fillIfEmpty("city", linkedOrder.city);
@@ -187,7 +182,6 @@ async function loadOrderFromQuery() {
 
 function prefillFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("reportType")) setReportType(params.get("reportType"));
   fillIfEmpty("googleBusinessUrl", params.get("googleBusinessUrl"));
   fillIfEmpty("companyName", params.get("companyName") || params.get("company"));
   fillIfEmpty("city", params.get("city"));
@@ -203,7 +197,6 @@ function prefillFromUrl() {
 }
 
 function validatePayload(payload) {
-  if (!REPORT_TYPE_LABELS[payload.reportType]) return "Choisissez Diagnostic gratuit ou Audit Premium.";
   if (!payload.googleBusinessUrl) return "Renseignez l’URL Google Maps ou Google Business.";
   if (!isValidGoogleUrl(payload.googleBusinessUrl)) return "L’URL doit être une adresse Google Maps ou Google Business valide.";
   if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return "L’adresse e-mail n’est pas valide.";

@@ -1,6 +1,7 @@
 const analysisId = document.body.dataset.analysisId;
 const observationBox = document.querySelector("[data-review-observation]");
 const competitorsBox = document.querySelector("[data-review-competitors]");
+const competitorsSummaryBox = document.querySelector("[data-competitors-summary]");
 const form = document.querySelector("[data-review-form]");
 const submitButton = document.querySelector("[data-review-submit]");
 const approveButton = document.querySelector("[data-approve-button]");
@@ -10,6 +11,7 @@ const legacyGeneratorLink = document.querySelector("[data-legacy-generator-link]
 const statusBox = document.querySelector("[data-review-status]");
 const criteriaGroupsBox = document.querySelector("[data-criteria-groups]");
 const criteriaSummaryBox = document.querySelector("[data-criteria-summary]");
+const criteriaNotVerifiedSummaryBox = document.querySelector("[data-criteria-not-verified-summary]");
 const fillUnknownButton = document.querySelector("[data-fill-unknown]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 
@@ -22,60 +24,32 @@ const REPORT_TYPE_LABELS = {
   premium: "Audit Premium 99 €",
 };
 
-const OPTIONS = {
-  descriptionStatus: [
-    ["unknown", "À confirmer"],
-    ["absent", "Absente"],
-    ["too_short", "Trop courte"],
-    ["acceptable", "Acceptable"],
-    ["strong", "Solide"],
-  ],
-  photoQuality: [
-    ["unknown", "À confirmer"],
-    ["poor", "Faible"],
-    ["average", "Correcte"],
-    ["good", "Bonne"],
-    ["excellent", "Excellente"],
-  ],
-  photoRelevance: [
-    ["unknown", "À confirmer"],
-    ["poor", "Faible"],
-    ["average", "Correcte"],
-    ["good", "Bonne"],
-  ],
-  reviewResponseStatus: [
-    ["unknown", "À confirmer"],
-    ["none", "Aucune réponse observée"],
-    ["irregular", "Réponses irrégulières"],
-    ["systematic", "Réponses systématiques"],
-  ],
-  profileCompleteness: [
-    ["unknown", "À confirmer"],
-    ["incomplete", "Incomplète"],
-    ["average", "Correcte"],
-    ["complete", "Complète"],
-  ],
-  categoryRelevance: [
-    ["unknown", "À confirmer"],
-    ["poor", "Faible"],
-    ["acceptable", "Acceptable"],
-    ["strong", "Solide"],
-  ],
-  hoursAccuracy: [
-    ["unknown", "À confirmer"],
-    ["incorrect", "Incorrects"],
-    ["uncertain", "Incertain"],
-    ["correct", "Corrects"],
-  ],
-  visualConsistency: [
-    ["unknown", "À confirmer"],
-    ["poor", "Faible"],
-    ["average", "Correcte"],
-    ["strong", "Solide"],
-  ],
-};
-
 const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified"]);
+
+// Questions conditionnelles : une sous-question n'a de sens que si la
+// question parente a une réponse précise. Elle est retirée complètement de
+// l'affichage (pas seulement désactivée) quand la valeur du parent est dans
+// "hideWhen" — mais son input reste dans le DOM (donc sa valeur n'est ni
+// perdue ni resoumise différemment) afin qu'elle soit restaurée telle quelle
+// si l'utilisateur change à nouveau la réponse parente. Purement visuel :
+// aucun impact sur le calcul du score ni sur les 29 critères eux-mêmes.
+const CRITERIA_DEPENDENCIES = [
+  // Avis : seul "Aucune réponse" (Rarement / jamais) rend la question sur la
+  // qualité des réponses sans objet. "Réponses irrégulières" (Une partie) et
+  // "Non vérifié" doivent au contraire afficher la sous-question (une partie
+  // des avis a des réponses à qualifier, ou une vérification manuelle reste
+  // à faire).
+  { parent: "tauxReponseAvis", child: "qualiteReponsesAvis", hideWhen: ["deficient"] },
+  // Description : "Absente" (Vide) -> la question sur la qualité du contenu
+  // de la description n'a plus de sens.
+  { parent: "descriptionRemplie", child: "descriptionQualite", hideWhen: ["deficient"] },
+  // Services / produits : "Non" -> la question sur la qualité de leur
+  // description n'a plus de sens.
+  { parent: "servicesPresents", child: "servicesDecrits", hideWhen: ["deficient"] },
+  // Publications : "Plus ancien ou jamais" (plus de 3 mois / jamais) -> la
+  // question sur le rythme de publication n'a plus de sens.
+  { parent: "publicationRecente", child: "rythmePublication", hideWhen: ["deficient"] },
+];
 
 const REVIEW_CRITERIA_GROUPS = [
   {
@@ -481,24 +455,8 @@ function redirectToLogin() {
   window.location.href = "/admin-login";
 }
 
-function setSelectOptions() {
-  Object.entries(OPTIONS).forEach(([name, options]) => {
-    const select = form?.elements?.[name];
-    if (!select) return;
-    select.innerHTML = options
-      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
-      .join("");
-  });
-}
-
 function reportTypeLabel(value) {
   return REPORT_TYPE_LABELS[value] || REPORT_TYPE_LABELS.premium;
-}
-
-function setReportType(value) {
-  const reportType = REPORT_TYPE_LABELS[value] ? value : "premium";
-  const field = form?.querySelector(`input[name="reportType"][value="${reportType}"]`);
-  if (field) field.checked = true;
 }
 
 function getCriteriaGroups() {
@@ -582,22 +540,6 @@ function setCriteriaCatalog(analysis) {
     .map((item) => [item.key, item]));
 }
 
-function fillFormFromAnalysis(analysis) {
-  const review = analysis.manualReview || {};
-  setReportType(review.reportType || analysis.reportType || "premium");
-
-  Object.keys(OPTIONS).forEach((name) => {
-    const field = form?.elements?.[name];
-    if (field) field.value = review[name] || "unknown";
-  });
-
-  ["manualNotes", "confirmedCity", "confirmedCategory", "confirmedPosition", "confirmedQuery"].forEach((name) => {
-    const field = form?.elements?.[name];
-    if (!field) return;
-    field.value = review[name] ?? "";
-  });
-}
-
 function renderCriteriaReview() {
   if (!criteriaGroupsBox) return;
 
@@ -611,34 +553,41 @@ function renderCriteriaReview() {
         const checklist = getCriterionChecklist(criterion);
         return `
         <article class="criteria-item" data-criteria-key="${escapeHtml(criterion.key)}">
-          <div class="criteria-item__question">${escapeHtml(getCriterionQuestion(criterion))}</div>
-          <div class="criteria-item__help">${escapeHtml(getCriterionHelp(criterion))}</div>
-          ${checklist.length ? `
-            <div class="criteria-checklist">
-              <div class="criteria-checklist-title">Mini check-list interne</div>
-              ${checklist.map((item) => `
-                <label>
-                  <input type="checkbox" data-criteria-checklist="${escapeHtml(criterion.key)}" value="${escapeHtml(item)}">
-                  ${escapeHtml(item)}
-                </label>
-              `).join("")}
+          <div class="criteria-item__collapse">
+            <div class="criteria-item__collapse-inner">
+              <div class="criteria-item__question">
+                ${escapeHtml(getCriterionQuestion(criterion))}
+                <span class="criteria-not-verified-badge" data-not-verified-badge hidden>À vérifier manuellement</span>
+              </div>
+              <div class="criteria-item__help">${escapeHtml(getCriterionHelp(criterion))}</div>
+              ${checklist.length ? `
+                <div class="criteria-checklist">
+                  <div class="criteria-checklist-title">Mini check-list interne</div>
+                  ${checklist.map((item) => `
+                    <label>
+                      <input type="checkbox" data-criteria-checklist="${escapeHtml(criterion.key)}" value="${escapeHtml(item)}">
+                      ${escapeHtml(item)}
+                    </label>
+                  `).join("")}
+                </div>
+              ` : ""}
+              <div class="criteria-options">
+                ${normalizeCriterionOptions(criterion).map((option) => `
+                  <label class="criteria-option">
+                    <input
+                      type="radio"
+                      name="criterion:${escapeHtml(criterion.key)}"
+                      value="${escapeHtml(option.value)}"
+                      data-criteria-option="${escapeHtml(criterion.key)}"
+                      data-option-index="${escapeHtml(option.index)}"
+                      data-option-label="${escapeHtml(option.label)}"
+                      data-option-points="${escapeHtml(option.points ?? "")}"
+                    >
+                    <span>${escapeHtml(option.label)}</span>
+                  </label>
+                `).join("")}
+              </div>
             </div>
-          ` : ""}
-          <div class="criteria-options">
-            ${normalizeCriterionOptions(criterion).map((option) => `
-              <label class="criteria-option">
-                <input
-                  type="radio"
-                  name="criterion:${escapeHtml(criterion.key)}"
-                  value="${escapeHtml(option.value)}"
-                  data-criteria-option="${escapeHtml(criterion.key)}"
-                  data-option-index="${escapeHtml(option.index)}"
-                  data-option-label="${escapeHtml(option.label)}"
-                  data-option-points="${escapeHtml(option.points ?? "")}"
-                >
-                <span>${escapeHtml(option.label)}</span>
-              </label>
-            `).join("")}
           </div>
         </article>
       `; }).join("")}
@@ -928,7 +877,56 @@ function collectCriteriaReview() {
   return criteria;
 }
 
+// Surbrillance des critères "Non vérifié" : purement visuelle, ne touche ni
+// à la valeur du critère ni à son calcul (score inchangé, mêmes 29 critères).
+function updateNotVerifiedHighlights() {
+  if (!criteriaGroupsBox) return 0;
+  let notVerifiedCount = 0;
+
+  criteriaGroupsBox.querySelectorAll("[data-criteria-key]").forEach((item) => {
+    const key = item.dataset.criteriaKey;
+    const selected = criteriaGroupsBox.querySelector(`input[name="criterion:${key}"]:checked`);
+    const isNotVerified = selected?.value === "not_verified";
+    item.classList.toggle("is-not-verified", isNotVerified);
+    const badge = item.querySelector("[data-not-verified-badge]");
+    if (badge) badge.hidden = !isNotVerified;
+    if (isNotVerified) notVerifiedCount += 1;
+  });
+
+  if (criteriaNotVerifiedSummaryBox) {
+    criteriaNotVerifiedSummaryBox.textContent = notVerifiedCount
+      ? `${notVerifiedCount} critère${notVerifiedCount > 1 ? "s" : ""} nécessite${notVerifiedCount > 1 ? "nt" : ""} une vérification manuelle`
+      : "Aucun critère ne nécessite de vérification manuelle";
+    criteriaNotVerifiedSummaryBox.classList.toggle("has-pending", notVerifiedCount > 0);
+  }
+
+  return notVerifiedCount;
+}
+
+// Applique les règles CRITERIA_DEPENDENCIES : masque/affiche chaque
+// sous-question selon la réponse actuellement sélectionnée sur sa question
+// parente. La transition douce (150-250 ms) est gérée en CSS via la classe
+// "is-dependency-hidden" (voir .criteria-item__collapse) ; ici on ne fait que
+// basculer les classes/attributs, jamais la valeur des champs.
+function updateCriteriaDependencies() {
+  if (!criteriaGroupsBox) return;
+
+  CRITERIA_DEPENDENCIES.forEach(({ parent, child, hideWhen }) => {
+    const childItem = criteriaGroupsBox.querySelector(`[data-criteria-key="${child}"]`);
+    if (!childItem) return;
+
+    const parentSelected = criteriaGroupsBox.querySelector(`input[name="criterion:${parent}"]:checked`);
+    const shouldHide = Boolean(parentSelected) && hideWhen.includes(parentSelected.value);
+
+    childItem.classList.toggle("is-dependency-hidden", shouldHide);
+    childItem.toggleAttribute("inert", shouldHide);
+    childItem.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+  });
+}
+
 function updateCriteriaSummary() {
+  updateNotVerifiedHighlights();
+  updateCriteriaDependencies();
   if (!criteriaSummaryBox) return;
   const total = getCriteriaGroups().reduce((sum, group) => sum + getGroupCriteria(group).length, 0);
   const answered = criteriaGroupsBox?.querySelectorAll("[data-criteria-option]:checked").length || 0;
@@ -957,10 +955,13 @@ function renderObservation(analysis) {
   const secondaryCategoriesList = Array.isArray(normalized.categories) && normalized.categories.length
     ? normalized.categories
     : (Array.isArray(normalized.subtypes) && normalized.subtypes.length ? normalized.subtypes : null);
+  const googleUrl = normalized.google_url || normalized.url || normalized.place_link || normalized.location_link || "";
+  const benchmarkConfidence = benchmark.reviewed?.benchmarkConfidence || benchmark.confidence || null;
+
   const rows = [
     ["Nom", business.name || business.nom],
     ["Type de rapport", reportTypeLabel(analysis.manualReview?.reportType || analysis.reportType)],
-    ["URL Google", normalized.google_url || normalized.url || normalized.place_link || normalized.location_link],
+    ["URL Google", { render: renderGoogleUrlValue(googleUrl) }],
     ["Ville", business.ville],
     ["Catégorie principale", business.activity || normalized.category || normalized.type],
     ["Catégories secondaires", secondaryCategoriesList ? secondaryCategoriesList.join(", ") : normalized.secondary_categories],
@@ -975,21 +976,62 @@ function renderObservation(analysis) {
     ["Requête", business.searchQuery || benchmark.searchQuery],
     ["Localisation", business.ville],
     ["Concurrents valides", competitors.length],
-    ["Confiance benchmark", benchmark.reviewed?.benchmarkConfidence || benchmark.confidence || "—"],
+    ["Confiance benchmark", { render: renderConfidenceBadge(benchmarkConfidence) }],
   ];
 
   observationBox.innerHTML = rows.map(([label, value]) => `
     <div>
       <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(display(value))}</strong>
+      ${value && typeof value === "object" && "render" in value ? value.render : `<strong>${escapeHtml(display(value))}</strong>`}
     </div>
   `).join("");
+}
+
+// Affiche un lien court plutôt que l'URL Google complète (peu lisible et peu
+// utile telle quelle dans ce tableau de données).
+function renderGoogleUrlValue(url) {
+  if (!url) return `<strong>Non disponible</strong>`;
+  return `<strong><a class="observation-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ouvrir la fiche Google <span aria-hidden="true">↗</span></a></strong>`;
+}
+
+const CONFIDENCE_BADGES = {
+  established: { icon: "🟢", label: "Élevée" },
+  high: { icon: "🟢", label: "Élevée" },
+  limited: { icon: "🟡", label: "Moyenne" },
+  medium: { icon: "🟡", label: "Moyenne" },
+  low: { icon: "🔴", label: "Faible" },
+  weak: { icon: "🔴", label: "Faible" },
+  unavailable: { icon: "⚪", label: "Indisponible" },
+};
+
+// Remplace le "—" peu parlant par un badge explicite quand une confiance a
+// réellement été calculée (voir computeBenchmarkConfidence côté serveur), ou
+// par un message clair si aucun benchmark révisé n'existe encore.
+function renderConfidenceBadge(rawValue) {
+  const key = String(rawValue || "").trim().toLowerCase();
+  const badge = CONFIDENCE_BADGES[key];
+  if (!badge) {
+    return `<strong class="confidence-badge confidence-badge--unavailable">⚪ Benchmark indisponible</strong>`;
+  }
+  return `<strong class="confidence-badge confidence-badge--${escapeHtml(key)}">${badge.icon} ${escapeHtml(badge.label)}</strong>`;
+}
+
+function updateCompetitorsSummary() {
+  if (!competitorsSummaryBox) return;
+  const total = competitorsBox?.querySelectorAll("[data-competitor-id]").length || 0;
+  if (!total) {
+    competitorsSummaryBox.textContent = "";
+    return;
+  }
+  const validated = competitorsBox?.querySelectorAll("[data-confirm-competitor]:checked").length || 0;
+  competitorsSummaryBox.textContent = `${validated} concurrent${validated > 1 ? "s" : ""} validé${validated > 1 ? "s" : ""} sur ${total}`;
 }
 
 function renderCompetitors(analysis) {
   const competitors = analysis.business?.competitors || [];
   if (!competitors.length) {
     competitorsBox.innerHTML = "<p class=\"admin-muted\">Aucun concurrent fiable enregistré.</p>";
+    updateCompetitorsSummary();
     return;
   }
 
@@ -999,19 +1041,51 @@ function renderCompetitors(analysis) {
 
   competitorsBox.innerHTML = competitors.map((competitor, index) => {
     const id = competitor.place_id || competitor.name || `competitor-${index}`;
+    // Un concurrent détecté par le benchmark est considéré valide par défaut
+    // (case "Confirmer" précochée). Si une validation a déjà été enregistrée
+    // pour ce concurrent (confirmé OU exclu), on respecte cette valeur telle
+    // quelle plutôt que de la remplacer par le préréglage.
+    const hasSavedValidation = confirmed.has(id) || excluded.has(id);
+    const isExcluded = hasSavedValidation ? excluded.has(id) : false;
+    const isConfirmed = isExcluded ? false : (hasSavedValidation ? confirmed.has(id) : true);
     return `
       <article class="review-competitor" data-competitor-id="${escapeHtml(id)}">
         <span>Concurrent ${index + 1}</span>
         <strong>${escapeHtml(display(competitor.name))}</strong>
         <p>${escapeHtml(display(competitor.rating))} · ${escapeHtml(display(competitor.reviews))} avis · ${escapeHtml(display(competitor.photos_count))} photos</p>
         <div class="review-competitor-actions">
-          <label><input type="checkbox" data-confirm-competitor value="${escapeHtml(id)}" ${confirmed.has(id) ? "checked" : ""}>Confirmer</label>
-          <label><input type="checkbox" data-exclude-competitor value="${escapeHtml(id)}" ${excluded.has(id) ? "checked" : ""}>Exclure</label>
+          <label><input type="checkbox" data-confirm-competitor value="${escapeHtml(id)}" ${isConfirmed ? "checked" : ""}>Confirmer</label>
+          <label><input type="checkbox" data-exclude-competitor value="${escapeHtml(id)}" ${isExcluded ? "checked" : ""}>Exclure</label>
         </div>
       </article>
     `;
   }).join("");
+
+  updateCompetitorsSummary();
 }
+
+// Empêche que "Confirmer" et "Exclure" soient cochés simultanément pour un
+// même concurrent, et tient le compteur "Concurrents validés" à jour à
+// chaque changement. Attaché une seule fois sur le conteneur (délégation),
+// donc reste actif même après un renderCompetitors() qui remplace le HTML.
+competitorsBox?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target.matches("[data-confirm-competitor]")) {
+    if (target.checked) {
+      const card = target.closest("[data-competitor-id]");
+      const excludeBox = card?.querySelector("[data-exclude-competitor]");
+      if (excludeBox) excludeBox.checked = false;
+    }
+    updateCompetitorsSummary();
+  } else if (target.matches("[data-exclude-competitor]")) {
+    if (target.checked) {
+      const card = target.closest("[data-competitor-id]");
+      const confirmBox = card?.querySelector("[data-confirm-competitor]");
+      if (confirmBox) confirmBox.checked = false;
+    }
+    updateCompetitorsSummary();
+  }
+});
 
 function updateLinks(analysis) {
   const id = encodeURIComponent(analysis.analysisId || analysisId);
@@ -1071,33 +1145,37 @@ async function loadAnalysis() {
   renderCriteriaReview();
   renderObservation(currentAnalysis);
   renderCompetitors(currentAnalysis);
-  fillFormFromAnalysis(currentAnalysis);
   fillCriteriaFromAnalysis(currentAnalysis);
   updateLinks(currentAnalysis);
   setStatus(currentAnalysis.status === "approved" ? "Rapport approuvé." : "Analyse prête à être validée.");
 }
 
+// Ces champs (type de rapport, statuts "corrections et confirmations") ne
+// sont plus éditables depuis cette page : la grille des 29 critères couvre
+// ce contrôle plus précisément. On renvoie donc systématiquement la valeur
+// déjà enregistrée pour l'analyse en cours, telle quelle, afin de ne jamais
+// l'écraser ni casser la lecture des anciennes analyses qui la contiennent.
 function collectPayload() {
-  const data = new FormData(form);
+  const previousReview = currentAnalysis?.manualReview || {};
   const confirmedCompetitorIds = [...document.querySelectorAll("[data-confirm-competitor]:checked")].map((input) => input.value);
   const excludedCompetitorIds = [...document.querySelectorAll("[data-exclude-competitor]:checked")].map((input) => input.value);
 
   return {
     action: "complete_review",
-    reportType: data.get("reportType") || "premium",
-    descriptionStatus: data.get("descriptionStatus"),
-    photoQuality: data.get("photoQuality"),
-    photoRelevance: data.get("photoRelevance"),
-    reviewResponseStatus: data.get("reviewResponseStatus"),
-    profileCompleteness: data.get("profileCompleteness"),
-    categoryRelevance: data.get("categoryRelevance"),
-    hoursAccuracy: data.get("hoursAccuracy"),
-    visualConsistency: data.get("visualConsistency"),
-    manualNotes: data.get("manualNotes"),
-    confirmedCity: data.get("confirmedCity"),
-    confirmedCategory: data.get("confirmedCategory"),
-    confirmedPosition: data.get("confirmedPosition"),
-    confirmedQuery: data.get("confirmedQuery"),
+    reportType: previousReview.reportType || currentAnalysis?.reportType || "premium",
+    descriptionStatus: previousReview.descriptionStatus,
+    photoQuality: previousReview.photoQuality,
+    photoRelevance: previousReview.photoRelevance,
+    reviewResponseStatus: previousReview.reviewResponseStatus,
+    profileCompleteness: previousReview.profileCompleteness,
+    categoryRelevance: previousReview.categoryRelevance,
+    hoursAccuracy: previousReview.hoursAccuracy,
+    visualConsistency: previousReview.visualConsistency,
+    manualNotes: previousReview.manualNotes,
+    confirmedCity: previousReview.confirmedCity,
+    confirmedCategory: previousReview.confirmedCategory,
+    confirmedPosition: previousReview.confirmedPosition,
+    confirmedQuery: previousReview.confirmedQuery,
     confirmedCompetitorIds,
     excludedCompetitorIds,
     criteriaReview: collectCriteriaReview(),
@@ -1124,7 +1202,6 @@ async function saveReview(event) {
     currentAnalysis = data.analysis;
     setCriteriaCatalog(currentAnalysis);
     renderCriteriaReview();
-    fillFormFromAnalysis(currentAnalysis);
     fillCriteriaFromAnalysis(currentAnalysis);
     renderObservation(currentAnalysis);
     renderCompetitors(currentAnalysis);
@@ -1166,7 +1243,6 @@ async function approveReport() {
 }
 
 renderCriteriaReview();
-setSelectOptions();
 loadAnalysis();
 form?.addEventListener("submit", saveReview);
 approveButton?.addEventListener("click", approveReport);

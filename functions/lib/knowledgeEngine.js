@@ -9,6 +9,11 @@ import {
 } from "./knowledgeConfig.js";
 import { renderKnowledgeMessage } from "./knowledgeMessages.js";
 import { KNOWLEDGE_RULES, getInputConfidence, messageGroupForRule } from "./knowledgeRules.js";
+import { resolveReportDepth } from "./reportDepth.js";
+
+function applyCap(list, cap) {
+  return cap === null || cap === undefined ? list : list.slice(0, cap);
+}
 
 function n(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -150,6 +155,7 @@ function ensureNoInvalidText(output) {
 }
 
 export function runKnowledgeEngine(input = {}) {
+  const depth = resolveReportDepth(input.reportType);
   const inputConfidence = getInputConfidence(input);
   const matched = KNOWLEDGE_RULES
     .map((rule, order) => ({ rule, order }))
@@ -192,18 +198,20 @@ export function runKnowledgeEngine(input = {}) {
   const weaknesses = resolved.filter((finding) => finding.type === "weakness");
   const opportunities = resolved.filter((finding) => finding.type === "opportunity");
 
-  const topPriorities = [...weaknesses, ...opportunities]
-    .sort((a, b) => {
+  const topPriorities = applyCap(
+    [...weaknesses, ...opportunities].sort((a, b) => {
       if (b.priority !== a.priority) return b.priority - a.priority;
       if (b.weight !== a.weight) return b.weight - a.weight;
       return a.order - b.order;
-    })
-    .slice(0, 3);
+    }),
+    depth.caps.priorities,
+  );
 
   const output = {
     version: KNOWLEDGE_ENGINE_VERSION,
     rules_version: KNOWLEDGE_RULES_VERSION,
     messages_version: KNOWLEDGE_MESSAGES_VERSION,
+    reportType: depth.reportType,
     confidence: inputConfidence,
     strengths: strengths.map(removeInternalFields),
     weaknesses: weaknesses.map(removeInternalFields),

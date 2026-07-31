@@ -22,6 +22,33 @@ export function htmlResponse(html, status = 200) {
   });
 }
 
+// Course Knowledge → Reasoning → Composer : pendant saveManualReview(), les
+// colonnes knowledge_json/reasoning_json/document_model_json sont remises à null
+// AVANT que runPostReviewPipeline() ne les recalcule séquentiellement. Si /api/render
+// est appelé dans cette fenêtre, buildDocumentModelFromAnalysis() retomberait sur un
+// recalcul à partir de analysis.knowledge = {} (Knowledge absent) et produirait un
+// document vide/appauvri, silencieusement.
+//
+// Détection : documentModel absent ET knowledge absent = la génération n'a même
+// pas encore produit son premier étage ; on ne calcule alors rien et on le dit
+// explicitement, plutôt que de laisser buildDocumentModelFromAnalysis recomputer
+// avec des données vides.
+//
+// Si knowledge est présent mais reasoning/documentModel ne le sont pas encore
+// (recalcul à la volée à partir d'un knowledge réel), le résultat reste correct et
+// non vide : ce cas n'est donc pas bloqué ici.
+function isGenerationInProgress(analysis) {
+  return !analysis.documentModel && !analysis.knowledge;
+}
+
+function generationInProgressResponse() {
+  return jsonResponse({
+    success: false,
+    error: "GENERATION_IN_PROGRESS",
+    message: "La génération du rapport (Knowledge → Reasoning → Composer) est encore en cours. Réessayez dans quelques secondes.",
+  }, 202);
+}
+
 export async function renderAnalysisById(context, analysisId) {
   const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
@@ -41,6 +68,9 @@ export async function renderAnalysisById(context, analysisId) {
       message: "La validation humaine est obligatoire avant de préparer l’aperçu du rapport.",
       reviewUrl: `/admin/audit-review/${encodeURIComponent(analysis.analysisId)}`,
     }, 409);
+  }
+  if (isGenerationInProgress(analysis)) {
+    return generationInProgressResponse();
   }
 
   const documentModel = buildDocumentModelFromAnalysis(analysis);
@@ -63,6 +93,9 @@ export async function renderLatestAnalysis(context) {
       message: "La validation humaine est obligatoire avant de préparer l’aperçu du rapport.",
       reviewUrl: `/admin/audit-review/${encodeURIComponent(analysis.analysisId)}`,
     }, 409);
+  }
+  if (isGenerationInProgress(analysis)) {
+    return generationInProgressResponse();
   }
 
   const documentModel = buildDocumentModelFromAnalysis(analysis);
