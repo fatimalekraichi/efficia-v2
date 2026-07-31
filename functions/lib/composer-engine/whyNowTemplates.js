@@ -19,7 +19,12 @@ export function buildWhyNow({ priorities = [], actionPlan = [] } = {}) {
 
   const intro = WHY_NOW_BY_SIGNAL[topPriority.signal]
     || `Chaque semaine sans amélioration sur ${labelForSignal(topPriority.signal)}, votre fiche peut rester moins lisible qu'une fiche concurrente mieux structurée.`;
-  const action = "Les optimisations proposées sont précisément celles qui offrent aujourd'hui le meilleur rapport entre effort et impact potentiel.";
+  // Sprint 4 (consolidation) — objectif 1 : cette phrase de clôture reprenait
+  // mot pour mot la clause finale du résumé exécutif (summaryTemplates.js,
+  // actionSentence()/LEVERS_CLOSING : "...le meilleur rapport entre effort et
+  // impact potentiel"), répétée à l'identique en première et dernière page du
+  // même rapport. Reformulée ici avec la même idée, sans reprendre la clause.
+  const action = "Ces actions ont été retenues parce qu'elles demandent, dans votre situation, le moins d'effort pour le bénéfice le plus immédiat.";
 
   return {
     text: applyToneRules(`${intro} ${action}`),

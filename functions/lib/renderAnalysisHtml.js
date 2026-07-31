@@ -3,10 +3,31 @@
 // roadmapSection() (point 10) ci-dessous — une seule fonction de regroupement,
 // jamais dupliquée, pour garder les deux pages synchronisées.
 import { groupActionPlan } from "./composer-engine/actionPlanGrouping.js";
-// Sprint 3 : helpers de rédaction (angle psychologique, Constat, note
-// effort/impact), utilisés uniquement par priorityCard() ci-dessous — aucune
-// nouvelle donnée, aucun recalcul (cf. composer-engine/priorityFraming.js).
-import { angleForSignal, buildConstat, buildEffortImpactNote } from "./composer-engine/priorityFraming.js";
+// Sprint 5 (finition éditoriale) — module unique de présentation (objectif
+// 11) : formats français, typographie, vocabulaire sectoriel, preuve
+// enrichie, et les trois helpers de rédaction de Sprint 3 (angle, Constat,
+// effort/impact), migrés depuis composer-engine/priorityFraming.js (supprimé
+// — aucune duplication conservée). Aucune donnée n'est recalculée : ce
+// module ne fait que présenter ce que Reasoning/Composer ont déjà produit.
+import {
+  angleForSignal,
+  buildConstat,
+  buildEffortImpactNote,
+  buildEvidenceNarrative,
+  cleanTypography,
+  collapseKnownRedundancies,
+  detectSector,
+  adaptVocabulary,
+  adaptImpactLabel,
+  evidenceBarData,
+  benchmarkPositionLabel,
+  domainQualitativeNote,
+  buildRankRationale,
+  scoreInterpretationNote,
+  buildClosingStatement,
+  formatRatingDisplay,
+  formatCount,
+} from "./presentationFormatter.js";
 
 const EFFICIA_BLUE = "#2563eb";
 
@@ -33,6 +54,18 @@ function safeNumber(value, fallback = "Non disponible") {
   return escapeHtml(Number.isInteger(parsed) ? parsed : parsed.toFixed(1));
 }
 
+// Sprint 5 (finition éditoriale) — objectifs 1 et 3, PREMIUM UNIQUEMENT :
+// passe de nettoyage typographique + adaptation de vocabulaire sectoriel sur
+// un texte déjà rédigé par Reasoning/Composer, avant échappement HTML par
+// safeText(). N'est utilisé que par renderPremiumAuditHtml() et les
+// fonctions qu'elle appelle ci-dessous — jamais par renderFreeDiagnosticHtml,
+// qui continue d'utiliser safeText()/safeNumber() sans cette étape (aucun
+// changement de comportement du Diagnostic gratuit).
+function presentableText(value, sector) {
+  if (!present(value)) return value;
+  return cleanTypography(collapseKnownRedundancies(adaptVocabulary(String(value), sector)));
+}
+
 const LABEL_TRANSLATIONS = {
   high: "Élevé",
   medium: "Moyen",
@@ -50,6 +83,18 @@ const LABEL_TRANSLATIONS = {
 function safeLabel(value, fallback = "Non disponible") {
   if (!present(value)) return escapeHtml(fallback);
   return safeText(LABEL_TRANSLATIONS[String(value)] || value, fallback);
+}
+
+// Premium Polish — objectif 3, PREMIUM UNIQUEMENT : "Conversion" (traduction
+// de item.impactType === "conversion") devient "Prise de rendez-vous" pour
+// un cabinet médical — la mission interdit explicitement le mot "conversion"
+// pour ce secteur. Ne modifie ni LABEL_TRANSLATIONS ni safeLabel (partagés
+// avec le Diagnostic gratuit) : la traduction de base est identique, seul
+// le résultat est ensuite adapté au secteur.
+function impactLabel(value, sector, fallback = "Non disponible") {
+  if (!present(value)) return escapeHtml(fallback);
+  const translated = LABEL_TRANSLATIONS[String(value)] || value;
+  return safeText(adaptImpactLabel(translated, sector), fallback);
 }
 
 function stars(count) {
@@ -144,6 +189,69 @@ function evidenceLine(evidence) {
   return lines.length ? lines.join("<br>") : safeText(evidence.source || "Observation");
 }
 
+// Sprint 5 (finition éditoriale) — objectifs 5, 6 et 8 : la "Preuve" devient
+// une phrase (ou deux/trois) en prose qui intègre directement la comparaison
+// concurrentielle, au lieu d'une simple juxtaposition de nombres. Repli sur
+// l'ancien format (evidenceLine ci-dessus) uniquement pour les signaux non
+// couverts par la prose (aucune perte d'information, jamais de texte inventé).
+//
+// `includeYou = false` : n'utilisé que par priorityCard(), qui affiche déjà
+// la valeur "vous" dans son bloc Constat (Sprint 3) — éviter de répéter deux
+// fois la même valeur sur la même carte (objectifs 1 et 9).
+// Premium Polish (retour utilisateur) — objectif 1 : même si les gabarits
+// buildEvidenceNarrative()/evidenceLine() ne contiennent aujourd'hui aucun
+// mot générique sensible au secteur (aucun "client"/"entreprise"), cette
+// fonction est désormais elle aussi systématiquement passée par
+// presentableText() (sector en paramètre) — par sécurité et par cohérence
+// avec le reste du rapport, plutôt que de supposer que ça restera vrai.
+function proofNarrative(evidence, signal, { includeYou = true } = {}, sector = null) {
+  const narrative = buildEvidenceNarrative(evidence, signal, { includeYou });
+  if (narrative) return safeText(presentableText(narrative, sector));
+  if (!includeYou) {
+    // Le Constat affiche déjà "vous" : si aucune comparaison concurrentielle
+    // n'est disponible, on l'indique sobrement plutôt que de répéter le
+    // Constat ou d'inventer un chiffre.
+    return present(evidence?.competitorMedian) || evidence?.topCompetitor
+      ? evidenceLine(evidence)
+      // Premium Polish — objectif 9 : "signal" est un terme interne
+      // (taxonomie Reasoning) qui n'a rien à faire dans une phrase destinée
+      // au lecteur ; reformulé pour rester naturel sans changer le
+      // déclencheur (toujours affiché uniquement en l'absence de donnée
+      // comparative, jamais un chiffre inventé).
+      : safeText("Nous ne disposons pas encore de données comparatives sur ce point.");
+  }
+  return evidenceLine(evidence);
+}
+
+// Premium Polish (retour utilisateur) — objectif "preuves plus visuelles" :
+// mini-jauge Vous/Concurrents à côté de la phrase de preuve. evidenceBarData()
+// renvoie déjà les deux largeurs en % (aucun calcul supplémentaire ici) ;
+// cette fonction ne fait que poser le balisage. Absente (chaîne vide) quand
+// evidenceBarData() renvoie null (signal "position", ou donnée manquante).
+function evidenceBar(evidence, signal) {
+  const data = evidenceBarData(evidence, signal);
+  if (!data) return "";
+  // Premium Polish (retour utilisateur) — repère "Top X %" sous la jauge,
+  // uniquement quand evidence.percentileRank existe déjà (rating/reviews/
+  // photos) : voir benchmarkPositionLabel() pour l'origine de la donnée.
+  const positionLabel = benchmarkPositionLabel(evidence?.percentileRank);
+  return `
+    <div class="evidence-bars">
+      <div class="evidence-bar-row">
+        <span class="evidence-bar-label">Vous</span>
+        <div class="evidence-bar-track"><div class="evidence-bar-fill you" style="width:${data.youPct}%"></div></div>
+        <span class="evidence-bar-value">${safeText(data.youLabel)}</span>
+      </div>
+      <div class="evidence-bar-row">
+        <span class="evidence-bar-label">Concurrents</span>
+        <div class="evidence-bar-track"><div class="evidence-bar-fill competitor" style="width:${data.competitorPct}%"></div></div>
+        <span class="evidence-bar-value">${safeText(data.competitorLabel)}</span>
+      </div>
+      ${positionLabel ? `<p class="evidence-percentile">${safeText(positionLabel)}</p>` : ""}
+    </div>
+  `;
+}
+
 function scoreGauge(score) {
   const value = Math.max(0, Math.min(100, Number(score) || 0));
   const circumference = 2 * Math.PI * 48;
@@ -174,15 +282,17 @@ function scoreGauge(score) {
 // Potentiel d'amélioration) pour l'échelle 0-5.
 function comparisonColumn(entity) {
   const ratingKnown = present(entity.rating);
+  // Sprint 5 (objectif 2) : format français (virgule décimale, pluriel
+  // correct) au lieu du format brut ("4.1" → "4,1", "1 photos" → "1 photo").
   return `
     <div class="comparison-col">
       <p class="comparison-label">${safeText(entity.label)}</p>
       ${ratingKnown ? `<p class="comparison-stars">${stars(Math.round(entity.rating))}</p>` : ""}
-      <p class="comparison-rating">${ratingKnown ? `${safeNumber(entity.rating)}/5` : "Non disponible"}</p>
+      <p class="comparison-rating">${ratingKnown ? `${safeText(formatRatingDisplay(entity.rating))}/5` : "Non disponible"}</p>
       <p class="comparison-meta">
-        ${present(entity.reviews) ? `${safeNumber(entity.reviews)} avis` : "Avis non disponibles"}
+        ${present(entity.reviews) ? safeText(formatCount(entity.reviews, "avis", "avis")) : "Avis non disponibles"}
         ·
-        ${present(entity.photos) ? `${safeNumber(entity.photos)} photo${Number(entity.photos) > 1 ? "s" : ""}` : "Photos non disponibles"}
+        ${present(entity.photos) ? safeText(formatCount(entity.photos, "photo", "photos")) : "Photos non disponibles"}
       </p>
       ${entity.photosLabel && entity.photosIsEstimate ? `<p class="comparison-note">Photos : ${safeText(entity.photosLabel)}</p>` : ""}
       ${entity.name ? `<p class="comparison-name">${safeText(entity.name)}</p>` : ""}
@@ -208,22 +318,22 @@ function comparisonSection(hero) {
 // buildExecutiveSummary() (summaryTemplates.js) — jamais de libellé en dur ici.
 // Le paragraphe existant (`summary.text`) reste le repli si la liste ne peut
 // pas être produite (moins de 2 priorités disponibles).
-function executiveSummaryBody(summary = {}) {
+function executiveSummaryBody(summary = {}, sector = null) {
   const leversList = Array.isArray(summary.leversList) ? summary.leversList.filter(Boolean) : [];
   if (leversList.length > 1) {
     return `
-      <p class="summary-opening">${safeText(summary.opening || summary.text, "")}</p>
-      <p class="summary-levers-intro">${safeText(summary.leversIntro, "")}</p>
+      <p class="summary-opening">${safeText(presentableText(summary.opening || summary.text, sector), "")}</p>
+      <p class="summary-levers-intro">${safeText(presentableText(summary.leversIntro, sector), "")}</p>
       <ul class="summary-levers">
-        ${leversList.map((lever) => `<li>${icon("check")}<span>${safeText(lever)}</span></li>`).join("")}
+        ${leversList.map((lever) => `<li>${icon("check")}<span>${safeText(presentableText(lever, sector))}</span></li>`).join("")}
       </ul>
-      ${summary.leversClosing ? `<p class="summary-closing">${safeText(summary.leversClosing)}</p>` : ""}
+      ${summary.leversClosing ? `<p class="summary-closing">${safeText(presentableText(summary.leversClosing, sector))}</p>` : ""}
     `;
   }
-  return `<p>${safeText(summary.text, "Résumé non disponible.")}</p>`;
+  return `<p>${safeText(presentableText(summary.text, sector), "Résumé non disponible.")}</p>`;
 }
 
-function heroSection(model) {
+function heroSection(model, sector) {
   const hero = model.hero || {};
   const potential = hero.improvementPotential || {};
   const proofItems = methodologyProofItems(model);
@@ -235,13 +345,13 @@ function heroSection(model) {
           <p class="eyebrow">${safeText(model.vocabulary?.eyebrow || "Diagnostic Google Business")}</p>
           <h1>${safeText(hero.businessName, "Votre entreprise")}</h1>
           <p class="cover-meta">${[hero.category, hero.city, hero.date].filter(Boolean).map((item) => safeText(item, "")).join(" · ")}</p>
-          <p class="headline">${safeText(hero.headline, "")}</p>
+          <p class="headline">${safeText(presentableText(hero.headline, sector), "")}</p>
         </div>
         <div class="score-card">
           <span class="score-label">Score Efficia™</span>
           ${scoreGauge(hero.score)}
           <div class="score-band">${safeText(hero.scoreBand, "Score analysé")}</div>
-          <p class="score-interpretation">Vous faites déjà mieux que de nombreuses entreprises locales. Les recommandations de ce rapport visent à transformer cet avantage en davantage de visibilité et de contacts.</p>
+          <p class="score-interpretation">${safeText(presentableText(scoreInterpretationNote(hero.score), sector))}</p>
         </div>
       </div>
       ${comparisonSection(hero)}
@@ -250,7 +360,7 @@ function heroSection(model) {
           <div>
             <p class="letter-label">Note d'analyse</p>
             <h2>Résumé exécutif</h2>
-            ${executiveSummaryBody(model.executiveSummary || {})}
+            ${executiveSummaryBody(model.executiveSummary || {}, sector)}
           </div>
         </article>
         <div class="cover-side">
@@ -263,12 +373,12 @@ function heroSection(model) {
               <strong>${safeNumber(potential.score)}</strong>
               <span>${safeText(potential.label, "")}</span>
             </div>
-            ${potential.timeframe ? `<p class="potential-timeframe">${safeText(potential.timeframe)}</p>` : ""}
+            ${potential.timeframe ? `<p class="potential-timeframe">${safeText(presentableText(potential.timeframe, sector))}</p>` : ""}
             <p class="potential-title">${safeText(potential.driversTitle, "Vos principaux leviers")}</p>
             <ul class="driver-list">
-              ${(potential.drivers || []).map((driver) => `<li>${icon("check")}<span>${safeText(driver.label)}</span></li>`).join("")}
+              ${(potential.drivers || []).map((driver) => `<li>${icon("check")}<span>${safeText(presentableText(driver.label, sector))}</span></li>`).join("")}
             </ul>
-            <small>${safeText(potential.note, "")}</small>
+            <small>${safeText(presentableText(potential.note, sector), "")}</small>
           </article>
           <article class="method-proof-card">
             <p>Analyse réalisée à partir de</p>
@@ -283,7 +393,7 @@ function heroSection(model) {
   `;
 }
 
-function priorityCard(item) {
+function priorityCard(item, sector) {
   // Sprint 3 : chaque priorité "raconte une histoire" différente selon son
   // signal (objectif 1), avec ses deux niveaux de lecture bien séparés —
   // Constat (fait, objectif 3) puis Pourquoi c'est important (interprétation,
@@ -294,26 +404,45 @@ function priorityCard(item) {
   const angle = angleForSignal(item.signal);
   const constat = buildConstat(item);
   const effortImpactNote = buildEffortImpactNote(item.actionability || {});
+  // Premium Polish (retour utilisateur) — objectif "pourquoi cet ordre" :
+  // voir buildRankRationale().
+  const rankRationale = buildRankRationale(item);
+  // Premium Polish — objectif 7 : la grille 2x2 "Pourquoi / Preuve / Impact /
+  // Temps" forçait deux blocs de longueur très différente (le "Pourquoi",
+  // texte de Reasoning sur 3-4 phrases, contre la "Preuve", plus courte) côte
+  // à côte dans la même rangée — la carte semblait alors bancale (un bloc
+  // rempli, l'autre à moitié vide). Nouvelle disposition : "Pourquoi c'est
+  // important" et "Preuve" occupent chacun toute la largeur, l'un sous
+  // l'autre (chacun peut alors respirer sur sa propre hauteur) ; "Impact" et
+  // "Temps estimé", tous deux naturellement courts, restent groupés côte à
+  // côte. Même contenu, même quatre informations : uniquement la disposition
+  // change.
+  //
+  // Sprint 5 (objectif 6) : la Preuve n'inclut pas de nouveau la valeur
+  // "vous" (includeYou: false), déjà énoncée dans le Constat ci-dessus —
+  // jamais la même valeur répétée deux fois sur une même carte.
   return `
     <article class="priority-card">
       <div class="priority-rank">Priorité ${safeNumber(item.rank)}</div>
       <div class="priority-body">
-        ${angle ? `<p class="eyebrow priority-angle">${safeText(angle)}</p>` : ""}
-        <h3>${safeText(item.title)}</h3>
+        ${angle ? `<p class="eyebrow priority-angle">${safeText(presentableText(angle, sector))}</p>` : ""}
+        <h3>${safeText(presentableText(item.title, sector))}</h3>
+        ${rankRationale ? `<p class="priority-rank-rationale">${safeText(presentableText(rankRationale, sector))}</p>` : ""}
         ${constat ? `
         <div class="priority-constat">
           <span>Constat</span>
-          <p>${safeText(constat)}</p>
+          <p>${safeText(presentableText(constat, sector))}</p>
         </div>` : ""}
+        <div class="priority-block">
+          <span>Pourquoi c'est important</span>
+          <p>${safeText(presentableText(item.reasoning, sector))}</p>
+        </div>
+        <div class="priority-block">
+          <span>Preuve</span>
+          <p>${proofNarrative(item.evidence, item.signal, { includeYou: false }, sector)}</p>
+          ${evidenceBar(item.evidence, item.signal)}
+        </div>
         <div class="priority-grid">
-          <div>
-            <span>Pourquoi c'est important</span>
-            <p>${safeText(item.reasoning)}</p>
-          </div>
-          <div>
-            <span>Preuve</span>
-            <p>${evidenceLine(item.evidence)}</p>
-          </div>
           <div>
             <span>Impact</span>
             <p>${safeLabel(item.severity)}</p>
@@ -329,8 +458,13 @@ function priorityCard(item) {
   `;
 }
 
-function prioritiesSection(model) {
+function prioritiesSection(model, sector) {
   const items = model.priorities || [];
+  // Sprint 5 (objectif 7) : si aucune priorité n'est disponible, la page
+  // entière est omise plutôt que de montrer un titre suivi d'un texte de
+  // repli isolé — le rapport ne doit jamais sembler inachevé, mais ne doit
+  // pas non plus contenir de page quasi vide (cf. renderPremiumAuditHtml).
+  if (!items.length) return "";
   return `
     <section class="page">
       ${header(model.vocabulary?.prioritiesTitle || "Les 3 priorités")}
@@ -340,49 +474,61 @@ function prioritiesSection(model) {
         <p>Nous avons isolé les sujets qui peuvent le plus améliorer la perception de votre fiche et guider davantage de prospects vers une prise de contact.</p>
       </div>
       <div class="priority-list">
-        ${items.length ? items.map(priorityCard).join("") : `<p class="empty">Aucune priorité majeure à afficher.</p>`}
+        ${items.map((item) => priorityCard(item, sector)).join("")}
       </div>
       ${footer(model, "Priorités")}
     </section>
   `;
 }
 
-function strengthCard(item) {
+// Premium Polish (retour utilisateur) — objectif "points forts" : chaque
+// point fort commence désormais par une amorce rassurante courte ("Bonne
+// nouvelle."), avant le titre déjà établi — change la perception d'entrée de
+// carte sans toucher au contenu (titre/message) déjà produit par Composer.
+function strengthCard(item, sector) {
   return `
     <article class="insight-card strength-card">
       <div class="card-icon">${icon("shield")}</div>
-      <h3>${safeText(item.title)}</h3>
-      <p>${safeText(item.message)}</p>
-      <div class="proof">${evidenceLine(item.evidence)}</div>
+      <p class="strength-lead-in">Bonne nouvelle.</p>
+      <h3>${safeText(presentableText(item.title, sector))}</h3>
+      <p>${safeText(presentableText(item.message, sector))}</p>
+      <div class="proof">${proofNarrative(item.evidence, item.signal, {}, sector)}</div>
+      ${evidenceBar(item.evidence, item.signal)}
     </article>
   `;
 }
 
-function strengthsSection(model) {
+function strengthsSection(model, sector) {
+  const strengths = model.strengths || [];
+  // Sprint 5 (objectif 7) : pas de page "Vos points forts" du tout quand la
+  // liste est vide — le rapport ne doit jamais comporter de page qui ne
+  // contient qu'un titre et une phrase de repli.
+  if (!strengths.length) return "";
   return `
     <section class="page">
       ${header("Vos points forts")}
       <div class="section-intro positive">
         <p class="eyebrow">Confiance</p>
         <h2>Ce qui joue déjà en votre faveur</h2>
-        <p>Ces points constituent une base de confiance. Ils montrent ce que votre fiche fait déjà bien lorsque quelqu'un compare plusieurs entreprises.</p>
+        <p>${safeText(presentableText("Ces points constituent une base de confiance. Ils montrent ce que votre fiche fait déjà bien lorsque quelqu'un compare plusieurs entreprises.", sector))}</p>
       </div>
       <div class="card-grid">
-        ${(model.strengths || []).map(strengthCard).join("") || `<p class="empty">Aucun point fort prioritaire à afficher.</p>`}
+        ${strengths.map((item) => strengthCard(item, sector)).join("")}
       </div>
       ${footer(model, "Points forts")}
     </section>
   `;
 }
 
-function issueCard(item, type) {
+function issueCard(item, type, sector) {
   const iconName = type === "opportunity" ? "trend" : "target";
   return `
     <article class="insight-card ${type === "opportunity" ? "opportunity-card" : "weakness-card"}">
       <div class="card-icon">${icon(iconName)}</div>
-      <h3>${safeText(item.title)}</h3>
-      <p>${safeText(item.message)}</p>
-      <div class="proof">${evidenceLine(item.evidence)}</div>
+      <h3>${safeText(presentableText(item.title, sector))}</h3>
+      <p>${safeText(presentableText(item.message, sector))}</p>
+      <div class="proof">${proofNarrative(item.evidence, item.signal, {}, sector)}</div>
+      ${evidenceBar(item.evidence, item.signal)}
     </article>
   `;
 }
@@ -390,30 +536,82 @@ function issueCard(item, type) {
 // Point 3 du plan : score par domaine, déjà calculé (buildDomains(),
 // composer-engine/narrativeModel.js) — simple tableau récapitulatif, aucun
 // nouveau calcul.
-function domainRow(domain) {
+function domainRow(domain, sector) {
   const pct = Number.isFinite(domain.pct) ? Math.round(domain.pct * 100) : null;
+  // Premium Polish (retour utilisateur) — une phrase sous la barre plutôt que
+  // de laisser le pourcentage seul à interpréter (voir domainQualitativeNote).
+  const note = domainQualitativeNote(domain.pct, domain.label);
   return `
     <div class="domain-row">
-      <span class="domain-label">${safeText(domain.label)}</span>
+      <div class="domain-row-head">
+        <span class="domain-label">${safeText(domain.label)}</span>
+        <span class="domain-value">${pct !== null ? `${pct}%` : "Non évalué"}</span>
+      </div>
       <div class="domain-bar-track">
         <div class="domain-bar-fill" style="width:${pct !== null ? Math.max(0, Math.min(100, pct)) : 0}%;"></div>
       </div>
-      <span class="domain-value">${pct !== null ? `${pct}%` : "Non évalué"}</span>
+      ${note ? `<p class="domain-note">${safeText(presentableText(note, sector))}</p>` : ""}
     </div>
   `;
 }
 
-function domainsBlock(domains) {
+function domainsBlock(domains, sector) {
   if (!Array.isArray(domains) || !domains.length) return "";
   return `
     <div class="domains-block">
       <h3 class="column-title">Score par domaine</h3>
-      <div class="domain-list">${domains.map(domainRow).join("")}</div>
+      <div class="domain-list">${domains.map((domain) => domainRow(domain, sector)).join("")}</div>
     </div>
   `;
 }
 
-function limitsSection(model) {
+// Sprint 4 (consolidation) — objectif 1 : une même Knowledge finding peut être
+// à la fois une "weakness"/"opportunity" (page Axes d'amélioration) ET une
+// priorité (page Priorités, traitée plus en détail : Constat, Pourquoi c'est
+// important, Preuve, Impact, effort/impact). Sans ce filtre, les deux pages
+// affichaient alors les MÊMES phrases mot pour mot (businessImpact +
+// competitiveAngle identiques). On n'exclut ici que l'affichage en double :
+// la finding reste montrée une seule fois, sur la page qui la traite le plus
+// complètement — aucune information n'est perdue, aucun tri ni score modifié
+// (le classement de Composer n'est pas touché, seule la sélection d'affichage
+// de cette page l'est, cf. objectif 7 : "sélectionner" reste un rôle autorisé
+// du renderer).
+function excludeAlreadyShownAsPriority(items, priorityIds) {
+  if (!priorityIds || !priorityIds.size) return items;
+  return items.filter((item) => !priorityIds.has(item.id));
+}
+
+function limitsSection(model, sector) {
+  const priorityIds = new Set((model.priorities || []).map((item) => item.id).filter(Boolean));
+  const weaknesses = excludeAlreadyShownAsPriority(model.weaknesses || [], priorityIds);
+  const opportunities = excludeAlreadyShownAsPriority(model.opportunities || [], priorityIds);
+  const domainsHtml = domainsBlock(model.domains, sector);
+
+  // Sprint 5 (objectif 7) : chaque colonne ("À renforcer" / "Opportunités")
+  // n'est affichée que si elle a un contenu réel — jamais une colonne avec
+  // pour seul contenu une phrase de repli. Si la page entière n'a plus rien
+  // à montrer (aucune limite, aucune opportunité, aucun score par domaine),
+  // la page est omise en totalité.
+  if (!weaknesses.length && !opportunities.length && !domainsHtml) return "";
+
+  const columns = [];
+  if (weaknesses.length) {
+    columns.push(`
+        <div>
+          <h3 class="column-title">À renforcer</h3>
+          <div class="stack">${weaknesses.map((item) => issueCard(item, "weakness", sector)).join("")}</div>
+        </div>
+    `);
+  }
+  if (opportunities.length) {
+    columns.push(`
+        <div>
+          <h3 class="column-title">Opportunités</h3>
+          <div class="stack">${opportunities.map((item) => issueCard(item, "opportunity", sector)).join("")}</div>
+        </div>
+    `);
+  }
+
   return `
     <section class="page">
       ${header("Axes d'amélioration")}
@@ -422,17 +620,8 @@ function limitsSection(model) {
         <h2>Ce qui limite aujourd'hui votre visibilité</h2>
         <p>Les cartes restent volontairement pédagogiques : elles expliquent ce qui peut être renforcé, sans ton alarmiste.</p>
       </div>
-      ${domainsBlock(model.domains)}
-      <div class="split-grid">
-        <div>
-          <h3 class="column-title">À renforcer</h3>
-          <div class="stack">${(model.weaknesses || []).map((item) => issueCard(item, "weakness")).join("") || `<p class="empty">Aucune limite majeure.</p>`}</div>
-        </div>
-        <div>
-          <h3 class="column-title">Opportunités</h3>
-          <div class="stack">${(model.opportunities || []).map((item) => issueCard(item, "opportunity")).join("") || `<p class="empty">Aucune opportunité prioritaire.</p>`}</div>
-        </div>
-      </div>
+      ${domainsHtml}
+      ${columns.length ? `<div class="split-grid">${columns.join("")}</div>` : ""}
       ${footer(model, "Axes d'amélioration")}
     </section>
   `;
@@ -444,17 +633,17 @@ function boolLabel(value) {
   return "À confirmer";
 }
 
-function actionCard(item) {
+function actionCard(item, sector) {
   return `
     <article class="action-card">
       <div class="timeline-dot">${safeNumber(item.order)}</div>
       <div class="action-content">
-        <h3>${safeText(item.action)}</h3>
+        <h3>${safeText(presentableText(item.action, sector))}</h3>
         <dl>
           <div><dt>Difficulté</dt><dd>${safeLabel(item.difficulty)}</dd></div>
           <div><dt>Temps</dt><dd>${safeText(item.estimatedTime)}</dd></div>
           <div><dt>Automatisable par Efficia</dt><dd>${boolLabel(item.canEfficiaAutomate)}</dd></div>
-          <div><dt>Impact attendu</dt><dd>${safeLabel(item.impactType)}</dd></div>
+          <div><dt>Impact attendu</dt><dd>${impactLabel(item.impactType, sector)}</dd></div>
         </dl>
       </div>
     </article>
@@ -464,19 +653,22 @@ function actionCard(item) {
 // Point 6 du plan : un sous-titre par horizon au-dessus de chaque tronçon de
 // timeline, sans renuméroter ni réordonner les actions (item.order reste
 // celui déjà assigné par selectActionPlan(), composer-engine/selection.js).
-function actionPlanGroup(group) {
+function actionPlanGroup(group, sector) {
   return `
     <div class="action-group">
       <h3 class="column-title action-horizon">${safeText(group.label)}</h3>
       <div class="timeline">
-        ${group.items.map(actionCard).join("")}
+        ${group.items.map((item) => actionCard(item, sector)).join("")}
       </div>
     </div>
   `;
 }
 
-function actionPlanSection(model) {
+function actionPlanSection(model, sector) {
   const groups = groupActionPlan(model.actionPlan);
+  // Sprint 5 (objectif 7) : sans action, pas de page "Plan d'action" du tout
+  // (plutôt qu'un titre suivi d'une timeline vide).
+  if (!groups.length) return "";
   return `
     <section class="page">
       ${header("Plan d'action")}
@@ -485,7 +677,7 @@ function actionPlanSection(model) {
         <h2>Un plan d'action simple à suivre</h2>
         <p>Les actions sont présentées dans un ordre pragmatique : commencer par ce qui clarifie vite la fiche, puis renforcer les signaux les plus visibles.</p>
       </div>
-      ${groups.length ? groups.map(actionPlanGroup).join("") : `<div class="timeline"><p class="empty">Aucune action prioritaire à afficher.</p></div>`}
+      ${groups.map((group) => actionPlanGroup(group, sector)).join("")}
       ${footer(model, "Plan d'action")}
     </section>
   `;
@@ -497,36 +689,39 @@ function actionPlanSection(model) {
 // (model.actionPlan) et le même regroupement que actionPlanSection()
 // ci-dessus (groupActionPlan) : aucune nouvelle priorisation, aucun nouveau
 // calcul — uniquement une présentation plus pratique (checklist imprimable).
-function roadmapItem(item) {
+function roadmapItem(item, sector) {
   const meta = [
     present(item.difficulty) ? safeLabel(item.difficulty) : null,
     present(item.estimatedTime) ? safeText(item.estimatedTime) : null,
-    present(item.impactType) ? safeLabel(item.impactType) : null,
+    present(item.impactType) ? impactLabel(item.impactType, sector) : null,
   ].filter(Boolean).join(" · ");
   return `
     <div class="roadmap-item">
       <span class="roadmap-checkbox" aria-hidden="true"></span>
       <div class="roadmap-item-body">
-        <p class="roadmap-action">${safeText(item.action)}</p>
+        <p class="roadmap-action">${safeText(presentableText(item.action, sector))}</p>
         ${meta ? `<p class="roadmap-meta">${meta}</p>` : ""}
       </div>
     </div>
   `;
 }
 
-function roadmapGroup(group) {
+function roadmapGroup(group, sector) {
   return `
     <div class="roadmap-group">
       <h3 class="column-title roadmap-horizon">${safeText(group.label)}</h3>
       <div class="roadmap-list">
-        ${group.items.map(roadmapItem).join("")}
+        ${group.items.map((item) => roadmapItem(item, sector)).join("")}
       </div>
     </div>
   `;
 }
 
-function roadmapSection(model) {
+function roadmapSection(model, sector) {
   const groups = groupActionPlan(model.actionPlan);
+  // Sprint 5 (objectif 7) : même logique que actionPlanSection() ci-dessus —
+  // sans action, pas de page "Feuille de route" du tout.
+  if (!groups.length) return "";
   return `
     <section class="page roadmap-page">
       ${header("Votre feuille de route")}
@@ -536,31 +731,31 @@ function roadmapSection(model) {
         <p>Les mêmes actions que le plan précédent, présentées pour être suivies au quotidien, une case à la fois.</p>
       </div>
       <div class="roadmap-groups">
-        ${groups.length ? groups.map(roadmapGroup).join("") : `<p class="empty">Aucune action à afficher.</p>`}
+        ${groups.map((group) => roadmapGroup(group, sector)).join("")}
       </div>
       ${footer(model, "Feuille de route")}
     </section>
   `;
 }
 
-function methodologySection(model) {
+function methodologySection(model, sector) {
   return `
     <section class="page final-page">
       ${header("Méthodologie")}
       <div class="section-intro">
         <p class="eyebrow">Décision</p>
         <h2>Pourquoi agir maintenant</h2>
-        <p>${safeText(model.whyNow?.text, "Aucun texte de cadrage disponible.")}</p>
-        ${model.vocabulary?.upsellNote ? `<p class="upsell-note">${safeText(model.vocabulary.upsellNote)}</p>` : ""}
+        <p>${safeText(presentableText(model.whyNow?.text, sector), "Aucun texte de cadrage disponible.")}</p>
+        ${model.vocabulary?.upsellNote ? `<p class="upsell-note">${safeText(presentableText(model.vocabulary.upsellNote, sector))}</p>` : ""}
       </div>
       <div class="method-grid">
         <article class="method-card">
           <h3>Méthodologie</h3>
-          <p>${safeText(model.footer?.methodology)}</p>
+          <p>${safeText(presentableText(model.footer?.methodology, sector))}</p>
         </article>
         <article class="method-card">
           <h3>Cadre de lecture</h3>
-          <p>${safeText(model.footer?.disclaimer)}</p>
+          <p>${safeText(presentableText(model.footer?.disclaimer, sector))}</p>
         </article>
         <article class="method-card">
           <h3>Versions</h3>
@@ -572,7 +767,108 @@ function methodologySection(model) {
   `;
 }
 
+// Premium Polish — objectif 6 : le rapport se terminait jusqu'ici sur la
+// page Méthodologie (mentions légales, versions techniques) — une fin assez
+// abrupte. Nouvelle dernière page "En résumé", qui répond à quatre
+// questions simples à partir de données déjà calculées (aucun nouveau
+// score, aucune nouvelle priorité) :
+//  1. Qu'est-ce qui fonctionne déjà ?  → la première force déjà sélectionnée
+//     (model.strengths[0], Composer).
+//  2. Quels sont les trois principaux freins ?  → les priorités déjà
+//     classées par Composer (model.priorities, ordre non modifié).
+//  3. Que faut-il faire en priorité ?  → la première action du plan déjà
+//     ordonné (model.actionPlan[0]).
+//  4. Pourquoi est-ce réalisable ?  → la même phrase effort/impact que la
+//     carte de priorité correspondante (buildEffortImpactNote(), déjà
+//     utilisée ailleurs) — jamais un nouveau calcul, jamais une promesse de
+//     résultat, un ton rassurant plutôt que culpabilisant.
+//
+// Retour utilisateur — objectif "conclusion plus mémorable" : une dernière
+// phrase de cadrage, sous la grille, sectorisée (buildClosingStatement()) —
+// jamais une affirmation nouvelle sur les données du rapport, uniquement un
+// rappel du périmètre de l'audit (présentation Google, pas la qualité réelle
+// de l'activité), pour que le lecteur referme le rapport rassuré.
+function conclusionSummarySection(model, sector) {
+  const topStrength = (model.strengths || [])[0] || null;
+  const topPriorities = (model.priorities || []).slice(0, 3);
+  const firstAction = (model.actionPlan || [])[0] || null;
+
+  return `
+    <section class="page final-page">
+      ${header("En résumé")}
+      <div class="section-intro">
+        <p class="eyebrow">En résumé</p>
+        <h2>Ce qu'il faut retenir de cette analyse</h2>
+        <p>Un dernier tour d'horizon, pour repartir avec une idée claire de la situation et de la marche à suivre.</p>
+      </div>
+      <div class="summary-recap-grid">
+        <article class="summary-recap-card">
+          <span class="eyebrow">Qu'est-ce qui fonctionne déjà ?</span>
+          <p>${topStrength
+            ? safeText(presentableText(topStrength.title, sector))
+            : safeText("Votre fiche est déjà en ligne et prête à être renforcée : c'est un bon point de départ.")}</p>
+        </article>
+        <article class="summary-recap-card">
+          <span class="eyebrow">Quels sont les principaux freins ?</span>
+          ${topPriorities.length ? `
+          <ul class="summary-recap-list">
+            ${topPriorities.map((item) => `<li>${icon("check")}<span>${safeText(presentableText(item.title, sector))}</span></li>`).join("")}
+          </ul>` : `<p>${safeText("Aucun frein majeur n'a été identifié à ce stade.")}</p>`}
+        </article>
+        <article class="summary-recap-card">
+          <span class="eyebrow">Que faut-il faire en priorité ?</span>
+          <p>${firstAction
+            ? safeText(presentableText(firstAction.action, sector))
+            : safeText("Continuer à maintenir votre fiche à jour reste la meilleure priorité actuelle.")}</p>
+        </article>
+        <article class="summary-recap-card">
+          <span class="eyebrow">Pourquoi est-ce réalisable ?</span>
+          <p>${safeText(presentableText(
+            "Les améliorations proposées concernent essentiellement la manière dont votre établissement est présenté sur Google, et non la qualité de votre activité. Elles sont donc réalisables progressivement, sans modifier votre façon de travailler.",
+            sector,
+          ))}</p>
+        </article>
+      </div>
+      <p class="summary-closing-statement">${safeText(presentableText(buildClosingStatement(sector), sector))}</p>
+      ${footer(model, "En résumé")}
+    </section>
+  `;
+}
+
+// Sprint 4 (consolidation) — objectif 4 : ordre des sections corrigé. Les
+// priorités détaillées (Constat/Pourquoi/Preuve/Impact) doivent venir APRÈS
+// les points forts et les axes d'amélioration, jamais avant : le lecteur doit
+// d'abord voir où il en est et ce qui fonctionne déjà/le freine, avant de lire
+// pourquoi chaque point comptera et dans quel ordre agir. L'ordre précédent
+// (priorités juste après la couverture) inversait cette logique. Aucun
+// contenu, aucune section n'est modifié ici — uniquement leur séquence.
+//
+// Sprint 5 (finition éditoriale) :
+//  - objectif 3 : le secteur est détecté une seule fois ici (à partir de la
+//    seule catégorie déjà disponible, hero.category) et transmis à toutes
+//    les sections qui en ont besoin — jamais recalculé section par section.
+//  - objectif 7 : chaque section ci-dessous renvoie "" quand elle n'a rien à
+//    montrer (cf. strengthsSection/limitsSection/prioritiesSection/
+//    actionPlanSection/roadmapSection) ; on filtre ces chaînes vides avant
+//    de les assembler pour ne jamais laisser un bloc de page vide entre deux
+//    sections réelles.
+//
+// Premium Polish — objectif 6 : "En résumé" est ajoutée en toute dernière
+// position, après la Méthodologie — le rapport se referme désormais sur une
+// synthèse claire plutôt que sur les mentions légales/versions techniques.
 export function renderPremiumAuditHtml(documentModel = {}) {
+  const sector = detectSector({ category: documentModel.hero?.category });
+  const sections = [
+    heroSection(documentModel, sector),
+    strengthsSection(documentModel, sector),
+    limitsSection(documentModel, sector),
+    prioritiesSection(documentModel, sector),
+    actionPlanSection(documentModel, sector),
+    roadmapSection(documentModel, sector),
+    methodologySection(documentModel, sector),
+    conclusionSummarySection(documentModel, sector),
+  ].filter((section) => section && section.trim().length > 0);
+
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -583,13 +879,7 @@ export function renderPremiumAuditHtml(documentModel = {}) {
 </head>
 <body>
   <main class="report-shell">
-    ${heroSection(documentModel)}
-    ${prioritiesSection(documentModel)}
-    ${strengthsSection(documentModel)}
-    ${limitsSection(documentModel)}
-    ${actionPlanSection(documentModel)}
-    ${roadmapSection(documentModel)}
-    ${methodologySection(documentModel)}
+    ${sections.join("\n")}
   </main>
 </body>
 </html>`;
@@ -1066,12 +1356,17 @@ function styles() {
         line-height: 1.6;
       }
 
+      /* Premium Polish — objectif 8 : compactage léger des paddings/gaps
+         (ici et sur les blocs répétés ci-dessous : cartes de priorité,
+         points forts/faiblesses, actions, feuille de route, conclusion)
+         pour réduire le nombre de pages sans toucher aux tailles de police
+         ni aux interlignes de lecture — la lisibilité doit rester intacte. */
       .page {
         position: relative;
         width: min(1120px, calc(100% - 40px));
         min-height: 980px;
         margin: 32px auto;
-        padding: 46px 46px 92px;
+        padding: 40px 40px 80px;
         background: var(--white);
         border: 1px solid rgba(226, 232, 240, 0.9);
         border-radius: 30px;
@@ -1088,7 +1383,7 @@ function styles() {
       }
 
       .doc-header {
-        padding-bottom: 30px;
+        padding-bottom: 22px;
         border-bottom: 1px solid var(--line);
       }
 
@@ -1127,9 +1422,9 @@ function styles() {
       .cover-grid {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 390px;
-        gap: 58px;
+        gap: 48px;
         align-items: center;
-        padding: 58px 0 44px;
+        padding: 44px 0 32px;
       }
 
       .eyebrow {
@@ -1178,7 +1473,7 @@ function styles() {
 
       .headline {
         max-width: 760px;
-        margin-top: 30px;
+        margin-top: 22px;
         color: #26364f;
         font-size: 23px;
         line-height: 1.55;
@@ -1194,7 +1489,8 @@ function styles() {
       .method-card,
       .index-card,
       .criteria-domain-card,
-      .offer-card {
+      .offer-card,
+      .summary-recap-card {
         border: 1px solid var(--line);
         background: var(--white);
         border-radius: 26px;
@@ -1485,17 +1781,17 @@ function styles() {
       }
 
       .section-intro {
-        padding: 54px 0 30px;
+        padding: 38px 0 22px;
       }
 
       .section-lead {
-        margin-top: 20px;
+        margin-top: 16px;
         font-size: 18px;
         line-height: 1.65;
       }
 
       .section-intro p:not(.eyebrow) {
-        margin-top: 16px;
+        margin-top: 14px;
         font-size: 18px;
         line-height: 1.65;
       }
@@ -1506,7 +1802,7 @@ function styles() {
       .stack,
       .timeline {
         display: grid;
-        gap: 18px;
+        gap: 14px;
       }
 
       .priority-card,
@@ -1520,7 +1816,7 @@ function styles() {
       .priority-rank {
         display: grid;
         place-items: center;
-        min-height: 210px;
+        min-height: 190px;
         color: var(--blue);
         background: var(--blue-soft);
         font-size: 14px;
@@ -1528,22 +1824,22 @@ function styles() {
         letter-spacing: 0.1em;
         text-transform: uppercase;
         text-align: center;
-        padding: 18px;
+        padding: 16px;
       }
 
       .priority-body {
-        padding: 28px;
+        padding: 22px;
       }
 
       .priority-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-        margin-top: 22px;
+        gap: 12px;
+        margin-top: 16px;
       }
 
       .priority-grid div {
-        padding: 16px;
+        padding: 13px;
         border: 1px solid var(--line);
         border-radius: 18px;
         background: var(--soft);
@@ -1568,8 +1864,8 @@ function styles() {
          visuel que .priority-grid (span/p), placé au-dessus, hors grille,
          pour bien le séparer visuellement de "Pourquoi c'est important". */
       .priority-constat {
-        margin-top: 14px;
-        padding: 16px;
+        margin-top: 12px;
+        padding: 13px;
         border: 1px solid var(--line);
         border-radius: 18px;
         background: var(--white);
@@ -1589,12 +1885,57 @@ function styles() {
         font-weight: 700;
       }
 
+      /* Premium Polish — objectif 7 : "Pourquoi c'est important" et "Preuve"
+         occupent chacun toute la largeur (repris du même langage visuel que
+         .priority-constat ci-dessus), au lieu d'être forcés côte à côte dans
+         une grille 2 colonnes qui les comprimait l'un contre l'autre. */
+      .priority-block {
+        margin-top: 12px;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--soft);
+      }
+
+      .priority-block span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .priority-block p {
+        margin-top: 8px;
+        color: #243044;
+        font-weight: 700;
+        line-height: 1.55;
+      }
+
+      /* Premium Polish — objectif 2 : l'angle psychologique est maintenant
+         une phrase complète et naturelle ("Pourquoi votre note influence le
+         premier choix"), pas un intitulé abstrait à 2-3 mots — le mettre en
+         majuscules (comportement par défaut de .eyebrow) le ferait paraître
+         criard. On garde la couleur/le poids distinctifs, sans capitaliser. */
       .priority-angle {
         margin-bottom: 8px;
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 15px;
+      }
+
+      /* Premium Polish (retour utilisateur) — "pourquoi cet ordre", juste
+         sous le titre : voir buildRankRationale(). */
+      .priority-rank-rationale {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13.5px;
+        font-style: italic;
+        line-height: 1.5;
       }
 
       .priority-effort-note {
-        margin-top: 16px;
+        margin-top: 12px;
         color: var(--muted);
         font-size: 14px;
         line-height: 1.5;
@@ -1604,7 +1945,7 @@ function styles() {
       .priority-meta {
         display: flex;
         gap: 24px;
-        margin-top: 18px;
+        margin-top: 14px;
         color: var(--muted);
         font-size: 13px;
         font-weight: 800;
@@ -1614,7 +1955,7 @@ function styles() {
       .split-grid,
       .method-grid {
         display: grid;
-        gap: 22px;
+        gap: 16px;
       }
 
       .card-grid {
@@ -1631,16 +1972,73 @@ function styles() {
 
       .insight-card,
       .method-card {
-        padding: 26px;
+        padding: 20px;
       }
 
       .insight-card .card-icon {
-        margin-bottom: 18px;
+        margin-bottom: 14px;
       }
 
       .insight-card p,
       .method-card p {
-        margin-top: 14px;
+        margin-top: 12px;
+      }
+
+      /* Premium Polish — objectif 6 : page de conclusion "En résumé", quatre
+         cartes courtes en grille 2x2 — même langage visuel que les cartes
+         existantes (.method-card), sans nouvelle charte. */
+      .summary-recap-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 8px;
+      }
+
+      .summary-recap-card {
+        padding: 20px;
+      }
+
+      .summary-recap-card .eyebrow {
+        margin-bottom: 10px;
+      }
+
+      .summary-recap-card p {
+        color: #26364f;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.6;
+      }
+
+      .summary-recap-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .summary-recap-list li {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        color: #26364f;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+
+      /* Retour utilisateur — dernière phrase de la page "En résumé", plus
+         affirmée que le reste du texte courant (taille, poids, couleur de
+         marque) pour rester en mémoire une fois le rapport refermé. */
+      .summary-closing-statement {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
+        max-width: 760px;
+        color: var(--ink);
+        font-size: 19px;
+        font-weight: 750;
+        line-height: 1.6;
       }
 
       .strength-card {
@@ -1668,12 +2066,74 @@ function styles() {
       }
 
       .proof {
-        margin-top: 18px;
-        padding-top: 16px;
+        margin-top: 14px;
+        padding-top: 12px;
         border-top: 1px solid var(--line);
         color: var(--muted);
         font-size: 13px;
         font-weight: 780;
+      }
+
+      /* Premium Polish (retour utilisateur) — mini-jauge Vous/Concurrents,
+         posée sous la phrase de preuve (jamais à la place) : même donnée,
+         lecture instantanée en plus de la phrase. */
+      .evidence-bars {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .evidence-bar-row {
+        display: grid;
+        grid-template-columns: 82px 1fr auto;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .evidence-bar-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.03em;
+      }
+
+      .evidence-bar-track {
+        height: 10px;
+        border-radius: 999px;
+        background: var(--soft);
+        overflow: hidden;
+      }
+
+      .evidence-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+      }
+
+      .evidence-bar-fill.you { background: var(--blue); }
+      .evidence-bar-fill.competitor { background: #cbd5e1; }
+
+      .evidence-bar-value {
+        color: #243044;
+        font-size: 13px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .evidence-percentile {
+        margin-top: 2px;
+        color: var(--blue);
+        font-size: 12.5px;
+        font-weight: 800;
+      }
+
+      /* Premium Polish (retour utilisateur) — amorce rassurante en tête de
+         chaque point fort ("Bonne nouvelle."), avant le titre. */
+      .strength-lead-in {
+        margin-bottom: 6px;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
       }
 
       .column-title {
@@ -1699,8 +2159,8 @@ function styles() {
         position: relative;
         display: grid;
         grid-template-columns: 46px 1fr;
-        gap: 18px;
-        padding: 24px;
+        gap: 14px;
+        padding: 20px;
         box-shadow: none;
       }
 
@@ -1720,12 +2180,12 @@ function styles() {
       .action-content dl {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin: 18px 0 0;
+        gap: 10px;
+        margin: 14px 0 0;
       }
 
       .action-content dl div {
-        padding: 13px;
+        padding: 11px;
         border-radius: 16px;
         background: var(--soft);
       }
@@ -1842,14 +2302,22 @@ function styles() {
 
       .domain-list {
         display: grid;
-        gap: 12px;
+        gap: 14px;
         margin-top: 14px;
       }
 
+      /* Premium Polish (retour utilisateur) — "Score par domaine" passe d'une
+         ligne label/barre/valeur à un bloc empilé (en-tête, barre, phrase de
+         lecture) : le pourcentage seul obligeait le lecteur à l'interpréter. */
       .domain-row {
         display: grid;
-        grid-template-columns: 180px 1fr 64px;
-        align-items: center;
+        gap: 8px;
+      }
+
+      .domain-row-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
         gap: 14px;
       }
 
@@ -1873,10 +2341,15 @@ function styles() {
       }
 
       .domain-value {
-        text-align: right;
         color: var(--muted);
         font-size: 13px;
         font-weight: 850;
+      }
+
+      .domain-note {
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.5;
       }
 
       /* Point 6 (Sprint 2B) : un tronçon de timeline par horizon, sans
@@ -1896,17 +2369,17 @@ function styles() {
          nouveaux ici. */
       .roadmap-groups {
         display: grid;
-        gap: 34px;
-        margin-top: 12px;
+        gap: 26px;
+        margin-top: 10px;
       }
 
       .roadmap-horizon {
-        margin: 0 0 18px;
+        margin: 0 0 14px;
       }
 
       .roadmap-list {
         display: grid;
-        gap: 16px;
+        gap: 13px;
       }
 
       .roadmap-item {
@@ -2890,6 +3363,7 @@ function styles() {
         .index-card,
         .criteria-domain-card,
         .offer-card,
+        .summary-recap-card,
         .priority-grid div,
         .free-diagnostic .barre-cat,
         .free-diagnostic .chk-rubrique,
@@ -2908,6 +3382,51 @@ function styles() {
         .free-diagnostic h3 {
           break-after: avoid;
           page-break-after: avoid;
+        }
+
+        /* Sprint 4 (consolidation) — objectif 5 : les blocs ajoutés depuis les
+           sprints 1/2B/3 (comparaison visuelle, score par domaine, feuille de
+           route) n'avaient pas encore les mêmes garde-fous d'impression que
+           les cartes ci-dessus. Additif uniquement, mêmes propriétés déjà
+           utilisées plus haut — aucune charte, couleur ou police modifiée. */
+        .comparison-card,
+        .domain-row,
+        .roadmap-item {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        /* Premium Polish — objectif 7 : "Pourquoi c'est important" et
+           "Preuve" (désormais chacun un bloc pleine largeur, cf.
+           .priority-block) ne doivent jamais être coupés en deux entre le
+           label et le texte, ni entre deux pages. */
+        .priority-constat,
+        .priority-block {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        /* Un sous-titre d'horizon du plan d'action ou de la feuille de route
+           ne doit jamais se retrouver seul en bas de page, séparé de sa
+           première action. */
+        .action-horizon,
+        .roadmap-horizon {
+          break-after: avoid;
+          page-break-after: avoid;
+        }
+
+        /* Même protection anti-titre-orphelin que le Diagnostic gratuit
+           (ci-dessus), appliquée au premium uniquement — :not(.free-diagnostic)
+           garantit qu'aucune règle du Diagnostic gratuit n'est modifiée ici. */
+        .report-shell:not(.free-diagnostic) h2,
+        .report-shell:not(.free-diagnostic) h3 {
+          break-after: avoid;
+          page-break-after: avoid;
+        }
+
+        .report-shell:not(.free-diagnostic) p {
+          orphans: 3;
+          widows: 3;
         }
 
         .doc-footer {
