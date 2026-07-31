@@ -114,13 +114,24 @@ function footer(model, label = "") {
   `;
 }
 
+// Point 1 du plan (2026-07-31, Sprint 1 "Constats irréfutables") : au lieu
+// d'une seule ligne "valeur · référence observée", on affiche jusqu'à 3
+// lignes (vous / moyenne concurrents / meilleure fiche observée nommée)
+// quand la donnée existe — sans rien inventer : chaque ligne est omise si sa
+// valeur n'est pas disponible (present() déjà utilisé partout ailleurs dans
+// ce fichier pour ce même principe).
 function evidenceLine(evidence) {
   if (!evidence) return "Preuve non disponible";
-  const value = present(evidence.value) ? `${safeNumber(evidence.value)}${evidence.unit ? ` ${safeText(evidence.unit, "")}` : ""}` : null;
-  const median = present(evidence.competitorMedian)
-    ? `référence observée : ${safeNumber(evidence.competitorMedian)}${evidence.unit ? ` ${safeText(evidence.unit, "")}` : ""}`
-    : null;
-  return [value, median].filter(Boolean).join(" · ") || safeText(evidence.source || "Observation");
+  const unitSuffix = evidence.unit ? ` ${safeText(evidence.unit, "")}` : "";
+  const lines = [];
+
+  if (present(evidence.value)) lines.push(`Vous : ${safeNumber(evidence.value)}${unitSuffix}`);
+  if (present(evidence.competitorMedian)) lines.push(`Moyenne concurrents : ${safeNumber(evidence.competitorMedian)}${unitSuffix}`);
+  if (evidence.topCompetitor && present(evidence.topCompetitor.value)) {
+    lines.push(`Meilleure observée : ${safeNumber(evidence.topCompetitor.value)}${unitSuffix} (${safeText(evidence.topCompetitor.name, "")})`);
+  }
+
+  return lines.length ? lines.join("<br>") : safeText(evidence.source || "Observation");
 }
 
 function scoreGauge(score) {
@@ -147,6 +158,41 @@ function scoreGauge(score) {
 /* aucune section, aucun texte, aucune donnée n'a été modifié ici.          */
 /* ------------------------------------------------------------------------ */
 
+// Point 11 du plan : bloc "VOUS / Meilleure fiche observée" — première chose
+// lue, comme demandé. Chaque colonne n'affiche que les valeurs disponibles
+// (aucune valeur inventée). Réutilise stars() (déjà utilisé pour le
+// Potentiel d'amélioration) pour l'échelle 0-5.
+function comparisonColumn(entity) {
+  const ratingKnown = present(entity.rating);
+  return `
+    <div class="comparison-col">
+      <p class="comparison-label">${safeText(entity.label)}</p>
+      ${ratingKnown ? `<p class="comparison-stars">${stars(Math.round(entity.rating))}</p>` : ""}
+      <p class="comparison-rating">${ratingKnown ? `${safeNumber(entity.rating)}/5` : "Non disponible"}</p>
+      <p class="comparison-meta">
+        ${present(entity.reviews) ? `${safeNumber(entity.reviews)} avis` : "Avis non disponibles"}
+        ·
+        ${present(entity.photos) ? `${safeNumber(entity.photos)} photo${Number(entity.photos) > 1 ? "s" : ""}` : "Photos non disponibles"}
+      </p>
+      ${entity.photosLabel && entity.photosIsEstimate ? `<p class="comparison-note">Photos : ${safeText(entity.photosLabel)}</p>` : ""}
+      ${entity.name ? `<p class="comparison-name">${safeText(entity.name)}</p>` : ""}
+    </div>
+  `;
+}
+
+function comparisonSection(hero) {
+  const card = hero.comparison;
+  if (!card) return "";
+  return `
+    <div class="comparison-card">
+      ${comparisonColumn(card.you)}
+      <div class="comparison-divider" aria-hidden="true"></div>
+      ${comparisonColumn(card.best)}
+    </div>
+    ${hero.rank?.text ? `<p class="comparison-rank">${safeText(hero.rank.text)}</p>` : ""}
+  `;
+}
+
 function heroSection(model) {
   const hero = model.hero || {};
   const potential = hero.improvementPotential || {};
@@ -168,6 +214,7 @@ function heroSection(model) {
           <p class="score-interpretation">Vous faites déjà mieux que de nombreuses entreprises locales. Les recommandations de ce rapport visent à transformer cet avantage en davantage de visibilité et de contacts.</p>
         </div>
       </div>
+      ${comparisonSection(hero)}
       <div class="cover-bottom">
         <article class="hero-card executive-card">
           <div>
@@ -292,6 +339,32 @@ function issueCard(item, type) {
   `;
 }
 
+// Point 3 du plan : score par domaine, déjà calculé (buildDomains(),
+// composer-engine/narrativeModel.js) — simple tableau récapitulatif, aucun
+// nouveau calcul.
+function domainRow(domain) {
+  const pct = Number.isFinite(domain.pct) ? Math.round(domain.pct * 100) : null;
+  return `
+    <div class="domain-row">
+      <span class="domain-label">${safeText(domain.label)}</span>
+      <div class="domain-bar-track">
+        <div class="domain-bar-fill" style="width:${pct !== null ? Math.max(0, Math.min(100, pct)) : 0}%;"></div>
+      </div>
+      <span class="domain-value">${pct !== null ? `${pct}%` : "Non évalué"}</span>
+    </div>
+  `;
+}
+
+function domainsBlock(domains) {
+  if (!Array.isArray(domains) || !domains.length) return "";
+  return `
+    <div class="domains-block">
+      <h3 class="column-title">Score par domaine</h3>
+      <div class="domain-list">${domains.map(domainRow).join("")}</div>
+    </div>
+  `;
+}
+
 function limitsSection(model) {
   return `
     <section class="page">
@@ -301,6 +374,7 @@ function limitsSection(model) {
         <h2>Ce qui limite aujourd'hui votre visibilité</h2>
         <p>Les cartes restent volontairement pédagogiques : elles expliquent ce qui peut être renforcé, sans ton alarmiste.</p>
       </div>
+      ${domainsBlock(model.domains)}
       <div class="split-grid">
         <div>
           <h3 class="column-title">À renforcer</h3>
@@ -1498,6 +1572,124 @@ function styles() {
         border: 1px dashed var(--line);
         border-radius: 18px;
         color: var(--muted);
+      }
+
+      /* — Point 11 (Sprint 1, 2026-07-31) : comparaison VOUS / Meilleure     */
+      /*   fiche observée, sur la page de couverture.                       */
+      .comparison-card {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 28px;
+        margin: 0 0 28px;
+        padding: 26px 30px;
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        background: var(--soft);
+      }
+
+      .comparison-col { text-align: center; }
+
+      .comparison-divider {
+        width: 1px;
+        align-self: stretch;
+        background: var(--line);
+      }
+
+      .comparison-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .comparison-stars {
+        margin-top: 10px;
+        color: #f59e0b;
+        font-size: 20px;
+        letter-spacing: 0.06em;
+      }
+
+      .comparison-rating {
+        margin-top: 6px;
+        color: var(--ink);
+        font-size: 30px;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+      }
+
+      .comparison-meta {
+        margin-top: 8px;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 780;
+      }
+
+      .comparison-note {
+        margin-top: 4px;
+        color: #94a3b8;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .comparison-name {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 780;
+      }
+
+      .comparison-rank {
+        margin: 0 0 28px;
+        color: #334155;
+        font-size: 15px;
+        font-weight: 780;
+      }
+
+      /* — Point 3 (Sprint 1, 2026-07-31) : score par domaine, page "Axes    */
+      /*   d'amélioration" — passthrough du Score Efficia déjà calculé.      */
+      .domains-block {
+        margin-bottom: 30px;
+      }
+
+      .domain-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .domain-row {
+        display: grid;
+        grid-template-columns: 180px 1fr 64px;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .domain-label {
+        color: #26364f;
+        font-size: 14px;
+        font-weight: 780;
+      }
+
+      .domain-bar-track {
+        height: 10px;
+        border-radius: 999px;
+        background: #e8eef8;
+        overflow: hidden;
+      }
+
+      .domain-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: var(--blue);
+      }
+
+      .domain-value {
+        text-align: right;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 850;
       }
 
       /* ------------------------------------------------------------------ */

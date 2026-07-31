@@ -1,6 +1,7 @@
 import { COMPOSER_CONFIG } from "./composerConfig.js";
 import { COMPOSER_VERSION } from "./composerVersion.js";
 import { REPORT_DEPTH_PROFILES, resolveReportDepth } from "../reportDepth.js";
+import { buildComparisonCard } from "./comparisonCard.js";
 import { buildExpectedResult } from "./expectedResultTemplates.js";
 import { buildFirstAction } from "./firstActionTemplates.js";
 import { buildHeroHeadline } from "./heroTemplates.js";
@@ -18,8 +19,9 @@ const CRITERIA_STATUS_LABELS = {
 
 // Passthrough des 6 domaines historiques (scoreEngine.calculateScoreDetail) —
 // aucune nouvelle méthode de notation, uniquement une mise en forme des champs
-// déjà calculés.
-function buildDomains(categories) {
+// déjà calculés. Exportée (point 3 du plan, 2026-07-31) : réutilisée telle
+// quelle pour le modèle premium (model.domains), en plus de freeDiagnostic.
+export function buildDomains(categories) {
   if (!Array.isArray(categories)) return [];
   return categories.map((category) => ({
     key: category.key,
@@ -152,6 +154,18 @@ function priorityCard(item) {
   };
 }
 
+// Point 3 du plan (2026-07-31) : phrase courte à partir du rang déjà calculé
+// par computeCompetitiveRank() (auditComposition.js) — aucun recalcul ici.
+function rankSentence(rank) {
+  if (!rank || !Number.isFinite(rank.aheadCount) || rank.aheadCount <= 0) return null;
+  const { aheadCount, totalCompetitors } = rank;
+  const competitorWord = aheadCount > 1 ? "concurrents" : "concurrent";
+  const panelNote = Number.isFinite(totalCompetitors) && totalCompetitors > 0
+    ? ` (sur ${totalCompetitors} observé${totalCompetitors > 1 ? "s" : ""})`
+    : "";
+  return `Vous êtes actuellement derrière ${aheadCount} ${competitorWord} sur cette recherche${panelNote}.`;
+}
+
 function footerMethodology(bundle = {}) {
   const panelSize = n(bundle.benchmark?.panel_size ?? bundle.benchmark?.competitor_count);
   const panelText = panelSize === null
@@ -182,6 +196,10 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
     reportType: depth.reportType,
     vocabulary: depth.vocabulary,
     freeDiagnostic: buildFreeDiagnostic(bundle, bundle.scoreContext),
+    // Point 3 du plan : score par domaine, déjà calculé par le Score Efficia
+    // (scoreEngine.js) et déjà mis en forme par buildDomains() ci-dessus —
+    // simplement exposé au modèle premium en plus de freeDiagnostic.domains.
+    domains: buildDomains(bundle.scoreContext?.categories),
     hero: {
       businessName: firstDefined(bundle.meta?.businessName, business.name),
       category: firstDefined(bundle.meta?.category, business.category),
@@ -191,6 +209,10 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
       scoreBand: scoreBand(score),
       improvementPotential,
       headline: buildHeroHeadline({ score, topStrength, topPriority }),
+      // Point 11 : comparaison visuelle VOUS / Meilleure fiche observée.
+      comparison: buildComparisonCard(bundle),
+      // Point 3 : rang exact parmi les concurrents connus.
+      rank: { ...benchmark.rank, text: rankSentence(benchmark.rank) },
     },
     executiveSummary: buildExecutiveSummary({
       strengths: selections.strengths,

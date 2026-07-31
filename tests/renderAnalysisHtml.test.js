@@ -128,6 +128,59 @@ test("renderAnalysisHtml affiche uniquement le documentModel et ignore les sourc
   assert.doesNotMatch(html, /12\/100/);
 });
 
+test("renderAnalysisHtml affiche le bloc de comparaison VOUS / Meilleure fiche observée (point 11)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    hero: {
+      ...makeDocumentModel().hero,
+      comparison: {
+        you: { label: "Vous", rating: 4.6, reviews: 449, photos: 10 },
+        best: {
+          label: "Meilleure fiche observée",
+          name: "Concurrent anonymisé",
+          rating: 4.8,
+          reviews: 324,
+          photos: 234,
+          photosLabel: "Meilleure fiche observée",
+          photosIsEstimate: false,
+        },
+      },
+      rank: { aheadCount: 2, totalCompetitors: 3, text: "Vous êtes actuellement derrière 2 concurrents sur cette recherche (sur 3 observés)." },
+    },
+  }));
+
+  assert.match(html, /comparison-card/);
+  assert.match(html, /Concurrent anonymisé/);
+  assert.match(html, /4,8\/5|4\.8\/5/);
+  assert.match(html, /derrière 2 concurrents/);
+});
+
+test("renderAnalysisHtml n'affiche pas le bloc de comparaison quand hero.comparison est absent", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+
+  assert.doesNotMatch(html, /<div class="comparison-card">/);
+  assert.doesNotMatch(html, /<p class="comparison-rank">/);
+});
+
+test("renderAnalysisHtml affiche le score par domaine quand model.domains est fourni (point 3)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    domains: [
+      { key: "reputation", label: "Réputation", points: 18, max: 20, pct: 0.9 },
+      { key: "visibilite", label: "Visibilité", points: 10, max: 20, pct: 0.5 },
+    ],
+  }));
+
+  assert.match(html, /domains-block/);
+  assert.match(html, /Score par domaine/);
+  assert.match(html, /Réputation/);
+  assert.match(html, /90%/);
+});
+
+test("renderAnalysisHtml n'affiche pas le bloc domaines quand model.domains est absent ou vide", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+
+  assert.doesNotMatch(html, /<div class="domains-block">/);
+});
+
 test("renderAnalysisHtml échappe les contenus externes", () => {
   const html = renderAnalysisHtml(makeDocumentModel({
     hero: {

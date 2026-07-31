@@ -149,13 +149,34 @@ test("evidence contient competitorMedian quand disponible", () => {
   const output = runReasoningEngine(fixture);
   const photos = output.reasonings.find((item) => item.id === "OPP_PHOTOS");
 
+  // Point 1 du plan (2026-07-31) : evidence porte aussi topCompetitor
+  // (fiche la plus forte du panel, nom + valeur du signal) et percentileRank
+  // — déjà calculés en amont (benchmarkEngine.js), simplement surfacés ici.
   assert.deepEqual(photos.evidence, {
     metric: "photos_count",
     value: 10,
     competitorMedian: 234,
     unit: "photos",
     source: "Observation + Benchmark",
+    topCompetitor: { name: "Concurrent anonymisé", value: 234 },
+    percentileRank: 20,
   });
+});
+
+test("evidence.topCompetitor est absent quand la fiche de référence n'a pas cette valeur", () => {
+  const input = clone(fixture);
+  delete input.context.benchmark.top_competitor.reviews;
+  const output = runReasoningEngine(input);
+  const reviewsStrength = output.reasonings.find((item) => item.id === "FORCE_REVIEWS");
+
+  assert.equal(reviewsStrength.evidence.topCompetitor, null);
+});
+
+test("evidence.percentileRank est null pour un signal sans percentile connu", () => {
+  const output = runReasoningEngine(fixture);
+  const description = output.reasonings.find((item) => item.id === "OPP_DESCRIPTION");
+
+  assert.equal(description.evidence.percentileRank, null);
 });
 
 test("evidence a competitorMedian à null sans benchmark", () => {

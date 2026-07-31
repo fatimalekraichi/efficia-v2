@@ -29,6 +29,15 @@ function pickVariant(variants, { analysisId, libraryName, signal, type }) {
   return variants[index];
 }
 
+// Point 7 du plan (2026-07-31) : formate une note sur 5 au format français
+// ("4,1" et non "4.1") pour les phrases qui citent le chiffre réel.
+function formatRatingForTemplate(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return number.toFixed(1).replace(".", ",");
+}
+
 function replacePlaceholders(template, context = {}) {
   const business = context.business || {};
   const benchmark = context.benchmark || {};
@@ -40,6 +49,12 @@ function replacePlaceholders(template, context = {}) {
     top_competitor_name: benchmark.top_competitor?.name,
     position: business.position,
     description_length: business.description_length,
+    // Point 7 : placeholders numériques additionnels (note réelle du client,
+    // note moyenne des concurrents, note de la meilleure fiche observée) pour
+    // des phrases plus concrètes que "une note faible peut freiner le choix".
+    rating: formatRatingForTemplate(business.rating),
+    competitor_median_rating: formatRatingForTemplate(benchmark.competitor_median?.rating),
+    top_competitor_rating: formatRatingForTemplate(benchmark.top_competitor?.rating),
   };
 
   return String(template || "").replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {

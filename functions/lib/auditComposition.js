@@ -40,6 +40,31 @@ export function buildBusinessContext(analysis = {}) {
   };
 }
 
+// Point 3 du plan (2026-07-31, Sprint 1 "Constats irréfutables") : combien de
+// concurrents du panel affichent une note strictement supérieure à celle du
+// client, pour la phrase "Vous êtes actuellement derrière N concurrents".
+// Ne recalcule rien du Score Efficia ni du benchmark : simple tri de la liste
+// de concurrents déjà collectée (analysis.business.competitors), déjà lue par
+// ailleurs pour l'admin (js/admin-audit-review.js).
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function computeCompetitiveRank(analysis = {}) {
+  const business = analysis.business || {};
+  const competitors = Array.isArray(business.competitors) ? business.competitors : [];
+  const clientRating = toNumber(business.reviewed?.rating ?? business.rating);
+  if (!competitors.length || clientRating === null) return null;
+
+  const ratings = competitors.map((competitor) => toNumber(competitor?.rating)).filter((value) => value !== null);
+  if (!ratings.length) return null;
+
+  const aheadCount = ratings.filter((rating) => rating > clientRating).length;
+  return { aheadCount, totalCompetitors: ratings.length };
+}
+
 export function buildBenchmarkContext(analysis = {}) {
   const business = analysis.business || {};
   const benchmark = analysis.benchmark || {};
@@ -64,6 +89,7 @@ export function buildBenchmarkContext(analysis = {}) {
       photos: reviewed?.averages?.photos ?? benchmark.averages?.photos ?? null,
     },
     top_competitor: benchmark.topCompetitor || null,
+    rank: computeCompetitiveRank(analysis),
   };
 }
 
