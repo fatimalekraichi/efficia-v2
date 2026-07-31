@@ -293,6 +293,77 @@ test("renderAnalysisHtml : feuille de route affiche un message vide si aucune ac
   assert.doesNotMatch(html, /<span class="roadmap-checkbox"/);
 });
 
+test("renderAnalysisHtml : chaque priorité affiche un angle, un Constat distinct et 'Pourquoi c'est important' (Sprint 3, objectifs 1 et 3)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    priorities: [
+      {
+        rank: 1,
+        id: "WEAK_REVIEWS",
+        signal: "reviews",
+        title: "Renforcer le volume d'avis",
+        reasoning: "Avant de contacter une entreprise, de nombreux utilisateurs comparent rapidement le nombre d'avis disponibles.",
+        severity: "high",
+        evidence: { value: 8, competitorMedian: 24, unit: "avis", source: "Observation + Benchmark" },
+        actionability: { difficulty: "hard", estimatedTime: "en continu" },
+      },
+      {
+        rank: 2,
+        id: "WEAK_RATING",
+        signal: "rating",
+        title: "Renforcer la note moyenne",
+        reasoning: "Une note plus faible peut freiner la confiance immédiate.",
+        severity: "medium",
+        evidence: { value: 4.1, competitorMedian: 4.6, unit: "/5", source: "Observation + Benchmark" },
+        actionability: { difficulty: "medium", estimatedTime: "30–60 min" },
+      },
+    ],
+  }));
+
+  assert.match(html, /<p class="eyebrow priority-angle">Le poids de la preuve sociale<\/p>/);
+  assert.match(html, /<p class="eyebrow priority-angle">Confiance avant le clic<\/p>/);
+  assert.match(html, /<div class="priority-constat">/);
+  assert.match(html, /Actuellement, votre fiche compte 8 avis\./);
+  assert.match(html, /Actuellement, votre note moyenne est de 4\.1\/5\./);
+  // "Pourquoi c'est important" (interprétation) reste affiché séparément du
+  // Constat (fait) : les deux textes sont bien distincts et tous deux présents.
+  assert.match(html, /Avant de contacter une entreprise, de nombreux utilisateurs comparent/);
+  assert.match(html, /<p class="priority-effort-note">/);
+});
+
+test("renderAnalysisHtml : deux familles de priorités différentes produisent des angles et des Constats différents (aucune formulation générique)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    priorities: [
+      { rank: 1, id: "A", signal: "photos", title: "Photos", reasoning: "R1", severity: "medium", evidence: { value: 2 }, actionability: { difficulty: "medium", estimatedTime: "30–60 min" } },
+      { rank: 2, id: "B", signal: "description", title: "Description", reasoning: "R2", severity: "low", evidence: { value: 0 }, actionability: { difficulty: "easy", estimatedTime: "15–20 min" } },
+    ],
+  }));
+
+  assert.match(html, /Se projeter avant de choisir/);
+  assert.match(html, /Comprendre votre activité en un coup d&#39;œil/);
+  assert.match(html, /Actuellement, votre fiche présente 2 photos\./);
+  assert.match(html, /Actuellement, votre fiche ne comporte aucune description\./);
+});
+
+test("renderAnalysisHtml : pas de régression — Pourquoi c'est important / Preuve / Impact / Temps estimé restent affichés", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+
+  assert.match(html, /Pourquoi c'est important/);
+  assert.match(html, /<span>Preuve<\/span>/);
+  assert.match(html, /<span>Impact<\/span>/);
+  assert.match(html, /Temps estimé/);
+});
+
+test("renderAnalysisHtml : aucun bloc Constat ni angle si le signal ou l'évidence est inconnu (repli gracieux, jamais de texte inventé)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    priorities: [
+      { rank: 1, id: "X", signal: "unknown_signal", title: "Titre", reasoning: "Texte", severity: "medium", evidence: {}, actionability: {} },
+    ],
+  }));
+
+  assert.doesNotMatch(html, /<div class="priority-constat">/);
+  assert.doesNotMatch(html, /<p class="eyebrow priority-angle">/);
+});
+
 test("renderAnalysisHtml échappe les contenus externes", () => {
   const html = renderAnalysisHtml(makeDocumentModel({
     hero: {

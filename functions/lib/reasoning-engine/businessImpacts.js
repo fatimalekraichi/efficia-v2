@@ -18,6 +18,7 @@ export const businessImpacts = {
       strength: [
         "Cette clarté peut vous faire gagner l'arbitrage face à une fiche concurrente moins explicite.",
         "Dans une comparaison rapide, une description claire vous donne plus de chances d'être choisi.",
+        "Cette clarté constitue déjà un avantage concurrentiel. Pour une activité comme la vôtre, un prospect qui comprend rapidement votre offre hésite moins longtemps face à une fiche plus floue.",
       ],
       weakness: [
         "Face à un concurrent qui explique clairement ses spécialités, votre fiche paraît moins convaincante à qualité égale.",
@@ -48,6 +49,7 @@ export const businessImpacts = {
       strength: [
         "Vos photos renforcent votre capacité à être choisi lorsque les clients comparent plusieurs fiches côte à côte.",
         "Cet avantage visuel vous aide à rassurer plus vite qu'une fiche concurrente moins illustrée.",
+        "Votre galerie constitue déjà un avantage concurrentiel. Lorsqu'un prospect compare plusieurs établissements similaires, pouvoir se projeter visuellement avant le premier contact facilite sa décision.",
       ],
       weakness: [
         "Quand un internaute compare plusieurs fiches côte à côte, celle qui montre mieux son activité rassure plus vite.",
@@ -78,6 +80,7 @@ export const businessImpacts = {
       strength: [
         "Lorsque plusieurs entreprises apparaissent côte à côte, votre volume d'avis peut rassurer avant même que le prospect consulte votre site.",
         "Lorsqu'un prospect compare plusieurs entreprises affichées côte à côte, ce volume d'avis vous donne un avantage concret avant même qu'il visite votre site.",
+        "Ce volume d'avis constitue déjà un avantage concurrentiel pour vous. Lorsqu'un prospect compare plusieurs établissements similaires, cette preuve sociale contribue à le rassurer avant même la visite de votre site ou son premier contact.",
       ],
       weakness: [
         "Une fiche concurrente avec davantage d'avis peut sembler plus éprouvée et capter les clients hésitants.",
@@ -109,6 +112,7 @@ export const businessImpacts = {
       strength: [
         "Votre note vous aide à rassurer immédiatement face à des fiches concurrentes moins bien notées.",
         "Cet atout peut faire pencher la décision en votre faveur dès la première comparaison.",
+        "Votre note constitue déjà un avantage concurrentiel. Lorsqu'un prospect compare plusieurs établissements similaires en quelques secondes, une note qui rassure immédiatement pèse souvent plus que le détail des avis.",
       ],
       weakness: [
         "Si un concurrent affiche une note plus rassurante, il peut être choisi avant que le prospect n'analyse le reste.",
@@ -139,6 +143,7 @@ export const businessImpacts = {
       strength: [
         "Votre bonne position vous permet d'être vu au moment où les concurrents moins visibles perdent déjà une partie des contacts.",
         "Cette visibilité vous donne une avance concrète dans l'arbitrage local.",
+        "Votre visibilité constitue déjà un avantage concurrentiel. Lorsqu'un prospect compare plusieurs établissements similaires, être vu en premier augmente mécaniquement vos chances d'être contacté avant les autres.",
       ],
       weakness: [
         "Les concurrents mieux placés captent souvent les premiers contacts, car ils sont vus au moment exact de l'intention.",
@@ -169,6 +174,7 @@ export const businessImpacts = {
       strength: [
         "Des catégories bien cadrées vous aident à ressortir sur les recherches où vos concurrents sont moins précis.",
         "Cette précision peut vous faire gagner des contacts plus qualifiés.",
+        "Ce cadrage constitue déjà un avantage concurrentiel. Lorsqu'un prospect recherche une activité comme la vôtre, apparaître clairement dans la bonne catégorie facilite votre découverte face à des fiches moins précises.",
       ],
       weakness: [
         "Un concurrent mieux catégorisé peut apparaître sur des recherches plus pertinentes et capter une demande plus qualifiée.",
