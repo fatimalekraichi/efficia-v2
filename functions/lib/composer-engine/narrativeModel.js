@@ -1,10 +1,98 @@
 import { COMPOSER_CONFIG } from "./composerConfig.js";
 import { COMPOSER_VERSION } from "./composerVersion.js";
+import { REPORT_DEPTH_PROFILES, resolveReportDepth } from "../reportDepth.js";
+import { buildExpectedResult } from "./expectedResultTemplates.js";
+import { buildFirstAction } from "./firstActionTemplates.js";
 import { buildHeroHeadline } from "./heroTemplates.js";
 import { calculateImprovementPotential } from "./improvementPotential.js";
-import { buildKeyFindings } from "./selection.js";
+import { buildKeyFindings, selectComposerItems } from "./selection.js";
 import { buildExecutiveSummary } from "./summaryTemplates.js";
 import { buildWhyNow } from "./whyNowTemplates.js";
+
+const CRITERIA_STATUS_LABELS = {
+  compliant: "conforme",
+  partial: "à améliorer",
+  deficient: "prioritaire",
+  not_verified: "à confirmer",
+};
+
+// Passthrough des 6 domaines historiques (scoreEngine.calculateScoreDetail) —
+// aucune nouvelle méthode de notation, uniquement une mise en forme des champs
+// déjà calculés.
+function buildDomains(categories) {
+  if (!Array.isArray(categories)) return [];
+  return categories.map((category) => ({
+    key: category.key,
+    label: category.label,
+    points: Number.isFinite(category.brut) ? Math.round(category.brut * 100) / 100 : null,
+    max: category.maxEvalue ?? null,
+    pct: Number.isFinite(category.pct) ? category.pct : null,
+  }));
+}
+
+// Résumé des 29 critères par statut déjà attribué en validation manuelle
+// (compliant/partial/deficient/not_verified) — simple comptage + regroupement
+// par domaine, aucune nouvelle grille de statut.
+function buildCriteriaSummary(criteria) {
+  if (!Array.isArray(criteria) || !criteria.length) return null;
+
+  const counts = { compliant: 0, partial: 0, deficient: 0, not_verified: 0 };
+  const domainsByKey = new Map();
+
+  for (const item of criteria) {
+    const status = counts[item.status] !== undefined ? item.status : "not_verified";
+    counts[status] += 1;
+
+    if (!domainsByKey.has(item.category)) {
+      domainsByKey.set(item.category, { key: item.category, label: item.categoryLabel, criteria: [] });
+    }
+    domainsByKey.get(item.category).criteria.push({
+      key: item.key,
+      question: item.question,
+      status,
+      statusLabel: CRITERIA_STATUS_LABELS[status] || status,
+    });
+  }
+
+  return {
+    total: criteria.length,
+    counts,
+    byDomain: [...domainsByKey.values()],
+  };
+}
+
+function buildFreePriorityCard(item) {
+  const logic = item.logic || {};
+  return {
+    rank: item.rank,
+    id: item.id,
+    signal: item.signal,
+    title: item.title,
+    observed: logic.cause || null,
+    prospectView: [logic.businessImpact, logic.competitiveAngle].filter(Boolean).join(" ") || null,
+    firstAction: buildFirstAction(item.signal),
+    expectedResult: buildExpectedResult(item.signal),
+    estimatedTime: item.actionability?.estimatedTime || null,
+    impact: item.severity || null,
+  };
+}
+
+// Modèle dédié au Diagnostic Efficia gratuit (Étape A). Construit à partir des
+// mêmes données Knowledge/Reasoning que le reste du documentModel, mais avec le
+// plafond gratuit (exactement 3 priorités) quel que soit le palier réellement
+// résolu pour ce document — ce sous-objet ne change jamais de profondeur.
+function buildFreeDiagnostic(bundle, scoreContext = {}) {
+  const freeSelections = selectComposerItems(bundle, REPORT_DEPTH_PROFILES.free.caps);
+
+  return {
+    band: scoreContext.band || null,
+    indices: scoreContext.indices || null,
+    domains: buildDomains(scoreContext.categories),
+    criteriaSummary: buildCriteriaSummary(scoreContext.criteria),
+    projectedScore: scoreContext.projectedPackScore?.projete ?? null,
+    priorities: freeSelections.priorities.map(buildFreePriorityCard),
+  };
+}
 
 function n(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -72,7 +160,7 @@ function footerMethodology(bundle = {}) {
   return `Analyse issue des observations publiques · ${panelText}.`;
 }
 
-export function buildNarrativeModel(bundle = {}, selections = {}) {
+export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolveReportDepth(bundle.reportType)) {
   const generatedAt = firstDefined(bundle.generatedAt, bundle.meta?.generatedAt, bundle.reasoning?.generatedAt);
   const business = bundle.observation || bundle.context?.business || {};
   const benchmark = bundle.benchmark || bundle.context?.benchmark || {};
@@ -91,6 +179,9 @@ export function buildNarrativeModel(bundle = {}, selections = {}) {
     composerVersion: COMPOSER_VERSION,
     generatedAt,
     locale: COMPOSER_CONFIG.locale,
+    reportType: depth.reportType,
+    vocabulary: depth.vocabulary,
+    freeDiagnostic: buildFreeDiagnostic(bundle, bundle.scoreContext),
     hero: {
       businessName: firstDefined(bundle.meta?.businessName, business.name),
       category: firstDefined(bundle.meta?.category, business.category),

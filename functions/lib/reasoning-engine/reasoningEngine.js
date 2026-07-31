@@ -78,6 +78,34 @@ function collectKnowledgeFindings(knowledge = {}) {
   });
 }
 
+// Titre = première vraie fin de phrase (. ; ou :), en ignorant :
+//  - les points décimaux (ex. "4.1", "114.3") : un point suivi d'un chiffre
+//    n'est jamais une fin de phrase ici ;
+//  - toute ponctuation rencontrée à l'intérieur d'une parenthèse non encore
+//    refermée (ex. "(médiane : 24)") : ces messages Knowledge utilisent le
+//    ":" comme séparateur libellé/valeur DANS la parenthèse, pas comme fin
+//    de phrase — l'ancienne regex /[.;:]/ coupait au milieu ("...concurrents
+//    (médiane" au lieu de "...concurrents (médiane : 24)").
+function extractTitle(message) {
+  const text = String(message || "");
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth > 0) continue;
+    if (char === ";" || char === ":") return text.slice(0, index).trim();
+    if (char === "." && !/\d/.test(text[index + 1] || "")) return text.slice(0, index).trim();
+  }
+  return text.trim();
+}
+
 function benchmarkConfidence(context = {}) {
   const confidence = context?.benchmark?.confidence;
   return CONFIDENCE_BASE[confidence] || CONFIDENCE_BASE.indicative;
@@ -150,7 +178,7 @@ function buildReasoning({ finding, analysisId, context }) {
     signal: finding.signal,
     type: finding.type,
     impactType: finding.businessImpact || null,
-    title: finding.message ? String(finding.message).split(/[.;:]/)[0].trim() : finding.id,
+    title: finding.message ? extractTitle(finding.message) : finding.id,
     logic,
     evidence: buildEvidence(finding.signal, context),
     actionability: buildActionability(finding),
@@ -175,6 +203,11 @@ export function runReasoningEngine(input = {}) {
     generatedAt: input.generatedAt || context.generatedAt || DEFAULT_GENERATED_AT,
     reasoningRulesVersion: reasoning_rules_version,
     librariesVersion: libraries_version,
+    // Traçabilité uniquement : Reasoning n'utilise pas reportType pour filtrer ou
+    // transformer les constats (chaque constat de Knowledge est expliqué, sans
+    // exception, quel que soit le palier). Les plafonds se jouent en amont
+    // (Knowledge) et en aval (Composer).
+    reportType: input.reportType || null,
     reasonings: findings
       .map((finding) => buildReasoning({ finding, analysisId, context }))
       .filter(Boolean),

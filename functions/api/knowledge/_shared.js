@@ -1,4 +1,5 @@
 import { runKnowledgeEngine } from "../../lib/knowledgeEngine.js";
+import { resolveAnalysisReportType } from "../../lib/reportDepth.js";
 import { verifyConnectorToken } from "../_auth.js";
 
 export const CORS_HEADERS = {
@@ -67,7 +68,8 @@ export async function loadKnowledgeAnalysis(db, analysisId) {
       reviewed_observation_json,
       reviewed_benchmark_json,
       reviewed_score_json,
-      scoring_version
+      scoring_version,
+      report_type
     FROM analyses
     WHERE analysis_id = ?
     LIMIT 1
@@ -115,6 +117,7 @@ export function buildKnowledgeInput(analysis) {
 
   return {
     analysisId: analysis.analysis_id,
+    reportType: resolveAnalysisReportType(analysis.report_type),
     business: {
       name: reviewedObservation?.name || analysis.name || null,
       category: reviewedObservation?.category || analysis.activity || null,

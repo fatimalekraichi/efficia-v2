@@ -1,4 +1,5 @@
 import { runComposer } from "./composer-engine/composerEngine.js";
+import { resolveAnalysisReportType } from "./reportDepth.js";
 import { runReasoningEngine } from "./reasoning-engine/reasoningEngine.js";
 
 function firstDefined(...values) {
@@ -66,6 +67,24 @@ export function buildBenchmarkContext(analysis = {}) {
   };
 }
 
+// Score Efficia historique déjà calculé (scoreEngine.js, non modifié ici) :
+// simple passthrough des données déjà persistées (reviewed_score_json /
+// score_inputs_json), sans aucun recalcul. Alimente uniquement
+// documentModel.freeDiagnostic (Étape A) ; aucun impact sur le Score Efficia
+// ni sur le documentModel premium existant.
+export function buildScoreContext(analysis = {}) {
+  const reviewedScore = analysis.reviewedScore || null;
+  const scoreInputs = analysis.scoreInputs || null;
+
+  return {
+    band: reviewedScore?.band || null,
+    indices: reviewedScore?.indices || null,
+    categories: reviewedScore?.categories || null,
+    projectedPackScore: reviewedScore?.projectedPackScore || null,
+    criteria: scoreInputs?.criteria || null,
+  };
+}
+
 export function getCompositionGeneratedAt(analysis = {}) {
   return firstDefined(
     analysis.timestamps?.knowledgeCompletedAt,
@@ -79,6 +98,7 @@ export function getCompositionGeneratedAt(analysis = {}) {
 export function buildReasoningInputFromAnalysis(analysis = {}) {
   return {
     analysisId: analysis.analysisId,
+    reportType: resolveAnalysisReportType(analysis.reportType),
     generatedAt: getCompositionGeneratedAt(analysis),
     context: {
       business: buildBusinessContext(analysis),
@@ -94,6 +114,7 @@ export function buildComposerBundleFromAnalysis(analysis = {}, reasoning = null)
 
   return {
     analysisId: analysis.analysisId,
+    reportType: resolveAnalysisReportType(analysis.reportType),
     generatedAt,
     meta: {
       businessName: businessContext.name,
@@ -105,6 +126,7 @@ export function buildComposerBundleFromAnalysis(analysis = {}, reasoning = null)
     benchmark: buildBenchmarkContext(analysis),
     knowledge: analysis.knowledge || {},
     reasoning: reasoning || analysis.reasoning || {},
+    scoreContext: buildScoreContext(analysis),
   };
 }
 
