@@ -98,6 +98,7 @@ export const businessImpacts = {
       weakness: [
         "Une note moins forte peut créer une hésitation dès l'affichage de la fiche.",
         "La note influence la confiance immédiate, et une note faible peut freiner le contact.",
+        "Beaucoup d'internautes éliminent inconsciemment une fiche affichant {rating}/5 lorsqu'une autre paraît plus rassurante, avant même de lire les avis.",
       ],
       opportunity: [
         "En consolidant progressivement cette note, vous pouvez renforcer la confiance immédiate.",

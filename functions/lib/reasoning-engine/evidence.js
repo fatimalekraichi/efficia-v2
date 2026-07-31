@@ -44,6 +44,28 @@ function normalizedValue(value) {
   return value;
 }
 
+// Point 1 du plan (2026-07-31) : la fiche la plus forte du panel (nom +
+// valeur du signal) est déjà calculée en amont (benchmarkEngine.js →
+// analysisReader.js → buildBenchmarkContext) et transmise ici sous
+// `context.benchmark.top_competitor`. Aucune nouvelle collecte : on ne fait
+// que lire, signal par signal, ce qui existe déjà pour ce signal précis
+// (ex. top_competitor n'a pas toujours de valeur "photos" en production).
+function topCompetitorFor(signal, context = {}) {
+  const top = context?.benchmark?.top_competitor;
+  if (!top || !top.name) return null;
+
+  const value = normalizedValue(top[signal]);
+  if (value === null) return null;
+
+  return { name: top.name, value };
+}
+
+// Point 1 du plan : percentile déjà calculé par benchmarkEngine.js
+// (rating/reviews/photos uniquement) — simple lecture, aucun recalcul.
+function percentileRankFor(signal, context = {}) {
+  return normalizedValue(context?.benchmark?.percentiles?.[signal]);
+}
+
 export function buildEvidence(signal, context = {}) {
   const definition = SIGNAL_METRICS[signal];
   if (!definition) return null;
@@ -62,6 +84,8 @@ export function buildEvidence(signal, context = {}) {
     competitorMedian,
     unit: definition.unit,
     source,
+    topCompetitor: topCompetitorFor(signal, context),
+    percentileRank: percentileRankFor(signal, context),
   };
 }
 

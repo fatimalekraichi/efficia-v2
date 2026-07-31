@@ -147,3 +147,71 @@ test("Sprint 2 : keyFindings utilisent les templates de synthèse", () => {
   assert.match(output.keyFindings[0].line, /449 avis/i);
   assert.match(output.keyFindings[1].line, /Visibilité locale/i);
 });
+
+test("Sprint 1 (point 11) : hero.comparison oppose VOUS et la meilleure fiche observée", () => {
+  const output = runComposer(laPlancheBundle());
+  const comparison = output.hero.comparison;
+
+  assert.ok(comparison);
+  assert.deepEqual(comparison.you, { label: "Vous", rating: 4.6, reviews: 449, photos: 10 });
+  assert.equal(comparison.best.name, "Concurrent anonymisé");
+  assert.equal(comparison.best.rating, 4.8);
+  assert.equal(comparison.best.reviews, 324);
+  // La fiche de référence a une valeur de photos directe (234) dans la fixture :
+  // pas de repli sur la moyenne concurrents.
+  assert.equal(comparison.best.photos, 234);
+  assert.equal(comparison.best.photosIsEstimate, false);
+});
+
+test("Sprint 1 (point 11) : hero.comparison absent sans fiche de référence nommée", () => {
+  const fixtureWithoutTop = clone(reasoningFixture);
+  delete fixtureWithoutTop.context.benchmark.top_competitor;
+  const bundle = {
+    analysisId: fixtureWithoutTop.analysisId,
+    generatedAt: fixtureWithoutTop.generatedAt,
+    meta: { businessName: fixtureWithoutTop.context.business.name },
+    observation: fixtureWithoutTop.context.business,
+    benchmark: fixtureWithoutTop.context.benchmark,
+    knowledge: fixtureWithoutTop.knowledge,
+    reasoning: runReasoningEngine(fixtureWithoutTop),
+  };
+
+  const output = runComposer(bundle);
+
+  assert.equal(output.hero.comparison, null);
+});
+
+test("Sprint 1 (point 3) : model.domains reprend les 6 domaines du Score Efficia", () => {
+  const bundle = laPlancheBundle();
+  bundle.scoreContext = {
+    categories: [
+      { key: "reputation", label: "Réputation", brut: 18, maxEvalue: 20, pct: 0.9 },
+      { key: "visibilite", label: "Visibilité", brut: 10, maxEvalue: 20, pct: 0.5 },
+    ],
+  };
+
+  const output = runComposer(bundle);
+
+  assert.deepEqual(output.domains, [
+    { key: "reputation", label: "Réputation", points: 18, max: 20, pct: 0.9 },
+    { key: "visibilite", label: "Visibilité", points: 10, max: 20, pct: 0.5 },
+  ]);
+});
+
+test("Sprint 1 (point 3) : hero.rank restitue le nombre de concurrents mieux notés", () => {
+  const bundle = laPlancheBundle();
+  bundle.benchmark = { ...bundle.benchmark, rank: { aheadCount: 2, totalCompetitors: 3 } };
+
+  const output = runComposer(bundle);
+
+  assert.equal(output.hero.rank.aheadCount, 2);
+  assert.equal(output.hero.rank.totalCompetitors, 3);
+  assert.match(output.hero.rank.text, /derrière 2 concurrents/i);
+  assert.match(output.hero.rank.text, /sur 3 observés/i);
+});
+
+test("Sprint 1 (point 3) : hero.rank.text est null sans avance concurrentielle connue", () => {
+  const output = runComposer(laPlancheBundle());
+
+  assert.equal(output.hero.rank.text, null);
+});
