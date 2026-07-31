@@ -1,3 +1,9 @@
+// Point 6 du plan (2026-07-31, Sprint 2B) : regroupement déterministe du plan
+// d'action par horizon, réutilisé à l'identique par actionPlanSection() et
+// roadmapSection() (point 10) ci-dessous — une seule fonction de regroupement,
+// jamais dupliquée, pour garder les deux pages synchronisées.
+import { groupActionPlan } from "./composer-engine/actionPlanGrouping.js";
+
 const EFFICIA_BLUE = "#2563eb";
 
 function escapeHtml(value) {
@@ -434,7 +440,22 @@ function actionCard(item) {
   `;
 }
 
+// Point 6 du plan : un sous-titre par horizon au-dessus de chaque tronçon de
+// timeline, sans renuméroter ni réordonner les actions (item.order reste
+// celui déjà assigné par selectActionPlan(), composer-engine/selection.js).
+function actionPlanGroup(group) {
+  return `
+    <div class="action-group">
+      <h3 class="column-title action-horizon">${safeText(group.label)}</h3>
+      <div class="timeline">
+        ${group.items.map(actionCard).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function actionPlanSection(model) {
+  const groups = groupActionPlan(model.actionPlan);
   return `
     <section class="page">
       ${header("Plan d'action")}
@@ -443,10 +464,60 @@ function actionPlanSection(model) {
         <h2>Un plan d'action simple à suivre</h2>
         <p>Les actions sont présentées dans un ordre pragmatique : commencer par ce qui clarifie vite la fiche, puis renforcer les signaux les plus visibles.</p>
       </div>
-      <div class="timeline">
-        ${(model.actionPlan || []).map(actionCard).join("") || `<p class="empty">Aucune action prioritaire à afficher.</p>`}
-      </div>
+      ${groups.length ? groups.map(actionPlanGroup).join("") : `<div class="timeline"><p class="empty">Aucune action prioritaire à afficher.</p></div>`}
       ${footer(model, "Plan d'action")}
+    </section>
+  `;
+}
+
+// Point 10 du plan (2026-07-31, Sprint 2B) : nouvelle page "Votre feuille de
+// route personnalisée", insérée entre le Plan d'action et la Méthodologie.
+// Réutilise strictement les mêmes actions déjà produites par Composer
+// (model.actionPlan) et le même regroupement que actionPlanSection()
+// ci-dessus (groupActionPlan) : aucune nouvelle priorisation, aucun nouveau
+// calcul — uniquement une présentation plus pratique (checklist imprimable).
+function roadmapItem(item) {
+  const meta = [
+    present(item.difficulty) ? safeLabel(item.difficulty) : null,
+    present(item.estimatedTime) ? safeText(item.estimatedTime) : null,
+    present(item.impactType) ? safeLabel(item.impactType) : null,
+  ].filter(Boolean).join(" · ");
+  return `
+    <div class="roadmap-item">
+      <span class="roadmap-checkbox" aria-hidden="true"></span>
+      <div class="roadmap-item-body">
+        <p class="roadmap-action">${safeText(item.action)}</p>
+        ${meta ? `<p class="roadmap-meta">${meta}</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function roadmapGroup(group) {
+  return `
+    <div class="roadmap-group">
+      <h3 class="column-title roadmap-horizon">${safeText(group.label)}</h3>
+      <div class="roadmap-list">
+        ${group.items.map(roadmapItem).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function roadmapSection(model) {
+  const groups = groupActionPlan(model.actionPlan);
+  return `
+    <section class="page roadmap-page">
+      ${header("Votre feuille de route")}
+      <div class="section-intro">
+        <p class="eyebrow">Feuille de route</p>
+        <h2>Votre feuille de route personnalisée</h2>
+        <p>Les mêmes actions que le plan précédent, présentées pour être suivies au quotidien, une case à la fois.</p>
+      </div>
+      <div class="roadmap-groups">
+        ${groups.length ? groups.map(roadmapGroup).join("") : `<p class="empty">Aucune action à afficher.</p>`}
+      </div>
+      ${footer(model, "Feuille de route")}
     </section>
   `;
 }
@@ -496,6 +567,7 @@ export function renderPremiumAuditHtml(documentModel = {}) {
     ${strengthsSection(documentModel)}
     ${limitsSection(documentModel)}
     ${actionPlanSection(documentModel)}
+    ${roadmapSection(documentModel)}
     ${methodologySection(documentModel)}
   </main>
 </body>
@@ -1747,6 +1819,66 @@ function styles() {
         color: var(--muted);
         font-size: 13px;
         font-weight: 850;
+      }
+
+      /* Point 6 (Sprint 2B) : un tronçon de timeline par horizon, sans
+         changer l'apparence des cartes d'action elles-mêmes. */
+      .action-group + .action-group {
+        margin-top: 30px;
+      }
+
+      .action-horizon {
+        margin: 0 0 16px;
+      }
+
+      /* Point 10 (Sprint 2B) : page "Votre feuille de route personnalisée" —
+         très peu de texte, beaucoup d'espace, cases à cocher imprimables.
+         Réutilise .column-title, .section-intro, .page, header()/footer()
+         déjà existants ; seuls les éléments propres à la checklist sont
+         nouveaux ici. */
+      .roadmap-groups {
+        display: grid;
+        gap: 34px;
+        margin-top: 12px;
+      }
+
+      .roadmap-horizon {
+        margin: 0 0 18px;
+      }
+
+      .roadmap-list {
+        display: grid;
+        gap: 16px;
+      }
+
+      .roadmap-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .roadmap-checkbox {
+        flex: 0 0 26px;
+        width: 26px;
+        height: 26px;
+        margin-top: 2px;
+        border: 2px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+      }
+
+      .roadmap-action {
+        margin: 0;
+        color: var(--ink);
+        font-size: 19px;
+        font-weight: 780;
+        line-height: 1.4;
+      }
+
+      .roadmap-meta {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 14px;
       }
 
       /* ------------------------------------------------------------------ */

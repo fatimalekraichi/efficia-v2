@@ -230,6 +230,69 @@ test("renderAnalysisHtml n'affiche pas de phrase de cadrage temporel quand timef
   assert.doesNotMatch(html, /<p class="potential-timeframe">/);
 });
 
+test("renderAnalysisHtml regroupe le plan d'action par horizon sans changer l'ordre (point 6)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    actionPlan: [
+      { order: 1, id: "OPP_DESCRIPTION", action: "Clarifier la description de la fiche", difficulty: "easy", estimatedTime: "15–20 min", canEfficiaAutomate: true, impactType: "conversion" },
+      { order: 2, id: "OPP_PHOTOS", action: "Ajouter des photos représentatives", difficulty: "medium", estimatedTime: "30–60 min", canEfficiaAutomate: false, impactType: "conversion" },
+      { order: 3, id: "WEAK_REVIEWS", action: "Obtenir davantage d'avis", difficulty: "hard", estimatedTime: "en continu", canEfficiaAutomate: true, impactType: "trust" },
+    ],
+  }));
+
+  const weekIndex = html.indexOf("Cette semaine");
+  const monthIndex = html.indexOf("Ce mois-ci");
+  const watchIndex = html.indexOf("À surveiller");
+  const descriptionIndex = html.indexOf("Clarifier la description de la fiche");
+  const photosIndex = html.indexOf("Ajouter des photos représentatives");
+  const reviewsIndex = html.indexOf("Obtenir davantage d&#39;avis");
+
+  assert.ok(weekIndex > -1 && monthIndex > weekIndex && watchIndex > monthIndex);
+  // Chaque action apparaît sous le bon horizon, dans le même ordre que
+  // model.actionPlan (aucun réordonnancement).
+  assert.ok(descriptionIndex > weekIndex && descriptionIndex < monthIndex);
+  assert.ok(photosIndex > monthIndex && photosIndex < watchIndex);
+  assert.ok(reviewsIndex > watchIndex);
+});
+
+test("renderAnalysisHtml insère la page 'Votre feuille de route' entre le Plan d'action et la Méthodologie (point 10)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+
+  const actionPlanIndex = html.indexOf("Plan d&#39;action");
+  const roadmapIndex = html.indexOf("<h2>Votre feuille de route personnalisée</h2>");
+  const methodologyIndex = html.indexOf("<h2>Pourquoi agir maintenant</h2>");
+
+  assert.ok(actionPlanIndex > -1);
+  assert.ok(roadmapIndex > actionPlanIndex);
+  assert.ok(methodologyIndex > roadmapIndex);
+});
+
+test("renderAnalysisHtml : la feuille de route reprend les mêmes actions que le plan d'action, sans aucune perte (point 10)", () => {
+  const actionPlan = [
+    { order: 1, id: "OPP_DESCRIPTION", action: "Clarifier la description de la fiche", difficulty: "easy", estimatedTime: "15–20 min", impactType: "conversion" },
+    { order: 2, id: "WEAK_POSITION", action: "Améliorer le classement dans les résultats locaux", difficulty: "medium", estimatedTime: "variable", impactType: "visibility" },
+    { order: 3, id: "WEAK_REVIEWS", action: "Obtenir davantage d'avis", difficulty: "hard", estimatedTime: "en continu", impactType: "trust" },
+  ];
+  const html = renderAnalysisHtml(makeDocumentModel({ actionPlan }));
+
+  assert.match(html, /<div class="roadmap-groups">/);
+  assert.match(html, /<span class="roadmap-checkbox"/);
+  for (const item of actionPlan) {
+    const occurrences = html.split(item.action.replace(/'/g, "&#39;")).length - 1;
+    // Chaque action apparaît une fois dans le plan d'action et une fois dans
+    // la feuille de route : jamais 0 (perdue), jamais plus de 2 (dupliquée).
+    assert.equal(occurrences, 2, `${item.action} devrait apparaître exactement 2 fois`);
+  }
+  // Difficulté, temps estimé et impact affichés sans recalcul (mêmes libellés).
+  assert.match(html, /Facile · 15–20 min · Conversion/);
+});
+
+test("renderAnalysisHtml : feuille de route affiche un message vide si aucune action (repli)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({ actionPlan: [] }));
+
+  assert.match(html, /Aucune action à afficher\./);
+  assert.doesNotMatch(html, /<span class="roadmap-checkbox"/);
+});
+
 test("renderAnalysisHtml échappe les contenus externes", () => {
   const html = renderAnalysisHtml(makeDocumentModel({
     hero: {
