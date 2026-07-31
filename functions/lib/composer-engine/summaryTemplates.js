@@ -55,15 +55,39 @@ function actionSentence(priorities = []) {
   return `Les recommandations présentées dans ce rapport se concentrent sur ${labels}, les leviers offrant aujourd'hui le meilleur rapport entre effort et impact potentiel.`;
 }
 
+// Point 5 du plan (2026-07-31, Sprint 2A) : mêmes libellés que labelForSignal()
+// (vocabulary.js), avec le même article défini que celui déjà utilisé par
+// actionSentence() ci-dessus (repris à l'identique, non modifié).
+function leverLabel(signal) {
+  const label = labelForSignal(signal);
+  return /^[aeiouéèêàâîïôùûh]/i.test(label) ? `l'${label}` : `la ${label}`;
+}
+
+const LEVERS_INTRO = "Aujourd'hui, les principaux leviers qui limitent votre visibilité sont :";
+const LEVERS_CLOSING = "Les recommandations de ce rapport se concentrent sur ces priorités, car elles offrent aujourd'hui le meilleur rapport entre effort et impact potentiel.";
+
 export function buildExecutiveSummary({ strengths = [], priorities = [], confidence = null } = {}) {
+  const opening = strengthSentence(strengths[0]);
   const text = [
-    strengthSentence(strengths[0]),
+    opening,
     prioritySentence(priorities[0]),
     actionSentence(priorities),
   ].join(" ");
 
+  // Synthèse en liste, générée uniquement à partir des priorités déjà
+  // calculées (jamais de libellé écrit en dur) : les 2-3 premiers leviers,
+  // affichés par heroSection() quand la liste compte au moins 2 éléments.
+  // Le paragraphe `text` ci-dessus reste inchangé et sert de repli sinon.
+  const leversList = priorities.length >= 2
+    ? priorities.slice(0, 3).map((item) => leverLabel(item.signal))
+    : [];
+
   return {
     text: applyToneRules(text),
     confidence,
+    opening: applyToneRules(opening),
+    leversIntro: applyToneRules(LEVERS_INTRO),
+    leversList,
+    leversClosing: leversList.length ? applyToneRules(LEVERS_CLOSING) : null,
   };
 }

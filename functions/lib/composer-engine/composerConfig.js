@@ -29,12 +29,15 @@ export const COMPOSER_CONFIG = {
       reviews: 100,
       photos: 100,
     },
+    // Point 9 du plan (2026-07-31, Sprint 2A) : phrase de cadrage temporel par
+    // palier, en plus du label existant — ne modifie ni les seuils (`min`) ni
+    // les étoiles (`stars`), donc aucun impact sur le calcul du score lui-même.
     bands: [
-      { min: 80, stars: 5, label: "Très élevé" },
-      { min: 60, stars: 4, label: "Élevé" },
-      { min: 40, stars: 3, label: "Modéré" },
-      { min: 20, stars: 2, label: "Limité" },
-      { min: 0, stars: 1, label: "Faible" },
+      { min: 80, stars: 5, label: "Très élevé", timeframe: "Accessible rapidement avec des optimisations ciblées." },
+      { min: 60, stars: 4, label: "Élevé", timeframe: "Accessible avec des optimisations réalisables en moins de deux mois." },
+      { min: 40, stars: 3, label: "Modéré", timeframe: "Nécessite plusieurs améliorations progressives." },
+      { min: 20, stars: 2, label: "Limité", timeframe: "Nécessite un travail structuré sur plusieurs mois." },
+      { min: 0, stars: 1, label: "Faible", timeframe: "Nécessite un travail plus approfondi sur plusieurs mois." },
     ],
     signalLabels: {
       position: "Visibilité locale",

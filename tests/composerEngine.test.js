@@ -215,3 +215,59 @@ test("Sprint 1 (point 3) : hero.rank.text est null sans avance concurrentielle c
 
   assert.equal(output.hero.rank.text, null);
 });
+
+test("Sprint 2A (point 5) : executiveSummary.text reste inchangé (repli), leversList vide avec une seule priorité", () => {
+  const output = runComposer(laPlancheBundle());
+
+  // La fixture La planche des saveurs n'a qu'une seule top_priority
+  // (WEAK_POSITION) : la liste de leviers ne peut pas être produite (il en
+  // faut au moins 2), le paragraphe existant reste donc le seul affichage.
+  assert.match(output.executiveSummary.text, /réputation solide/i);
+  assert.match(output.executiveSummary.text, /visibilité/i);
+  assert.deepEqual(output.executiveSummary.leversList, []);
+  assert.equal(output.executiveSummary.leversClosing, null);
+});
+
+test("Sprint 2A (point 5) : leversList est générée automatiquement à partir des priorités (jamais en dur)", () => {
+  const fixtureWithTwoPriorities = clone(reasoningFixture);
+  // OPP_PHOTOS (priorité 7.5 dans la fixture) est strictement inférieure à
+  // celle de WEAK_POSITION (9) : ordre de tri déterministe garanti, sans
+  // dépendre du départage alphabétique des ids à priorité égale.
+  fixtureWithTwoPriorities.knowledge.top_priorities.push({
+    id: "OPP_PHOTOS",
+    signal: "photos",
+    businessImpact: "conversion",
+    priority: 7.5,
+    severity: "medium",
+    message: "Votre galerie peut mieux montrer votre activité.",
+  });
+  const bundle = {
+    analysisId: fixtureWithTwoPriorities.analysisId,
+    generatedAt: fixtureWithTwoPriorities.generatedAt,
+    meta: { businessName: fixtureWithTwoPriorities.context.business.name },
+    observation: fixtureWithTwoPriorities.context.business,
+    benchmark: fixtureWithTwoPriorities.context.benchmark,
+    knowledge: fixtureWithTwoPriorities.knowledge,
+    reasoning: runReasoningEngine(fixtureWithTwoPriorities),
+  };
+
+  const output = runComposer(bundle);
+
+  assert.ok(output.executiveSummary.leversList.length >= 2);
+  assert.match(output.executiveSummary.leversList[0], /visibilité locale/i);
+  assert.match(output.executiveSummary.leversIntro, /principaux leviers/i);
+  assert.match(output.executiveSummary.leversClosing, /effort et impact potentiel/i);
+  // Le paragraphe existant (repli) reste produit en parallèle, inchangé.
+  assert.equal(typeof output.executiveSummary.text, "string");
+  assert.ok(output.executiveSummary.text.length > 0);
+});
+
+test("Sprint 2A (point 9) : improvementPotential porte une phrase de cadrage temporel liée au palier déjà calculé", () => {
+  const output = runComposer(laPlancheBundle());
+  const potential = output.hero.improvementPotential;
+
+  assert.equal(typeof potential.timeframe, "string");
+  assert.ok(potential.timeframe.length > 0);
+  const band = COMPOSER_CONFIG.improvementPotential.bands.find((item) => item.label === potential.label);
+  assert.equal(potential.timeframe, band.timeframe);
+});
