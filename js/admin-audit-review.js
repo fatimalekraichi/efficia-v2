@@ -6,6 +6,7 @@ const submitButton = document.querySelector("[data-review-submit]");
 const approveButton = document.querySelector("[data-approve-button]");
 const previewLink = document.querySelector("[data-preview-link]");
 const pdfLink = document.querySelector("[data-pdf-link]");
+const legacyGeneratorLink = document.querySelector("[data-legacy-generator-link]");
 const statusBox = document.querySelector("[data-review-status]");
 const criteriaGroupsBox = document.querySelector("[data-criteria-groups]");
 const criteriaSummaryBox = document.querySelector("[data-criteria-summary]");
@@ -1015,10 +1016,37 @@ function renderCompetitors(analysis) {
 function updateLinks(analysis) {
   const id = encodeURIComponent(analysis.analysisId || analysisId);
   previewLink.href = `/api/render/${id}`;
-  pdfLink.href = `/api/pdf/${id}`;
-  const canGeneratePdf = analysis.status === "approved" || analysis.status === "pdf_generated";
-  pdfLink.classList.toggle("is-disabled-link", !canGeneratePdf);
-  pdfLink.setAttribute("aria-disabled", canGeneratePdf ? "false" : "true");
+
+  // Séparation stricte gratuit / premium : le Diagnostic gratuit ne doit
+  // jamais appeler /api/pdf/{analysisId} (renderer premium, Cloudflare
+  // Browser Rendering). Seul l'Audit Premium conserve ce chemin, inchangé.
+  const reportType = analysis.manualReview?.reportType || analysis.reportType || "premium";
+  const isFree = reportType === "free";
+
+  if (pdfLink) {
+    pdfLink.hidden = isFree;
+    if (isFree) {
+      pdfLink.removeAttribute("href");
+      pdfLink.classList.add("is-disabled-link");
+      pdfLink.setAttribute("aria-disabled", "true");
+    } else {
+      pdfLink.href = `/api/pdf/${id}`;
+      const canGeneratePdf = analysis.status === "approved" || analysis.status === "pdf_generated";
+      pdfLink.classList.toggle("is-disabled-link", !canGeneratePdf);
+      pdfLink.setAttribute("aria-disabled", canGeneratePdf ? "false" : "true");
+    }
+  }
+
+  if (legacyGeneratorLink) {
+    legacyGeneratorLink.hidden = !isFree;
+    if (isFree) {
+      // Le système gratuit utilise exclusivement l'ancien générateur exact de
+      // main, servi statiquement depuis /admin/free-diagnostic-production/.
+      // Jamais /api/pdf/{analysisId}, jamais /admin/legacy-free-diagnostic/{id}.
+      const query = analysis.freeDiagnosticQuery || legacyGeneratorLink.dataset.freeDiagnosticQuery || "";
+      legacyGeneratorLink.href = `${window.location.origin}/admin/free-diagnostic-production/${query ? `?${query}` : ""}`;
+    }
+  }
 }
 
 async function loadAnalysis() {
