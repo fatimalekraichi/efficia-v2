@@ -99,6 +99,9 @@ export function calculateImprovementPotential({ benchmark = {}, weaknesses = [],
     score,
     stars: band.stars,
     label: band.label,
+    // Point 9 du plan (2026-07-31, Sprint 2A) : phrase de cadrage temporel du
+    // palier déjà calculé ci-dessus — aucun recalcul, simple passthrough.
+    timeframe: band.timeframe || null,
     driversTitle: "Vos principaux leviers",
     drivers: driversFrom(driverSource),
     note: COMPOSER_CONFIG.improvementPotential.note,

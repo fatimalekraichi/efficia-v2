@@ -193,6 +193,26 @@ function comparisonSection(hero) {
   `;
 }
 
+// Point 5 du plan (2026-07-31, Sprint 2A) : synthèse en liste du résumé
+// exécutif, générée uniquement à partir des leviers déjà calculés par
+// buildExecutiveSummary() (summaryTemplates.js) — jamais de libellé en dur ici.
+// Le paragraphe existant (`summary.text`) reste le repli si la liste ne peut
+// pas être produite (moins de 2 priorités disponibles).
+function executiveSummaryBody(summary = {}) {
+  const leversList = Array.isArray(summary.leversList) ? summary.leversList.filter(Boolean) : [];
+  if (leversList.length > 1) {
+    return `
+      <p class="summary-opening">${safeText(summary.opening || summary.text, "")}</p>
+      <p class="summary-levers-intro">${safeText(summary.leversIntro, "")}</p>
+      <ul class="summary-levers">
+        ${leversList.map((lever) => `<li>${icon("check")}<span>${safeText(lever)}</span></li>`).join("")}
+      </ul>
+      ${summary.leversClosing ? `<p class="summary-closing">${safeText(summary.leversClosing)}</p>` : ""}
+    `;
+  }
+  return `<p>${safeText(summary.text, "Résumé non disponible.")}</p>`;
+}
+
 function heroSection(model) {
   const hero = model.hero || {};
   const potential = hero.improvementPotential || {};
@@ -220,7 +240,7 @@ function heroSection(model) {
           <div>
             <p class="letter-label">Note d'analyse</p>
             <h2>Résumé exécutif</h2>
-            <p>${safeText(model.executiveSummary?.text, "Résumé non disponible.")}</p>
+            ${executiveSummaryBody(model.executiveSummary || {})}
           </div>
         </article>
         <div class="cover-side">
@@ -233,6 +253,7 @@ function heroSection(model) {
               <strong>${safeNumber(potential.score)}</strong>
               <span>${safeText(potential.label, "")}</span>
             </div>
+            ${potential.timeframe ? `<p class="potential-timeframe">${safeText(potential.timeframe)}</p>` : ""}
             <p class="potential-title">${safeText(potential.driversTitle, "Vos principaux leviers")}</p>
             <ul class="driver-list">
               ${(potential.drivers || []).map((driver) => `<li>${icon("check")}<span>${safeText(driver.label)}</span></li>`).join("")}
@@ -1197,6 +1218,33 @@ function styles() {
         line-height: 1.85;
       }
 
+      /* Point 5 (Sprint 2A) : synthèse en liste du résumé exécutif — davantage
+         d'espace blanc entre l'ouverture, la liste et la conclusion. */
+      .executive-card p.summary-opening,
+      .executive-card p.summary-levers-intro,
+      .executive-card p.summary-closing {
+        margin: 0 0 16px;
+      }
+
+      .summary-levers {
+        display: grid;
+        gap: 10px;
+        margin: 0 0 20px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .summary-levers li {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        color: #26364f;
+        font-size: 18px;
+        font-weight: 780;
+      }
+
+      .summary-levers svg { color: var(--blue); }
+
       .letter-label {
         margin-bottom: 10px;
         color: var(--blue);
@@ -1267,6 +1315,15 @@ function styles() {
       }
 
       .potential-title { margin-top: 22px; }
+
+      /* Point 9 (Sprint 2A) : phrase de cadrage temporel sous le libellé —
+         bloc visuellement inchangé sinon (score, étoiles, libellé, leviers). */
+      .potential-timeframe {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
 
       .driver-list {
         display: grid;

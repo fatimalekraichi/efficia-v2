@@ -181,6 +181,55 @@ test("renderAnalysisHtml n'affiche pas le bloc domaines quand model.domains est 
   assert.doesNotMatch(html, /<div class="domains-block">/);
 });
 
+test("renderAnalysisHtml affiche la synthèse en liste du résumé exécutif quand leversList est fournie (point 5)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    executiveSummary: {
+      text: "Texte de repli inchangé.",
+      opening: "Votre fiche possède déjà plusieurs éléments solides.",
+      leversIntro: "Aujourd'hui, les principaux leviers qui limitent votre visibilité sont :",
+      leversList: ["la note moyenne", "la visibilité locale", "le volume d'avis"],
+      leversClosing: "Les recommandations de ce rapport se concentrent sur ces priorités.",
+    },
+  }));
+
+  assert.match(html, /summary-levers/);
+  assert.match(html, /la note moyenne/);
+  assert.match(html, /la visibilité locale/);
+  assert.match(html, /le volume d&#39;avis/);
+  assert.match(html, /principaux leviers/);
+  assert.doesNotMatch(html, /Texte de repli inchangé/);
+});
+
+test("renderAnalysisHtml revient au paragraphe existant quand leversList est absente ou trop courte (repli)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    executiveSummary: { text: "Texte de repli inchangé.", leversList: ["une seule entrée"] },
+  }));
+
+  assert.doesNotMatch(html, /<ul class="summary-levers">/);
+  assert.match(html, /Texte de repli inchangé/);
+});
+
+test("renderAnalysisHtml affiche la phrase de cadrage temporel du potentiel d'amélioration (point 9)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    hero: {
+      ...makeDocumentModel().hero,
+      improvementPotential: {
+        ...makeDocumentModel().hero.improvementPotential,
+        timeframe: "Accessible avec des optimisations réalisables en moins de deux mois.",
+      },
+    },
+  }));
+
+  assert.match(html, /potential-timeframe/);
+  assert.match(html, /optimisations réalisables en moins de deux mois/);
+});
+
+test("renderAnalysisHtml n'affiche pas de phrase de cadrage temporel quand timeframe est absent", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+
+  assert.doesNotMatch(html, /<p class="potential-timeframe">/);
+});
+
 test("renderAnalysisHtml échappe les contenus externes", () => {
   const html = renderAnalysisHtml(makeDocumentModel({
     hero: {
