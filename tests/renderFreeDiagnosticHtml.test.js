@@ -246,6 +246,11 @@ test("Diagnostic gratuit : ne modifie pas le Score Efficia ni le contenu premium
 
   const premiumHtml = renderPremiumAuditHtml(documentPremium);
   assert.match(premiumHtml, /Vos priorités/);
-  assert.match(premiumHtml, /Vos points forts/);
+  // Sprint 5 (finition éditoriale, objectif 7) : la page "Vos points forts"
+  // est désormais omise quand il n'y a aucun point fort à afficher — c'est
+  // le cas pour ce profil "weak" (0 force), donc son absence ici est
+  // attendue, pas une régression (cf. tests/premiumReportIntegrity.test.js).
+  assert.equal(documentPremium.strengths.length, 0);
+  assert.doesNotMatch(premiumHtml, /Vos points forts/);
   assert.match(premiumHtml, /Séquence recommandée/);
 });

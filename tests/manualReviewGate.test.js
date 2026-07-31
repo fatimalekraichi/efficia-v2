@@ -210,11 +210,20 @@ test("le renderer traduit les valeurs techniques visibles", () => {
     actionPlan: [
       {
         id: "a1",
-        title: "Action",
+        // Sprint 5 (finition éditoriale) : "impactType" est le champ
+        // réellement lu par actionCard() (renderAnalysisHtml.js) pour la
+        // traduction "trust" → "Confiance" (LABEL_TRANSLATIONS). L'ancien nom
+        // "expectedImpact" n'est lu par aucune fonction du renderer : la
+        // vérification de traduction ci-dessous passait jusqu'ici par
+        // coïncidence, via l'intitulé statique "Confiance" de la page "Vos
+        // points forts" — page désormais omise quand strengths est vide
+        // (objectif 7). On corrige donc le nom de champ pour tester ce que
+        // ce test prétend réellement tester.
+        action: "Action",
         difficulty: "hard",
-        time: "1 heure",
-        automatableByEfficia: true,
-        expectedImpact: "trust",
+        estimatedTime: "1 heure",
+        canEfficiaAutomate: true,
+        impactType: "trust",
       },
     ],
     whyNow: { text: "Pourquoi maintenant." },

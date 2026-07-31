@@ -280,16 +280,30 @@ test("renderAnalysisHtml : la feuille de route reprend les mêmes actions que le
     const occurrences = html.split(item.action.replace(/'/g, "&#39;")).length - 1;
     // Chaque action apparaît une fois dans le plan d'action et une fois dans
     // la feuille de route : jamais 0 (perdue), jamais plus de 2 (dupliquée).
-    assert.equal(occurrences, 2, `${item.action} devrait apparaître exactement 2 fois`);
+    // Premium Polish (objectif 6) : la toute première action apparaît une
+    // troisième fois, sur la nouvelle page "En résumé" ("Que faut-il faire
+    // en priorité ?") — même donnée, jamais recalculée.
+    const expected = item.order === 1 ? 3 : 2;
+    assert.equal(occurrences, expected, `${item.action} devrait apparaître exactement ${expected} fois`);
   }
   // Difficulté, temps estimé et impact affichés sans recalcul (mêmes libellés).
   assert.match(html, /Facile · 15–20 min · Conversion/);
 });
 
-test("renderAnalysisHtml : feuille de route affiche un message vide si aucune action (repli)", () => {
+test("renderAnalysisHtml : la feuille de route est omise en totalité si aucune action (Sprint 5, objectif 7)", () => {
+  // Sprint 5 (finition éditoriale, objectif 7) : une page avec seulement un
+  // titre et une phrase de repli ("Aucune action à afficher.") donnait
+  // l'impression d'un rapport inachevé — la page "Votre feuille de route
+  // personnalisée" (et "Un plan d'action simple à suivre") est maintenant
+  // omise en totalité quand il n'y a aucune action, plutôt que montrée vide.
   const html = renderAnalysisHtml(makeDocumentModel({ actionPlan: [] }));
 
-  assert.match(html, /Aucune action à afficher\./);
+  assert.doesNotMatch(html, /Aucune action à afficher\./);
+  // Chaîne ciblée sur le titre réel : "Votre feuille de route personnalisée"
+  // apparaît aussi dans un commentaire CSS de styles() (Sprint 2B), toujours
+  // présent dans le <style>, qu'il y ait ou non une page "Feuille de route".
+  assert.doesNotMatch(html, /<h2>Votre feuille de route personnalisée<\/h2>/);
+  assert.doesNotMatch(html, /Un plan d'action simple à suivre/);
   assert.doesNotMatch(html, /<span class="roadmap-checkbox"/);
 });
 
@@ -319,11 +333,15 @@ test("renderAnalysisHtml : chaque priorité affiche un angle, un Constat distinc
     ],
   }));
 
-  assert.match(html, /<p class="eyebrow priority-angle">Le poids de la preuve sociale<\/p>/);
-  assert.match(html, /<p class="eyebrow priority-angle">Confiance avant le clic<\/p>/);
+  // Premium Polish (objectif 2) : les angles sont maintenant des phrases
+  // complètes et naturelles, pas des intitulés abstraits à 2-3 mots.
+  assert.match(html, /<p class="eyebrow priority-angle">Le nombre d&#39;avis reste l&#39;un des signaux de confiance/);
+  assert.match(html, /<p class="eyebrow priority-angle">Pourquoi votre note influence le premier choix/);
   assert.match(html, /<div class="priority-constat">/);
   assert.match(html, /Actuellement, votre fiche compte 8 avis\./);
-  assert.match(html, /Actuellement, votre note moyenne est de 4\.1\/5\./);
+  // Sprint 5 (finition éditoriale, objectif 2) : format français (virgule
+  // décimale) pour une note — "4,1/5", jamais "4.1/5".
+  assert.match(html, /Actuellement, votre note moyenne est de 4,1\/5\./);
   // "Pourquoi c'est important" (interprétation) reste affiché séparément du
   // Constat (fait) : les deux textes sont bien distincts et tous deux présents.
   assert.match(html, /Avant de contacter une entreprise, de nombreux utilisateurs comparent/);
@@ -338,8 +356,8 @@ test("renderAnalysisHtml : deux familles de priorités différentes produisent d
     ],
   }));
 
-  assert.match(html, /Se projeter avant de choisir/);
-  assert.match(html, /Comprendre votre activité en un coup d&#39;œil/);
+  assert.match(html, /Vos photos aident vos clients à se projeter/);
+  assert.match(html, /Une description claire permet à vos clients de comprendre votre activité/);
   assert.match(html, /Actuellement, votre fiche présente 2 photos\./);
   assert.match(html, /Actuellement, votre fiche ne comporte aucune description\./);
 });

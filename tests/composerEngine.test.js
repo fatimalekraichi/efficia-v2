@@ -125,7 +125,10 @@ test("Sprint 2 : produit headline, executiveSummary et whyNow par templates", ()
   assert.match(output.executiveSummary.text, /réputation solide/i);
   assert.match(output.executiveSummary.text, /visibilité/i);
   assert.match(output.whyNow.text, /Chaque semaine/i);
-  assert.match(output.whyNow.text, /meilleur rapport entre effort et impact potentiel/i);
+  // Sprint 4 (consolidation, objectif 1) : cette clôture ne doit plus répéter
+  // mot pour mot la phrase de clôture du résumé exécutif (summaryTemplates.js).
+  assert.match(output.whyNow.text, /moins d'effort pour le bénéfice le plus immédiat/i);
+  assert.doesNotMatch(output.whyNow.text, /meilleur rapport entre effort et impact potentiel/i);
 });
 
 test("Sprint 2 : les textes respectent les règles de ton", () => {
