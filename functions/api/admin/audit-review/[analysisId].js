@@ -3,6 +3,7 @@ import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrd
 import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
+import { buildFreeDiagnosticProductionQuery, loadOrderContextForAnalysis } from "../../../lib/freeDiagnosticProductionLink.js";
 
 async function readPayload(request) {
   try {
@@ -36,6 +37,24 @@ function withScoreReviewData(analysis) {
     scoreCatalog: buildScoreCatalog(),
     scorePrefill: buildScorePrefill(analysis),
   };
+}
+
+// Le bouton "Ouvrir l'ancien générateur gratuit" (admin-audit-review.js)
+// n'a besoin de la query string que pour les analyses au format gratuit.
+// Une erreur de lecture des tables orders/order_tasks ne doit jamais faire
+// échouer la réponse : le bouton reste alors sans paramètres pré-remplis.
+async function withFreeDiagnosticQuery(db, analysisId, analysis) {
+  if (!analysis || analysis.reportType !== "free") return analysis;
+  try {
+    const orderContext = await loadOrderContextForAnalysis(db, analysisId);
+    return {
+      ...analysis,
+      freeDiagnosticQuery: buildFreeDiagnosticProductionQuery(analysis, orderContext),
+    };
+  } catch (error) {
+    console.error("audit-review: construction lien ancien générateur impossible", error);
+    return analysis;
+  }
 }
 
 async function callStage({ origin, connectorToken }, stage, analysisId) {
@@ -171,7 +190,7 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     status: "preview_ready",
     analysisId,
     stages: pipeline.stages,
-    analysis: withScoreReviewData(refreshed),
+    analysis: await withFreeDiagnosticQuery(db, analysisId, withScoreReviewData(refreshed)),
     links: {
       preview: `/api/render/${encodeURIComponent(analysisId)}`,
       data: `/api/analysis/${encodeURIComponent(analysisId)}`,
@@ -215,7 +234,7 @@ export async function onRequestGet(context) {
 
   return jsonResponse({
     success: true,
-    analysis: withScoreReviewData(analysis),
+    analysis: await withFreeDiagnosticQuery(db, analysisId, withScoreReviewData(analysis)),
   });
 }
 
