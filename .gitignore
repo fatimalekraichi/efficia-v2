@@ -3,6 +3,8 @@
 .dev.vars
 *.bak-*
 .DS_Store
+node_modules/
+tmp/
 
 # Cloudflare local state
 .wrangler-state/
