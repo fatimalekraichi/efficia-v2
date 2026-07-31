@@ -3,6 +3,10 @@
 // roadmapSection() (point 10) ci-dessous — une seule fonction de regroupement,
 // jamais dupliquée, pour garder les deux pages synchronisées.
 import { groupActionPlan } from "./composer-engine/actionPlanGrouping.js";
+// Sprint 3 : helpers de rédaction (angle psychologique, Constat, note
+// effort/impact), utilisés uniquement par priorityCard() ci-dessous — aucune
+// nouvelle donnée, aucun recalcul (cf. composer-engine/priorityFraming.js).
+import { angleForSignal, buildConstat, buildEffortImpactNote } from "./composer-engine/priorityFraming.js";
 
 const EFFICIA_BLUE = "#2563eb";
 
@@ -280,11 +284,27 @@ function heroSection(model) {
 }
 
 function priorityCard(item) {
+  // Sprint 3 : chaque priorité "raconte une histoire" différente selon son
+  // signal (objectif 1), avec ses deux niveaux de lecture bien séparés —
+  // Constat (fait, objectif 3) puis Pourquoi c'est important (interprétation,
+  // inchangée) — et une phrase courte reliant effort et impact (objectif 4).
+  // Aucune de ces valeurs n'est recalculée : angle/constat/note sont dérivés
+  // de item.signal, item.evidence et item.actionability, déjà produits par
+  // Reasoning/Composer (evidence.js, actionability.js non modifiés).
+  const angle = angleForSignal(item.signal);
+  const constat = buildConstat(item);
+  const effortImpactNote = buildEffortImpactNote(item.actionability || {});
   return `
     <article class="priority-card">
       <div class="priority-rank">Priorité ${safeNumber(item.rank)}</div>
       <div class="priority-body">
+        ${angle ? `<p class="eyebrow priority-angle">${safeText(angle)}</p>` : ""}
         <h3>${safeText(item.title)}</h3>
+        ${constat ? `
+        <div class="priority-constat">
+          <span>Constat</span>
+          <p>${safeText(constat)}</p>
+        </div>` : ""}
         <div class="priority-grid">
           <div>
             <span>Pourquoi c'est important</span>
@@ -303,6 +323,7 @@ function priorityCard(item) {
             <p>${safeText(item.actionability?.estimatedTime)}</p>
           </div>
         </div>
+        ${effortImpactNote ? `<p class="priority-effort-note">${safeText(effortImpactNote)}</p>` : ""}
       </div>
     </article>
   `;
@@ -1541,6 +1562,43 @@ function styles() {
         margin-top: 8px;
         color: #243044;
         font-weight: 700;
+      }
+
+      /* Sprint 3 : "Constat" (niveau de lecture 1, factuel) — même langage
+         visuel que .priority-grid (span/p), placé au-dessus, hors grille,
+         pour bien le séparer visuellement de "Pourquoi c'est important". */
+      .priority-constat {
+        margin-top: 14px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--white);
+      }
+
+      .priority-constat span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .priority-constat p {
+        margin-top: 8px;
+        color: #243044;
+        font-weight: 700;
+      }
+
+      .priority-angle {
+        margin-bottom: 8px;
+      }
+
+      .priority-effort-note {
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+        font-style: italic;
       }
 
       .priority-meta {
