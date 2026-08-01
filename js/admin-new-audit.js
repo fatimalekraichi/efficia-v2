@@ -33,6 +33,12 @@ let linkedTask = null;
 // pour pouvoir relancer exactement la même demande avec un `selectedPlaceId`
 // en plus — jamais de choix arbitraire côté client.
 let pendingAmbiguousPayload = null;
+// Mission "logique métier déterministe" — Objectif 5 : liste complète des
+// candidats reçus (avec leur champ `raw`), conservée pour pouvoir renvoyer
+// le candidat CHOISI en entier (`selectedCandidate`) au moment de la
+// confirmation, plutôt que son seul place_id — évite tout nouvel appel amont
+// côté serveur, donc tout risque de SELECTED_CANDIDATE_NOT_FOUND.
+let pendingCandidates = [];
 
 // Seules Observation et Benchmark s'exécutent réellement lors de la génération d'un nouvel audit.
 // Knowledge/Reasoning/Composer ne tournent qu'après validation humaine, sur la page de génération
@@ -122,6 +128,7 @@ function showCandidates(payload, data) {
   pendingAmbiguousPayload = payload;
   candidatesMessage.textContent = data.message || "Nous avons trouvé plusieurs entreprises pouvant correspondre.";
   const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  pendingCandidates = candidates;
   candidatesList.innerHTML = candidates.map((candidate, index) => `
     <li class="admin-candidate-item">
       <label>
@@ -434,17 +441,27 @@ resetButton?.addEventListener("click", () => {
 });
 
 // Objectif 2 — confirmation manuelle : relance exactement la même demande,
-// enrichie du place_id choisi par l'administrateur. collectFiche()
-// bascule alors sur ce candidat sans repasser par le score de confiance
-// (voir functions/lib/collectFiche.js) : le choix humain prime toujours.
+// enrichie du candidat choisi par l'administrateur. collectFiche() bascule
+// alors dessus sans repasser par le score de confiance (voir
+// functions/lib/collectFiche.js) : le choix humain prime toujours.
+// Mission "logique métier déterministe" — Objectif 5 : on envoie le candidat
+// COMPLET (`selectedCandidate`, retrouvé dans `pendingCandidates` via son
+// place_id), pas seulement `selectedPlaceId` — collectFiche() l'utilise
+// alors directement, sans jamais rappeler le service amont pour le "retrouver".
 candidatesConfirmButton?.addEventListener("click", async () => {
   const selected = candidatesList?.querySelector("input[name='admin-audit-candidate']:checked");
   if (!selected || !pendingAmbiguousPayload) {
     if (candidatesError) candidatesError.textContent = "Sélectionnez une entreprise avant de confirmer.";
     return;
   }
-  const payload = { ...pendingAmbiguousPayload, selectedPlaceId: selected.value };
+  const chosenCandidate = pendingCandidates.find((c) => c.placeId === selected.value);
+  const payload = {
+    ...pendingAmbiguousPayload,
+    selectedPlaceId: selected.value,
+    ...(chosenCandidate?.raw ? { selectedCandidate: chosenCandidate.raw } : {}),
+  };
   pendingAmbiguousPayload = null;
+  pendingCandidates = [];
   candidatesCard.hidden = true;
   await runAudit(payload);
 });

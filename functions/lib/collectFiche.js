@@ -18,24 +18,47 @@ const DEFAULT_TIMEOUT_MS = 25000;
 // choisit celui qui ressemble le plus à ce qui a été demandé.
 const CANDIDATE_LIMIT = 5;
 
-// Seuil minimal de confiance en dessous duquel on refuse d'utiliser un
-// résultat plutôt que de risquer une mauvaise identification. Calibré sur
-// les 20 audits réels de la campagne de test (voir
-// tests/collectFiche.test.js) : sépare le cas le plus net (nom totalement
-// différent, ex. "Shrader Electric LLC" pour "Électricité Schroeder Eric",
-// confiance ≈ 0.24) des correspondances légitimes les plus faibles observées
-// (ex. "Entreprise Hubermont" pour "Hubermont Philippe", confiance ≈ 0.32).
-const MIN_CONFIDENCE = 0.25;
+// Mission "remplacer la logique actuelle de décision du pipeline
+// d'identification par une logique métier déterministe" — la décision ne
+// repose plus d'abord sur un score de confiance (seuils/écarts), mais sur
+// des règles métier appliquées dans un ordre fixe (voir decideOutcome
+// ci-dessous). Le score de confiance reste calculé (computeConfidence,
+// rankCandidates) mais ne sert plus qu'à trier/afficher les candidats —
+// Objectif 4.
+//
+// NAME_AUTO_THRESHOLD — Objectif 2 : "un seul candidat restant, ville
+// cohérente, nom raisonnablement proche" -> sélection automatique, sans
+// validation manuelle. Basé sur `nameOverlap` (chevauchement de mots seul,
+// voir computeConfidence) plutôt que sur le score de confiance complet.
+// Calibré sur les variantes normales citées explicitement par la mission
+// (candidat unique, ville déjà cohérente à ce stade — l'élimination de ville
+// a lieu AVANT ce seuil, voir Objectif 1) :
+//   "Garage Auto Claude" / "Auto Claude"                          -> 0.794
+//   "Garage R.G. Pneus" / "Garage R.G. Pneus (Régis Gofflot)"     -> 0.574
+//   "Taverne Chez Tony & Lucy" / "La Taverne - Tony & Lucy Café"  -> 0.500
+// contre des noms proches mais réellement différents, qui ne doivent JAMAIS
+// être auto-sélectionnés (une seule lettre change le nom propre) :
+//   "Boucherie Marchal" / "Boucherie Marchand"                    -> 0.333
+//   "Pharmacie Léonard" / "Pharmacie Leonart"                     -> 0.333
+// Marge nette de chaque côté (0,333 -> 0,500) : seuil posé à 0.45.
+const NAME_AUTO_THRESHOLD = 0.45;
 
-// Mission "rendre l'identification suffisamment robuste pour la bêta" —
-// Objectif 1 : en dessous de ce seuil, la sélection automatique n'est plus
-// autorisée, même si elle dépasse MIN_CONFIDENCE. Entre les deux seuils, un
-// candidat est "plausible" mais pas certain (ex. "Beauty A" pour "Beauty
-// House Ophélie" : même ville, nom partiellement proche, confiance
-// suffisante pour ne pas être rejeté, très insuffisante pour être accepté
-// sans vérification) — Objectif 2 : validation humaine obligatoire dans cet
-// intervalle, jamais de choix arbitraire.
-const HIGH_CONFIDENCE_THRESHOLD = 0.95;
+// DOMINANT_NAME_OVERLAP / DOMINANT_GAP — quand plusieurs candidats
+// franchissent NAME_AUTO_THRESHOLD (donc, en théorie, Règle 3 : validation
+// manuelle), un seul peut malgré tout se détacher si nettement des autres
+// qu'il s'agit en pratique du même cas que la Règle 2 — le score de
+// confiance sert alors de signal SECONDAIRE de départage (Objectif 4),
+// jamais de critère principal. Exemple réel de calibrage : "Garage Martin"
+// (recherché "Garage Martin", nameOverlap 1.0) et "Coiffure Martin" (même
+// ville, nameOverlap 0.588 — chevauchement élevé uniquement parce que
+// "garage" et "coiffure" sont tous deux des mots génériques de secteur, donc
+// peu pondérés) ne doivent pas déclencher une validation manuelle inutile :
+// le premier est un candidat manifestement dominant. À l'inverse, "AS Pro
+// Elec" (deux établissements distincts, nameOverlap 1.0 chacun puisque le
+// nom est strictement identique) ne doit JAMAIS être détecté comme dominant
+// (écart nul) — reste un cas réellement ambigu (Objectif 3).
+const DOMINANT_NAME_OVERLAP = 0.90;
+const DOMINANT_GAP = 0.30;
 
 function toNumberOrNull(v) {
   return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
@@ -224,16 +247,19 @@ function siteSimilarity(expected, candidateSite) {
 function computeConfidence({ nomTrim, villeTrim, place, attendu = {} }) {
   const nameScore = nameSimilarity(nomTrim, place.name || "");
   const cityScore = citySimilarity(villeTrim, place);
-  if (cityScore < 0) {
-    // Rejet net : ville connue et confirmée différente de celle demandée,
-    // quelle que soit la ressemblance du nom.
-    return { nameScore, cityScore: 0, confidence: 0, cityMismatch: true, components: [] };
-  }
+  const cityMismatch = cityScore < 0;
 
-  const components = [
-    { key: "name", score: nameScore, weight: 0.7 },
-    { key: "city", score: cityScore, weight: 0.3 },
-  ];
+  // Ville confirmée différente : on ne l'ajoute plus comme composante de la
+  // moyenne pondérée (une pénalité y noyait même les meilleurs scores de nom,
+  // ex. "Sanidubru" == "SANIDUBRU" à 100 % rejeté à tort). Le nom porte seul
+  // la confiance de base ; la divergence de ville est appliquée ensuite,
+  // explicitement, via CITY_MISMATCH_PENALTY/CITY_MISMATCH_CAP ci-dessous.
+  const components = cityMismatch
+    ? [{ key: "name", score: nameScore, weight: 0.7 }]
+    : [
+      { key: "name", score: nameScore, weight: 0.7 },
+      { key: "city", score: cityScore, weight: 0.3 },
+    ];
 
   if (attendu.categorie) {
     const categoryScore = nameSimilarity(attendu.categorie, place.category || place.type || "");
@@ -257,7 +283,32 @@ function computeConfidence({ nomTrim, villeTrim, place, attendu = {} }) {
     ? components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight
     : 0;
 
-  return { nameScore, cityScore, confidence, components };
+  // Mission "logique métier déterministe" — Objectif 1 : un candidat dont la
+  // ville est connue ET confirmée différente est désormais éliminé avant
+  // même d'être comparé (voir decideOutcome ci-dessous), donc `confidence`
+  // n'a plus besoin d'être plafonnée ici pour rester sûre : elle reste la
+  // valeur brute, utile telle quelle dans les logs de diagnostic pour
+  // comprendre POURQUOI un candidat a été écarté (nom réellement proche ou
+  // non, indépendamment de la ville).
+  //
+  // `nameOverlap` (Objectif 2) — chevauchement de MOTS seul (sans la
+  // composante de distance d'édition qui compose nameScore) : calibré
+  // séparément car nameScore, pensé pour classer/afficher des candidats déjà
+  // connus comme plausibles, se révèle trompeur pour la décision "ce nom
+  // est-il une simple variante de formulation ?". Exemple réel observé lors
+  // du calibrage : "Boucherie Marchal" / "Boucherie Marchand" obtient un
+  // nameScore (0,556) PLUS ÉLEVÉ que "Garage R.G. Pneus" / "Garage R.G.
+  // Pneus (Régis Gofflot)" (0,558 — quasiment égal), alors que le premier
+  // couple désigne deux commerces différents (une seule lettre finale change
+  // "Marchal" en "Marchand") et le second la même entreprise reformulée : la
+  // composante de distance d'édition de nameScore récompense à tort une
+  // quasi-similarité orthographique entre deux noms propres différents.
+  // nameOverlap, basé uniquement sur les MOTS partagés (et non leur
+  // proximité lettre à lettre), sépare nettement les deux cas (0,333 contre
+  // 0,574) — voir decideOutcome pour son usage.
+  const nameOverlap = tokenOverlapRatio(nomTrim, place.name || "");
+
+  return { nameScore, nameOverlap, cityScore, confidence, cityMismatch, components };
 }
 
 // Objectif 2 — "ne jamais prendre automatiquement le premier" : on note
@@ -269,17 +320,66 @@ function rankCandidates({ nomTrim, villeTrim, places, attendu }) {
     .sort((a, b) => b.confidence - a.confidence);
 }
 
-// Objectif 1/3 — trois paliers de décision, jamais un choix arbitraire entre
-// les deux seuils :
-//  - confidence >= HIGH_CONFIDENCE_THRESHOLD -> sélection automatique
-//  - MIN_CONFIDENCE <= confidence < HIGH_CONFIDENCE_THRESHOLD -> ambigu,
-//    validation humaine obligatoire (Objectif 2)
-//  - confidence < MIN_CONFIDENCE -> rejet net, "Aucune entreprise fiable
-//    trouvée." (Objectif 3)
-function classifyConfidence(confidence) {
-  if (confidence >= HIGH_CONFIDENCE_THRESHOLD) return "auto";
-  if (confidence >= MIN_CONFIDENCE) return "ambiguous";
-  return "rejected";
+// Mission "remplacer la logique actuelle de décision du pipeline
+// d'identification par une logique métier déterministe" — Objectifs 1 à 4 :
+// trois règles métier appliquées DANS CET ORDRE, le score de confiance ne
+// sert qu'à trier/afficher à l'intérieur de chaque règle.
+//
+//  Règle 1 (Objectif 1, "la ville devient prioritaire") — un candidat dont
+//  la ville est connue ET confirmée différente de celle demandée est
+//  ÉLIMINÉ : il ne participe même plus au calcul qui suit (ex. Arlon !=
+//  Virton, Messancy != Steinfort). `cityMismatch`, posé par
+//  computeConfidence/citySimilarity, signale précisément ce cas — jamais une
+//  ville simplement absente côté candidat, qui reste neutre. Si TOUS les
+//  candidats sont éliminés par cette règle -> rejet immédiat (aucune
+//  entreprise fiable trouvée), sans même regarder les noms.
+//
+//  Règle 2 (Objectif 2, "un seul candidat cohérent") — parmi les survivants
+//  de la Règle 1, si un seul a un nom raisonnablement proche
+//  (NAME_AUTO_THRESHOLD) -> sélection AUTOMATIQUE, jamais de validation
+//  manuelle pour une simple variante de formulation (ex. "Garage Auto
+//  Claude" -> "Auto Claude").
+//
+//  Règle 3 (Objectif 3, "validation manuelle seulement pour les cas
+//  réellement ambigus") — s'il reste plusieurs candidats au nom
+//  raisonnablement proche (ex. "AS Pro Elec" : deux établissements distincts,
+//  même nom, même ville), ou si aucun ne franchit clairement ce seuil mais
+//  qu'au moins un survivant existe malgré tout (Objectif 4 : le rejet reste
+//  l'exception, jamais un choix arbitraire) -> validation manuelle, avec la
+//  liste réelle des candidats disponibles. Exception (Objectif 4, score en
+//  signal secondaire) : si l'un des candidats plausibles se détache
+//  nettement des autres (DOMINANT_NAME_OVERLAP/DOMINANT_GAP), il est traité
+//  comme la Règle 2 plutôt que d'imposer une validation manuelle inutile.
+function decideOutcome(ranked) {
+  const surviving = ranked.filter((entry) => !entry.cityMismatch);
+
+  if (!surviving.length) {
+    return { tier: "rejected", plausibleCount: 0, survivingCount: 0 };
+  }
+
+  const plausible = surviving
+    .filter((entry) => entry.nameOverlap >= NAME_AUTO_THRESHOLD)
+    .sort((a, b) => b.nameOverlap - a.nameOverlap);
+
+  if (plausible.length === 1) {
+    return { tier: "auto", best: plausible[0], plausibleCount: 1, survivingCount: surviving.length };
+  }
+
+  if (plausible.length >= 2) {
+    const [top, second] = plausible;
+    const dominant = top.nameOverlap >= DOMINANT_NAME_OVERLAP
+      && (top.nameOverlap - second.nameOverlap) >= DOMINANT_GAP;
+    if (dominant) {
+      return { tier: "auto", best: top, plausibleCount: plausible.length, survivingCount: surviving.length };
+    }
+    return { tier: "ambiguous", candidates: plausible, plausibleCount: plausible.length, survivingCount: surviving.length };
+  }
+
+  // plausible.length === 0 : ville cohérente mais aucun nom individuellement
+  // assez proche pour trancher seul (ex. "Électricité Schroeder Eric" ->
+  // "Shrader Electric LLC") — jamais un rejet arbitraire tant qu'un candidat
+  // existe réellement : validation manuelle avec les survivants tels quels.
+  return { tier: "ambiguous", candidates: surviving, plausibleCount: 0, survivingCount: surviving.length };
 }
 
 // Extraction + normalisation de la première fiche (mêmes champs que la sortie publique actuelle).
@@ -332,15 +432,36 @@ function mapPlace(place) {
 
 export async function collectFiche({
   nom, ville, queryOverride, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS,
-  // Objectif 2 — quand l'administrateur a déjà choisi un candidat parmi une
-  // liste ambiguë (voir functions/api/analyze.js), on redemande les mêmes
-  // candidats à Outscraper et on utilise directement celui dont le place_id
-  // correspond, sans repasser par le score de confiance : un choix humain
-  // explicite prime toujours sur le calcul automatique.
+  // Objectif 2 (mission "rendre l'identification suffisamment robuste") —
+  // conservé pour compatibilité ascendante : si un appelant ne renvoie que
+  // l'identifiant (sans `selectedCandidate`, voir ci-dessous), on retombe
+  // sur l'ancien comportement (redemande à Outscraper, cherche le même
+  // place_id) — voir plus bas, après la collecte des candidats.
   selectedPlaceId,
+  // Mission "logique métier déterministe" — Objectif 5 : quand
+  // l'administrateur a déjà choisi un candidat parmi une liste ambiguë
+  // précédemment présentée, le candidat COMPLET (déjà reçu dans cette même
+  // liste, champ `raw` — voir plus bas) est renvoyé tel quel plutôt que son
+  // seul place_id. Cause exacte du bug SELECTED_CANDIDATE_NOT_FOUND observé
+  // sur "Beauty House Ophélie" : l'ancienne approche relançait une recherche
+  // identique et cherchait à retrouver le même place_id — or Outscraper ne
+  // garantit aucune stabilité de ses résultats entre deux appels identiques
+  // consécutifs (constaté sur la campagne réelle : "Beauty A" présent dans
+  // la première réponse, absent de la seconde quelques secondes plus tard).
+  // Un candidat déjà vu en détail par un humain n'a plus besoin d'être
+  // "retrouvé" : on l'utilise directement, sans aucun nouvel appel réseau.
+  selectedCandidate,
   // Objectif 4 — signaux optionnels supplémentaires, voir computeConfidence.
   attendu,
 } = {}) {
+  if (selectedCandidate && typeof selectedCandidate === "object" && selectedCandidate.place_id) {
+    console.log("collectFiche:manual-selection-direct", {
+      place_id: selectedCandidate.place_id,
+      name: selectedCandidate.name || null,
+    });
+    return { ok: true, fiche: selectedCandidate, confidence: null, tier: "manual" };
+  }
+
   const nomTrim = (nom || "").trim();
   const villeTrim = (ville || "").trim();
   const directQuery = (queryOverride || "").trim();
@@ -421,9 +542,13 @@ export async function collectFiche({
     return { ok: false, code: 404, error: "No business found." };
   }
 
-  // Objectif 2 — un administrateur a déjà tranché parmi une liste ambiguë
-  // précédemment présentée : on l'utilise directement, sans repasser par le
-  // score. Prime sur tout le reste (y compris le mode URL ci-dessous).
+  // Repli historique (voir commentaire sur `selectedCandidate` plus haut) :
+  // seul le place_id a été renvoyé, sans le candidat complet — on retente
+  // une recherche identique et on cherche le même identifiant. Ce chemin
+  // reste possible mais expose de nouveau à la non-déterminisme d'Outscraper
+  // (SELECTED_CANDIDATE_NOT_FOUND) ; tous les appelants internes (UI admin,
+  // script de campagne) envoient désormais `selectedCandidate` et ne passent
+  // plus par ici.
   if (selectedPlaceId) {
     const chosen = candidates.find((c) => (c.place_id || "") === selectedPlaceId);
     console.log("collectFiche:manual-selection", {
@@ -452,21 +577,25 @@ export async function collectFiche({
     return { ok: true, fiche: mapPlace(candidates[0]), tier: "auto" };
   }
 
-  // Objectif 1/2/3 : on note chaque candidat (nom + ville [+ signaux
-  // optionnels]) et on retient le mieux classé — jamais automatiquement le
-  // premier de la liste — puis on applique les trois paliers de décision.
+  // Objectifs 1-4 : on note chaque candidat (nom + ville [+ signaux
+  // optionnels]) puis on applique les règles métier déterministes (voir
+  // decideOutcome ci-dessus) — la ville prime, puis le nombre de candidats
+  // plausibles restants décide seul entre automatique/manuel/rejet. Le
+  // classement par confiance (rankCandidates) reste utile pour trier
+  // l'affichage et les logs, mais ne pilote plus la décision elle-même.
   const ranked = rankCandidates({ nomTrim, villeTrim, places: candidates, attendu });
-  const best = ranked[0];
-  const tier = classifyConfidence(best.confidence);
+  const outcome = decideOutcome(ranked);
+  const { tier, plausibleCount, survivingCount } = outcome;
 
   // Objectif 5 — journal de décision : entreprise demandée, candidats et
-  // leur score, entreprise retenue (ou non), raison de la décision ou du
-  // rejet. Pensé pour être lisible directement dans les logs serveur.
+  // leur score, ville éliminée ou non, entreprise retenue (ou non), raison
+  // de la décision. Pensé pour être lisible directement dans les logs
+  // serveur.
   const reason = tier === "auto"
-    ? `confiance ${best.confidence.toFixed(3)} >= seuil de sélection automatique ${HIGH_CONFIDENCE_THRESHOLD} -> sélection automatique.`
+    ? `candidat unique après élimination de ville (nameOverlap ${outcome.best.nameOverlap.toFixed(3)} >= seuil ${NAME_AUTO_THRESHOLD}) -> sélection automatique.`
     : tier === "ambiguous"
-      ? `confiance ${best.confidence.toFixed(3)} entre le seuil minimal ${MIN_CONFIDENCE} et le seuil automatique ${HIGH_CONFIDENCE_THRESHOLD} -> validation humaine requise.`
-      : `confiance ${best.confidence.toFixed(3)} < seuil minimal ${MIN_CONFIDENCE} -> aucune entreprise fiable trouvée.`;
+      ? `${survivingCount} candidat(s) restant(s) après élimination de ville, ${plausibleCount} au nom raisonnablement proche -> validation humaine requise.`
+      : `aucun candidat ne correspond à la ville demandée (${ranked.length} candidat(s) reçu(s), tous éliminés) -> aucune entreprise fiable trouvée.`;
 
   console.log("collectFiche:decision-log", {
     requested: { nom: nomTrim, ville: villeTrim },
@@ -474,12 +603,15 @@ export async function collectFiche({
       name: entry.place.name || "(sans nom)",
       place_id: entry.place.place_id || null,
       nameScore: Number(entry.nameScore.toFixed(3)),
+      nameOverlap: Number(entry.nameOverlap.toFixed(3)),
       cityScore: entry.cityScore,
       confidence: Number(entry.confidence.toFixed(3)),
       cityMismatch: Boolean(entry.cityMismatch),
     })),
+    survivingCount,
+    plausibleCount,
     tier,
-    selected: tier === "auto" ? (best.place.name || "(sans nom)") : null,
+    selected: tier === "auto" ? (outcome.best.place.name || "(sans nom)") : null,
     reason,
   });
 
@@ -489,36 +621,37 @@ export async function collectFiche({
       code: 404,
       error: "No reliable business match found.",
       message: "Aucune entreprise fiable trouvée.",
-      confidence: best.confidence,
       reason,
     };
   }
 
   if (tier === "ambiguous") {
-    // Objectif 2 — jamais de choix arbitraire : on relaie tous les
-    // candidats plausibles (confiance >= MIN_CONFIDENCE) pour validation
-    // humaine côté interface d'administration.
+    // Objectif 3 — jamais de choix arbitraire : on relaie les candidats
+    // réellement disponibles (voir decideOutcome) pour validation humaine
+    // côté interface d'administration. `raw` porte la fiche complète
+    // (mêmes champs que mapPlace()) : Objectif 5, permet à l'appelant de
+    // renvoyer directement `selectedCandidate` sans jamais avoir besoin de
+    // rappeler Outscraper pour "retrouver" le candidat choisi.
     return {
       ok: false,
       code: 409,
       error: "AMBIGUOUS_CANDIDATES",
       message: "Nous avons trouvé plusieurs entreprises pouvant correspondre.",
       reason,
-      candidates: ranked
-        .filter((entry) => entry.confidence >= MIN_CONFIDENCE)
-        .map((entry) => ({
-          placeId: entry.place.place_id || "",
-          name: entry.place.name || "",
-          city: entry.place.city || entry.place.borough || entry.place.county || "",
-          address: entry.place.address || entry.place.full_address || "",
-          rating: toNumberOrNull(entry.place.rating),
-          reviews: toNumberOrNull(entry.place.reviews),
-          confidence: Number(entry.confidence.toFixed(3)),
-        })),
+      candidates: outcome.candidates.map((entry) => ({
+        placeId: entry.place.place_id || "",
+        name: entry.place.name || "",
+        city: entry.place.city || entry.place.borough || entry.place.county || "",
+        address: entry.place.address || entry.place.full_address || "",
+        rating: toNumberOrNull(entry.place.rating),
+        reviews: toNumberOrNull(entry.place.reviews),
+        confidence: Number(entry.confidence.toFixed(3)),
+        raw: mapPlace(entry.place),
+      })),
     };
   }
 
-  return { ok: true, fiche: mapPlace(best.place), confidence: best.confidence, tier: "auto", reason };
+  return { ok: true, fiche: mapPlace(outcome.best.place), confidence: outcome.best.confidence, tier: "auto", reason };
 }
 
 export const __test__ = {
@@ -526,11 +659,14 @@ export const __test__ = {
   citySimilarity,
   computeConfidence,
   rankCandidates,
-  classifyConfidence,
+  decideOutcome,
   normalizeForCompare,
   phoneSimilarity,
   siteSimilarity,
-  MIN_CONFIDENCE,
-  HIGH_CONFIDENCE_THRESHOLD,
+  tokenOverlapRatio,
+  levenshteinRatio,
+  NAME_AUTO_THRESHOLD,
+  DOMINANT_NAME_OVERLAP,
+  DOMINANT_GAP,
   CANDIDATE_LIMIT,
 };

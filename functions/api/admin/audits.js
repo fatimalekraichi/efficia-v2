@@ -119,12 +119,20 @@ function buildPipelineInput(payload, orderContext = null) {
   // présentée par un appel précédent à cette même route ; on le relaie tel
   // quel jusqu'à collectFiche() via /api/analyze.
   const selectedPlaceId = cleanInput(payload?.selectedPlaceId, 200);
+  // Mission "logique métier déterministe" — Objectif 5 : le candidat complet
+  // (champ `raw` de la réponse AMBIGUOUS_CANDIDATES, renvoyé tel quel par le
+  // client) est relayé sans transformation — c'est un objet fiche déjà
+  // normalisé par collectFiche()/mapPlace(), pas un champ texte à nettoyer.
+  const selectedCandidate = payload?.selectedCandidate && typeof payload.selectedCandidate === "object"
+    ? payload.selectedCandidate
+    : null;
   const pipelineInput = {
     nom,
     ville,
     activite,
   };
   if (selectedPlaceId) pipelineInput.selectedPlaceId = selectedPlaceId;
+  if (selectedCandidate) pipelineInput.selectedCandidate = selectedCandidate;
 
   if (!hasCity && (companyName || inferredName)) {
     pipelineInput.observationQuery = companyName || inferredName;

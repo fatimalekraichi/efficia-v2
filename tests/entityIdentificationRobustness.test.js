@@ -10,8 +10,14 @@ import { collectFiche, __test__ } from "../functions/lib/collectFiche.js";
 // casse, espaces, caractères spéciaux) + reproduction explicite du cas
 // "Beauty House Ophélie -> Beauty A" pour garantir que cette régression
 // précise ne revienne jamais.
+//
+// Mission "remplacer la logique actuelle de décision du pipeline
+// d'identification par une logique métier déterministe" — le test n°3
+// ("même activité, villes différentes") change de résultat ATTENDU :
+// Objectif 1 fait désormais de la ville un critère d'élimination stricte
+// plutôt qu'un simple signal pondéré — voir le commentaire du test.
 
-const { nameSimilarity, computeConfidence, MIN_CONFIDENCE, HIGH_CONFIDENCE_THRESHOLD } = __test__;
+const { nameSimilarity, computeConfidence, NAME_AUTO_THRESHOLD } = __test__;
 
 function mockFetchOnce(payload) {
   const originalFetch = globalThis.fetch;
@@ -28,7 +34,10 @@ test("homonymes : deux entreprises portent EXACTEMENT le même nom dans deux vil
     data: [[
       // L'homonyme de la mauvaise ville est délibérément placé EN PREMIER :
       // si le code prenait encore le premier résultat sans comparer, ce
-      // serait exactement la régression de la mission précédente.
+      // serait exactement la régression de la mission précédente. Mission
+      // "logique métier déterministe" — Objectif 1 : cet homonyme de
+      // Messancy est désormais ÉLIMINÉ (ville connue et différente), pas
+      // seulement mal classé.
       { name: "Boulangerie Dupont", place_id: "place-messancy", city: "Messancy" },
       { name: "Boulangerie Dupont", place_id: "place-arlon", city: "Arlon" },
     ]],
@@ -46,7 +55,15 @@ test("homonymes : deux entreprises portent EXACTEMENT le même nom dans deux vil
 
 // --- 2. Même ville, activités différentes ----------------------------------
 
-test("même ville, activités différentes : un mot de secteur partagé (générique) ne suffit jamais à confondre deux entreprises distinctes", async () => {
+test("même ville, activités différentes : un candidat manifestement dominant (nom quasi identique) prime sur un homonyme partiel (mot de secteur générique partagé)", async () => {
+  // Mission "logique métier déterministe" — Objectif 4 (score en signal
+  // secondaire) : "Garage Martin" (nom demandé, chevauchement de mots 1.0)
+  // et "Coiffure Martin" (même ville, chevauchement 0.588 — élevé
+  // uniquement parce que "garage"/"coiffure" sont deux mots génériques de
+  // secteur peu pondérés) franchissent tous deux le seuil de proximité de
+  // nom, mais l'écart entre les deux reste assez net pour que le premier
+  // soit retenu automatiquement plutôt que d'imposer une validation
+  // manuelle inutile.
   const restore = mockFetchOnce({
     data: [[
       { name: "Coiffure Martin", place_id: "place-coiffure", city: "Arlon" },
@@ -65,7 +82,14 @@ test("même ville, activités différentes : un mot de secteur partagé (génér
 
 // --- 3. Même activité, villes différentes -----------------------------------
 
-test("même activité, villes différentes : la ville confirmée différente écarte net l'homonyme, même avec un nom rigoureusement identique", async () => {
+test("même activité, villes différentes : la ville confirmée différente élimine le candidat -> rejet immédiat (mission logique métier déterministe, Objectif 1)", async () => {
+  // Changement de comportement volontaire par rapport à la mission
+  // précédente ("réduire les faux négatifs"), qui proposait ce cas en
+  // validation manuelle plutôt qu'un rejet. La mission "logique métier
+  // déterministe" est explicite : "Si la ville est connue : Ville demandée
+  // != Ville trouvée -> rejet immédiat. Le candidat doit être éliminé, il ne
+  // doit même plus participer au calcul." La ville prime désormais
+  // strictement sur la qualité du nom, aussi bonne soit-elle.
   const restore = mockFetchOnce({
     data: [[
       { name: "Garage Martin", place_id: "place-virton", city: "Virton" },
@@ -74,6 +98,7 @@ test("même activité, villes différentes : la ville confirmée différente éc
   try {
     const result = await collectFiche({ nom: "Garage Martin", ville: "Arlon", apiKey: "key" });
     assert.equal(result.ok, false);
+    assert.equal(result.error, "No reliable business match found.");
     assert.equal(result.message, "Aucune entreprise fiable trouvée.");
   } finally {
     restore();
@@ -142,8 +167,8 @@ test("formes juridiques : ajouter une forme juridique courante ne fait jamais ch
       place: { name: `Boulangerie Petit ${form}`, city: "Messancy" },
     });
     assert.ok(
-      result.confidence >= HIGH_CONFIDENCE_THRESHOLD,
-      `"Boulangerie Petit ${form}" devrait rester une correspondance quasi parfaite (confiance obtenue : ${result.confidence})`,
+      result.nameOverlap >= NAME_AUTO_THRESHOLD,
+      `"Boulangerie Petit ${form}" devrait rester une correspondance auto-sélectionnable (nameOverlap obtenu : ${result.nameOverlap})`,
     );
   }
 });
@@ -178,18 +203,20 @@ test("caractères spéciaux : ponctuation, esperluette et tirets n'affectent pas
 
 // --- 11. Reproduction explicite du cas cité par la mission ------------------
 
-test("régression explicite Beauty House Ophélie -> Beauty A : jamais auto-sélectionné, jamais rejeté silencieusement — validation manuelle obligatoire", async () => {
+test("régression explicite Beauty House Ophélie -> Beauty A + Pura Vida Institut : jamais auto-sélectionné, jamais rejeté silencieusement — validation manuelle avec les deux candidats réels", async () => {
   // Reproduit fidèlement le cas réel observé sur la campagne des 20 audits
-  // (tmp/beta-audits-20/16-beauty-house-ophelie/) : Outscraper ne renvoie
-  // qu'un seul candidat plausible, "Beauty A", même ville (Aubange). Sous
-  // l'ancien système à deux paliers, la confiance (0,503) dépassait le seuil
-  // minimal et l'audit était produit à tort sur "Beauty A". Avec le système
-  // à trois paliers, cette confiance est trop faible pour l'auto-sélection
-  // (seuil 0,95) : l'audit doit être bloqué en attente de validation
-  // humaine, jamais produit automatiquement sur la mauvaise entreprise.
+  // (tmp/beta-audits-20/16-beauty-house-ophelie/) : Outscraper renvoie deux
+  // candidats plausibles par la ville (Aubange), "Beauty A" et "Pura Vida
+  // Institut", aucun des deux avec un nom suffisamment proche pour trancher
+  // seul (nameOverlap Beauty A = 0,25, Pura Vida = 0 — tous deux sous
+  // NAME_AUTO_THRESHOLD). Mission "logique métier déterministe" — Objectif 4
+  // (le rejet reste l'exception) : les DEUX candidats réels sont proposés à
+  // la validation humaine plutôt qu'un rejet arbitraire ou un choix
+  // automatique risqué.
   const restore = mockFetchOnce({
     data: [[
       { name: "Beauty A", place_id: "place-beauty-a", city: "Aubange" },
+      { name: "Pura Vida Institut", place_id: "place-pura-vida", city: "Aubange" },
     ]],
   });
   try {
@@ -198,33 +225,41 @@ test("régression explicite Beauty House Ophélie -> Beauty A : jamais auto-sél
     assert.equal(result.error, "AMBIGUOUS_CANDIDATES");
     assert.equal(result.message, "Nous avons trouvé plusieurs entreprises pouvant correspondre.");
     const beautyA = result.candidates.find((c) => c.placeId === "place-beauty-a");
+    const puraVida = result.candidates.find((c) => c.placeId === "place-pura-vida");
     assert.ok(beautyA, "Beauty A doit rester proposée comme candidate plausible pour validation humaine");
-    assert.ok(beautyA.confidence >= MIN_CONFIDENCE && beautyA.confidence < HIGH_CONFIDENCE_THRESHOLD);
+    assert.ok(puraVida, "Pura Vida Institut doit aussi être proposée — pas de rejet arbitraire d'une des deux options réelles");
+    // Objectif 5 : chaque candidat porte sa fiche complète (`raw`), pour
+    // permettre une confirmation manuelle sans jamais rappeler Outscraper.
+    assert.equal(beautyA.raw.place_id, "place-beauty-a");
+    assert.equal(puraVida.raw.place_id, "place-pura-vida");
   } finally {
     restore();
   }
 });
 
-test("régression explicite Beauty House Ophélie -> Beauty A : une fois l'administrateur confirmé sur \"Beauty A\" via selectedPlaceId, la collecte utilise ce choix explicite", async () => {
-  // Objectif 2 : après validation humaine, le pipeline continue normalement
-  // avec le candidat explicitement choisi (même s'il n'aurait jamais été
-  // retenu automatiquement) — le choix humain prime toujours.
-  const restore = mockFetchOnce({
-    data: [[
-      { name: "Beauty A", place_id: "place-beauty-a", city: "Aubange" },
-    ]],
-  });
+test("régression explicite Beauty House Ophélie -> Beauty A : une fois l'administrateur confirmé via selectedCandidate, la collecte utilise ce choix explicite sans aucun nouvel appel réseau", async () => {
+  // Objectif 2/5 : après validation humaine, le pipeline continue
+  // normalement avec le candidat explicitement choisi (même s'il n'aurait
+  // jamais été retenu automatiquement) — le choix humain prime toujours, et
+  // ne dépend plus d'un second appel à Outscraper (cause du bug
+  // SELECTED_CANDIDATE_NOT_FOUND observé sur la campagne réelle).
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("fetch ne doit jamais être appelé quand selectedCandidate est fourni");
+  };
   try {
+    const selectedCandidate = { place_id: "place-beauty-a", name: "Beauty A", city: "Aubange" };
     const result = await collectFiche({
       nom: "Beauty House Ophélie",
       ville: "Aubange",
       apiKey: "key",
       selectedPlaceId: "place-beauty-a",
+      selectedCandidate,
     });
     assert.equal(result.ok, true);
     assert.equal(result.tier, "manual");
     assert.equal(result.fiche.place_id, "place-beauty-a");
   } finally {
-    restore();
+    globalThis.fetch = originalFetch;
   }
 });
