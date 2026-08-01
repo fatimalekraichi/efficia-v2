@@ -144,3 +144,62 @@ test("collectCompetitors conserve le comportement historique quand aucun identif
     restore();
   }
 });
+
+// Mission "corriger les deux problèmes critiques" — Objectif 6 (tests de
+// non-régression), à partir de deux cas explicitement nommés dans la
+// mission. Le diagnostic (Objectif 3) a montré que le "competitorCount = 0
+// systématique" observé sur les 20 audits réels n'était PAS un bug de
+// collectCompetitors() : c'était une erreur de lecture du script de
+// diagnostic (tmp/beta-audits-20/), qui lisait analysis.competitors au lieu
+// de analysis.business.competitors — les 20 audits réels avaient bien 3
+// concurrents chacun, self-exclusion correcte. Ces deux tests fixent
+// explicitement ce comportement pour AS Pro Elec (l'exemple cité par la
+// mission), en plus de la couverture générique déjà présente ci-dessus.
+
+test("AS Pro Elec n'est jamais comparé à lui-même dans son propre benchmark", async () => {
+  const restore = mockFetchOnce({
+    data: [[
+      { name: "AS Pro Elec", place_id: "place-as-pro-elec" },
+      { name: "Electrolux95", place_id: "place-electrolux95" },
+      { name: "Electromania Ioan Cupsan", place_id: "place-electromania" },
+    ]],
+  });
+  try {
+    const result = await collectCompetitors({
+      activite: "Électricien",
+      ville: "Arlon",
+      placeIdCible: "place-as-pro-elec",
+      apiKey: "key",
+    });
+    assert.equal(result.ok, true);
+    assert.ok(
+      !result.concurrents.some((c) => c.place_id === "place-as-pro-elec" || c.name === "AS Pro Elec"),
+      "AS Pro Elec ne doit jamais apparaître dans ses propres concurrents",
+    );
+    assert.equal(result.concurrents.length, 2);
+  } finally {
+    restore();
+  }
+});
+
+test("le benchmark contient bien des concurrents lorsqu'ils existent réellement dans les résultats bruts (pas de vidage systématique)", async () => {
+  const restore = mockFetchOnce({
+    data: [[
+      { name: "AS Pro Elec", place_id: "place-as-pro-elec" },
+      { name: "Entreprise Hubermont", place_id: "place-hubermont" },
+    ]],
+  });
+  try {
+    const result = await collectCompetitors({
+      activite: "Électricien",
+      ville: "Arlon",
+      placeIdCible: "place-as-pro-elec",
+      apiKey: "key",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.concurrents.length, 1);
+    assert.equal(result.concurrents[0].name, "Entreprise Hubermont");
+  } finally {
+    restore();
+  }
+});

@@ -144,11 +144,32 @@ export async function collectCompetitors({ activite, ville, placeIdCible, cidCib
   const targetIndex = targetPlaceId ? places.findIndex(place => place.place_id === targetPlaceId) : -1;
   const position = targetIndex >= 0 ? targetIndex + 1 : 0;
 
+  // Objectif 5 (mission "corriger les deux problèmes critiques", logs de
+  // diagnostic temporaires — à retirer une fois le correctif validé sur la
+  // campagne réelle) : trace brut -> exclu -> conservé, pour objectiver ce
+  // qui se passe réellement à chaque étape plutôt que de le supposer.
+  console.log("collectCompetitors:raw-results", {
+    requete,
+    count: places.length,
+    names: places.map((p) => p.name || "(sans nom)"),
+  });
+
   const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
-  const concurrents = places
-    .filter(place => !isSameBusiness(place))
-    .slice(0, 3)
-    .map(mapCompetitor);
+  const excluded = places.filter((place) => isSameBusiness(place));
+  const afterExclusion = places.filter((place) => !isSameBusiness(place));
+
+  console.log("collectCompetitors:after-self-exclusion", {
+    excludedCount: excluded.length,
+    excludedNames: excluded.map((p) => p.name || "(sans nom)"),
+    remainingCount: afterExclusion.length,
+  });
+
+  const concurrents = afterExclusion.slice(0, 3).map(mapCompetitor);
+
+  console.log("collectCompetitors:retained", {
+    retainedCount: concurrents.length,
+    retainedNames: concurrents.map((c) => c.name || "(sans nom)"),
+  });
 
   return { ok: true, requete, position, concurrents };
 }
