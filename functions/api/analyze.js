@@ -92,6 +92,7 @@ export async function onRequestPost(context) {
   let googleBusinessUrl = "";
   let observationQuery = "";
   let selectedPlaceId = "";
+  let selectedCandidate = null;
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
@@ -107,6 +108,15 @@ export async function onRequestPost(context) {
     // l'administrateur a déjà choisi un candidat parmi une liste ambiguë
     // présentée précédemment par cette même route (voir plus bas).
     selectedPlaceId = typeof payload?.selectedPlaceId === "string" ? payload.selectedPlaceId.trim() : "";
+    // Mission "logique métier déterministe" — Objectif 5 : le candidat
+    // COMPLET (renvoyé tel quel par cette même route dans le champ `raw` de
+    // la réponse AMBIGUOUS_CANDIDATES) est transmis directement à
+    // collectFiche(), qui l'utilise sans rappeler Outscraper — élimine la
+    // cause du bug SELECTED_CANDIDATE_NOT_FOUND (non-déterminisme
+    // d'Outscraper entre deux appels identiques consécutifs).
+    selectedCandidate = payload?.selectedCandidate && typeof payload.selectedCandidate === "object"
+      ? payload.selectedCandidate
+      : null;
   } catch {
     // pas de body JSON : on tentera les paramètres d'URL
   }
@@ -129,6 +139,7 @@ export async function onRequestPost(context) {
     queryOverride: observationQuery || googleBusinessUrl,
     apiKey: env.OUTSCRAPER_API_KEY,
     selectedPlaceId: selectedPlaceId || undefined,
+    selectedCandidate: selectedCandidate || undefined,
   });
   if (!result.ok) {
     // Objectif 2 — plusieurs candidats plausibles, aucun ne dépasse le seuil

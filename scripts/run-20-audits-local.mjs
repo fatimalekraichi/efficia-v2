@@ -25,9 +25,10 @@
 // modifie ni le moteur, ni les templates, ni les scores : il observe et
 // documente uniquement, dans tmp/beta-audits-20/ (déjà dans .gitignore).
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { __test__ as collectFicheInternals } from "../functions/lib/collectFiche.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -134,10 +135,18 @@ async function runOne(cookie, company) {
   // campagne) ; pour pouvoir quand même mesurer le pipeline de bout en bout,
   // on SIMULE la validation manuelle en choisissant explicitement le
   // meilleur candidat (celui de plus haute confiance, déjà trié ainsi par
-  // collectFiche) via selectedPlaceId — exactement le même mécanisme qu'un
-  // clic "Confirmer la sélection" dans l'interface d'administration. C'est
-  // documenté distinctement (validation: "manuelle (simulée)") : en usage
-  // réel, ce choix serait fait par un humain, jamais automatiquement.
+  // collectFiche) — exactement le même mécanisme qu'un clic "Confirmer la
+  // sélection" dans l'interface d'administration. C'est documenté
+  // distinctement (validation: "manuelle (simulée)") : en usage réel, ce
+  // choix serait fait par un humain, jamais automatiquement.
+  //
+  // Mission "logique métier déterministe" — Objectif 5 : on renvoie le
+  // candidat COMPLET (`selectedCandidate: bestCandidate.raw`), pas seulement
+  // son place_id — cause exacte du bug SELECTED_CANDIDATE_NOT_FOUND observé
+  // sur "Beauty House Ophélie" (Outscraper ne renvoyait pas les mêmes
+  // résultats entre le premier appel et cette relance identique). En passant
+  // le candidat déjà reçu, collectFiche() n'a plus besoin de rappeler
+  // Outscraper du tout pour cette confirmation.
   log.identification = { validation: "automatique", confidence: null, tier: null };
   if (!created.ok || !created.data?.success) {
     if (created.data?.error === "AMBIGUOUS_CANDIDATES") {
@@ -154,7 +163,11 @@ async function runOne(cookie, company) {
       created = await jsonFetch(`${BASE_URL}/api/admin/audits`, {
         cookie,
         method: "POST",
-        body: { ...basePayload, selectedPlaceId: bestCandidate.placeId },
+        body: {
+          ...basePayload,
+          selectedPlaceId: bestCandidate.placeId,
+          ...(bestCandidate.raw ? { selectedCandidate: bestCandidate.raw } : {}),
+        },
       });
       log.stages.createAfterManualSelection = { status: created.status, ok: created.ok, body: created.data };
     }
@@ -270,7 +283,20 @@ async function runOne(cookie, company) {
     log.checks.forbiddenPatterns = FORBIDDEN_PATTERNS
       .filter((re) => re.test(visible))
       .map((re) => re.toString());
-    log.checks.knownRegressions = KNOWN_REGRESSIONS.filter((needle) => html.includes(needle));
+    // Mission "préparer définitivement Efficia Digital pour la phase bêta" —
+    // Objectif 1 : bug corrigé ici. Ce test comparait auparavant contre
+    // `html` (le document COMPLET, styles et commentaires inclus), jamais
+    // contre `visible` (le texte réellement affiché, styles/balises retirés)
+    // — utilisé correctement juste au-dessus pour forbiddenPatterns. Or le
+    // template HTML contient, dans un bloc <style>, un commentaire de
+    // développeur qui DOCUMENTE le bug historique déjà corrigé ("mots collés
+    // dans le PDF (\"Surla\", \"contre0\", \"renforceraitla\"...)") : en
+    // cherchant dans `html` plutôt que `visible`, ce test se déclenchait sur
+    // son propre changelog interne, présent identiquement dans CHAQUE audit
+    // généré, jamais sur une vraie régression dans le contenu affiché.
+    // `knownRegressions` ne contient donc désormais que les motifs
+    // réellement détectés dans le texte visible par le lecteur du rapport.
+    log.checks.knownRegressions = KNOWN_REGRESSIONS.filter((needle) => visible.includes(needle));
 
     const pages = (html.match(/<section class="page[^"]*"/g) || []).length;
     log.checks.pageCount = pages;
@@ -307,32 +333,111 @@ async function runOne(cookie, company) {
   return log;
 }
 
-// Objectif 7 — charge la campagne précédente (celle de la mission
-// "corriger les deux problèmes critiques") si elle existe encore à cet
-// emplacement, pour pouvoir comparer avant de l'écraser. Une copie brute est
-// aussi conservée sous _summary.previous.json : la comparaison reste
-// consultable même après une deuxième relance.
-function loadPreviousSummary() {
-  const summaryPath = path.join(OUT_DIR, "_summary.json");
-  if (!existsSync(summaryPath)) return null;
+// Mission "réduire les faux négatifs du pipeline d'identification sans
+// réintroduire les faux positifs" — Objectif 6 : comparer Campagne 1 (avant
+// tout correctif) -> Campagne 2 (score de confiance + validation manuelle) ->
+// Campagne 3 (celle-ci). Un simple fichier ".previous" écrasé à chaque
+// relance perdait l'historique au-delà d'une génération — remplacé par des
+// archives numérotées (_summary.campaign-N.json), jamais réécrites une fois
+// créées.
+function listCampaignArchives() {
+  if (!existsSync(OUT_DIR)) return [];
+  return readdirSync(OUT_DIR)
+    .map((file) => {
+      const match = file.match(/^_summary\.campaign-(\d+)\.json$/);
+      return match ? { n: Number(match[1]), file } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.n - b.n);
+}
+
+// Migration ponctuelle depuis l'ancien schéma à un seul cran
+// (_summary.json / _summary.previous.json) : ne s'exécute que si aucune
+// archive numérotée n'existe encore, pour ne jamais écraser un historique
+// déjà migré.
+function migrateLegacySummariesIfNeeded() {
+  const archives = listCampaignArchives();
+  if (archives.length) return archives;
+
+  const legacyPrevious = path.join(OUT_DIR, "_summary.previous.json");
+  const legacyCurrent = path.join(OUT_DIR, "_summary.json");
+  let n = 1;
+  if (existsSync(legacyPrevious)) {
+    copyFileSync(legacyPrevious, path.join(OUT_DIR, `_summary.campaign-${n}.json`));
+    n += 1;
+  }
+  if (existsSync(legacyCurrent)) {
+    copyFileSync(legacyCurrent, path.join(OUT_DIR, `_summary.campaign-${n}.json`));
+  }
+  return listCampaignArchives();
+}
+
+function loadCampaignArchive(entry) {
   try {
-    const previous = JSON.parse(readFileSync(summaryPath, "utf8"));
-    copyFileSync(summaryPath, path.join(OUT_DIR, "_summary.previous.json"));
-    return previous;
+    return JSON.parse(readFileSync(path.join(OUT_DIR, entry.file), "utf8"));
   } catch {
     return null;
   }
 }
 
-function previousEntryFor(previousResults, companyNumber) {
-  if (!Array.isArray(previousResults)) return null;
-  return previousResults.find((r) => r.company?.n === companyNumber) || null;
+function entryFor(campaignResults, companyNumber) {
+  if (!Array.isArray(campaignResults)) return null;
+  return campaignResults.find((r) => r.company?.n === companyNumber) || null;
+}
+
+// Objectif 6 — "mauvaise identification" ne peut pas être jugée de façon
+// fiable par un simple score de similarité texte : plusieurs résolutions
+// légitimes ont un nameScore brut faible (ex. "Garage Pneus M. Courtois" ->
+// "Garage PNEUS Courtois SRL - Aubange - 1,2,3 AutoService", ou "Kiné Plus
+// Weyler" -> "Kineplus sprl") alors qu'elles sont correctes une fois la
+// ville et le contexte pris en compte — un tel seuil générait de nombreux
+// faux positifs lors des essais de calibration de ce script. On ne
+// comptabilise donc ici QUE les cas déjà identifiés et confirmés comme de
+// mauvaises identifications lors des missions précédentes (voir les
+// rapports de mission antérieurs) ; toute autre entité retenue est laissée à
+// la relecture humaine (colonne "entité retenue" du tableau imprimé), jamais
+// jugée automatiquement.
+const KNOWN_BAD_MATCHES = [
+  { requested: "Électricité Schroeder Eric", wrongResolvedIncludes: "shrader electric" },
+  { requested: "CDV Construction", wrongResolvedIncludes: "cdg construction" },
+  { requested: "Beauty House Ophélie", wrongResolvedIncludes: "beauty a" },
+];
+
+// Compatible avec l'ancien format de log (Campagne 1, avant l'introduction du
+// champ `identification` à la mission "rendre l'identification robuste") :
+// le nom retenu y était accessible sous stages.create.body.analysis.businessName.
+function resolvedNameOf(entry) {
+  return entry.identification?.resolved
+    || entry.stages?.create?.body?.analysis?.businessName
+    || null;
+}
+
+function classifyOutcome(entry) {
+  if (!entry) return "inconnu";
+  const verdict = entry.verdictHint || "";
+  if (verdict.includes("AUCUNE ENTREPRISE FIABLE")) return "rejet";
+  const resolved = resolvedNameOf(entry);
+  const requested = entry.company?.companyName;
+  if (!entry.analysisId || !resolved) return "échec technique";
+  const knownBad = KNOWN_BAD_MATCHES.some((k) => (
+    k.requested === requested && resolved.toLowerCase().includes(k.wrongResolvedIncludes)
+  ));
+  if (knownBad) return "mauvaise identification (confirmée)";
+  const validation = entry.identification?.validation || "";
+  if (validation.includes("manuelle")) return "validation manuelle";
+  return "PASS";
 }
 
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
-  const previousResults = loadPreviousSummary();
+  const priorArchives = migrateLegacySummariesIfNeeded();
+  const thisCampaignNumber = priorArchives.length ? priorArchives[priorArchives.length - 1].n + 1 : 1;
+  const immediatelyPrevious = priorArchives.length
+    ? loadCampaignArchive(priorArchives[priorArchives.length - 1])
+    : null;
+
   console.log(`Cible : ${BASE_URL}`);
+  console.log(`Campagne n°${thisCampaignNumber} (${priorArchives.length} campagne(s) antérieure(s) archivée(s))`);
   console.log("Connexion admin...");
   const cookie = await loginAdmin();
   console.log("OK. Lancement des 20 audits Premium (Mode Nom + Ville)...\n");
@@ -351,16 +456,18 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 
+  // "Latest" pointer (comportement historique, gardé pour compatibilité) +
+  // archive numérotée permanente, jamais réécrite par une relance future.
   writeFileSync(path.join(OUT_DIR, "_summary.json"), JSON.stringify(results, null, 2));
+  writeFileSync(path.join(OUT_DIR, `_summary.campaign-${thisCampaignNumber}.json`), JSON.stringify(results, null, 2));
 
   // Objectif 7 — pour chaque audit : entité demandée -> entité retenue ->
   // score de confiance -> validation automatique/manuelle -> verdict, et
-  // comparaison explicite avec la campagne précédente (entité retenue avant
-  // vs maintenant).
-  console.log("\n=== Résumé — Objectif 7 (identification) ===");
+  // comparaison explicite avec la campagne immédiatement précédente.
+  console.log("\n=== Résumé — identification (campagne courante) ===");
   const comparison = [];
   for (const r of results) {
-    const previous = previousEntryFor(previousResults, r.company.n);
+    const previous = entryFor(immediatelyPrevious, r.company.n);
     const confidencePct = Number.isFinite(r.identification?.confidence)
       ? `${Math.round(r.identification.confidence * 100)}%`
       : "—";
@@ -368,34 +475,59 @@ async function main() {
       n: r.company.n,
       requested: r.company.companyName,
       requestedCity: r.company.city,
-      resolved: r.identification?.resolved || null,
+      resolved: resolvedNameOf(r),
       confidence: r.identification?.confidence ?? null,
       tier: r.identification?.tier || null,
       validation: r.identification?.validation || (r.verdictHint?.includes("AUCUNE ENTREPRISE") ? "aucune (rejet)" : "—"),
       verdict: r.verdictHint,
-      previousResolved: previous?.identification?.resolved || null,
-      changedVsPrevious: Boolean(previous) && (previous.identification?.resolved || null) !== (r.identification?.resolved || null),
+      outcome: classifyOutcome(r),
+      previousResolved: previous ? resolvedNameOf(previous) : null,
+      changedVsPrevious: Boolean(previous) && resolvedNameOf(previous) !== resolvedNameOf(r),
     };
     comparison.push(entry);
     console.log(
       `${String(entry.n).padStart(2, "0")}. ${entry.requested.padEnd(30)} -> ${(entry.resolved || "—").padEnd(30)} `
-      + `| confiance=${confidencePct.padEnd(5)} | validation=${entry.validation.padEnd(35)} | ${entry.verdict}`,
+      + `| confiance=${confidencePct.padEnd(5)} | validation=${entry.validation.padEnd(35)} | ${entry.outcome}`,
     );
     if (previous) {
       const marker = entry.changedVsPrevious ? "CHANGÉ" : "identique";
       console.log(`     campagne précédente -> "${entry.previousResolved || "—"}" (${marker})`);
     }
   }
-
   writeFileSync(path.join(OUT_DIR, "_comparison.json"), JSON.stringify(comparison, null, 2));
 
-  console.log(`\nFichiers écrits dans : ${OUT_DIR}`);
-  if (previousResults) {
-    console.log(`Comparaison avec la campagne précédente : ${path.join(OUT_DIR, "_comparison.json")}`);
-    console.log(`Copie de l'ancienne campagne conservée : ${path.join(OUT_DIR, "_summary.previous.json")}`);
-  } else {
-    console.log("Aucune campagne précédente trouvée à cet emplacement — pas de comparaison possible.");
+  // Objectif 6 — tableau comparatif PASS / validation manuelle / rejet /
+  // mauvaise identification, sur TOUTES les campagnes archivées + celle-ci.
+  const allGenerations = [
+    ...priorArchives.map((a) => ({ n: a.n, results: loadCampaignArchive(a) })),
+    { n: thisCampaignNumber, results },
+  ];
+  console.log("\n=== Objectif 6 — comparaison entre campagnes ===");
+  const counts = allGenerations.map(({ n, results: gen }) => {
+    const outcomes = (gen || []).map((r) => classifyOutcome(r));
+    const count = (label) => outcomes.filter((o) => o === label).length;
+    return {
+      campaign: n,
+      total: outcomes.length,
+      pass: count("PASS"),
+      validationManuelle: count("validation manuelle"),
+      rejet: count("rejet"),
+      mauvaiseIdentification: count("mauvaise identification (confirmée)"),
+      echecTechnique: count("échec technique"),
+    };
+  });
+  for (const c of counts) {
+    console.log(
+      `Campagne ${c.campaign} (${c.total}/20) — PASS: ${c.pass} | validation manuelle: ${c.validationManuelle} `
+      + `| rejet: ${c.rejet} | mauvaise identification: ${c.mauvaiseIdentification} | échec technique: ${c.echecTechnique}`,
+    );
   }
+  writeFileSync(path.join(OUT_DIR, "_comparison-all-campaigns.json"), JSON.stringify(counts, null, 2));
+
+  console.log(`\nFichiers écrits dans : ${OUT_DIR}`);
+  console.log(`Archive de cette campagne : _summary.campaign-${thisCampaignNumber}.json`);
+  console.log("Comparaison détaillée (campagne courante) : _comparison.json");
+  console.log("Comparaison PASS/manuel/rejet/mauvaise identification (toutes campagnes) : _comparison-all-campaigns.json");
   console.log("Aucun commit, aucun push, aucune modification du moteur n'a été effectué par ce script.");
 }
 
