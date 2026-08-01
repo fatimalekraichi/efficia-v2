@@ -257,3 +257,176 @@ test("premium report integrity : échappement des contenus externes conservé (a
   assert.doesNotMatch(html, /<img src=x/);
   assertNoForbiddenArtifacts(html, "échappement");
 });
+
+/* -------------------------------------------------------------------------- */
+/* Mission "page finale de conversion" (versions successives) — page          */
+/* "Et maintenant ?", ajoutée après "En résumé". Contenu entièrement fixe ou  */
+/* dérivé de model.priorities (jamais recalculé, jamais un nouveau           */
+/* diagnostic) : les tests vérifient uniquement présence, ordre et l'absence */
+/* des mots interdits — jamais une règle métier, jamais un calcul.           */
+/*                                                                            */
+/* Mission "simplifier et optimiser la dernière page" — dernière révision :  */
+/* la page passe de 7 blocs à 5, un seul message par bloc (objectif 5).      */
+/* L'ancien comparatif de temps en deux colonnes et le bloc "Pourquoi        */
+/* confier cette mission à Efficia Digital ?"/"Pourquoi certains             */
+/* choisissent..." sont supprimés (objectifs 2 et 7) : les huit pages        */
+/* précédentes démontrent déjà l'expertise, ces blocs n'apportaient plus     */
+/* d'information réelle. L'encadré des 99 € est reformulé (objectif 3) et la */
+/* page se referme sur une seule phrase de conclusion (objectif 6). Les      */
+/* assertions ci-dessous sont mises à jour en conséquence (même page,        */
+/* contenu explicitement remplacé par cette mission — aucun autre test       */
+/* n'est touché).                                                            */
+/* -------------------------------------------------------------------------- */
+
+test("page finale de conversion : apparaît après \"En résumé\", tient sur UNE seule page, dans l'ordre attendu", () => {
+  const html = renderAnalysisHtml(baseModel({
+    priorities: [
+      priority("P1", "description", { rank: 1 }),
+      priority("P2", "photos", { rank: 2 }),
+      priority("P3", "position", { rank: 3 }),
+    ],
+  }));
+
+  assertNoForbiddenArtifacts(html, "page de conversion");
+
+  const enResumeIndex = html.indexOf("Ce qu'il faut retenir de cette analyse");
+  const introIndex = html.indexOf("<h2>Votre audit est terminé.</h2>");
+  assert.ok(enResumeIndex > -1, "la page \"En résumé\" doit être présente");
+  assert.ok(introIndex > -1, "la page \"Et maintenant ?\" doit être présente");
+  assert.ok(introIndex > enResumeIndex, "\"Et maintenant ?\" doit apparaître après \"En résumé\"");
+
+  // Une seule page pour toute la conversion.
+  const closingStart = html.indexOf("Quelle que soit votre décision");
+  assert.ok(closingStart > -1, "la phrase de clôture doit être présente");
+  const conversionHtml = html.slice(html.lastIndexOf("<section", introIndex), html.indexOf("</section>", closingStart) + 10);
+  const pageCount = (conversionHtml.match(/<section class="page/g) || []).length;
+  assert.equal(pageCount, 1, "la conversion doit tenir sur une seule page");
+
+  // Bloc 1 — la page raconte d'abord ce que LE LECTEUR sait déjà (récapitulatif
+  // en quatre points, dérivé des catégories déjà lues, jamais un nouveau
+  // diagnostic), avant de parler des deux possibilités puis des packs.
+  const recapIndex = html.indexOf("Aujourd'hui, vous savez exactement");
+  const choicesLabelIndex = html.indexOf("Vous avez maintenant deux possibilités");
+  assert.ok(recapIndex > introIndex, "le récapitulatif doit apparaître juste après l'intro");
+  assert.match(html, /ce qui fonctionne déjà/);
+  assert.match(html, /ce qui limite votre visibilité/);
+  assert.match(html, /ce qui mérite d'être amélioré/);
+  assert.match(html, /dans quel ordre agir/);
+  assert.ok(choicesLabelIndex > recapIndex, "les deux possibilités doivent apparaître après le récapitulatif (le lecteur avant l'offre)");
+  assert.doesNotMatch(html, /Option 1/, "les anciennes grandes cartes de choix ne doivent plus exister");
+  assert.doesNotMatch(html, /Option 2/);
+
+  // Bloc 2 — une seule phrase de transition vers les packs.
+  const transitionIndex = html.indexOf("ne pas les mettre en œuvre vous-même");
+  const packGridIndex = html.indexOf("<div class=\"pack-grid\">");
+  assert.ok(transitionIndex > choicesLabelIndex, "la phrase de transition doit apparaître après le bloc de choix");
+  assert.ok(packGridIndex > transitionIndex, "les packs doivent apparaître après la phrase de transition");
+  assert.doesNotMatch(html, /Faire soi-même/, "l'ancien comparatif de temps en deux colonnes ne doit plus exister");
+
+  // Bloc 3 — packs : le grand titre est une intention du lecteur, le nom du
+  // pack redevient un repère secondaire en petit, le résultat renvoie
+  // explicitement à CE rapport (jamais une formule de brochure générique).
+  assert.match(html, /Je souhaite gagner du temps/);
+  assert.match(html, /Je souhaite aller plus loin/);
+  assert.match(html, /Pack Visibilité Google/);
+  assert.match(html, /Pack Performance/);
+  assert.match(html, /349 €/);
+  assert.match(html, /Le plus choisi/);
+  assert.match(html, /499 €/);
+  assert.match(html, /Solution complète/);
+  assert.match(html, /En plus du Pack Visibilité/);
+  assert.match(html, /Nous appliquons directement les recommandations formulées dans ce rapport/);
+  assert.doesNotMatch(html, /Votre fiche sera optimisée/, "jamais une formule de brochure générique");
+
+  const pack1Index = html.indexOf("Je souhaite gagner du temps");
+  const productName1Index = html.indexOf("Pack Visibilité Google");
+  const outcome1Index = html.indexOf("Nous appliquons directement les recommandations formulées dans ce rapport,");
+  const findingsLabel1Index = html.indexOf("Ce que nous corrigeons, identifié dans ce rapport");
+  assert.ok(productName1Index > pack1Index, "le nom du pack doit apparaître sous le titre-intention");
+  assert.ok(outcome1Index > productName1Index, "le résultat attendu doit suivre le nom du pack");
+  assert.ok(findingsLabel1Index > outcome1Index, "le résultat attendu doit précéder la liste des prestations");
+
+  // Bénéfices dérivés des priorités réelles du rapport (ici
+  // description/photos/position), jamais une liste générique.
+  assert.match(html, /Description/);
+  assert.match(html, /Galerie photos/);
+  assert.match(html, /Visibilité/);
+  for (const forbiddenPromise of [/plus de clients/i, /plus de chiffre d'affaires/i, /première position Google/i]) {
+    assert.doesNotMatch(html, forbiddenPromise);
+  }
+
+  // CTA plus naturels, une intention plutôt qu'un intitulé de bouton générique.
+  assert.match(html, /Commencer avec le Pack Visibilité/);
+  assert.match(html, /Je choisis cette solution/);
+  assert.doesNotMatch(html, /Choisir le Pack Visibilité/, "l'ancien intitulé de CTA ne doit plus exister");
+  assert.doesNotMatch(html, /Choisir le Pack Performance/, "l'ancien intitulé de CTA ne doit plus exister");
+
+  // Bloc 4 — encadré de déduction (inchangé, déjà validé).
+  assert.match(html, /Votre Audit Premium n'est pas une dépense perdue/);
+  assert.match(html, /les 99 € déjà investis seront intégralement déduits/);
+
+  // Les blocs "Pourquoi confier..."/"Pourquoi certains choisissent..."
+  // restent supprimés, et aucun langage commercial ne doit apparaître.
+  assert.doesNotMatch(html, /Pourquoi confier cette mission à Efficia Digital/);
+  assert.doesNotMatch(html, /Pourquoi certains choisissent de nous confier ces optimisations/);
+  for (const salesLanguage of [/nous sommes les meilleurs/i, /choisissez-nous/i, /profitez de/i]) {
+    assert.doesNotMatch(html, salesLanguage, "aucun langage commercial");
+  }
+
+  // Bloc 5 — une conclusion plus humaine, avec signature, jamais une
+  // injonction à décider maintenant.
+  assert.match(html, /Quelle que soit votre décision, cet audit reste votre feuille de route/);
+  assert.match(html, /Si vous préférez nous confier cette mission dans les 30 prochains jours/);
+  const signatureIndex = html.indexOf("Merci de votre confiance.");
+  assert.ok(signatureIndex > closingStart, "la signature doit suivre la phrase de clôture");
+  assert.match(html, /L'équipe Efficia Digital/);
+});
+
+test("page finale de conversion : sans priorité disponible, repli générique sobre (aucun diagnostic inventé)", () => {
+  const html = renderAnalysisHtml(baseModel({ priorities: [] }));
+  assertNoForbiddenArtifacts(html, "page de conversion sans priorité");
+  assert.match(html, /Ce que nous corrigeons, identifié dans ce rapport/);
+  assert.match(html, /Visibilité/);
+});
+
+test("page finale de conversion : jamais les mots interdits (réduction/promotion/remise/offre exceptionnelle), toujours \"déduit\"", () => {
+  const html = renderAnalysisHtml(baseModel());
+  const text = visibleText(html).toLowerCase();
+
+  for (const forbidden of ["réduction", "promotion", "remise", "offre exceptionnelle"]) {
+    assert.doesNotMatch(text, new RegExp(forbidden), `le mot "${forbidden}" ne doit jamais apparaître`);
+  }
+  assert.match(text, /déduit/);
+});
+
+test("page finale de conversion : n'utilise aucune classe CSS scopée .free-diagnostic (Diagnostic gratuit non touché)", () => {
+  const html = renderAnalysisHtml(baseModel());
+  const start = html.indexOf("<h2>Votre audit est terminé.</h2>");
+  const end = html.indexOf("Quelle que soit votre décision");
+  const section = html.slice(html.lastIndexOf("<section", start), html.indexOf("</section>", end));
+  assert.doesNotMatch(section, /free-diagnostic/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Mission "dernières corrections de qualité avant la bêta", objectifs 1 et 2 */
+/* — bug corrigé : mots collés dans le PDF ("Surla", "contre0",              */
+/* "renforceraitla"...) et dernière page dont le texte s'affichait un mot par */
+/* ligne. Cause identifiée : `overflow-wrap: anywhere` sur h1/h2/h3/p         */
+/* (voir renderAnalysisHtml.js) — un comportement instable spécifiquement    */
+/* entre le rendu écran et le rendu PDF natif de Chromium. Remplacé par      */
+/* `break-word` pour le rapport premium ; le Diagnostic gratuit (règle       */
+/* absolue, jamais modifié) conserve explicitement son comportement exact    */
+/* d'avant ce correctif via une règle .free-diagnostic p dédiée.             */
+/* -------------------------------------------------------------------------- */
+
+test("rapport premium : n'utilise plus overflow-wrap: anywhere sur le texte courant (cause du bug \"mots collés\")", () => {
+  const html = renderAnalysisHtml(baseModel());
+  assert.match(html, /h1, h2, h3, p \{ overflow-wrap: break-word; \}/);
+  assert.doesNotMatch(html, /h1, h2, h3, p \{ overflow-wrap: anywhere; \}/);
+});
+
+test("Diagnostic gratuit : conserve exactement son comportement overflow-wrap précédent (non touché par le correctif premium)", () => {
+  const html = renderAnalysisHtml(baseModel());
+  assert.match(html, /\.free-diagnostic h1,\s*\.free-diagnostic h2,\s*\.free-diagnostic h3 \{\s*overflow-wrap: anywhere;\s*\}/);
+  assert.match(html, /\.free-diagnostic p \{\s*overflow-wrap: anywhere;\s*\}/);
+});

@@ -91,17 +91,26 @@ function buildPipelineInput(payload, orderContext = null) {
   const taskId = cleanInput(payload?.taskId || payload?.task_id || task.task_id, 120);
   const reportType = normalizeReportType(payload?.reportType || payload?.report_type, order);
 
-  if (!isValidGoogleBusinessUrl(googleBusinessUrl)) {
+  // Deux façons équivalentes d'identifier l'entreprise (formulaire "Nouvel
+  // audit") : l'URL Google Business seule, ou le Nom + la Ville. On ne
+  // rejette la requête que si NI l'une NI l'autre n'est disponible — jamais
+  // l'URL seule comme avant. Le reste de cette fonction sait déjà construire
+  // un pipelineInput valide à partir de Nom+Ville seuls (branche `hasCity`
+  // ci-dessous, inchangée) : le seul verrou à lever était ce garde-fou.
+  const hasValidUrl = isValidGoogleBusinessUrl(googleBusinessUrl);
+  const hasCompanyAndCity = Boolean(companyName) && Boolean(city);
+
+  if (!hasValidUrl && !hasCompanyAndCity) {
     return {
       ok: false,
       status: 400,
       error: "INVALID_GOOGLE_BUSINESS_URL",
-      message: "Renseignez une URL Google Maps ou Google Business valide.",
+      message: "Renseignez une URL Google Maps ou Google Business valide, ou un nom d'entreprise et une ville.",
     };
   }
 
-  const inferredName = extractBusinessNameFromGoogleUrl(googleBusinessUrl);
-  const nom = companyName || inferredName || googleBusinessUrl;
+  const inferredName = hasValidUrl ? extractBusinessNameFromGoogleUrl(googleBusinessUrl) : "";
+  const nom = companyName || inferredName || googleBusinessUrl || "Entreprise sans nom";
   const hasCity = Boolean(city);
   const ville = city || "Non renseignée";
   const activite = hasCity ? (companyName || inferredName || "entreprise locale") : "";
@@ -113,7 +122,7 @@ function buildPipelineInput(payload, orderContext = null) {
 
   if (!hasCity && (companyName || inferredName)) {
     pipelineInput.observationQuery = companyName || inferredName;
-  } else if (!hasCity) {
+  } else if (!hasCity && hasValidUrl) {
     pipelineInput.googleBusinessUrl = googleBusinessUrl;
   }
 
@@ -374,7 +383,10 @@ export async function onRequestPost(context) {
   const origin = new URL(context.request.url).origin;
 
   console.log("admin-audits:start", {
-    has_google_url: true,
+    // Avant cette mission, l'URL était toujours obligatoire : cette valeur
+    // était donc toujours vraie. Elle reflète désormais l'état réel (Mode 1
+    // vs Mode 2 — voir buildPipelineInput ci-dessus).
+    has_google_url: Boolean(prepared.requestMetadata.googleBusinessUrl),
     has_company: Boolean(prepared.requestMetadata.companyName),
     has_city: Boolean(prepared.requestMetadata.city),
     report_type: prepared.requestMetadata.reportType,

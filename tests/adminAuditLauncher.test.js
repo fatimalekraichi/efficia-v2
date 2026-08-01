@@ -146,13 +146,56 @@ test("admin audit launcher refuse une requête sans session admin", async () => 
   assert.equal(response.status, 401);
 });
 
-test("admin audit launcher refuse une URL Google absente ou invalide", async () => {
+test("admin audit launcher refuse une URL Google absente ou invalide, sauf si Nom + Ville sont renseignés", async () => {
   const cookie = await makeAdminCookie();
   const missing = await onRequestPost(await makeContext({ googleBusinessUrl: "" }, { cookie }));
   const invalid = await onRequestPost(await makeContext({ googleBusinessUrl: "https://example.com" }, { cookie }));
+  // Mission "améliorer la validation du formulaire" — Nom seul (sans ville) ne
+  // suffit pas à remplacer l'URL : les deux modes restent des voies
+  // distinctes et complètes (URL seule, ou Nom ET Ville ensemble).
+  const nameOnly = await onRequestPost(await makeContext({ googleBusinessUrl: "", companyName: "Garage Central" }, { cookie }));
 
   assert.equal(missing.status, 400);
   assert.equal(invalid.status, 400);
+  assert.equal(nameOnly.status, 400);
+});
+
+test("admin audit launcher accepte Nom + Ville sans aucune URL Google (Mode 2)", async () => {
+  const cookie = await makeAdminCookie();
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const pathname = new URL(url).pathname;
+    const body = JSON.parse(options.body || "{}");
+    calls.push({ pathname, body });
+    if (pathname === "/api/analyze") {
+      assert.deepEqual(body, {
+        nom: "Garage Central",
+        ville: "Arlon",
+        activite: "Garage Central",
+      });
+      return Response.json({ analysisId: "analysis-123", status: "collected" });
+    }
+    return Response.json({ success: true, status: "completed" });
+  };
+
+  try {
+    const response = await onRequestPost(await makeContext({
+      googleBusinessUrl: "",
+      companyName: "Garage Central",
+      city: "Arlon",
+    }, { cookie }));
+    const json = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(json.success, true);
+    assert.deepEqual(calls.map((call) => call.pathname), [
+      "/api/analyze",
+      "/api/benchmark",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("admin audit launcher collecte observation et benchmark puis retourne la validation", async () => {
@@ -314,6 +357,29 @@ test("l'ancien outil ne contient plus de clés, connecteur ou logique locale d'a
   assert.match(html, /\/admin\/new-audit\//);
 });
 
+test("le formulaire \"Nouvel audit\" accepte deux façons équivalentes d'identifier l'entreprise (URL, ou Nom + Ville)", async () => {
+  const html = await readFile(new URL("../admin/new-audit/index.html", import.meta.url), "utf8");
+  const script = await readFile(new URL("../js/admin-new-audit.js", import.meta.url), "utf8");
+
+  // HTML — aucun `required` statique sur l'URL : les deux modes sont
+  // équivalents, la contrainte est désormais gérée dynamiquement par le JS.
+  // `novalidate` désactive l'infobulle native du navigateur au profit du
+  // message explicite affiché dans [data-admin-audit-error].
+  assert.match(html, /<form class="admin-form admin-audit-form" data-admin-audit-form novalidate>/);
+  assert.doesNotMatch(html, /name="googleBusinessUrl"[^>]*required/, "l'URL ne doit plus être required de façon statique");
+
+  // JS — la validation accepte (URL) OU (Nom ET Ville), avec un message
+  // explicite plutôt que "Veuillez renseigner ce champ.", et les attributs
+  // required/aria-required sont recalculés dynamiquement.
+  assert.match(script, /hasIdentification/);
+  assert.match(script, /Veuillez renseigner soit l.URL Google Business, soit le nom de l.entreprise et sa ville\./);
+  assert.doesNotMatch(script, /Veuillez renseigner ce champ/);
+  assert.match(script, /function updateRequiredState/);
+  assert.match(script, /urlField\.required = urlRequired/);
+  assert.match(script, /nameField\.required = nameCityRequired/);
+  assert.match(script, /cityField\.required = nameCityRequired/);
+});
+
 test("la nouvelle interface bloque les doubles soumissions et n'expose aucun secret", async () => {
   const html = await readFile(new URL("../admin/new-audit/index.html", import.meta.url), "utf8");
   const script = await readFile(new URL("../js/admin-new-audit.js", import.meta.url), "utf8");
@@ -371,6 +437,51 @@ test("admin audit launcher accepte une URL Google sans ville en utilisant un nom
     activite: "",
     observationQuery: "Arzani Wafa (Dr)",
   });
+});
+
+test("buildPipelineInput accepte Nom + Ville sans URL (Mode 2)", () => {
+  const prepared = __test__.buildPipelineInput({
+    googleBusinessUrl: "",
+    companyName: "Garage Central",
+    city: "Arlon",
+  });
+
+  assert.equal(prepared.ok, true);
+  assert.deepEqual(prepared.pipelineInput, {
+    nom: "Garage Central",
+    ville: "Arlon",
+    activite: "Garage Central",
+  });
+});
+
+test("buildPipelineInput refuse Nom seul (sans Ville) et sans URL", () => {
+  const prepared = __test__.buildPipelineInput({
+    googleBusinessUrl: "",
+    companyName: "Garage Central",
+  });
+
+  assert.equal(prepared.ok, false);
+  assert.equal(prepared.status, 400);
+  assert.equal(prepared.error, "INVALID_GOOGLE_BUSINESS_URL");
+});
+
+test("buildPipelineInput refuse Ville seule (sans Nom) et sans URL", () => {
+  const prepared = __test__.buildPipelineInput({
+    googleBusinessUrl: "",
+    city: "Arlon",
+  });
+
+  assert.equal(prepared.ok, false);
+  assert.equal(prepared.status, 400);
+});
+
+test("buildPipelineInput continue d'accepter l'URL seule (Mode 1, comportement inchangé)", () => {
+  const prepared = __test__.buildPipelineInput({
+    googleBusinessUrl: "https://www.google.com/maps/place/Garage+Central/",
+  });
+
+  assert.equal(prepared.ok, true);
+  assert.equal(prepared.pipelineInput.nom, "Garage Central");
 });
 
 test("normalise le type de rapport", () => {

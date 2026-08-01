@@ -41,6 +41,10 @@ function mapPlace(place) {
     working_hours: place.working_hours ?? null,
     subtypes,
     location_link: place.location_link || "",
+    // CID Google (identifiant unique alternatif au place_id) : utilisé pour exclure la fiche
+    // analysée de ses propres concurrents (voir collectCompetitors.js). Outscraper l'expose sous
+    // des noms de champ variables selon les endpoints ; on couvre les variantes connues.
+    cid: place.cid || place.google_id || place.googleId || "",
     // Champs Outscraper documentés (dictionnaire Google Maps) mais jusqu'ici jamais extraits :
     // category/type (catégorie), phone (téléphone), site/website (site web), address (adresse).
     category: place.category || "",
