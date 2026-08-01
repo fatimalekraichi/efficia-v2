@@ -1,7 +1,10 @@
 // Collecte concurrentielle locale Outscraper (Appel B).
-// Reçoit { activite, ville, placeIdCible, apiKey }, renvoie :
+// Reçoit { activite, ville, placeIdCible, cidCible, urlCible, apiKey }, renvoie :
 //   succès -> { ok: true, requete, position, concurrents }
 //   erreur -> { ok: false, code, error, status? }
+// placeIdCible/cidCible/urlCible identifient la fiche déjà analysée (Appel A) : toute fiche brute
+// correspondant à l'un de ces identifiants est exclue de `concurrents` avant retour — la fiche
+// analysée ne doit jamais apparaître comme son propre concurrent.
 
 const OUTSCRAPER_HOST = "https://api.app.outscraper.com";
 const OUTSCRAPER_SEARCH_PATH = "/maps/search-v3";
@@ -50,7 +53,36 @@ function extractPlaces(payload) {
   return firstQuery && typeof firstQuery === "object" ? [firstQuery] : [];
 }
 
-export async function collectCompetitors({ activite, ville, placeIdCible, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+// Normalisation légère pour comparer deux URL Google (espaces superflus, casse) sans dépendre
+// d'une éventuelle différence de tracking/paramètres mineurs entre deux appels Outscraper distincts.
+function normalizeUrlForComparison(value) {
+  return (value || "").trim().toLowerCase();
+}
+
+// Bug corrigé — "l'entreprise est présente dans ses propres concurrents" : avant cette fonction,
+// seul le place_id était comparé, et seulement si placeIdCible était renseigné (sinon aucune
+// exclusion n'avait lieu). On compare désormais aussi le CID et l'URL Google, dès que l'un OU
+// l'autre identifiant cible est disponible — un concurrent brut est considéré "même fiche" dès
+// qu'UN SEUL identifiant correspond.
+function buildIsSameBusiness({ placeIdCible, cidCible, urlCible }) {
+  const targetPlaceId = (placeIdCible || "").trim();
+  const targetCid = (cidCible || "").trim();
+  const targetUrl = normalizeUrlForComparison(urlCible);
+
+  return function isSameBusiness(place) {
+    if (!place || typeof place !== "object") return false;
+    const placeId = (place.place_id || "").trim();
+    const cid = (place.cid || place.google_id || place.googleId || "").trim();
+    const url = normalizeUrlForComparison(place.location_link);
+
+    if (targetPlaceId && placeId && placeId === targetPlaceId) return true;
+    if (targetCid && cid && cid === targetCid) return true;
+    if (targetUrl && url && url === targetUrl) return true;
+    return false;
+  };
+}
+
+export async function collectCompetitors({ activite, ville, placeIdCible, cidCible, urlCible, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const activiteTrim = (activite || "").trim();
   const villeTrim = (ville || "").trim();
   if (!activiteTrim || !villeTrim) {
@@ -111,8 +143,10 @@ export async function collectCompetitors({ activite, ville, placeIdCible, apiKey
   const targetPlaceId = (placeIdCible || "").trim();
   const targetIndex = targetPlaceId ? places.findIndex(place => place.place_id === targetPlaceId) : -1;
   const position = targetIndex >= 0 ? targetIndex + 1 : 0;
+
+  const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
   const concurrents = places
-    .filter(place => !targetPlaceId || place.place_id !== targetPlaceId)
+    .filter(place => !isSameBusiness(place))
     .slice(0, 3)
     .map(mapCompetitor);
 

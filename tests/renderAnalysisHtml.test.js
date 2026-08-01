@@ -151,7 +151,65 @@ test("renderAnalysisHtml affiche le bloc de comparaison VOUS / Meilleure fiche o
   assert.match(html, /comparison-card/);
   assert.match(html, /Concurrent anonymisé/);
   assert.match(html, /4,8\/5|4\.8\/5/);
+  // Mission "dernières corrections de qualité avant la bêta", objectif 3 :
+  // cette fixture fournit à la fois hero.rank (aheadCount/totalCompetitors)
+  // ET un signal "position" avec une valeur (weaknesses[0].evidence.value:
+  // 4) — la phrase pédagogique qui relie les deux remplace donc désormais la
+  // simple phrase de comparaison seule (voir buildPedagogicalRankNote).
+  assert.match(html, /Lors de notre recherche, votre fiche apparaissait en 4e position\./);
+  assert.match(html, /Parmi les 3 concurrents analysés dans ce rapport, 2 étaient mieux classés que vous\./);
+});
+
+test("renderAnalysisHtml : sans signal \"position\" disponible, conserve la phrase de comparaison d'origine (aucune régression)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    weaknesses: [],
+    priorities: [],
+    hero: {
+      ...makeDocumentModel().hero,
+      comparison: {
+        you: { label: "Vous", rating: 4.6, reviews: 449, photos: 10 },
+        best: { label: "Meilleure fiche observée", name: "Concurrent anonymisé", rating: 4.8, reviews: 324, photos: 234 },
+      },
+      rank: { aheadCount: 2, totalCompetitors: 3, text: "Vous êtes actuellement derrière 2 concurrents sur cette recherche (sur 3 observés)." },
+    },
+  }));
+
   assert.match(html, /derrière 2 concurrents/);
+  assert.doesNotMatch(html, /Lors de notre recherche/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Mission "dernières corrections de qualité avant la bêta", objectif 4 —     */
+/* pour un artisan, "vos clients" (dans les angles SIGNAL_ANGLES, tous en     */
+/* contexte AVANT décision) devient "vos futurs clients"/"vos prospects".     */
+/* Uniquement les phrases exactes listées (ARTISAN_PROSPECT_PHRASE_FIXES,     */
+/* renderAnalysisHtml.js) — jamais un remplacement aveugle de "clients".      */
+/* -------------------------------------------------------------------------- */
+
+test("secteur artisan : l'angle d'une priorité \"vos clients\" devient \"vos prospects\" (avant décision)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    hero: { ...makeDocumentModel().hero, category: "Plombier" },
+    priorities: [
+      {
+        rank: 1,
+        id: "WEAK_POSITION",
+        signal: "position",
+        title: "Renforcer la visibilité locale",
+        reasoning: "Être visible dans les premiers résultats augmente les chances d'être contacté.",
+        severity: "high",
+        evidence: { value: 4, competitorMedian: null, unit: "position", source: "Observation" },
+        actionability: { estimatedTime: "30 à 45 minutes" },
+      },
+    ],
+  }));
+
+  assert.match(html, /Être visible au bon moment fait souvent la différence pour vos prospects/);
+  assert.doesNotMatch(html, /fait souvent la différence pour vos clients/);
+});
+
+test("secteur restaurant : les angles \"vos clients\" restent inchangés (correctif limité au secteur artisan)", () => {
+  const html = renderAnalysisHtml(makeDocumentModel());
+  assert.match(html, /Être visible au bon moment fait souvent la différence pour vos clients/);
 });
 
 test("renderAnalysisHtml n'affiche pas le bloc de comparaison quand hero.comparison est absent", () => {
@@ -179,6 +237,26 @@ test("renderAnalysisHtml n'affiche pas le bloc domaines quand model.domains est 
   const html = renderAnalysisHtml(makeDocumentModel());
 
   assert.doesNotMatch(html, /<div class="domains-block">/);
+});
+
+test("renderAnalysisHtml : Résumé exécutif — le double sens de \"rapport\" (document / ratio) dans la même phrase est corrigé (objectif 7)", () => {
+  // Composer (summaryTemplates.js, LEVERS_CLOSING — non modifiable) produit
+  // littéralement "Les recommandations de ce rapport ... le meilleur rapport
+  // entre effort et impact potentiel." : deux sens différents de "rapport" à
+  // quelques mots d'écart. Presentation corrige ce défaut d'écriture sans
+  // toucher au module qui l'a produit.
+  const html = renderAnalysisHtml(makeDocumentModel({
+    executiveSummary: {
+      text: "Texte de repli inchangé.",
+      opening: "Votre fiche possède déjà plusieurs éléments solides.",
+      leversIntro: "Aujourd'hui, les principaux leviers qui limitent votre visibilité sont :",
+      leversList: ["la note moyenne", "la visibilité locale"],
+      leversClosing: "Les recommandations de ce rapport se concentrent sur ces priorités, car elles offrent aujourd'hui le meilleur rapport entre effort et impact potentiel.",
+    },
+  }));
+
+  assert.doesNotMatch(html, /le meilleur rapport entre effort/, "les deux sens de \"rapport\" ne doivent plus se percuter dans la même phrase");
+  assert.match(html, /le meilleur équilibre entre effort et impact/);
 });
 
 test("renderAnalysisHtml affiche la synthèse en liste du résumé exécutif quand leversList est fournie (point 5)", () => {

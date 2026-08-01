@@ -27,6 +27,7 @@ import {
   buildClosingStatement,
   formatRatingDisplay,
   formatCount,
+  formatOrdinal,
 } from "./presentationFormatter.js";
 
 const EFFICIA_BLUE = "#2563eb";
@@ -54,6 +55,102 @@ function safeNumber(value, fallback = "Non disponible") {
   return escapeHtml(Number.isInteger(parsed) ? parsed : parsed.toFixed(1));
 }
 
+// Mission "dernières corrections de qualité avant la bêta", objectif 4 —
+// pour un artisan (électricien, plombier, chauffagiste...), "vos clients"
+// désigne souvent des personnes qui n'ont PAS ENCORE choisi l'entreprise
+// (elles comparent, hésitent, n'ont pas encore pris contact) : "vos futurs
+// clients"/"vos prospects" lit mieux dans ce cas précis. Presentation
+// Formatter ne peut être modifié que pour des bugs de typographie (règle
+// absolue de cette mission) : cette liste vit donc ici, au niveau du
+// renderer, phrase par phrase — jamais un remplacement aveugle de "clients"
+// (qui casserait les cas où le mot désigne une clientèle déjà acquise). Les
+// quatre phrases ci-dessous sont les angles (SIGNAL_ANGLES,
+// presentationFormatter.js) réellement affichés pour un artisan : chacune
+// décrit explicitement un moment AVANT la décision (premier choix, avant de
+// contacter, comprendre l'activité) — jamais une clientèle existante.
+const ARTISAN_PROSPECT_PHRASE_FIXES = [
+  [
+    "Pourquoi votre note influence le premier choix de vos clients",
+    "Pourquoi votre note influence le premier choix de vos futurs clients",
+  ],
+  [
+    "Le nombre d'avis reste l'un des signaux de confiance les plus regardés par vos clients",
+    "Le nombre d'avis reste l'un des signaux de confiance les plus regardés par vos prospects",
+  ],
+  [
+    "Vos photos aident vos clients à se projeter avant même de vous contacter",
+    "Vos photos aident vos prospects à se projeter avant même de vous contacter",
+  ],
+  [
+    "Une description claire permet à vos clients de comprendre votre activité en quelques secondes",
+    "Une description claire permet à vos futurs clients de comprendre votre activité en quelques secondes",
+  ],
+  [
+    "Être visible au bon moment fait souvent la différence pour vos clients",
+    "Être visible au bon moment fait souvent la différence pour vos prospects",
+  ],
+  // Objectif 5 (cohérence de la narration) — mêmes constats en relisant les
+  // rapports générés : ces trois phrases de Reasoning (businessImpacts.js,
+  // non modifié) décrivent aussi explicitement un moment AVANT la décision
+  // ("comparent plusieurs fiches", "hésitants" = pas encore choisi). À
+  // l'inverse, "retours clients" (avis déjà laissés par une clientèle
+  // acquise) n'est PAS repris ici : il désigne des clients existants, pas de
+  // futurs clients — exactement le cas que la mission demande de ne jamais
+  // remplacer aveuglément.
+  [
+    "Vos photos renforcent votre capacité à être choisi lorsque les clients comparent plusieurs fiches côte à côte.",
+    "Vos photos renforcent votre capacité à être choisi lorsque les prospects comparent plusieurs fiches côte à côte.",
+  ],
+  [
+    "En actualisant vos photos, vous améliorez votre présence quand les clients comparent plusieurs fiches côte à côte.",
+    "En actualisant vos photos, vous améliorez votre présence quand les prospects comparent plusieurs fiches côte à côte.",
+  ],
+  [
+    "Une fiche concurrente avec davantage d'avis peut sembler plus éprouvée et capter les clients hésitants.",
+    "Une fiche concurrente avec davantage d'avis peut sembler plus éprouvée et capter les prospects hésitants.",
+  ],
+];
+
+function applyArtisanProspectFixes(text, sector) {
+  if (sector !== "artisan") return text;
+  let result = text;
+  for (const [source, target] of ARTISAN_PROSPECT_PHRASE_FIXES) {
+    result = result.split(source).join(target);
+  }
+  return result;
+}
+
+// Objectif 7 (relecture éditoriale, mission "corrections de qualité avant la
+// bêta") — correctif tous secteurs, pas sectoriel : le Résumé exécutif
+// (Composer, summaryTemplates.js — buildExecutiveSummary/actionSentence et la
+// constante LEVERS_CLOSING, non modifiables ici) fait suivre "ce rapport" (le
+// document) de "le meilleur rapport entre effort et impact potentiel" (le
+// ratio) dans la même phrase — deux sens différents du mot "rapport" à
+// quelques mots d'écart, ce qu'un consultant senior ne laisserait pas passer.
+// Cette clause est partagée à l'identique par les deux formulations du
+// Résumé exécutif (avec et sans liste de leviers), d'où un remplacement de
+// sous-chaîne plutôt qu'un remplacement de phrase entière : la phrase à
+// liste de leviers contient un segment interpolé (les libellés des leviers)
+// qui varie d'un rapport à l'autre. Le correctif retire aussi le second
+// "aujourd'hui" de la phrase (le premier reste, dans "Aujourd'hui, les
+// principaux leviers...", juste au-dessus) et l'adjectif "potentiel",
+// superflu juste après "impact" — un mot en trop plutôt qu'une
+// reformulation du fond, conforme à l'objectif 7 (mots inutiles).
+const EDITORIAL_PHRASE_FIXES = [
+  [
+    "aujourd'hui le meilleur rapport entre effort et impact potentiel",
+    "le meilleur équilibre entre effort et impact",
+  ],
+];
+
+function applyEditorialPhraseFixes(text) {
+  let result = text;
+  for (const [source, target] of EDITORIAL_PHRASE_FIXES) {
+    result = result.split(source).join(target);
+  }
+  return result;
+}
+
 // Sprint 5 (finition éditoriale) — objectifs 1 et 3, PREMIUM UNIQUEMENT :
 // passe de nettoyage typographique + adaptation de vocabulaire sectoriel sur
 // un texte déjà rédigé par Reasoning/Composer, avant échappement HTML par
@@ -63,7 +160,10 @@ function safeNumber(value, fallback = "Non disponible") {
 // changement de comportement du Diagnostic gratuit).
 function presentableText(value, sector) {
   if (!present(value)) return value;
-  return cleanTypography(collapseKnownRedundancies(adaptVocabulary(String(value), sector)));
+  const withVocabulary = adaptVocabulary(String(value), sector);
+  const withProspectWording = applyArtisanProspectFixes(withVocabulary, sector);
+  const withEditorialFixes = applyEditorialPhraseFixes(withProspectWording);
+  return cleanTypography(collapseKnownRedundancies(withEditorialFixes));
 }
 
 const LABEL_TRANSLATIONS = {
@@ -300,16 +400,57 @@ function comparisonColumn(entity) {
   `;
 }
 
-function comparisonSection(hero) {
+// Objectif 3 (mission "dernières corrections de qualité avant la bêta") — la
+// position de recherche Google ("7e position", signal "position") et la
+// comparaison aux concurrents étudiés (hero.rank.aheadCount/totalCompetitors)
+// sont deux informations exactes mais jusqu'ici juxtaposées sans lien
+// explicite. Cette fonction ne recalcule rien : elle lit uniquement la valeur
+// du signal "position" déjà présente dans le modèle (Reasoning/Composer,
+// jamais modifiés), là où elle existe déjà (priorités, faiblesses,
+// opportunités ou forces).
+function findPositionSignalValue(model) {
+  const pools = [model?.priorities, model?.weaknesses, model?.opportunities, model?.strengths];
+  for (const pool of pools) {
+    const items = Array.isArray(pool) ? pool : [];
+    const match = items.find((item) => item?.signal === "position" && present(item?.evidence?.value));
+    if (match) return match.evidence.value;
+  }
+  return null;
+}
+
+// Ne remplace la phrase existante (hero.rank.text, déjà écrite par Composer)
+// que lorsque la position de recherche est aussi disponible : dans ce cas
+// précis, une seule phrase mélangeait deux notions différentes. Sans cette
+// donnée, aucun changement — la phrase d'origine reste affichée telle quelle.
+function buildPedagogicalRankNote(model) {
+  const rank = model?.hero?.rank;
+  if (!rank || !Number.isFinite(rank.aheadCount) || rank.aheadCount <= 0) return rank?.text || "";
+
+  const totalKnown = Number.isFinite(rank.totalCompetitors) && rank.totalCompetitors > 0;
+  const positionValue = findPositionSignalValue(model);
+  if (!present(positionValue) || !totalKnown) return rank.text || "";
+
+  const totalPlural = rank.totalCompetitors > 1 ? "s" : "";
+  const aheadPlural = rank.aheadCount > 1 ? "s" : "";
+  const wereWord = rank.aheadCount > 1 ? "étaient" : "était";
+
+  return `Lors de notre recherche, votre fiche apparaissait en ${formatOrdinal(positionValue)} position. `
+    + `Parmi les ${rank.totalCompetitors} concurrent${totalPlural} analysé${totalPlural} dans ce rapport, `
+    + `${rank.aheadCount} ${wereWord} mieux classé${aheadPlural} que vous.`;
+}
+
+function comparisonSection(model) {
+  const hero = model.hero || {};
   const card = hero.comparison;
   if (!card) return "";
+  const rankNote = buildPedagogicalRankNote(model);
   return `
     <div class="comparison-card">
       ${comparisonColumn(card.you)}
       <div class="comparison-divider" aria-hidden="true"></div>
       ${comparisonColumn(card.best)}
     </div>
-    ${hero.rank?.text ? `<p class="comparison-rank">${safeText(hero.rank.text)}</p>` : ""}
+    ${rankNote ? `<p class="comparison-rank">${safeText(rankNote)}</p>` : ""}
   `;
 }
 
@@ -354,7 +495,7 @@ function heroSection(model, sector) {
           <p class="score-interpretation">${safeText(presentableText(scoreInterpretationNote(hero.score), sector))}</p>
         </div>
       </div>
-      ${comparisonSection(hero)}
+      ${comparisonSection(model)}
       <div class="cover-bottom">
         <article class="hero-card executive-card">
           <div>
@@ -835,6 +976,201 @@ function conclusionSummarySection(model, sector) {
   `;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Mission "transformer la dernière page en conclusion de conseil" —          */
+/* troisième et dernière révision de la seule page "Et maintenant ?" (aucune  */
+/* autre page touchée). Objectif 1 : une seule page, dense et sobre, plutôt   */
+/* que les deux feuillets de la version précédente — le lecteur est déjà      */
+/* arrivé au bout d'un rapport long, la conversion doit être courte.          */
+/*                                                                            */
+/* Objectif 4 : les "bénéfices" des packs ne sont plus une liste générique    */
+/* fixe — reportFindingLabels() ci-dessous relit simplement model.priorities  */
+/* (déjà calculé par Composer, jamais recalculé ni réordonné ici) et affiche  */
+/* le libellé court du signal de chaque priorité déjà identifiée (ex.         */
+/* "Description", "Galerie photos"). Aucun nouveau diagnostic n'est inventé : */
+/* si aucune priorité n'existe, un repli sobre et générique est utilisé.      */
+/*                                                                            */
+/* Réutilise uniquement des classes/couleurs déjà existantes (offer-card,     */
+/* hero-card, summary-recap-card, score-card, tokens --blue/--ink/--white/    */
+/* --soft déjà utilisés ailleurs) : seules les classes propres à la mise en   */
+/* page de cette page sont nouvelles. Aucun mot "réduction/promotion/         */
+/* remise" : uniquement "déduction" de l'investissement déjà réalisé.        */
+/* -------------------------------------------------------------------------- */
+
+// Objectif 4 — libellé court et lisible pour chaque signal déjà identifié
+// par Reasoning/Composer (item.signal, jamais recalculé). Local à cette page
+// uniquement : ne modifie ni LABEL_TRANSLATIONS (partagé avec le Diagnostic
+// gratuit) ni presentationFormatter.js.
+const SIGNAL_SHORT_LABELS = {
+  rating: "Note",
+  reviews: "Avis",
+  photos: "Galerie photos",
+  description: "Description",
+  categories: "Catégories",
+  position: "Visibilité",
+};
+
+// Reprend les priorités déjà classées par Composer (model.priorities, ordre
+// non modifié) et n'en garde que le libellé court du signal — jamais le
+// texte complet (déjà affiché plus tôt dans le rapport), jamais une nouvelle
+// analyse. Repli générique et sobre si aucune priorité n'est disponible.
+function reportFindingLabels(model, limit = 4) {
+  const priorities = Array.isArray(model?.priorities) ? model.priorities : [];
+  const labels = [];
+  for (const item of priorities) {
+    const label = SIGNAL_SHORT_LABELS[item?.signal];
+    if (label && !labels.includes(label)) labels.push(label);
+    if (labels.length >= limit) break;
+  }
+  return labels.length ? labels : ["Visibilité", "Réputation", "Présentation de votre fiche"];
+}
+
+function packFindingsList(items, introLabel) {
+  return `
+    <div class="pack-findings">
+      ${introLabel ? `<p class="pack-findings-label">${safeText(introLabel)}</p>` : ""}
+      <ul class="pack-features">
+        ${items.map((item) => `<li>${icon("check")}<span>${safeText(item)}</span></li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+// Objectif 6 — un vrai CTA (plus grand, plus visible qu'un badge), structure
+// prête pour Stripe mais non relié : un <span>, jamais un <button>/<a>, ce
+// document étant aussi imprimé en PDF (aucune interactivité possible sur
+// papier) — on ne pose que l'apparence visuelle, sans laisser croire à un
+// lien ou une action cliquable réelle.
+function packCtaButton(label) {
+  return `<span class="pack-cta" role="presentation">${safeText(label)}</span>`;
+}
+
+// Objectif 2/5 (mission précédente) — "popular" reprend le traitement bleu
+// clair déjà utilisé (badge "Le plus choisi"), "premium" utilise un fond
+// sombre (var(--ink), déjà existant) pour que le Pack Performance se lise
+// immédiatement comme le palier supérieur — mêmes couleurs de la charte,
+// aucune nouvelle teinte.
+//
+// Mission "la page doit parler du client" — le titre visible en grand
+// (`intentTitle`) est désormais une intention du lecteur ("Je souhaite
+// gagner du temps"), jamais un nom de produit : le cerveau choisit plus
+// facilement une intention qu'un nom de pack. Le nom du pack (`productName`)
+// redevient un repère secondaire, en petit, juste sous le prix — même
+// principe déjà appliqué à .pack-findings (contenu secondaire, style
+// démoté).
+function packCard({ intentTitle, productName, price, badge, outcome, includesLabel, findings, findingsLabel, ctaLabel, variant }) {
+  const modifierClass = variant === "premium" ? " pack-card-premium" : variant === "popular" ? " pack-card-highlight" : "";
+  return `
+    <article class="offer-card pack-card${modifierClass}">
+      ${badge ? `<span class="pack-badge">${safeText(badge)}</span>` : ""}
+      <h3>${safeText(intentTitle)}</h3>
+      <div class="pack-price">${safeText(price)}</div>
+      ${productName ? `<p class="pack-product-name">${safeText(productName)}</p>` : ""}
+      ${outcome ? `<p class="pack-outcome">${safeText(outcome)}</p>` : ""}
+      ${includesLabel ? `<p class="pack-includes">${safeText(includesLabel)}</p>` : ""}
+      ${packFindingsList(findings, findingsLabel)}
+      ${ctaLabel ? packCtaButton(ctaLabel) : ""}
+    </article>
+  `;
+}
+
+// Mission "la page doit parler du client" — la page raconte désormais
+// l'histoire du lecteur avant de parler d'Efficia :
+//   1. Ce que le lecteur sait déjà, grâce à ce rapport (récapitulatif en
+//      quatre points, jamais un nouveau diagnostic — uniquement le rappel
+//      des catégories déjà lues : forces/limites/axes/ordre d'action), puis
+//      les deux possibilités qui s'offrent à lui.
+//   2. Une phrase de transition vers les accompagnements.
+//   3. Les packs — le grand titre est une intention du lecteur, le nom du
+//      pack redevient un repère secondaire en petit ; le texte de résultat
+//      renvoie explicitement à CE rapport, jamais une formule de brochure.
+//   4. Pourquoi les 99 € ne sont pas perdus (inchangé, déjà validé).
+//   5. Une conclusion plus humaine, avec une signature.
+function finalConversionSection(model) {
+  // Objectif 4 (mission précédente) — mêmes signaux prioritaires déjà
+  // présentés au lecteur, pas une nouvelle liste : le Pack Visibilité
+  // reprend ce qui a été identifié dans CE rapport précis.
+  const findings = reportFindingLabels(model);
+
+  return `
+    <section class="page final-page">
+      ${header("Et maintenant ?")}
+      <div class="section-intro conversion-intro">
+        <p class="eyebrow">Et maintenant ?</p>
+        <h2>Votre audit est terminé.</h2>
+        <p class="conversion-recap-label">Aujourd'hui, vous savez exactement :</p>
+        <ul class="conversion-recap">
+          <li>${icon("check")}<span>ce qui fonctionne déjà</span></li>
+          <li>${icon("check")}<span>ce qui limite votre visibilité</span></li>
+          <li>${icon("check")}<span>ce qui mérite d'être amélioré</span></li>
+          <li>${icon("check")}<span>dans quel ordre agir</span></li>
+        </ul>
+        <p class="conversion-choices-label">Vous avez maintenant deux possibilités :</p>
+        <ul class="conversion-choices">
+          <li>appliquer vous-même les recommandations de ce rapport</li>
+          <li>ou nous confier directement leur mise en œuvre</li>
+        </ul>
+      </div>
+
+      <!-- Objectif 6 (mission "corrections de qualité avant la bêta") — la
+           transition ne répète plus littéralement "gagner du temps" (déjà
+           utilisé comme intitulé du premier pack juste en dessous), et les
+           deux textes de résultat ne suivent plus le même moule phrase à
+           phrase ("Nous appliquons... Vous gagnez du temps... Vous
+           bénéficiez de...") : une lecture côte à côte des deux cartes ne
+           doit pas sonner comme un gabarit rempli deux fois. -->
+      <p class="conversion-transition">Si vous préférez ne pas les mettre en œuvre vous-même, voici les accompagnements proposés par Efficia Digital.</p>
+
+      <div class="pack-grid">
+        ${packCard({
+          intentTitle: "Je souhaite gagner du temps",
+          productName: "Pack Visibilité Google",
+          price: "349 €",
+          badge: "Le plus choisi",
+          variant: "popular",
+          outcome: "Nous appliquons directement les recommandations formulées dans ce rapport, avec une mise en œuvre cohérente de bout en bout.",
+          findingsLabel: "Ce que nous corrigeons, identifié dans ce rapport",
+          findings,
+          ctaLabel: "Commencer avec le Pack Visibilité",
+        })}
+        ${packCard({
+          intentTitle: "Je souhaite aller plus loin",
+          productName: "Pack Performance",
+          price: "499 €",
+          badge: "Solution complète",
+          variant: "premium",
+          outcome: "Nous allons plus loin que le Pack Visibilité : mise en œuvre complète des recommandations, stratégie d'avis et suivi dans la durée pour consolider les résultats.",
+          includesLabel: "En plus du Pack Visibilité :",
+          findings: [
+            "Stratégie d'amélioration des avis",
+            "Optimisations complémentaires avancées",
+            "Priorisation renforcée des actions",
+            "Accompagnement suivi dans la durée",
+          ],
+          ctaLabel: "Je choisis cette solution",
+        })}
+      </div>
+
+      <!-- Objectif 3 (mission précédente) — le message principal n'est pas
+           le montant, mais le fait qu'il n'est pas perdu : très visible,
+           jamais "réduction". -->
+      <article class="score-card deductible-callout">
+        <p class="score-band">Votre Audit Premium n'est pas une dépense perdue.</p>
+        <p class="score-interpretation">Si vous choisissez un accompagnement dans les 30 jours, les 99 € déjà investis seront intégralement déduits.</p>
+      </article>
+
+      <!-- Mission "la page doit parler du client" — une conclusion plus
+           humaine : le rapport reste la propriété du lecteur, la déduction
+           n'est rappelée qu'en second, et la page se referme sur une
+           signature plutôt qu'un argumentaire. -->
+      <p class="summary-closing-statement">Quelle que soit votre décision, cet audit reste votre feuille de route. Vous pouvez vous y référer à tout moment pour améliorer progressivement votre visibilité sur Google. Si vous préférez nous confier cette mission dans les 30 prochains jours, les 99 € déjà investis seront intégralement déduits.</p>
+      <p class="conversion-signature">Merci de votre confiance.<br>L'équipe Efficia Digital</p>
+
+      ${footer(model, "Et maintenant ?")}
+    </section>
+  `;
+}
+
 // Sprint 4 (consolidation) — objectif 4 : ordre des sections corrigé. Les
 // priorités détaillées (Constat/Pourquoi/Preuve/Impact) doivent venir APRÈS
 // les points forts et les axes d'amélioration, jamais avant : le lecteur doit
@@ -867,6 +1203,7 @@ export function renderPremiumAuditHtml(documentModel = {}) {
     roadmapSection(documentModel, sector),
     methodologySection(documentModel, sector),
     conclusionSummarySection(documentModel, sector),
+    finalConversionSection(documentModel),
   ].filter((section) => section && section.trim().length > 0);
 
   return `<!doctype html>
@@ -1436,7 +1773,22 @@ function styles() {
         text-transform: uppercase;
       }
 
-      h1, h2, h3, p { overflow-wrap: anywhere; }
+      /* Bug corrigé (bêta) — mots collés dans le PDF ("Surla", "contre0",
+         "renforceraitla"...) et dernière page dont le texte s'affichait un mot
+         par ligne. Cause réelle : la valeur "anywhere" d'overflow-wrap
+         autorise le moteur de mise en page à couper une ligne A N'IMPORTE
+         QUEL caractère, y compris a l'endroit même d'une espace normale —
+         un comportement connu pour être instable entre le rendu écran
+         (aperçu HTML, jamais concerné) et le rendu PDF natif de Chromium
+         (Cloudflare Browser Rendering, /pdf), qui recalcule la mise en page
+         pour la pagination. Les textes source (knowledgeMessages.js,
+         presentationFormatter.js) contiennent bien les espaces attendues à
+         chaque endroit concerné : le défaut n'est donc pas un bug de
+         contenu, seulement de rendu. Remplacé par "break-word", qui ne coupe
+         que si un mot déborde réellement, sans jamais consommer une espace
+         normale — comportement standard, sans perte de protection contre un
+         débordement réel (URL longue, etc.). */
+      h1, h2, h3, p { overflow-wrap: break-word; }
 
       h1 {
         margin: 0;
@@ -2041,6 +2393,286 @@ function styles() {
         line-height: 1.6;
       }
 
+      /* Mission "la page doit parler du client" — une signature sobre,
+         pour une fin plus humaine que la seule phrase de clôture. */
+      .conversion-signature {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+
+      /* Mission "page finale de conversion" — nouvelle page "Et maintenant ?",
+         ajoutée après "En résumé". Les cartes elles-mêmes (.offer-card,
+         .hero-card, .summary-recap-card) sont déjà stylées par la liste
+         partagée bordure/fond/ombre plus haut ; seules les classes propres à
+         CETTE page sont ajoutées ici. Rien n'est scopé sous
+         .free-diagnostic : aucune règle existante n'est modifiée. */
+      .pack-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 4px;
+      }
+
+      .pack-card {
+        position: relative;
+        padding: 22px;
+      }
+
+      /* Objectif 1 — page unique, dense : l'intro de cette page précise n'a
+         pas besoin de l'espace généreux du .section-intro standard (conçu
+         pour des pages à un seul bloc). */
+      .conversion-intro {
+        padding-top: 24px;
+        padding-bottom: 4px;
+      }
+
+      .pack-card-highlight {
+        border-color: rgba(191, 219, 254, 0.9);
+        background: radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.06), transparent 55%), var(--white);
+      }
+
+      .pack-badge {
+        display: inline-flex;
+        margin-bottom: 14px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: var(--blue);
+        color: var(--white);
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .pack-card h3 {
+        font-size: 22px;
+      }
+
+      .pack-price {
+        margin-top: 10px;
+        color: var(--blue);
+        font-size: 30px;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      }
+
+      /* Mission "la page doit parler du client" — le nom du pack redevient
+         un simple repère, en petit, sous le prix : le grand titre (h3) est
+         désormais l'intention du lecteur, pas le nom du produit. */
+      .pack-product-name {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12.5px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      /* Objectif 4 — le résultat attendu, affiché avant la liste des
+         prestations : c'est ce que le client achète en premier. */
+      .pack-outcome {
+        margin-top: 14px;
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.55;
+      }
+
+      .pack-includes {
+        margin-top: 16px;
+        color: #26364f;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .pack-features {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .pack-features li {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        color: #26364f;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.45;
+      }
+
+      .pack-features svg { color: var(--blue); flex: 0 0 auto; margin-top: 2px; }
+
+      /* Objectif 5 — Pack Performance doit se lire comme le palier premium :
+         fond sombre (var(--ink), déjà utilisé ailleurs dans la charte pour le
+         texte), jamais une nouvelle couleur. Le badge/prix repassent en blanc
+         pour rester lisibles sur ce fond. */
+      .pack-card-premium {
+        background: var(--ink);
+        border-color: var(--ink);
+      }
+
+      .pack-card-premium h3,
+      .pack-card-premium .pack-price,
+      .pack-card-premium .pack-includes {
+        color: var(--white);
+      }
+
+      .pack-card-premium .pack-product-name,
+      .pack-card-premium .pack-outcome {
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .pack-card-premium .pack-badge {
+        background: var(--white);
+        color: var(--ink);
+      }
+
+      .pack-card-premium .pack-features li,
+      .pack-card-premium .pack-findings-label {
+        color: rgba(255, 255, 255, 0.92);
+      }
+
+      .pack-card-premium .pack-features svg {
+        color: #7fb0ff;
+      }
+
+      /* Objectif 4 — "ce que nous corrigeons", repris de model.priorities
+         (reportFindingLabels ci-dessus). Devient secondaire : le résultat
+         attendu (.pack-outcome) est désormais le premier message lu, cette
+         liste de prestations passe donc en retrait (taille réduite, liste
+         plus resserrée) plutôt qu'en avant-plan. */
+      .pack-findings {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      .pack-findings-label {
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .pack-findings .pack-features li {
+        font-size: 13px;
+      }
+
+      /* Objectif 6 — un vrai CTA (plus grand, plus visible qu'un badge) sous
+         chaque pack ; structure prête pour Stripe, non reliée. C'est le fond
+         de la carte (bleu clair ou sombre, cf. ci-dessus) qui distingue déjà
+         les deux paliers, le bouton reste donc identique sur les deux. */
+      .pack-cta {
+        display: block;
+        margin-top: 20px;
+        padding: 16px 22px;
+        border-radius: 14px;
+        background: var(--blue);
+        color: var(--white);
+        font-size: 15.5px;
+        font-weight: 850;
+        text-align: center;
+      }
+
+      .pack-card-premium .pack-cta {
+        background: var(--white);
+        color: var(--ink);
+      }
+
+      /* Mission "la page doit parler du client" — la page commence
+         désormais par ce que LE LECTEUR sait déjà (grâce à ce rapport),
+         avant de parler des deux possibilités puis d'Efficia. Même
+         intitulé visuel que .conversion-choices-label, pour que les deux
+         listes se lisent comme une suite naturelle. */
+      .conversion-recap-label,
+      .conversion-choices-label {
+        margin-top: 16px;
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 750;
+      }
+
+      .conversion-recap {
+        display: grid;
+        gap: 6px;
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .conversion-recap li {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        color: #26364f;
+        font-size: 14.5px;
+        font-weight: 700;
+        line-height: 1.45;
+      }
+
+      .conversion-recap svg { color: var(--blue); flex: 0 0 auto; margin-top: 2px; }
+
+      /* Objectif 2 (mission précédente) — bloc de choix compact (remplace
+         les deux grandes cartes de choix de la toute première version). */
+      .conversion-choices {
+        display: grid;
+        gap: 4px;
+        margin: 8px 0 0;
+        padding: 0 0 0 20px;
+        color: #475569;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.55;
+      }
+
+      /* Mission "simplifier et optimiser la dernière page", objectif 2/5 —
+         une seule phrase de transition (remplace l'ancien comparatif de
+         temps en deux colonnes) : elle répond à "pourquoi choisir un
+         accompagnement ?" et amène directement les packs, sans bloc
+         supplémentaire à lire. */
+      .conversion-transition {
+        margin: 22px 0 4px;
+        max-width: 640px;
+        color: #26364f;
+        font-size: 15.5px;
+        font-weight: 700;
+        line-height: 1.55;
+      }
+
+      /* Objectif 3 — "un grand encadré", très visible : réutilise .score-card
+         (déjà stylé, dégradé bleu léger déjà existant) pour donner au message
+         de déduction le même traitement que le Score Efficia™ en couverture.
+         Le message n'est plus le montant seul, mais que l'investissement
+         n'est pas perdu — d'où un texte pleine largeur plutôt qu'un chiffre
+         isolé. */
+      .deductible-callout {
+        margin: 4px 0 22px;
+        padding: 30px 36px;
+      }
+
+      .deductible-callout .score-band {
+        max-width: 640px;
+        margin: 0 auto;
+        color: var(--ink);
+        font-size: 22px;
+        font-weight: 900;
+        line-height: 1.35;
+      }
+
+      .deductible-callout .score-interpretation {
+        max-width: 560px;
+        margin: 10px auto 0;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
       .strength-card {
         border-color: #c8ead5;
         background: linear-gradient(180deg, #ffffff, #f8fffb);
@@ -2470,6 +3102,20 @@ function styles() {
       .free-diagnostic h1,
       .free-diagnostic h2,
       .free-diagnostic h3 {
+        overflow-wrap: anywhere;
+      }
+
+      /* Diagnostic gratuit non touché (règle absolue) : ses paragraphes
+         héritaient jusqu'ici de "anywhere" via la règle générique h1,h2,h3,p
+         ci-dessus (aucune règle .free-diagnostic p n'existait). Le correctif
+         "mots collés" changeant cette règle générique pour le premium
+         (break-word), cette déclaration explicite conserve EXACTEMENT le
+         comportement précédent pour .free-diagnostic p — aucun changement,
+         même indirect, sur le Diagnostic gratuit. Le Diagnostic gratuit
+         utilise de toute façon un chemin PDF entièrement différent (capture
+         d'écran page par page, jamais le rendu PDF texte natif concerné par
+         ce bug), donc ce filet de sécurité est purement défensif. */
+      .free-diagnostic p {
         overflow-wrap: anywhere;
       }
 
@@ -3280,7 +3926,8 @@ function styles() {
         .priority-card,
         .action-content dl,
         .index-row,
-        .offer-grid {
+        .offer-grid,
+        .pack-grid {
           grid-template-columns: 1fr;
         }
 
@@ -3364,6 +4011,8 @@ function styles() {
         .criteria-domain-card,
         .offer-card,
         .summary-recap-card,
+        .pack-card,
+        .deductible-callout,
         .priority-grid div,
         .free-diagnostic .barre-cat,
         .free-diagnostic .chk-rubrique,

@@ -199,6 +199,16 @@
   font-weight: 900;
 }
 
+/* Formulaire "Nouvel audit" — rappel discret des deux façons équivalentes
+   d'identifier l'entreprise (URL seule, ou Nom + Ville), affiché sous les
+   champs concernés, jamais un message d'erreur tant que rien n'a été soumis. */
+.admin-field-hint {
+  margin: -6px 0 4px;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
 .admin-layout {
   display: grid;
   gap: 28px;

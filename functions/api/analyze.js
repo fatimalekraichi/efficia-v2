@@ -51,6 +51,7 @@ function normaliserFiche(fiche) {
     working_hours: fiche.working_hours ?? null,
     subtypes,
     location_link: fiche.location_link || "",
+    cid: fiche.cid || "",
     // Passage direct des champs collectés par collectFiche() (déjà nettoyés côté Outscraper).
     category: fiche.category || "",
     type: fiche.type || "",
@@ -144,8 +145,17 @@ export async function onRequestPost(context) {
 
   // Activité de benchmark : priorité à une activité réellement saisie. Le fallback générique
   // "entreprise locale" (posé par admin/audits.js quand rien n'est connu) ne compte pas comme une
-  // activité réelle : la catégorie principale détectée par Outscraper (category, puis type) prime.
-  const activiteSaisie = activite && activite.toLowerCase() !== GENERIC_ACTIVITY_PLACEHOLDER ? activite : "";
+  // activité réelle, et NI le nom de l'entreprise (admin/audits.js utilise aussi companyName comme
+  // "activite" quand seuls Nom+Ville sont fournis, sans réelle catégorie — bug corrigé ici : le
+  // champ "Catégorie principale" affichait alors le nom de l'entreprise au lieu de sa catégorie
+  // Google). Dans les deux cas, la catégorie principale détectée par Outscraper (category, puis
+  // type) prime.
+  const activiteSaisieBrute = (activite || "").trim().toLowerCase();
+  const nomTrimLower = (nom || "").trim().toLowerCase();
+  const estUnFauxSemblantDeNom = Boolean(nomTrimLower) && activiteSaisieBrute === nomTrimLower;
+  const activiteSaisie = activite && activiteSaisieBrute !== GENERIC_ACTIVITY_PLACEHOLDER && !estUnFauxSemblantDeNom
+    ? activite
+    : "";
   const categorieDetectee = normalized.category || normalized.type || "";
   const resolvedActivite = activiteSaisie || categorieDetectee;
 
@@ -166,7 +176,12 @@ export async function onRequestPost(context) {
     const competitorsResult = await collectCompetitors({
       activite: resolvedActivite,
       ville: resolvedVille,
+      // Bug corrigé — la fiche analysée ne doit jamais apparaître dans ses propres concurrents.
+      // On transmet tous les identifiants uniques disponibles pour cette fiche (place_id, CID,
+      // URL Google) : collectCompetitors() exclut toute correspondance sur l'un ou l'autre.
       placeIdCible: normalized.place_id,
+      cidCible: normalized.cid,
+      urlCible: normalized.location_link,
       apiKey: env.OUTSCRAPER_API_KEY,
     });
     if (competitorsResult.ok) {

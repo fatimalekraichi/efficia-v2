@@ -196,11 +196,51 @@ function prefillFromUrl() {
   fillIfEmpty("internalNotes", context);
 }
 
+// Deux façons équivalentes d'identifier l'entreprise : l'URL Google Business
+// seule (Mode 1), ou le Nom + la Ville (Mode 2). Le formulaire est valide dès
+// que l'une des deux voies est complète — voir aussi updateRequiredState(),
+// qui garde les attributs `required` du HTML cohérents avec cette même règle.
+function hasIdentification(payload) {
+  const hasUrl = Boolean(payload.googleBusinessUrl);
+  const hasNameAndCity = Boolean(payload.companyName) && Boolean(payload.city);
+  return hasUrl || hasNameAndCity;
+}
+
 function validatePayload(payload) {
-  if (!payload.googleBusinessUrl) return "Renseignez l’URL Google Maps ou Google Business.";
-  if (!isValidGoogleUrl(payload.googleBusinessUrl)) return "L’URL doit être une adresse Google Maps ou Google Business valide.";
+  if (!hasIdentification(payload)) {
+    return "Veuillez renseigner soit l’URL Google Business, soit le nom de l’entreprise et sa ville.";
+  }
+  if (payload.googleBusinessUrl && !isValidGoogleUrl(payload.googleBusinessUrl)) {
+    return "L’URL doit être une adresse Google Maps ou Google Business valide.";
+  }
   if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return "L’adresse e-mail n’est pas valide.";
   return "";
+}
+
+// Garde les attributs `required`/`aria-required` cohérents avec la validation
+// conditionnelle ci-dessus : l'URL n'est requise que si Nom+Ville ne sont pas
+// déjà tous les deux renseignés, et inversement. Appelée à chaque saisie dans
+// l'un des trois champs, ainsi qu'après tout pré-remplissage programmatique
+// (prefillFromUrl/loadOrderFromQuery, qui ne déclenchent pas d'événement
+// "input").
+function updateRequiredState() {
+  const urlField = form?.elements?.googleBusinessUrl;
+  const nameField = form?.elements?.companyName;
+  const cityField = form?.elements?.city;
+  if (!urlField || !nameField || !cityField) return;
+
+  const hasNameAndCity = Boolean(nameField.value.trim()) && Boolean(cityField.value.trim());
+  const hasUrl = Boolean(urlField.value.trim());
+
+  const urlRequired = !hasNameAndCity;
+  const nameCityRequired = !hasUrl;
+
+  urlField.required = urlRequired;
+  urlField.setAttribute("aria-required", String(urlRequired));
+  nameField.required = nameCityRequired;
+  nameField.setAttribute("aria-required", String(nameCityRequired));
+  cityField.required = nameCityRequired;
+  cityField.setAttribute("aria-required", String(nameCityRequired));
 }
 
 function renderResult(data) {
@@ -310,9 +350,14 @@ async function submitAudit(event) {
   }
 }
 
+["googleBusinessUrl", "companyName", "city"].forEach((name) => {
+  form?.elements?.[name]?.addEventListener("input", updateRequiredState);
+});
+
 form?.addEventListener("submit", submitAudit);
 prefillFromUrl();
-loadOrderFromQuery();
+updateRequiredState();
+loadOrderFromQuery().then(updateRequiredState);
 
 resetButton?.addEventListener("click", () => {
   resultCard.hidden = true;

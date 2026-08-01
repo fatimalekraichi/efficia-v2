@@ -45,10 +45,17 @@
           <div class="admin-info-list admin-production-grid" data-order-context-info></div>
         </div>
 
-        <form class="admin-form admin-audit-form" data-admin-audit-form>
+        <form class="admin-form admin-audit-form" data-admin-audit-form novalidate>
+          <!-- Deux façons équivalentes d'identifier l'entreprise : l'URL seule
+               (Mode 1) ou Nom + Ville (Mode 2). Aucun `required` statique ici :
+               js/admin-new-audit.js les recalcule dynamiquement (updateRequiredState)
+               afin qu'ils restent cohérents avec le mode réellement utilisé. Le
+               `novalidate` sur le <form> désactive l'infobulle native du
+               navigateur ("Veuillez renseigner ce champ") au profit du message
+               explicite affiché dans [data-admin-audit-error]. -->
           <label class="admin-field admin-field-wide">
-            <span>URL Google Maps / Google Business *</span>
-            <input type="url" name="googleBusinessUrl" placeholder="https://www.google.com/maps/place/..." required autocomplete="off">
+            <span>URL Google Maps / Google Business</span>
+            <input type="url" name="googleBusinessUrl" placeholder="https://www.google.com/maps/place/..." autocomplete="off">
           </label>
 
           <div class="admin-form-grid">
@@ -61,6 +68,7 @@
               <input type="text" name="city" placeholder="Ex. Arlon" autocomplete="address-level2">
             </label>
           </div>
+          <p class="admin-field-hint">Renseignez soit l’URL Google Business, soit le nom de l’entreprise et sa ville.</p>
 
           <label class="admin-field">
             <span>Email prospect</span>

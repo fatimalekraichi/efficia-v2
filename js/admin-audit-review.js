@@ -763,7 +763,15 @@ function buildAutoCriteriaReview(analysis) {
     if (item) reviews.push(item);
   };
 
-  const primaryCategory = getNormalizedValue(normalized, ["category", "type"]) || business.activity;
+  // Même garde qu'en tête de fichier (buildObservationRows) : "activity" ne
+  // doit jamais être traité comme une catégorie valide s'il s'agit en fait
+  // du nom de l'entreprise (analyses enregistrées avant le correctif).
+  const businessNameForCategoryGuard = (business.name || business.nom || "").trim().toLowerCase();
+  const storedActivity = (business.activity || "").trim();
+  const activityAsCategory = storedActivity && storedActivity.toLowerCase() !== businessNameForCategoryGuard
+    ? storedActivity
+    : "";
+  const primaryCategory = getNormalizedValue(normalized, ["category", "type"]) || activityAsCategory;
   const secondaryCategories = getSecondaryCategories(normalized);
   const workingHours = getNormalizedValue(normalized, ["working_hours", "hours"]);
   const website = getNormalizedValue(normalized, ["website", "site"]);
@@ -958,12 +966,22 @@ function renderObservation(analysis) {
   const googleUrl = normalized.google_url || normalized.url || normalized.place_link || normalized.location_link || "";
   const benchmarkConfidence = benchmark.reviewed?.benchmarkConfidence || benchmark.confidence || null;
 
+  // Bug corrigé — "Catégorie principale" ne doit jamais afficher le nom de
+  // l'entreprise. Le mapping est déjà corrigé à la source (functions/api/
+  // analyze.js), mais des analyses déjà enregistrées peuvent encore porter
+  // cette valeur polluée en base : on l'ignore aussi ici, par sécurité.
+  const businessNameForCategoryGuard = (business.name || business.nom || "").trim().toLowerCase();
+  const storedActivity = (business.activity || "").trim();
+  const mainCategory = storedActivity && storedActivity.toLowerCase() !== businessNameForCategoryGuard
+    ? storedActivity
+    : (normalized.category || normalized.type || "");
+
   const rows = [
     ["Nom", business.name || business.nom],
     ["Type de rapport", reportTypeLabel(analysis.manualReview?.reportType || analysis.reportType)],
     ["URL Google", { render: renderGoogleUrlValue(googleUrl) }],
     ["Ville", business.ville],
-    ["Catégorie principale", business.activity || normalized.category || normalized.type],
+    ["Catégorie principale", mainCategory],
     ["Catégories secondaires", secondaryCategoriesList ? secondaryCategoriesList.join(", ") : normalized.secondary_categories],
     ["Note", business.rating],
     ["Nombre d’avis", business.reviews],
@@ -1030,7 +1048,10 @@ function updateCompetitorsSummary() {
 function renderCompetitors(analysis) {
   const competitors = analysis.business?.competitors || [];
   if (!competitors.length) {
-    competitorsBox.innerHTML = "<p class=\"admin-muted\">Aucun concurrent fiable enregistré.</p>";
+    // Couvre aussi bien "aucun concurrent collecté" que "tous les résultats bruts
+    // correspondaient à la fiche analysée elle-même et ont donc été exclus" (voir
+    // collectCompetitors.js) : dans les deux cas, la liste est vide et le message reste sobre.
+    competitorsBox.innerHTML = "<p class=\"admin-muted\">Aucun concurrent pertinent trouvé.</p>";
     updateCompetitorsSummary();
     return;
   }
