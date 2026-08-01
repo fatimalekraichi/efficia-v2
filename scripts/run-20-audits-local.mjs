@@ -25,7 +25,7 @@
 // modifie ni le moteur, ni les templates, ni les scores : il observe et
 // documente uniquement, dans tmp/beta-audits-20/ (déjà dans .gitignore).
 
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -123,19 +123,69 @@ async function runOne(cookie, company) {
   const log = { company, stages: {}, checks: {}, verdictHint: null };
 
   // 1) Créer l'audit Premium (Mode 2 : nom + ville, comme demandé par la mission)
-  const created = await jsonFetch(`${BASE_URL}/api/admin/audits`, {
-    cookie,
-    method: "POST",
-    body: { companyName: company.companyName, city: company.city, reportType: "premium" },
-  });
+  const basePayload = { companyName: company.companyName, city: company.city, reportType: "premium" };
+  let created = await jsonFetch(`${BASE_URL}/api/admin/audits`, { cookie, method: "POST", body: basePayload });
   log.stages.create = { status: created.status, ok: created.ok, body: created.data };
+
+  // Objectif 2 (mission "rendre l'identification suffisamment robuste") —
+  // plusieurs entreprises sont plausibles, aucune ne dépasse le seuil de
+  // sélection automatique : aucune analyse n'a été créée. Ce script tourne
+  // sans surveillance (pas d'administrateur humain disponible pendant la
+  // campagne) ; pour pouvoir quand même mesurer le pipeline de bout en bout,
+  // on SIMULE la validation manuelle en choisissant explicitement le
+  // meilleur candidat (celui de plus haute confiance, déjà trié ainsi par
+  // collectFiche) via selectedPlaceId — exactement le même mécanisme qu'un
+  // clic "Confirmer la sélection" dans l'interface d'administration. C'est
+  // documenté distinctement (validation: "manuelle (simulée)") : en usage
+  // réel, ce choix serait fait par un humain, jamais automatiquement.
+  log.identification = { validation: "automatique", confidence: null, tier: null };
   if (!created.ok || !created.data?.success) {
-    log.verdictHint = "FAIL";
+    if (created.data?.error === "AMBIGUOUS_CANDIDATES") {
+      const candidates = Array.isArray(created.data.candidates) ? created.data.candidates : [];
+      log.ambiguousCandidates = candidates;
+      if (!candidates.length) {
+        log.verdictHint = "FAIL (AMBIGUOUS_CANDIDATES sans candidat — incohérent)";
+        writeFileSync(path.join(dir, "run-log.json"), JSON.stringify(log, null, 2));
+        return log;
+      }
+      const bestCandidate = candidates[0]; // déjà trié par confiance décroissante
+      log.identification.validation = "manuelle (simulée par le script — voir commentaire ci-dessus)";
+      log.identification.chosenAmongCandidates = candidates.map((c) => `${c.name} (${c.city || "?"}, ${Math.round((c.confidence || 0) * 100)}%)`);
+      created = await jsonFetch(`${BASE_URL}/api/admin/audits`, {
+        cookie,
+        method: "POST",
+        body: { ...basePayload, selectedPlaceId: bestCandidate.placeId },
+      });
+      log.stages.createAfterManualSelection = { status: created.status, ok: created.ok, body: created.data };
+    }
+  }
+
+  if (!created.ok || !created.data?.success) {
+    // Objectif 3 (collectFiche.js) : un rejet "Aucune entreprise fiable
+    // trouvée." remonte ici comme un échec de l'étape "observation" — ce
+    // n'est PAS un crash, c'est le comportement de sécurité demandé par la
+    // mission. On le distingue explicitement plutôt que de tout étiqueter
+    // "FAIL".
+    const upstreamMessage = created.data?.message || "";
+    log.verdictHint = upstreamMessage.includes("Aucune entreprise fiable")
+      ? "AUCUNE ENTREPRISE FIABLE TROUVÉE (rejet volontaire — à relire)"
+      : "FAIL";
     writeFileSync(path.join(dir, "run-log.json"), JSON.stringify(log, null, 2));
     return log;
   }
   const analysisId = created.data.analysisId;
   log.analysisId = analysisId;
+  // Objectif 7 — score de confiance + palier de décision remontés par
+  // /api/analyze -> /api/admin/audits (voir functions/api/analyze.js et
+  // functions/api/admin/audits.js), pour la comparaison demandée : entité
+  // demandée -> entité retenue -> confiance -> validation auto/manuelle -> verdict.
+  if (created.data.identification) {
+    log.identification.confidence = created.data.identification.confidence;
+    log.identification.tier = created.data.identification.tier;
+    if (created.data.identification.tier === "manual" && log.identification.validation === "automatique") {
+      log.identification.validation = "manuelle (simulée par le script)";
+    }
+  }
 
   // 2) Charger l'écran de validation (observation + concurrents bruts)
   const review = await jsonFetch(`${BASE_URL}/api/admin/audit-review/${analysisId}`, { cookie });
@@ -147,16 +197,35 @@ async function runOne(cookie, company) {
     return log;
   }
   const analysis = review.data.analysis || {};
+  // Correctif (mission "corriger les deux problèmes critiques", constat de
+  // départ) : la structure réelle renvoyée par GET
+  // /api/admin/audit-review/:id place les données de collecte sous
+  // analysis.business.*, jamais analysis.* directement ni
+  // analysis.benchmark.competitors. La précédente version de ce script lisait
+  // le mauvais chemin et rapportait "competitorCount: 0" pour les 20 audits
+  // alors que le benchmark était en réalité correctement rempli à chaque
+  // fois (3 concurrents, aucun self-match) — voir RAPPORT-*.md pour le détail.
+  const business = analysis.business || {};
+
+  // Objectif 7 — nom retenu par Outscraper vs nom demandé, fusionné avec le
+  // score de confiance / palier de décision déjà déposés dans log.identification
+  // plus haut (ne jamais écraser cet objet : confidence/tier/validation y
+  // ont été renseignés avant même de connaître l'entité finalement retenue).
+  Object.assign(log.identification, {
+    requested: company.companyName,
+    resolved: business.name || null,
+    requestedCity: company.city,
+    resolvedCity: business.fiche?.city || business.fiche?.borough || null,
+  });
 
   // Contrôle A (partiel, automatisable) : catégorie principale ≠ nom d'entreprise
-  const category = analysis.category || analysis.observation?.category || "";
-  log.checks.categoryEqualsName = category
+  const category = business.activity || "";
+  log.checks.categoryEqualsName = Boolean(category)
     && category.trim().toLowerCase() === company.companyName.trim().toLowerCase();
 
   // Contrôle A (partiel) : l'entreprise analysée absente de ses propres concurrents
-  const competitors = Array.isArray(analysis.competitors) ? analysis.competitors
-    : Array.isArray(analysis.benchmark?.competitors) ? analysis.benchmark.competitors : [];
-  const targetPlaceId = analysis.placeId || analysis.observation?.placeId || null;
+  const competitors = Array.isArray(business.competitors) ? business.competitors : [];
+  const targetPlaceId = business.placeId || null;
   const selfInCompetitors = competitors.some((c) => (
     (targetPlaceId && c.place_id && c.place_id === targetPlaceId)
     || (c.name && c.name.trim().toLowerCase() === company.companyName.trim().toLowerCase())
@@ -238,8 +307,31 @@ async function runOne(cookie, company) {
   return log;
 }
 
+// Objectif 7 — charge la campagne précédente (celle de la mission
+// "corriger les deux problèmes critiques") si elle existe encore à cet
+// emplacement, pour pouvoir comparer avant de l'écraser. Une copie brute est
+// aussi conservée sous _summary.previous.json : la comparaison reste
+// consultable même après une deuxième relance.
+function loadPreviousSummary() {
+  const summaryPath = path.join(OUT_DIR, "_summary.json");
+  if (!existsSync(summaryPath)) return null;
+  try {
+    const previous = JSON.parse(readFileSync(summaryPath, "utf8"));
+    copyFileSync(summaryPath, path.join(OUT_DIR, "_summary.previous.json"));
+    return previous;
+  } catch {
+    return null;
+  }
+}
+
+function previousEntryFor(previousResults, companyNumber) {
+  if (!Array.isArray(previousResults)) return null;
+  return previousResults.find((r) => r.company?.n === companyNumber) || null;
+}
+
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
+  const previousResults = loadPreviousSummary();
   console.log(`Cible : ${BASE_URL}`);
   console.log("Connexion admin...");
   const cookie = await loginAdmin();
@@ -261,11 +353,49 @@ async function main() {
 
   writeFileSync(path.join(OUT_DIR, "_summary.json"), JSON.stringify(results, null, 2));
 
-  console.log("\n=== Résumé ===");
+  // Objectif 7 — pour chaque audit : entité demandée -> entité retenue ->
+  // score de confiance -> validation automatique/manuelle -> verdict, et
+  // comparaison explicite avec la campagne précédente (entité retenue avant
+  // vs maintenant).
+  console.log("\n=== Résumé — Objectif 7 (identification) ===");
+  const comparison = [];
   for (const r of results) {
-    console.log(`${String(r.company.n).padStart(2, "0")}. ${r.company.companyName.padEnd(30)} ${r.verdictHint}`);
+    const previous = previousEntryFor(previousResults, r.company.n);
+    const confidencePct = Number.isFinite(r.identification?.confidence)
+      ? `${Math.round(r.identification.confidence * 100)}%`
+      : "—";
+    const entry = {
+      n: r.company.n,
+      requested: r.company.companyName,
+      requestedCity: r.company.city,
+      resolved: r.identification?.resolved || null,
+      confidence: r.identification?.confidence ?? null,
+      tier: r.identification?.tier || null,
+      validation: r.identification?.validation || (r.verdictHint?.includes("AUCUNE ENTREPRISE") ? "aucune (rejet)" : "—"),
+      verdict: r.verdictHint,
+      previousResolved: previous?.identification?.resolved || null,
+      changedVsPrevious: Boolean(previous) && (previous.identification?.resolved || null) !== (r.identification?.resolved || null),
+    };
+    comparison.push(entry);
+    console.log(
+      `${String(entry.n).padStart(2, "0")}. ${entry.requested.padEnd(30)} -> ${(entry.resolved || "—").padEnd(30)} `
+      + `| confiance=${confidencePct.padEnd(5)} | validation=${entry.validation.padEnd(35)} | ${entry.verdict}`,
+    );
+    if (previous) {
+      const marker = entry.changedVsPrevious ? "CHANGÉ" : "identique";
+      console.log(`     campagne précédente -> "${entry.previousResolved || "—"}" (${marker})`);
+    }
   }
+
+  writeFileSync(path.join(OUT_DIR, "_comparison.json"), JSON.stringify(comparison, null, 2));
+
   console.log(`\nFichiers écrits dans : ${OUT_DIR}`);
+  if (previousResults) {
+    console.log(`Comparaison avec la campagne précédente : ${path.join(OUT_DIR, "_comparison.json")}`);
+    console.log(`Copie de l'ancienne campagne conservée : ${path.join(OUT_DIR, "_summary.previous.json")}`);
+  } else {
+    console.log("Aucune campagne précédente trouvée à cet emplacement — pas de comparaison possible.");
+  }
   console.log("Aucun commit, aucun push, aucune modification du moteur n'a été effectué par ce script.");
 }
 

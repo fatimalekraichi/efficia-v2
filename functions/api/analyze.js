@@ -91,6 +91,7 @@ export async function onRequestPost(context) {
   let activite = "";
   let googleBusinessUrl = "";
   let observationQuery = "";
+  let selectedPlaceId = "";
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
@@ -102,6 +103,10 @@ export async function onRequestPost(context) {
     observationQuery = typeof payload?.observationQuery === "string"
       ? payload.observationQuery.trim()
       : (typeof payload?.queryOverride === "string" ? payload.queryOverride.trim() : "");
+    // Objectif 2 (mission "rendre l'identification suffisamment robuste") —
+    // l'administrateur a déjà choisi un candidat parmi une liste ambiguë
+    // présentée précédemment par cette même route (voir plus bas).
+    selectedPlaceId = typeof payload?.selectedPlaceId === "string" ? payload.selectedPlaceId.trim() : "";
   } catch {
     // pas de body JSON : on tentera les paramètres d'URL
   }
@@ -111,6 +116,7 @@ export async function onRequestPost(context) {
   activite = activite || (url.searchParams.get("activite") || "").trim();
   googleBusinessUrl = googleBusinessUrl || (url.searchParams.get("googleBusinessUrl") || url.searchParams.get("google_business_url") || "").trim();
   observationQuery = observationQuery || (url.searchParams.get("observationQuery") || url.searchParams.get("queryOverride") || "").trim();
+  selectedPlaceId = selectedPlaceId || (url.searchParams.get("selectedPlaceId") || "").trim();
   if (!observationQuery && !googleBusinessUrl && (!nom || !ville)) {
     return jsonResponse({ error: "Missing required parameters: nom, ville or observationQuery." }, 400);
   }
@@ -122,10 +128,32 @@ export async function onRequestPost(context) {
     ville,
     queryOverride: observationQuery || googleBusinessUrl,
     apiKey: env.OUTSCRAPER_API_KEY,
+    selectedPlaceId: selectedPlaceId || undefined,
   });
   if (!result.ok) {
+    // Objectif 2 — plusieurs candidats plausibles, aucun ne dépasse le seuil
+    // de sélection automatique : on ne crée AUCUNE analyse tant qu'un
+    // administrateur n'a pas tranché. Aucune écriture D1 dans cette branche.
+    if (result.error === "AMBIGUOUS_CANDIDATES") {
+      console.log("analyze:ambiguous-candidates", { count: result.candidates?.length || 0 });
+      return jsonResponse({
+        error: "AMBIGUOUS_CANDIDATES",
+        message: result.message,
+        candidates: result.candidates || [],
+      }, 409);
+    }
+    // Le candidat choisi manuellement n'a pas pu être retrouvé (résultats
+    // Outscraper changés entre les deux requêtes) — pas plus d'écriture D1.
+    if (result.error === "SELECTED_CANDIDATE_NOT_FOUND") {
+      return jsonResponse({ error: "SELECTED_CANDIDATE_NOT_FOUND", message: result.message }, 409);
+    }
     if (result.code === 404) {
-      return jsonResponse({ error: "No business found." }, 404);
+      // collectFiche() distingue "aucun résultat brut" (message par défaut)
+      // d'"un résultat existe mais aucun n'est assez fiable" (Objectif 3,
+      // result.message = "Aucune entreprise fiable trouvée.") : on relaie ce
+      // message précis plutôt que de l'écraser, sans changer le code HTTP ni
+      // la forme de la réponse existante.
+      return jsonResponse({ error: result.message || "No business found." }, 404);
     }
     console.error("analyze: collecte échouée", result.code, result.error);
     return jsonResponse({ error: "Collection failed." }, 502);
@@ -237,8 +265,18 @@ export async function onRequestPost(context) {
   }
 
   // 4) Réponse.
+  // Objectif 7 (mission "rendre l'identification suffisamment robuste") —
+  // remonter le score de confiance et le palier de décision jusqu'à
+  // l'appelant (admin/audits.js, puis le script de campagne), uniquement
+  // dans la réponse JSON : aucune colonne D1 n'est ajoutée, l'INSERT
+  // ci-dessus reste strictement inchangé.
   console.log("analyze:returning-success");
-  return jsonResponse({ analysisId, status: "collected" });
+  return jsonResponse({
+    analysisId,
+    status: "collected",
+    identificationConfidence: result.confidence ?? null,
+    identificationTier: result.tier ?? null,
+  });
   } catch (err) {
     console.error(err);
     return Response.json(

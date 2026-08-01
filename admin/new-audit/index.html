@@ -97,6 +97,26 @@
         <p class="admin-pipeline-ready" data-admin-audit-ready hidden>✓ Audit prêt</p>
       </section>
 
+      <!-- Mission "rendre l'identification de l'entreprise suffisamment
+           robuste pour le lancement de la bêta" — Objectif 2 : quand
+           plusieurs entreprises candidates sont plausibles (confiance
+           insuffisante pour une sélection automatique, mais pas nulle), le
+           pipeline s'arrête AVANT toute collecte et propose ce choix à
+           l'administrateur. Aucune sélection automatique arbitraire. -->
+      <section class="admin-card admin-candidates-card" data-admin-audit-candidates hidden>
+        <div class="admin-section-heading">
+          <span class="admin-kicker">Vérification requise</span>
+          <h2>Confirmer l’entreprise</h2>
+        </div>
+        <p data-admin-candidates-message>Nous avons trouvé plusieurs entreprises pouvant correspondre.</p>
+        <ul class="admin-candidates-list" data-admin-candidates-list></ul>
+        <div class="admin-task-actions">
+          <button class="admin-button" type="button" data-admin-candidates-confirm disabled>Confirmer la sélection</button>
+          <button class="admin-button is-secondary" type="button" data-admin-candidates-none>Aucune ne correspond</button>
+        </div>
+        <p class="admin-error" data-admin-candidates-error role="alert"></p>
+      </section>
+
       <section class="admin-card admin-result-card" data-admin-audit-result hidden>
         <div class="admin-section-heading">
           <span class="admin-kicker">Audit généré</span>

@@ -58,7 +58,12 @@ function mockOutscraper({ fiche, competitors = [] }) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     const parsed = new URL(url);
-    if (parsed.searchParams.get("organizationsPerQueryLimit") === "1") {
+    // collectFiche.js demande désormais plusieurs candidats (Objectif 2,
+    // mission "corriger les deux problèmes critiques" — score de confiance)
+    // via organizationsPerQueryLimit=5, tandis que collectCompetitors.js
+    // demande toujours 10 : on distingue les deux appels sur cette base,
+    // plutôt que sur l'ancienne valeur fixe "1".
+    if (parsed.searchParams.get("organizationsPerQueryLimit") !== "10") {
       return Response.json({ data: [[fiche]] });
     }
     return Response.json({ data: [competitors] });

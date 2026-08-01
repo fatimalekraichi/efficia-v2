@@ -16,9 +16,23 @@ const popupFallback = document.querySelector("[data-admin-audit-popup-fallback]"
 const popupFallbackLink = document.querySelector("[data-admin-audit-popup-link]");
 const readyIndicator = document.querySelector("[data-admin-audit-ready]");
 
+// Mission "rendre l'identification de l'entreprise suffisamment robuste pour
+// le lancement de la bêta" — Objectif 2 : sélecteur de candidats ambigus.
+const candidatesCard = document.querySelector("[data-admin-audit-candidates]");
+const candidatesMessage = document.querySelector("[data-admin-candidates-message]");
+const candidatesList = document.querySelector("[data-admin-candidates-list]");
+const candidatesConfirmButton = document.querySelector("[data-admin-candidates-confirm]");
+const candidatesNoneButton = document.querySelector("[data-admin-candidates-none]");
+const candidatesError = document.querySelector("[data-admin-candidates-error]");
+
 let isSubmitting = false;
 let linkedOrder = null;
 let linkedTask = null;
+// Payload en attente de confirmation manuelle (Objectif 2) : conservé tel
+// quel entre la réponse "AMBIGUOUS_CANDIDATES" et le clic de confirmation,
+// pour pouvoir relancer exactement la même demande avec un `selectedPlaceId`
+// en plus — jamais de choix arbitraire côté client.
+let pendingAmbiguousPayload = null;
 
 // Seules Observation et Benchmark s'exécutent réellement lors de la génération d'un nouvel audit.
 // Knowledge/Reasoning/Composer ne tournent qu'après validation humaine, sur la page de génération
@@ -89,9 +103,40 @@ function applyStages(stages = {}) {
 function markPipelineRunning() {
   progressCard.hidden = false;
   resultCard.hidden = true;
+  if (candidatesCard) candidatesCard.hidden = true;
   if (readyIndicator) readyIndicator.hidden = true;
   resetProgress();
   setStage("observation", "running", "En cours");
+}
+
+function formatConfidencePercent(value) {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)} %` : "—";
+}
+
+// Objectif 2 — jamais de sélection automatique arbitraire entre les deux
+// seuils : on présente les candidats plausibles tels que renvoyés par
+// collectFiche (déjà triés par confiance décroissante), l'administrateur
+// choisit, ou indique qu'aucun ne correspond.
+function showCandidates(payload, data) {
+  if (!candidatesCard || !candidatesList) return;
+  pendingAmbiguousPayload = payload;
+  candidatesMessage.textContent = data.message || "Nous avons trouvé plusieurs entreprises pouvant correspondre.";
+  const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  candidatesList.innerHTML = candidates.map((candidate, index) => `
+    <li class="admin-candidate-item">
+      <label>
+        <input type="radio" name="admin-audit-candidate" value="${escapeHtml(candidate.placeId)}" ${index === 0 ? "checked" : ""}>
+        <span class="admin-candidate-name">${escapeHtml(candidate.name || "(sans nom)")}</span>
+        <span class="admin-candidate-confidence">Confiance : ${escapeHtml(formatConfidencePercent(candidate.confidence))}</span>
+        <span class="admin-candidate-meta">${escapeHtml([candidate.city, candidate.address].filter(Boolean).join(" — ") || "Adresse inconnue")}</span>
+      </label>
+    </li>
+  `).join("");
+  if (candidatesConfirmButton) candidatesConfirmButton.disabled = candidates.length === 0;
+  if (candidatesError) candidatesError.textContent = "";
+  candidatesCard.hidden = false;
+  progressCard.hidden = true;
+  resultCard.hidden = true;
 }
 
 function collectPayload() {
@@ -269,20 +314,13 @@ function renderResult(data) {
   resultCard.hidden = false;
 }
 
-async function submitAudit(event) {
-  event.preventDefault();
-  if (isSubmitting) return;
-
-  const payload = collectPayload();
-  const validationMessage = validatePayload(payload);
-  if (validationMessage) {
-    setError(validationMessage);
-    return;
-  }
-
-  // Onglet vide ouvert immédiatement, dans le prolongement direct du clic : un window.open()
-  // déclenché plus tard (après le fetch) est presque systématiquement bloqué par le navigateur.
-  // On y injectera l'URL de validation dès que analysisId sera disponible.
+// Factorisé hors de submitAudit pour être également appelable depuis la
+// confirmation de candidat (Objectif 2) : même flux exact, seul le payload
+// change (ajout de selectedPlaceId). Doit toujours être appelée directement
+// depuis un gestionnaire de clic (pas après un premier `await`) : window.open()
+// doit rester dans le prolongement direct du geste utilisateur, sinon la
+// plupart des navigateurs bloquent l'ouverture.
+async function runAudit(payload) {
   let pendingReviewTab = null;
   try {
     pendingReviewTab = window.open("about:blank", "_blank");
@@ -308,6 +346,17 @@ async function submitAudit(event) {
     if (response.status === 401) {
       if (pendingReviewTab) pendingReviewTab.close();
       redirectToLogin();
+      return;
+    }
+
+    // Objectif 2 — plusieurs entreprises sont plausibles : aucune collecte
+    // n'a eu lieu, on arrête le pipeline et on demande une confirmation
+    // humaine avant de continuer. On referme l'onglet vide (rien à y ouvrir
+    // pour l'instant) et on conserve le payload pour le relancer une fois le
+    // choix fait.
+    if (response.status === 409 && data.error === "AMBIGUOUS_CANDIDATES") {
+      if (pendingReviewTab) pendingReviewTab.close();
+      showCandidates(payload, data);
       return;
     }
 
@@ -350,6 +399,21 @@ async function submitAudit(event) {
   }
 }
 
+async function submitAudit(event) {
+  event.preventDefault();
+  if (isSubmitting) return;
+
+  const payload = collectPayload();
+  const validationMessage = validatePayload(payload);
+  if (validationMessage) {
+    setError(validationMessage);
+    return;
+  }
+
+  pendingAmbiguousPayload = null;
+  await runAudit(payload);
+}
+
 ["googleBusinessUrl", "companyName", "city"].forEach((name) => {
   form?.elements?.[name]?.addEventListener("input", updateRequiredState);
 });
@@ -362,9 +426,37 @@ loadOrderFromQuery().then(updateRequiredState);
 resetButton?.addEventListener("click", () => {
   resultCard.hidden = true;
   progressCard.hidden = true;
+  if (candidatesCard) candidatesCard.hidden = true;
+  pendingAmbiguousPayload = null;
   resetProgress();
   setError("");
   form?.querySelector("input[name='googleBusinessUrl']")?.focus();
+});
+
+// Objectif 2 — confirmation manuelle : relance exactement la même demande,
+// enrichie du place_id choisi par l'administrateur. collectFiche()
+// bascule alors sur ce candidat sans repasser par le score de confiance
+// (voir functions/lib/collectFiche.js) : le choix humain prime toujours.
+candidatesConfirmButton?.addEventListener("click", async () => {
+  const selected = candidatesList?.querySelector("input[name='admin-audit-candidate']:checked");
+  if (!selected || !pendingAmbiguousPayload) {
+    if (candidatesError) candidatesError.textContent = "Sélectionnez une entreprise avant de confirmer.";
+    return;
+  }
+  const payload = { ...pendingAmbiguousPayload, selectedPlaceId: selected.value };
+  pendingAmbiguousPayload = null;
+  candidatesCard.hidden = true;
+  await runAudit(payload);
+});
+
+// Objectif 3 — aucune des propositions ne correspond : on n'insiste pas,
+// on laisse l'administrateur affiner sa recherche (nom/ville, ou URL Google
+// Business directe) plutôt que de forcer un choix approximatif.
+candidatesNoneButton?.addEventListener("click", () => {
+  pendingAmbiguousPayload = null;
+  candidatesCard.hidden = true;
+  setError("Aucune de ces entreprises ne correspond. Affinez le nom et la ville, ou renseignez directement l’URL Google Business, puis relancez.");
+  form?.querySelector("input[name='companyName']")?.focus();
 });
 
 logoutButtons.forEach((button) => {

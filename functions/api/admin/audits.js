@@ -114,11 +114,17 @@ function buildPipelineInput(payload, orderContext = null) {
   const hasCity = Boolean(city);
   const ville = city || "Non renseignée";
   const activite = hasCity ? (companyName || inferredName || "entreprise locale") : "";
+  // Objectif 2 (mission "rendre l'identification suffisamment robuste") — un
+  // administrateur a déjà choisi un candidat parmi une liste ambiguë
+  // présentée par un appel précédent à cette même route ; on le relaie tel
+  // quel jusqu'à collectFiche() via /api/analyze.
+  const selectedPlaceId = cleanInput(payload?.selectedPlaceId, 200);
   const pipelineInput = {
     nom,
     ville,
     activite,
   };
+  if (selectedPlaceId) pipelineInput.selectedPlaceId = selectedPlaceId;
 
   if (!hasCity && (companyName || inferredName)) {
     pipelineInput.observationQuery = companyName || inferredName;
@@ -252,6 +258,17 @@ async function runCollectionForReview(pipelineInput, callStage) {
   stages.observation = "ok";
   console.log("admin-audits:observation:done", { analysis_id: analysisId });
 
+  // Objectif 7 — relayer jusqu'à la réponse finale le score de confiance et
+  // le palier de décision retenus par collectFiche() (voir /api/analyze),
+  // pour que la campagne de test puisse rapporter, pour chaque audit :
+  // entité demandée -> entité retenue -> confiance -> validation
+  // automatique/manuelle -> verdict. Purement informatif : n'affecte aucune
+  // écriture D1.
+  const identification = {
+    confidence: observation.data?.identificationConfidence ?? null,
+    tier: observation.data?.identificationTier ?? null,
+  };
+
   console.log("admin-audits:benchmark:start");
   const benchmark = await callStage("benchmark", { analysisId });
   if (!benchmark.ok) {
@@ -272,6 +289,7 @@ async function runCollectionForReview(pipelineInput, callStage) {
     analysisId,
     status: "awaiting_review",
     stages,
+    identification,
   };
 }
 
@@ -398,6 +416,30 @@ export async function onRequestPost(context) {
   );
 
   if (result.status === "failed") {
+    // Objectif 2 (mission "rendre l'identification suffisamment robuste") —
+    // ces deux cas ne sont PAS des échecs du pipeline : ce sont des demandes
+    // de décision humaine (candidats ambigus) ou une resoumission dont le
+    // candidat choisi n'existe plus côté Outscraper. On les relaie tels
+    // quels plutôt que de les noyer dans "PIPELINE_FAILED" — aucune analyse
+    // n'a été créée dans D1 dans ces deux cas (voir functions/api/analyze.js).
+    const upstreamError = result.error?.body?.error;
+    if (result.stage === "observation" && upstreamError === "AMBIGUOUS_CANDIDATES") {
+      console.log("admin-audits:ambiguous-candidates", { count: result.error?.body?.candidates?.length || 0 });
+      return jsonResponse({
+        success: false,
+        error: "AMBIGUOUS_CANDIDATES",
+        message: result.error?.body?.message || "Nous avons trouvé plusieurs entreprises pouvant correspondre.",
+        candidates: result.error?.body?.candidates || [],
+      }, 409);
+    }
+    if (result.stage === "observation" && upstreamError === "SELECTED_CANDIDATE_NOT_FOUND") {
+      return jsonResponse({
+        success: false,
+        error: "SELECTED_CANDIDATE_NOT_FOUND",
+        message: result.error?.body?.message || "Le candidat sélectionné n'a pas pu être retrouvé. Merci de relancer la recherche.",
+      }, 409);
+    }
+
     const upstreamMessage = result.error?.body?.message
       || result.error?.body?.error
       || result.error?.body?.success === false && "Une étape serveur a échoué."
@@ -489,6 +531,7 @@ export async function onRequestPost(context) {
     status: result.status,
     reportType: prepared.requestMetadata.reportType,
     stages: result.stages,
+    identification: result.identification || null,
     analysis: summarizeAnalysis(analysis),
     links: {
       review: `/admin/audit-review/${encodeURIComponent(result.analysisId)}`,
