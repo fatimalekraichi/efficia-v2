@@ -52,6 +52,7 @@ test("formatAnalysisRow parse les colonnes JSON et ne renvoie pas de chaîne JSO
   assert.equal(output.business.fiche.name, "La planche des saveurs");
   assert.equal(output.business.normalized.photos_sample_count, 3);
   assert.equal(output.business.competitors[0].name, "Concurrent");
+  assert.equal(output.benchmark.confidence, "limited");
   assert.equal(output.knowledge.summary, "OK");
   assert.deepEqual(output.reasoning.reasonings, []);
   assert.equal(output.documentModel.hero.score, 97);
@@ -82,4 +83,29 @@ test("formatAnalysisRow retourne null pour les JSON vides", () => {
   assert.equal(output.knowledge, null);
   assert.equal(output.reasoning, null);
   assert.equal(output.documentModel, null);
+  assert.equal(output.benchmark.confidence, "unavailable");
+});
+
+test("formatAnalysisRow expose la confiance du panel avant validation et privilégie ensuite la valeur révisée", () => {
+  const rawPanel = [
+    { name: "Concurrent A" },
+    { name: "Concurrent B" },
+    { name: "Concurrent C" },
+  ];
+
+  const beforeReview = formatAnalysisRow({
+    analysis_id: "analysis-confidence-before",
+    competitors_json: JSON.stringify(rawPanel),
+  });
+  assert.equal(beforeReview.benchmark.confidence, "established");
+
+  const afterReview = formatAnalysisRow({
+    analysis_id: "analysis-confidence-after",
+    competitors_json: JSON.stringify(rawPanel),
+    reviewed_benchmark_json: JSON.stringify({
+      benchmarkConfidence: "limited",
+      competitorCount: 2,
+    }),
+  });
+  assert.equal(afterReview.benchmark.confidence, "limited");
 });

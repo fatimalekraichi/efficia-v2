@@ -1,3 +1,5 @@
+import { computeBenchmarkConfidence } from "./manualReview.js";
+
 function parseJson(value) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value !== "string") return value;
@@ -52,6 +54,12 @@ export function formatAnalysisRow(row) {
       reviewed: reviewedObservation,
     },
     benchmark: {
+      // La page de validation est affichée avant que reviewed_benchmark_json
+      // existe. Elle doit néanmoins exposer la confiance du panel collecté,
+      // calculée selon exactement les mêmes seuils que la validation
+      // manuelle. Une fois le benchmark révisé disponible, sa confiance
+      // reste prioritaire afin de tenir compte des exclusions/confirmations.
+      confidence: reviewedBenchmark?.benchmarkConfidence || computeBenchmarkConfidence(competitors),
       score: toNumber(row.benchmark_score),
       averages: {
         rating: toNumber(row.avg_rating),
