@@ -28,9 +28,22 @@ import {
   formatRatingDisplay,
   formatCount,
   formatOrdinal,
+  formatFrenchNumber,
+  formatFrenchNumbersInText,
+  formatApproximateSignalValue,
+  formatDescriptionReasoning,
 } from "./presentationFormatter.js";
 
 const EFFICIA_BLUE = "#2563eb";
+
+// Objectif 1 (mission "finition avant bêta") — texte fixe, volontairement
+// court et sans détail technique, affiché une seule fois sous le Score
+// Efficia™ (page de couverture uniquement) : donne une explication crédible
+// de ce que mesure le score et de sa méthode, sans jamais dévoiler la
+// pondération réelle (scoreConfig.js, non modifié). N'affecte ni ne dépend
+// de la valeur du score — reste identique quel que soit le résultat, à la
+// différence de scoreInterpretationNote() juste en dessous.
+const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. Il est calculé à partir de plus de 120 signaux répartis dans plusieurs domaines, puis comparés aux meilleures fiches de votre secteur.";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -163,7 +176,7 @@ function presentableText(value, sector) {
   const withVocabulary = adaptVocabulary(String(value), sector);
   const withProspectWording = applyArtisanProspectFixes(withVocabulary, sector);
   const withEditorialFixes = applyEditorialPhraseFixes(withProspectWording);
-  return cleanTypography(collapseKnownRedundancies(withEditorialFixes));
+  return cleanTypography(formatFrenchNumbersInText(collapseKnownRedundancies(withEditorialFixes)));
 }
 
 const LABEL_TRANSLATIONS = {
@@ -220,22 +233,7 @@ function icon(name) {
 function logo() {
   return `
     <div class="brand" aria-label="Efficia Digital">
-      <svg class="brand-logo" viewBox="0 0 1536 864" role="img" aria-hidden="true">
-        <defs>
-          <linearGradient id="efficia-logo-gradient" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#ff149d"/>
-            <stop offset=".45" stop-color="#7728ff"/>
-            <stop offset="1" stop-color="#00d4ff"/>
-          </linearGradient>
-        </defs>
-        <path d="M285 645 C200 565 145 500 145 440 C145 365 205 305 287 305 C330 305 370 322 398 352 L362 385 C343 366 318 354 289 354 C233 354 194 393 194 445 C194 494 235 545 289 600 C343 545 417 477 449 423 L449 505 C410 555 353 606 289 652 Z" fill="url(#efficia-logo-gradient)"/>
-        <polyline points="235,525 282,480 327,507 438,410" fill="none" stroke="url(#efficia-logo-gradient)" stroke-width="48" stroke-linejoin="round"/>
-        <polygon points="385,388 450,376 441,444" fill="#13ccee"/>
-        <rect x="294" y="510" width="31" height="92" rx="8" fill="url(#efficia-logo-gradient)"/>
-        <rect x="250" y="535" width="31" height="65" rx="8" fill="url(#efficia-logo-gradient)"/>
-        <text x="495" y="553" font-family="Arial, Helvetica, sans-serif" font-size="160" font-weight="800" fill="#030748">Efficia</text>
-        <text x="1030" y="553" font-family="Arial, Helvetica, sans-serif" font-size="150" font-weight="300" fill="#2467ff">Digital</text>
-      </svg>
+      <img class="brand-logo" src="https://efficiadigital.com/assets/logo/logo-efficia-web.png" alt="Efficia Digital">
     </div>
   `;
 }
@@ -249,12 +247,27 @@ function header(label = "Diagnostic Efficia™") {
   `;
 }
 
+// Objectif 2 (mission "finition avant bêta") — Composer (narrativeModel.js,
+// non modifié) peut produire "comparaison concurrentielle non disponible"
+// ou "comparaison à 0 concurrent local" quand aucun panel n'a pu être
+// constitué : deux formulations exactes qui donnent l'impression d'un
+// résultat cassé plutôt que d'un choix éditorial assumé. On ne touche
+// jamais à la donnée (panel_size, calculé par Composer) : on reformule
+// uniquement l'affichage, ici, au niveau du rendu.
+const DEGENERATE_METHODOLOGY_PATTERN = /comparaison (concurrentielle non disponible|à 0 concurrents? locaux?)\.?/i;
+const METHODOLOGY_FALLBACK_CLAUSE = "analyse fondée sur les données publiques actuellement disponibles";
+
+function humanizeMethodologyText(raw) {
+  const value = String(raw || "").trim();
+  return DEGENERATE_METHODOLOGY_PATTERN.test(value) ? METHODOLOGY_FALLBACK_CLAUSE : value;
+}
+
 function methodologyProofItems(model) {
   const methodology = model.footer?.methodology || "";
   return [
     "120+ signaux analysés",
     methodology.includes("comparaison")
-      ? methodology.replace(/^Analyse issue des observations publiques ·\s*/i, "")
+      ? humanizeMethodologyText(methodology.replace(/^Analyse issue des observations publiques ·\s*/i, ""))
       : "comparaison concurrentielle selon les données disponibles",
     "méthode Efficia™",
   ];
@@ -276,14 +289,30 @@ function footer(model, label = "") {
 // valeur n'est pas disponible (present() déjà utilisé partout ailleurs dans
 // ce fichier pour ce même principe).
 function evidenceLine(evidence) {
-  if (!evidence) return "Preuve non disponible";
+  if (!evidence) return "Donnée non communiquée publiquement à ce jour";
   const unitSuffix = evidence.unit ? ` ${safeText(evidence.unit, "")}` : "";
   const lines = [];
 
-  if (present(evidence.value)) lines.push(`Vous : ${safeNumber(evidence.value)}${unitSuffix}`);
-  if (present(evidence.competitorMedian)) lines.push(`Moyenne concurrents : ${safeNumber(evidence.competitorMedian)}${unitSuffix}`);
+  const formatEvidenceValue = (value) => {
+    if (/avis|photos?|caractères?|catégories?/i.test(String(evidence.unit || ""))) {
+      return formatCount(value, "élément", "éléments").split(" ")[0];
+    }
+    return formatFrenchNumber(value);
+  };
+
+  if (present(evidence.value)) lines.push(`Vous : ${safeText(formatEvidenceValue(evidence.value))}${unitSuffix}`);
+  if (present(evidence.competitorMedian)) {
+    const approximate = formatApproximateSignalValue(
+      /avis/i.test(String(evidence.unit || "")) ? "reviews"
+        : /photos?/i.test(String(evidence.unit || "")) ? "photos"
+          : /position/i.test(String(evidence.unit || "")) ? "position"
+            : null,
+      evidence.competitorMedian,
+    );
+    lines.push(`Moyenne concurrents : ${safeText(approximate || `environ ${formatEvidenceValue(evidence.competitorMedian)}`)}${unitSuffix && !approximate ? unitSuffix : ""}`);
+  }
   if (evidence.topCompetitor && present(evidence.topCompetitor.value)) {
-    lines.push(`Meilleure observée : ${safeNumber(evidence.topCompetitor.value)}${unitSuffix} (${safeText(evidence.topCompetitor.name, "")})`);
+    lines.push(`Fiche de référence : ${safeText(formatEvidenceValue(evidence.topCompetitor.value))}${unitSuffix} (${safeText(evidence.topCompetitor.name, "")})`);
   }
 
   return lines.length ? lines.join("<br>") : safeText(evidence.source || "Observation");
@@ -386,15 +415,15 @@ function comparisonColumn(entity) {
   // correct) au lieu du format brut ("4.1" → "4,1", "1 photos" → "1 photo").
   return `
     <div class="comparison-col">
-      <p class="comparison-label">${safeText(entity.label)}</p>
+      <p class="comparison-label">${safeText(entity.label === "Meilleure fiche observée" ? "Fiche de référence observée" : entity.label)}</p>
       ${ratingKnown ? `<p class="comparison-stars">${stars(Math.round(entity.rating))}</p>` : ""}
-      <p class="comparison-rating">${ratingKnown ? `${safeText(formatRatingDisplay(entity.rating))}/5` : "Non disponible"}</p>
+      <p class="comparison-rating">${ratingKnown ? `${safeText(formatRatingDisplay(entity.rating))}/5` : "Non communiquée"}</p>
       <p class="comparison-meta">
-        ${present(entity.reviews) ? safeText(formatCount(entity.reviews, "avis", "avis")) : "Avis non disponibles"}
+        ${present(entity.reviews) ? safeText(formatCount(entity.reviews, "avis", "avis")) : "Nombre d'avis non communiqué"}
         ·
-        ${present(entity.photos) ? safeText(formatCount(entity.photos, "photo", "photos")) : "Photos non disponibles"}
+        ${present(entity.photos) ? safeText(formatCount(entity.photos, "photo", "photos")) : "Nombre de photos non communiqué"}
       </p>
-      ${entity.photosLabel && entity.photosIsEstimate ? `<p class="comparison-note">Photos : ${safeText(entity.photosLabel)}</p>` : ""}
+      ${entity.photosLabel && entity.photosIsEstimate ? `<p class="comparison-note">Photos : ${safeText(entity.photosLabel === "Meilleure fiche observée" ? "Fiche de référence observée" : entity.photosLabel)}</p>` : ""}
       ${entity.name ? `<p class="comparison-name">${safeText(entity.name)}</p>` : ""}
     </div>
   `;
@@ -439,10 +468,22 @@ function buildPedagogicalRankNote(model) {
     + `${rank.aheadCount} ${wereWord} mieux classé${aheadPlural} que vous.`;
 }
 
+// Objectif 2 (mission "finition avant bêta") — quand Composer
+// (comparisonCard.js, non modifié) ne peut construire aucune carte de
+// comparaison faute de fiche concurrente suffisamment documentée, la page
+// affichait jusqu'ici un vide silencieux. On ne fabrique toujours aucune
+// donnée : on affiche seulement, à la place du vide, une phrase honnête et
+// professionnelle plutôt qu'une absence qui peut passer pour un bug.
 function comparisonSection(model) {
   const hero = model.hero || {};
   const card = hero.comparison;
-  if (!card) return "";
+  if (!card) {
+    return `
+      <div class="comparison-card comparison-fallback">
+        <p>Certaines données publiques ne sont actuellement pas disponibles pour établir une comparaison directe. Les recommandations ci-dessous restent fondées sur l'analyse complète de votre fiche.</p>
+      </div>
+    `;
+  }
   const rankNote = buildPedagogicalRankNote(model);
   return `
     <div class="comparison-card">
@@ -471,7 +512,7 @@ function executiveSummaryBody(summary = {}, sector = null) {
       ${summary.leversClosing ? `<p class="summary-closing">${safeText(presentableText(summary.leversClosing, sector))}</p>` : ""}
     `;
   }
-  return `<p>${safeText(presentableText(summary.text, sector), "Résumé non disponible.")}</p>`;
+  return `<p>${safeText(presentableText(summary.text, sector), "Synthèse en cours de finalisation.")}</p>`;
 }
 
 function heroSection(model, sector) {
@@ -492,6 +533,7 @@ function heroSection(model, sector) {
           <span class="score-label">Score Efficia™</span>
           ${scoreGauge(hero.score)}
           <div class="score-band">${safeText(hero.scoreBand, "Score analysé")}</div>
+          <p class="score-authority">${SCORE_AUTHORITY_NOTE}</p>
           <p class="score-interpretation">${safeText(presentableText(scoreInterpretationNote(hero.score), sector))}</p>
         </div>
       </div>
@@ -544,7 +586,7 @@ function priorityCard(item, sector) {
   // Reasoning/Composer (evidence.js, actionability.js non modifiés).
   const angle = angleForSignal(item.signal);
   const constat = buildConstat(item);
-  const effortImpactNote = buildEffortImpactNote(item.actionability || {});
+  const effortImpactNote = buildEffortImpactNote(item.actionability || {}, item);
   // Premium Polish (retour utilisateur) — objectif "pourquoi cet ordre" :
   // voir buildRankRationale().
   const rankRationale = buildRankRationale(item);
@@ -574,9 +616,14 @@ function priorityCard(item, sector) {
           <span>Constat</span>
           <p>${safeText(presentableText(constat, sector))}</p>
         </div>` : ""}
-        <div class="priority-block">
+        <div class="priority-block priority-why">
           <span>Pourquoi c'est important</span>
-          <p>${safeText(presentableText(item.reasoning, sector))}</p>
+          <p>${safeText(presentableText(
+            item.signal === "description"
+              ? formatDescriptionReasoning(item.reasoning, item.evidence?.value)
+              : item.reasoning,
+            sector,
+          ))}</p>
         </div>
         <div class="priority-block">
           <span>Preuve</span>
@@ -892,7 +939,9 @@ function methodologySection(model, sector) {
       <div class="method-grid">
         <article class="method-card">
           <h3>Méthodologie</h3>
-          <p>${safeText(presentableText(model.footer?.methodology, sector))}</p>
+          <p>${DEGENERATE_METHODOLOGY_PATTERN.test(String(model.footer?.methodology || ""))
+            ? "Analyse issue des observations publiques · analyse fondée sur les données publiques actuellement disponibles pour votre fiche."
+            : safeText(presentableText(model.footer?.methodology, sector))}</p>
         </article>
         <article class="method-card">
           <h3>Cadre de lecture</h3>
@@ -1074,6 +1123,69 @@ function packCard({ intentTitle, productName, price, badge, outcome, includesLab
   `;
 }
 
+// Objectif 3 (mission "finition avant bêta") — nouvelle page insérée juste
+// avant la page commerciale (finalConversionSection ci-dessous) : elle ne
+// vend rien, elle montre concrètement le contenu du Pack Visibilité,
+// action par action, pour que le lecteur sache ce qu'il achète avant de
+// voir le prix. Contenu fixe (catalogue du Pack, identique pour tous les
+// audits) : jamais dérivé de model.priorities, jamais recalculé — c'est la
+// seule page du rapport qui ne dépend d'aucune donnée d'audit. Chaque
+// libellé passe tout de même par presentableText() pour rester cohérent
+// avec le vocabulaire sectoriel déjà utilisé partout ailleurs (ex. "clients"
+// → "patients" pour un secteur médical).
+const WHAT_WE_DO_GROUPS = [
+  {
+    title: "Les fondations de votre fiche",
+    items: [
+      "Rédaction complète de votre description : vos spécialités, votre zone d'intervention et ce qui vous différencie.",
+      "Optimisation des catégories principale et secondaires, alignées sur les recherches réelles de vos clients.",
+      "Vérification et complétion des informations essentielles : horaires, coordonnées, zone de service.",
+      "Ajout et structuration de vos services, pour apparaître sur davantage de recherches qualifiées.",
+    ],
+  },
+  {
+    title: "La preuve sociale",
+    items: [
+      "Stratégie photos : sélection, organisation et enrichissement de votre galerie.",
+      "Mise en place d'un système de réponse aux avis, avec un ton professionnel et rassurant.",
+      "Plan de collecte d'avis, pour obtenir davantage d'avis récents sans sollicitation intrusive.",
+    ],
+  },
+  {
+    title: "La visibilité locale",
+    items: [
+      "Optimisation SEO locale : les mots-clés et signaux qui influencent votre position sur Google.",
+      "Application des recommandations Google Business les plus récentes pour votre secteur.",
+      "Suivi de positionnement, pour vérifier que les actions mises en place produisent un effet mesurable.",
+    ],
+  },
+];
+
+function whatWeDoSection(model, sector) {
+  return `
+    <section class="page final-page">
+      ${header("Ce que nous allons réellement faire")}
+      <div class="section-intro">
+        <p class="eyebrow">Le Pack Visibilité, en détail</p>
+        <h2>Ce que nous allons réellement faire</h2>
+        <p>Pas des promesses marketing : des actions concrètes, appliquées directement sur votre fiche Google.</p>
+      </div>
+      <div class="card-grid">
+        ${WHAT_WE_DO_GROUPS.map((group) => `
+          <article class="method-card">
+            <h3>${safeText(group.title)}</h3>
+            <ul class="pack-features">
+              ${group.items.map((item) => `<li>${icon("check")}<span>${safeText(presentableText(item, sector))}</span></li>`).join("")}
+            </ul>
+          </article>
+        `).join("")}
+      </div>
+      <p class="summary-closing-statement">Chacune de ces actions correspond directement à une priorité identifiée dans ce rapport. Rien n'est générique&nbsp;: tout est appliqué en fonction de ce que votre fiche montre aujourd'hui.</p>
+      ${footer(model, "Ce que nous allons réellement faire")}
+    </section>
+  `;
+}
+
 // Mission "la page doit parler du client" — la page raconte désormais
 // l'histoire du lecteur avant de parler d'Efficia :
 //   1. Ce que le lecteur sait déjà, grâce à ce rapport (récapitulatif en
@@ -1203,6 +1315,7 @@ export function renderPremiumAuditHtml(documentModel = {}) {
     roadmapSection(documentModel, sector),
     methodologySection(documentModel, sector),
     conclusionSummarySection(documentModel, sector),
+    whatWeDoSection(documentModel, sector),
     finalConversionSection(documentModel),
   ].filter((section) => section && section.trim().length > 0);
 
@@ -1740,7 +1853,9 @@ function styles() {
 
       .brand-logo {
         width: 184px;
-        height: auto;
+        height: 104px;
+        object-fit: contain;
+        object-position: left center;
         display: block;
       }
 
@@ -1913,6 +2028,17 @@ function styles() {
         font-weight: 900;
         letter-spacing: 0.12em;
         text-transform: uppercase;
+      }
+
+      .score-authority {
+        max-width: 300px;
+        margin: 16px auto 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.55;
+        font-weight: 650;
       }
 
       .score-interpretation {
@@ -2869,6 +2995,19 @@ function styles() {
 
       .comparison-col { text-align: center; }
 
+      .comparison-fallback {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+
+      .comparison-fallback p {
+        margin: 0;
+        color: #334155;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.6;
+      }
+
       .comparison-divider {
         width: 1px;
         align-self: stretch;
@@ -3042,6 +3181,178 @@ function styles() {
         margin: 4px 0 0;
         color: var(--muted);
         font-size: 14px;
+      }
+
+      /* Densité du rapport premium : proportions uniquement. Le diagnostic
+         gratuit reste strictement isolé par le sélecteur de racine. */
+      .report-shell:not(.free-diagnostic) {
+        font-size: 13.6px;
+        line-height: 1.44;
+      }
+
+      .report-shell:not(.free-diagnostic) .page {
+        padding: 32px 34px 68px;
+      }
+
+      .report-shell:not(.free-diagnostic) h1 {
+        max-width: 820px;
+        font-size: clamp(38px, 4vw, 51px);
+        line-height: 0.9;
+      }
+
+      .report-shell:not(.free-diagnostic) h2 {
+        font-size: 27px;
+        line-height: 1;
+      }
+
+      .report-shell:not(.free-diagnostic) h3 {
+        font-size: 20px;
+        line-height: 1.06;
+      }
+
+      .report-shell:not(.free-diagnostic) .cover-grid {
+        grid-template-columns: minmax(0, 1fr) 350px;
+        gap: 34px;
+        padding: 30px 0 22px;
+      }
+
+      .report-shell:not(.free-diagnostic) .headline {
+        max-width: 820px;
+        margin-top: 16px;
+        font-size: 19.5px;
+        line-height: 1.4;
+      }
+
+      .report-shell:not(.free-diagnostic) .score-card {
+        padding: 27px 28px 24px;
+      }
+
+      .report-shell:not(.free-diagnostic) .score-gauge-wrap {
+        width: 222px;
+        height: 222px;
+      }
+
+      .report-shell:not(.free-diagnostic) .score-gauge-center strong { font-size: 62px; }
+      .report-shell:not(.free-diagnostic) .score-band { margin-top: 14px; font-size: 16px; }
+      .report-shell:not(.free-diagnostic) .score-label { margin-bottom: 14px; font-size: 10px; }
+      .report-shell:not(.free-diagnostic) .score-authority {
+        max-width: 320px;
+        margin-top: 12px;
+        padding-top: 11px;
+        font-size: 10.6px;
+        line-height: 1.4;
+        text-align: justify;
+      }
+      .report-shell:not(.free-diagnostic) .score-interpretation {
+        max-width: 320px;
+        margin-top: 13px;
+        font-size: 12.8px;
+        line-height: 1.48;
+      }
+
+      .report-shell:not(.free-diagnostic) .section-intro,
+      .report-shell:not(.free-diagnostic) .section-lead { max-width: 820px; }
+      .report-shell:not(.free-diagnostic) .section-intro { padding: 26px 0 15px; }
+      .report-shell:not(.free-diagnostic) .section-lead,
+      .report-shell:not(.free-diagnostic) .section-intro p:not(.eyebrow) {
+        font-size: 15.3px;
+        line-height: 1.48;
+      }
+      .report-shell:not(.free-diagnostic) .section-intro p:not(.eyebrow) { margin-top: 10px; }
+      .report-shell:not(.free-diagnostic) .eyebrow { margin-bottom: 10px; font-size: 11px; }
+
+      .report-shell:not(.free-diagnostic) .hero-card { padding: 23px; gap: 14px; }
+      .report-shell:not(.free-diagnostic) .hero-card h2 { margin-bottom: 10px; font-size: 24px; }
+      .report-shell:not(.free-diagnostic) .hero-card p { font-size: 15.3px; line-height: 1.5; }
+      .report-shell:not(.free-diagnostic) .executive-card { padding: 27px 31px; }
+      .report-shell:not(.free-diagnostic) .executive-card p:not(.letter-label) {
+        max-width: 800px;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .report-shell:not(.free-diagnostic) .executive-card p.summary-opening,
+      .report-shell:not(.free-diagnostic) .executive-card p.summary-levers-intro,
+      .report-shell:not(.free-diagnostic) .executive-card p.summary-closing { margin-bottom: 11px; }
+      .report-shell:not(.free-diagnostic) .summary-levers { gap: 7px; margin-bottom: 14px; }
+      .report-shell:not(.free-diagnostic) .summary-levers li { font-size: 15.3px; }
+
+      .report-shell:not(.free-diagnostic) .priority-list,
+      .report-shell:not(.free-diagnostic) .stack,
+      .report-shell:not(.free-diagnostic) .timeline { gap: 10px; }
+      .report-shell:not(.free-diagnostic) .priority-card { grid-template-columns: 120px 1fr; }
+      .report-shell:not(.free-diagnostic) .priority-rank { min-height: 152px; padding: 13px; font-size: 12px; }
+      .report-shell:not(.free-diagnostic) .priority-body { padding: 17px; }
+      .report-shell:not(.free-diagnostic) .priority-constat,
+      .report-shell:not(.free-diagnostic) .priority-block { margin-top: 8px; padding: 10px; }
+      .report-shell:not(.free-diagnostic) .priority-constat p,
+      .report-shell:not(.free-diagnostic) .priority-block p { margin-top: 5px; line-height: 1.4; }
+      .report-shell:not(.free-diagnostic) .priority-grid { gap: 8px; margin-top: 10px; }
+      .report-shell:not(.free-diagnostic) .priority-grid div { padding: 10px; }
+      .report-shell:not(.free-diagnostic) .priority-grid p { margin-top: 5px; }
+      .report-shell:not(.free-diagnostic) .priority-rank-rationale { margin-top: 5px; font-size: 11.5px; line-height: 1.35; }
+      .report-shell:not(.free-diagnostic) .priority-effort-note { margin-top: 8px; font-size: 12px; line-height: 1.35; }
+      .report-shell:not(.free-diagnostic) .priority-meta { gap: 18px; margin-top: 10px; font-size: 11px; }
+
+      .report-shell:not(.free-diagnostic) .card-grid,
+      .report-shell:not(.free-diagnostic) .split-grid,
+      .report-shell:not(.free-diagnostic) .method-grid,
+      .report-shell:not(.free-diagnostic) .summary-recap-grid { gap: 11px; }
+      .report-shell:not(.free-diagnostic) .insight-card,
+      .report-shell:not(.free-diagnostic) .method-card,
+      .report-shell:not(.free-diagnostic) .summary-recap-card { padding: 15px; }
+      .report-shell:not(.free-diagnostic) .insight-card .card-icon { margin-bottom: 10px; }
+      .report-shell:not(.free-diagnostic) .insight-card p,
+      .report-shell:not(.free-diagnostic) .method-card p { margin-top: 8px; }
+      .report-shell:not(.free-diagnostic) .summary-recap-card p,
+      .report-shell:not(.free-diagnostic) .summary-recap-list li { font-size: 14.5px; line-height: 1.4; }
+      .report-shell:not(.free-diagnostic) .summary-recap-list { gap: 7px; }
+      .report-shell:not(.free-diagnostic) .summary-closing-statement {
+        max-width: 820px;
+        margin-top: 16px;
+        padding-top: 14px;
+        font-size: 16px;
+        line-height: 1.44;
+      }
+
+      .report-shell:not(.free-diagnostic) .action-group + .action-group { margin-top: 20px; }
+      .report-shell:not(.free-diagnostic) .timeline { padding-left: 25px; }
+      .report-shell:not(.free-diagnostic) .action-card { grid-template-columns: 38px 1fr; gap: 10px; padding: 15px; }
+      .report-shell:not(.free-diagnostic) .action-content dl { gap: 7px; margin-top: 10px; }
+      .report-shell:not(.free-diagnostic) .action-content dl div { padding: 8px; }
+      .report-shell:not(.free-diagnostic) .roadmap-groups { gap: 18px; margin-top: 7px; }
+      .report-shell:not(.free-diagnostic) .roadmap-list { gap: 9px; }
+      .report-shell:not(.free-diagnostic) .roadmap-item { gap: 12px; }
+      .report-shell:not(.free-diagnostic) .roadmap-action { font-size: 16px; line-height: 1.3; }
+
+      .report-shell:not(.free-diagnostic) .comparison-card {
+        gap: 20px;
+        margin-bottom: 19px;
+        padding: 20px 24px;
+      }
+      .report-shell:not(.free-diagnostic) .comparison-rank { margin-bottom: 19px; font-size: 12.8px; }
+      .report-shell:not(.free-diagnostic) .domains-block { margin-bottom: 21px; }
+      .report-shell:not(.free-diagnostic) .domain-list { gap: 10px; margin-top: 10px; }
+
+      .report-shell:not(.free-diagnostic) .pack-grid { gap: 13px; }
+      .report-shell:not(.free-diagnostic) .pack-card { padding: 17px; }
+      .report-shell:not(.free-diagnostic) .conversion-intro { padding-top: 17px; }
+      .report-shell:not(.free-diagnostic) .pack-cta { margin-top: 17px; padding: 13px 19px; font-size: 13.2px; }
+      .report-shell:not(.free-diagnostic) .deductible-callout { margin-bottom: 16px; padding: 22px 29px; }
+
+      /* Justification limitée aux paragraphes demandés ; listes, tableaux et
+         titres conservent leur alignement actuel. */
+      .report-shell:not(.free-diagnostic) .priority-why p,
+      .report-shell:not(.free-diagnostic) .executive-card p,
+      .report-shell:not(.free-diagnostic) .summary-recap-card p,
+      .report-shell:not(.free-diagnostic) .summary-closing-statement,
+      .report-shell:not(.free-diagnostic) .method-card p,
+      .report-shell:not(.free-diagnostic) .conversion-intro > p:not(.eyebrow),
+      .report-shell:not(.free-diagnostic) .conversion-transition,
+      .report-shell:not(.free-diagnostic) .pack-outcome,
+      .report-shell:not(.free-diagnostic) .deductible-callout p,
+      .report-shell:not(.free-diagnostic) .conversion-signature {
+        text-align: justify;
+        text-justify: inter-word;
       }
 
       /* ------------------------------------------------------------------ */

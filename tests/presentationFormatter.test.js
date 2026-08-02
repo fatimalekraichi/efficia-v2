@@ -17,11 +17,15 @@ import {
   scoreInterpretationNote,
   buildClosingStatement,
   formatFrenchNumber,
+  formatFrenchNumbersInText,
+  formatDiscreteCount,
+  formatApproximateSignalValue,
   formatRatingDisplay,
   formatOrdinal,
   pluralizeNoun,
   formatCount,
   formatSignalValue,
+  formatDescriptionReasoning,
 } from "../functions/lib/presentationFormatter.js";
 
 // Sprint 5 (finition éditoriale, 2026-07-31) — tests du module unique de
@@ -47,10 +51,11 @@ test("formatRatingDisplay : toujours une décimale, y compris sur une valeur ent
   assert.equal(formatRatingDisplay(4.36), "4,4");
 });
 
-test("formatOrdinal : 1er, puis Ne pour tout le reste", () => {
-  assert.equal(formatOrdinal(1), "1er");
+test("formatOrdinal : première position, puis Ne pour tout le reste", () => {
+  assert.equal(formatOrdinal(1), "première");
   assert.equal(formatOrdinal(2), "2e");
-  assert.equal(formatOrdinal(9), "9e");
+  assert.equal(formatOrdinal(3), "3e");
+  assert.equal(formatOrdinal(7), "7e");
   assert.equal(formatOrdinal(-1), null);
   assert.equal(formatOrdinal("x"), null);
 });
@@ -65,19 +70,46 @@ test("pluralizeNoun : singulier exactement à 1, pluriel sinon (0, 2, décimal)"
 test("formatCount : nombre + accord en un seul appel", () => {
   assert.equal(formatCount(1, "photo", "photos"), "1 photo");
   assert.equal(formatCount(2, "photo", "photos"), "2 photos");
-  assert.equal(formatCount(58.333, "avis", "avis"), "58,3 avis");
+  assert.equal(formatCount(58.333, "avis", "avis"), "58 avis");
+});
+
+test("formatFrenchNumbersInText : quantités discrètes entières et autres décimales françaises", () => {
+  assert.equal(formatDiscreteCount(13.67), "14");
+  assert.equal(formatDiscreteCount(10.33), "10");
+  assert.equal(formatDiscreteCount(265.7), "266");
+  assert.equal(formatFrenchNumbersInText("10.33 avis et 13.67 photos"), "environ 10 avis et environ 14 photos");
+  assert.equal(formatFrenchNumbersInText("Les concurrents publient en moyenne 13.67 photos"), "Les concurrents publient environ 14 photos en moyenne");
+  assert.equal(formatFrenchNumbersInText("Les concurrents publient en moyenne 14 photos"), "Les concurrents publient environ 14 photos en moyenne");
+  assert.equal(formatFrenchNumbersInText("Volume inférieur (médiane : 286)"), "Volume inférieur (médiane : environ 286)");
+  assert.equal(formatFrenchNumbersInText("Votre note est de 4.7/5"), "Votre note est de 4,7/5");
+});
+
+test("formatApproximateSignalValue : les statistiques de panel sont arrondies et signalées comme approximatives", () => {
+  assert.equal(formatApproximateSignalValue("reviews", 10.33), "environ 10 avis");
+  assert.equal(formatApproximateSignalValue("photos", 13.67), "environ 14 photos");
+  assert.equal(formatApproximateSignalValue("reviews", 265.7), "environ 266 avis");
+  assert.equal(formatApproximateSignalValue("position", 3.6), "autour de la 4e position");
+  assert.equal(formatApproximateSignalValue("rating", 4.7), "4,7/5");
 });
 
 test("formatSignalValue : un format par signal connu (unité + pluriel + ordinal), null pour un signal inconnu", () => {
   assert.equal(formatSignalValue("rating", 4.1), "4,1/5");
-  assert.equal(formatSignalValue("reviews", 58.333), "58,3 avis");
+  assert.equal(formatSignalValue("reviews", 58.333), "58 avis");
   assert.equal(formatSignalValue("photos", 1), "1 photo");
   assert.equal(formatSignalValue("photos", 2), "2 photos");
   assert.equal(formatSignalValue("description", 1), "1 caractère");
   assert.equal(formatSignalValue("categories", 2), "2 catégories secondaires");
   assert.equal(formatSignalValue("position", 9), "9e position");
-  assert.equal(formatSignalValue("position", 1), "1er position");
+  assert.equal(formatSignalValue("position", 1), "première position");
   assert.equal(formatSignalValue("unknown_signal", 4), null);
+});
+
+test("formatDescriptionReasoning : distingue description absente, courte et suffisante", () => {
+  const source = "Votre description existe, mais elle peut encore mieux expliquer votre activité.";
+  assert.match(formatDescriptionReasoning(source, 0), /ne comporte actuellement aucune description/);
+  assert.doesNotMatch(formatDescriptionReasoning(source, 0), /description existe/);
+  assert.match(formatDescriptionReasoning(source, 120), /description existe, mais elle peut être enrichie/);
+  assert.equal(formatDescriptionReasoning(source, 750), source);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -361,17 +393,17 @@ test("buildEffortImpactNote : renvoie null sans difficulté connue", () => {
 /* Objectifs 5 et 8 — preuve enrichie (Constat + benchmark en prose)         */
 /* -------------------------------------------------------------------------- */
 
-test("buildEvidenceNarrative : vous / moyenne / meilleure fiche, en prose, format français", () => {
+test("buildEvidenceNarrative : vous / moyenne / fiche de référence, en prose, format français", () => {
   const narrative = buildEvidenceNarrative(
     { value: 8, competitorMedian: 58.333, topCompetitor: { name: "Le Concurrent", value: 101 } },
     "reviews",
   );
   assert.match(narrative, /Votre fiche affiche actuellement 8 avis\./);
-  // Premium Polish (objectif 5) : l'écart (58,3 contre 8, soit ~7,3x) est
+  // L'écart (58 contre 8, soit ~7,3x) reste exprimé en multiplicateur.
   // assez net pour être exprimé en multiplicateur lisible ("sept fois plus"),
   // ce qui nourrit le raisonnement au lieu de juxtaposer deux nombres.
-  assert.match(narrative, /Les concurrents analysés en affichent 58,3 avis en moyenne, soit près de sept fois plus\./);
-  assert.match(narrative, /La meilleure fiche observée en compte 101 avis \(Le Concurrent\)\./);
+  assert.match(narrative, /Les concurrents analysés en affichent environ 58 avis en moyenne, soit près de sept fois plus\./);
+  assert.match(narrative, /La fiche de référence observée en compte 101 avis \(Le Concurrent\)\./);
 });
 
 test("buildEvidenceNarrative : { includeYou: false } omet la phrase \"vous\" (évite de répéter le Constat)", () => {
@@ -380,7 +412,7 @@ test("buildEvidenceNarrative : { includeYou: false } omet la phrase \"vous\" (é
 
   assert.match(withYou, /Votre fiche affiche actuellement/);
   assert.doesNotMatch(withoutYou, /Votre fiche affiche actuellement/);
-  assert.match(withoutYou, /Les concurrents analysés en affichent 24 avis en moyenne, soit près de trois fois plus\./);
+  assert.match(withoutYou, /Les concurrents analysés en affichent environ 24 avis en moyenne, soit près de trois fois plus\./);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -402,7 +434,7 @@ test("buildEvidenceNarrative : rapport net (>=1,5x ou <=0,67x) exprimé en multi
 test("buildEvidenceNarrative : rapport trop faible pour un multiplicateur lisible (repli sobre, aucun chiffre inventé)", () => {
   const narrative = buildEvidenceNarrative({ value: 449, competitorMedian: 340 }, "reviews");
   assert.doesNotMatch(narrative, /fois plus|fois moins/);
-  assert.match(narrative, /Les concurrents analysés en affichent 340 avis en moyenne\./);
+  assert.match(narrative, /Les concurrents analysés en affichent environ 340 avis en moyenne\./);
 });
 
 test("buildEvidenceNarrative : aucun multiplicateur pour la position (le rapport n'aurait pas de sens sur un rang)", () => {
@@ -418,8 +450,8 @@ test("buildEvidenceNarrative : jamais de contradiction sur une valeur nulle (obj
 
 test("buildEvidenceNarrative : la position moyenne du panel n'est jamais un faux ordinal", () => {
   const narrative = buildEvidenceNarrative({ competitorMedian: 4.3 }, "position");
-  assert.match(narrative, /position 4,3/);
-  assert.doesNotMatch(narrative, /4,3e/);
+  assert.match(narrative, /autour de la 4e position/);
+  assert.doesNotMatch(narrative, /4,3e|4,3/);
 });
 
 test("buildEvidenceNarrative : renvoie null sans aucune donnée exploitable ou pour un signal inconnu", () => {
@@ -440,7 +472,7 @@ test("buildEvidenceNarrative : n'invente jamais de nom de concurrent absent", ()
 test("evidenceBarData : calcule des largeurs proportionnelles à partir de vous/concurrents", () => {
   const data = evidenceBarData({ value: 8, competitorMedian: 58 }, "reviews");
   assert.equal(data.youLabel, "8 avis");
-  assert.equal(data.competitorLabel, "58 avis");
+  assert.equal(data.competitorLabel, "environ 58 avis");
   assert.ok(data.youPct < data.competitorPct);
   assert.equal(data.competitorPct, 100);
 });
@@ -487,9 +519,20 @@ test("buildRankRationale : explique le classement à partir de item.rank et item
     buildRankRationale({ rank: 1, actionability: { difficulty: "hard" } }),
     /impact sur votre visibilité est le plus déterminant/,
   );
-  assert.match(
-    buildRankRationale({ rank: 2, actionability: { difficulty: "easy" } }),
+  // Objectif 4 (mission "finition avant bêta") — au-delà du rang 1, la
+  // phrase n'est plus figée : 2-3 variantes déterministes (seed = signal +
+  // rang + valeur), pour éviter la même formulation sur chaque priorité
+  // d'un même rapport. On vérifie l'appartenance au pool plutôt qu'un texte
+  // unique.
+  const RANK_NEXT_VARIANTS = [
     /moins urgent que la précédente/,
+    /agit sur un autre levier/,
+    /moins immédiat que la priorité précédente/,
+  ];
+  const rank2Text = buildRankRationale({ rank: 2, actionability: { difficulty: "easy" } });
+  assert.ok(
+    RANK_NEXT_VARIANTS.some((pattern) => pattern.test(rank2Text)),
+    `buildRankRationale(rank:2) devrait renvoyer une des formulations attendues, reçu : "${rank2Text}"`,
   );
   assert.equal(buildRankRationale({}), null);
 });

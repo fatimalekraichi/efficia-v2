@@ -16,6 +16,19 @@
 // propres helpers historiques (safeText/safeNumber) : ce module ne les
 // remplace pas et ne les modifie pas.
 
+// Objectif 4 (mission "finition avant bêta") — réutilise le générateur de
+// hash déjà existant et déjà validé (knowledgeMessages.js, non modifié :
+// import en lecture seule d'un utilitaire pur, aucune logique métier
+// déplacée) pour choisir, de façon déterministe, une formulation parmi 2-3
+// variantes plutôt que d'exposer toujours la même phrase. Même principe que
+// renderKnowledgeMessage(), volontairement pas dupliqué ici.
+import { stableHash } from "./knowledgeMessages.js";
+
+function pickVariant(pool, seed) {
+  if (!Array.isArray(pool) || !pool.length) return null;
+  return pool[stableHash(seed) % pool.length];
+}
+
 function present(value) {
   return value !== null && value !== undefined && value !== "";
 }
@@ -93,6 +106,43 @@ export function formatFrenchNumber(value, { decimals = 1 } = {}) {
   return String(rounded).replace(".", ",");
 }
 
+// Les avis, photos, caractères et catégories sont des quantités discrètes :
+// le rapport n'affiche jamais une fraction d'élément. La valeur source reste
+// intacte ; seule sa représentation est arrondie à l'entier le plus proche.
+export function formatDiscreteCount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return String(Math.round(number));
+}
+
+// Normalise les décimales déjà interpolées dans les textes produits en amont
+// (titres, actions, résumés). Les quantités discrètes deviennent entières ;
+// les autres décimales gardent au maximum une décimale avec une virgule.
+export function formatFrenchNumbersInText(text) {
+  if (!present(text)) return text;
+  const formatted = String(text).replace(/\b\d+\.\d+\b/g, (raw, offset, source) => {
+    const suffix = source.slice(offset + raw.length);
+    if (/^\s*(?:avis|photos?|caractères?|catégories?)\b/i.test(suffix)) {
+      return `environ ${formatDiscreteCount(raw)}`;
+    }
+    return formatFrenchNumber(raw);
+  });
+  return formatted
+    .replace(/en moyenne\s+(?:environ\s+)?(\d+\s+(?:avis|photos?|caractères?|catégories?))/gi, "environ $1 en moyenne")
+    .replace(/\b(médiane|moyenne)\s*:\s*(?!environ\b)(\d+)\b/gi, "$1 : environ $2");
+}
+
+export function formatApproximateSignalValue(signal, value) {
+  if (signal === "rating") return formatSignalValue(signal, value);
+  if (signal === "position") {
+    const rounded = formatDiscreteCount(value);
+    const ordinal = formatOrdinal(rounded);
+    return ordinal === null ? null : `autour de la ${ordinal} position`;
+  }
+  const formatted = formatSignalValue(signal, value);
+  return formatted === null ? null : `environ ${formatted}`;
+}
+
 // Note Google (rating) : toujours une décimale, même sur une valeur entière
 // ("4,0/5"), pour rester cohérent avec la façon dont une note est toujours
 // perçue (jamais "4/5" qui laisserait croire à une note entière arrondie).
@@ -107,7 +157,7 @@ export function formatOrdinal(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return null;
   const rounded = Math.round(number);
-  return rounded === 1 ? "1er" : `${rounded}e`;
+  return rounded === 1 ? "première" : `${rounded}e`;
 }
 
 // Accord pluriel simple : 1 (exactement) → singulier, tout le reste
@@ -120,7 +170,7 @@ export function pluralizeNoun(count, singular, plural = `${singular}s`) {
 
 // "1 photo" / "2 photos" / "58,3 avis" — nombre + accord, en un seul appel.
 export function formatCount(count, singular, plural = `${singular}s`) {
-  const formatted = formatFrenchNumber(count);
+  const formatted = formatDiscreteCount(count);
   if (formatted === null) return null;
   return `${formatted} ${pluralizeNoun(count, singular, plural)}`;
 }
@@ -454,11 +504,26 @@ export function buildConstat(item = {}) {
 
 const OPEN_ENDED_TIMES = new Set(["variable", "en continu", "long terme"]);
 
-export function buildEffortImpactNote({ difficulty, estimatedTime } = {}) {
+// Objectif 4 (mission "finition avant bêta") — c'était la phrase la plus
+// répétée du rapport (une priorité "avis" à temps ouvert revient dans la
+// quasi-totalité des audits). Trois formulations, pas plus : le choix
+// dépend du signal et des valeurs déjà connues (item.evidence), donc varie
+// naturellement d'un audit à l'autre sans complexifier le moteur.
+const EFFORT_NOTE_OPEN_ENDED = [
+  "Cette amélioration se construit progressivement, mais elle renforce votre crédibilité sur la durée.",
+  "Il n'y a pas de raccourci ici : c'est un travail de fond, mais chaque progrès reste acquis.",
+  "Ce type de priorité se travaille dans la durée, plutôt qu'en une seule fois — et c'est aussi ce qui le rend difficile à copier par vos concurrents.",
+];
+
+function effortNoteSeed(item = {}) {
+  return `${item.signal || ""}-${item.evidence?.value ?? ""}-${item.evidence?.competitorMedian ?? ""}`;
+}
+
+export function buildEffortImpactNote({ difficulty, estimatedTime } = {}, item = {}) {
   const time = String(estimatedTime || "").trim().toLowerCase();
 
   if (OPEN_ENDED_TIMES.has(time)) {
-    return "Cette amélioration se construit progressivement, mais elle renforce votre crédibilité sur la durée.";
+    return pickVariant(EFFORT_NOTE_OPEN_ENDED, effortNoteSeed(item)) || EFFORT_NOTE_OPEN_ENDED[0];
   }
   if (difficulty === "hard") {
     return "Cette action demande davantage de temps, mais produit généralement un effet durable.";
@@ -507,17 +572,27 @@ const EVIDENCE_MEDIAN_INTRO = {
   photos: (value) => `Les concurrents analysés en présentent ${value} en moyenne.`,
   description: (value) => `Les concurrents analysés utilisent en moyenne ${value}.`,
   categories: (value) => `Les concurrents analysés en référencent ${value} en moyenne.`,
-  position: (value) => `En moyenne, les concurrents analysés se positionnent en position ${value}.`,
+  position: (value) => `En moyenne, les concurrents analysés se situent ${value}.`,
 };
 
 const EVIDENCE_BEST_INTRO = {
-  rating: (value, name) => `La meilleure fiche observée affiche ${value}${name}.`,
-  reviews: (value, name) => `La meilleure fiche observée en compte ${value}${name}.`,
-  photos: (value, name) => `La meilleure fiche observée en présente ${value}${name}.`,
-  description: (value, name) => `La meilleure fiche observée compte ${value}${name}.`,
-  categories: (value, name) => `La meilleure fiche observée en référence ${value}${name}.`,
-  position: (value, name) => `La meilleure fiche observée apparaît en ${value}${name}.`,
+  rating: (value, name) => `La fiche de référence observée affiche ${value}${name}.`,
+  reviews: (value, name) => `La fiche de référence observée en compte ${value}${name}.`,
+  photos: (value, name) => `La fiche de référence observée en présente ${value}${name}.`,
+  description: (value, name) => `La fiche de référence observée compte ${value}${name}.`,
+  categories: (value, name) => `La fiche de référence observée en référence ${value}${name}.`,
+  position: (value, name) => `La fiche de référence observée apparaît en ${value}${name}.`,
 };
+
+const DESCRIPTION_ABSENT_REASONING = "Votre fiche ne comporte actuellement aucune description. Ajouter un texte clair permettrait de présenter vos spécialités, votre zone d'intervention et votre valeur ajoutée.";
+const DESCRIPTION_SHORT_REASONING = "Votre description existe, mais elle peut être enrichie pour mieux présenter vos spécialités, votre zone d'intervention et votre valeur ajoutée.";
+
+export function formatDescriptionReasoning(text, descriptionLength) {
+  const length = Number(descriptionLength);
+  if (!Number.isFinite(length) || length >= 750) return text;
+  if (length <= 0) return DESCRIPTION_ABSENT_REASONING;
+  return DESCRIPTION_SHORT_REASONING;
+}
 
 // Premium Polish — objectif 5 : le benchmark doit "nourrir le raisonnement",
 // pas seulement juxtaposer deux nombres. Un écart de "8 avis" contre "58,3"
@@ -571,9 +646,7 @@ export function buildEvidenceNarrative(evidence, signal, { includeYou = true } =
     // ("4,3e"), qui n'aurait pas de sens sur une moyenne. Le multiplicateur
     // n'a pas non plus de sens pour un rang (un rang plus bas est meilleur,
     // le rapport s'interpréterait à l'envers) : réservé aux autres signaux.
-    const medianFormatted = signal === "position"
-      ? formatFrenchNumber(evidence.competitorMedian)
-      : formatSignalValue(signal, evidence.competitorMedian);
+    const medianFormatted = formatApproximateSignalValue(signal, evidence.competitorMedian);
     if (medianFormatted) {
       let sentence = medianBuilder(medianFormatted);
       if (signal !== "position" && present(evidence.value)) {
@@ -614,7 +687,7 @@ export function evidenceBarData(evidence, signal) {
   if (youValue === null || competitorValue === null || youValue < 0 || competitorValue < 0) return null;
 
   const youLabel = formatSignalValue(signal, youValue);
-  const competitorLabel = formatSignalValue(signal, competitorValue);
+  const competitorLabel = formatApproximateSignalValue(signal, competitorValue);
   if (!youLabel || !competitorLabel) return null;
 
   const max = Math.max(youValue, competitorValue) || 1;
@@ -675,6 +748,16 @@ export function scoreInterpretationNote(score) {
 // connaître le détail exact de la formule de classement de Composer : une
 // lecture prudente et honnête des deux mêmes informations déjà affichées sur
 // la carte (Impact, Difficulté), jamais une nouvelle affirmation.
+// Objectif 4 (mission "finition avant bêta") — jusqu'ici, une seule phrase
+// pour tous les rangs 2, 3, 4... Trois formulations, sélectionnées à partir
+// du signal et du rang (déjà connus, jamais recalculés), pour qu'un rapport
+// à plusieurs priorités ne répète pas la même phrase à chaque carte.
+const RANK_NEXT_VARIANTS = [
+  "Cette priorité vient ensuite : son effet reste réel, mais moins urgent que la précédente.",
+  "Ce point complète le précédent : il agit sur un autre levier, avec un effet tout aussi réel.",
+  "Ce sujet reste à traiter, avec un impact réel même s'il est moins immédiat que la priorité précédente.",
+];
+
 export function buildRankRationale(item = {}) {
   const rank = Number(item.rank);
   if (!Number.isFinite(rank)) return null;
@@ -685,7 +768,8 @@ export function buildRankRationale(item = {}) {
       ? "Cette priorité arrive en tête : peu d'effort suffit ici pour un impact déjà visible."
       : "Cette priorité arrive en tête car son impact sur votre visibilité est le plus déterminant parmi les axes identifiés.";
   }
-  return "Cette priorité vient ensuite : son effet reste réel, mais moins urgent que la précédente.";
+  const seed = `${item.signal || ""}-${rank}-${item.evidence?.value ?? ""}`;
+  return pickVariant(RANK_NEXT_VARIANTS, seed) || RANK_NEXT_VARIANTS[0];
 }
 
 // Premium Polish (retour utilisateur) — objectif "conclusion plus mémorable" :
