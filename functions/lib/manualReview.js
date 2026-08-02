@@ -113,7 +113,7 @@ function competitorCountForReview(competitors) {
   return Array.isArray(competitors) ? competitors.length : 0;
 }
 
-function computeBenchmarkConfidence(competitors) {
+export function computeBenchmarkConfidence(competitors) {
   const count = competitorCountForReview(competitors);
   if (count >= 3) return "established";
   if (count > 0) return "limited";
