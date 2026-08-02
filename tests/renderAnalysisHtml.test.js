@@ -112,6 +112,8 @@ test("renderAnalysisHtml produit un document HTML complet avec les sections atte
   assert.match(html, /Pourquoi agir maintenant/);
   assert.match(html, /@page/);
   assert.match(html, /break-inside: avoid/);
+  assert.match(html, /https:\/\/efficiadigital\.com\/assets\/logo\/logo-efficia-web\.png/);
+  assert.doesNotMatch(html, /efficia-logo-gradient/);
 });
 
 test("renderAnalysisHtml affiche uniquement le documentModel et ignore les sources brutes", () => {
@@ -128,7 +130,7 @@ test("renderAnalysisHtml affiche uniquement le documentModel et ignore les sourc
   assert.doesNotMatch(html, /12\/100/);
 });
 
-test("renderAnalysisHtml affiche le bloc de comparaison VOUS / Meilleure fiche observée (point 11)", () => {
+test("renderAnalysisHtml affiche le bloc de comparaison VOUS / fiche de référence observée", () => {
   const html = renderAnalysisHtml(makeDocumentModel({
     hero: {
       ...makeDocumentModel().hero,
@@ -149,6 +151,8 @@ test("renderAnalysisHtml affiche le bloc de comparaison VOUS / Meilleure fiche o
   }));
 
   assert.match(html, /comparison-card/);
+  assert.match(html, /Fiche de référence observée/);
+  assert.doesNotMatch(html, />Meilleure fiche observée</);
   assert.match(html, /Concurrent anonymisé/);
   assert.match(html, /4,8\/5|4\.8\/5/);
   // Mission "dernières corrections de qualité avant la bêta", objectif 3 :
@@ -158,6 +162,91 @@ test("renderAnalysisHtml affiche le bloc de comparaison VOUS / Meilleure fiche o
   // simple phrase de comparaison seule (voir buildPedagogicalRankNote).
   assert.match(html, /Lors de notre recherche, votre fiche apparaissait en 4e position\./);
   assert.match(html, /Parmi les 3 concurrents analysés dans ce rapport, 2 étaient mieux classés que vous\./);
+});
+
+test("renderAnalysisHtml conserve les espaces normaux dans les noms et textes sensibles", () => {
+  const html = renderAnalysisHtml(makeDocumentModel({
+    hero: { ...makeDocumentModel().hero, businessName: "Garage R.G. Pneus" },
+    priorities: [{
+      rank: 1,
+      signal: "reviews",
+      title: "Votre volume d'avis reste inférieur",
+      reasoning: "Répondre plus systématiquement renforcerait la confiance des clients qui hésitent.",
+      evidence: { value: 10, competitorMedian: 20 },
+      actionability: { difficulty: "hard", estimatedTime: "en continu" },
+    }],
+  }));
+
+  for (const expected of [
+    "Garage R.G. Pneus",
+    "Votre volume d&#39;avis reste inférieur",
+    "Répondre plus systématiquement renforcerait la confiance des clients qui hésitent.",
+    "Ce qu'il faut retenir de cette analyse",
+    "Votre audit est terminé.",
+    "Je souhaite gagner du temps",
+  ]) assert.match(html, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  for (const glued of ["GarageR.G.Pneus", "Votrevolumed&#39;avis", "Répondreplus", "Cequ&#39;ilfautretenir", "Votreauditestterminé", "souhaitegagnerdutemps"]) {
+    assert.doesNotMatch(html, new RegExp(glued));
+  }
+  assert.match(html, /overflow-wrap: break-word/);
+  assert.doesNotMatch(html, /h1, h2, h3, p \{ overflow-wrap: anywhere/);
+});
+
+test("renderAnalysisHtml formate les décimales et l'ordinal dans toutes les zones répétées", () => {
+  const model = makeDocumentModel({
+    actionPlan: [{ order: 1, action: "Vos concurrents publient 13.67 photos", difficulty: "easy", estimatedTime: "15 min", impactType: "visibility" }],
+    priorities: [{
+      rank: 1,
+      signal: "reviews",
+      title: "Votre volume reste inférieur à 10.33 avis",
+      reasoning: "Votre note de 4.7/5 reste perfectible.",
+      evidence: { value: 10, competitorMedian: 10.33 },
+      actionability: { difficulty: "easy", estimatedTime: "15 min" },
+    }],
+    hero: { ...makeDocumentModel().hero, rank: { aheadCount: 1, totalCompetitors: 3 } },
+  });
+  model.weaknesses = [{ signal: "position", evidence: { value: 1 } }];
+  const html = renderAnalysisHtml(model);
+
+  assert.match(html, /environ 10 avis/);
+  assert.match(html, /environ 14 photos/);
+  assert.match(html, /4,7\/5/);
+  assert.match(html, /première position/);
+  assert.doesNotMatch(html, /10\.33|13\.67|4\.7\/5|1er position/);
+});
+
+test("renderAnalysisHtml signale aussi les moyennes et médianes déjà entières comme approximatives", () => {
+  const model = makeDocumentModel({
+    actionPlan: [{ order: 1, action: "Vos concurrents publient en moyenne 14 photos", difficulty: "easy", estimatedTime: "15 min", impactType: "visibility" }],
+    priorities: [{
+      rank: 1,
+      signal: "reviews",
+      title: "Votre volume reste inférieur (médiane : 286)",
+      reasoning: "Écart observé.",
+      evidence: { value: 10, competitorMedian: 285.7 },
+      actionability: { difficulty: "easy", estimatedTime: "15 min" },
+    }],
+  });
+  const html = renderAnalysisHtml(model);
+
+  assert.match(html, /publient environ 14 photos en moyenne/);
+  assert.match(html, /médiane : environ 286/);
+  assert.match(html, /environ 286 avis/);
+});
+
+test("renderAnalysisHtml ne contredit jamais une description absente", () => {
+  const priority = {
+    rank: 1,
+    signal: "description",
+    title: "Renforcer la description",
+    reasoning: "Votre description existe, mais elle peut encore mieux expliquer votre activité.",
+    evidence: { value: 0 },
+    actionability: { difficulty: "easy", estimatedTime: "15 min" },
+  };
+  const html = renderAnalysisHtml(makeDocumentModel({ priorities: [priority] }));
+  assert.match(html, /ne comporte actuellement aucune description/);
+  assert.doesNotMatch(html, /description existe/);
 });
 
 test("renderAnalysisHtml : sans signal \"position\" disponible, conserve la phrase de comparaison d'origine (aucune régression)", () => {
