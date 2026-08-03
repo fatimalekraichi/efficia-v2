@@ -134,10 +134,13 @@ function buildPipelineInput(payload, orderContext = null) {
   if (selectedPlaceId) pipelineInput.selectedPlaceId = selectedPlaceId;
   if (selectedCandidate) pipelineInput.selectedCandidate = selectedCandidate;
 
-  if (!hasCity && (companyName || inferredName)) {
-    pipelineInput.observationQuery = companyName || inferredName;
-  } else if (!hasCity && hasValidUrl) {
+  // En mode URL seule, conserver l'URL comme requête d'observation. Utiliser
+  // le nom extrait avec la ville sentinelle "Non renseignée" ferait traiter
+  // cette dernière comme une vraie ville et éliminerait le bon candidat.
+  if (!hasCity && hasValidUrl) {
     pipelineInput.googleBusinessUrl = googleBusinessUrl;
+  } else if (!hasCity && companyName) {
+    pipelineInput.observationQuery = companyName;
   }
 
   return {

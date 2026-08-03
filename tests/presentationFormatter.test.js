@@ -26,6 +26,7 @@ import {
   formatCount,
   formatSignalValue,
   formatDescriptionReasoning,
+  normalizeCategoryLabel,
 } from "../functions/lib/presentationFormatter.js";
 
 // Sprint 5 (finition éditoriale, 2026-07-31) — tests du module unique de
@@ -142,6 +143,11 @@ test("cleanTypography : valeurs vides ou absentes gérées sans erreur", () => {
   assert.equal(cleanTypography(""), "");
   assert.equal(cleanTypography(null), null);
   assert.equal(cleanTypography(undefined), undefined);
+});
+
+test("normalizeCategoryLabel : normalise le générique restaurants sans toucher aux catégories précises", () => {
+  assert.equal(normalizeCategoryLabel("restaurants"), "Restaurant");
+  assert.equal(normalizeCategoryLabel("Restaurant asiatique"), "Restaurant asiatique");
 });
 
 /* -------------------------------------------------------------------------- */

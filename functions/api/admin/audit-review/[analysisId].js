@@ -4,6 +4,8 @@ import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { buildFreeDiagnosticProductionQuery, loadOrderContextForAnalysis } from "../../../lib/freeDiagnosticProductionLink.js";
+import { executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
+import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
 
 async function readPayload(request) {
   try {
@@ -200,6 +202,20 @@ async function saveManualReview({ context, db, analysisId, payload }) {
 }
 
 async function approveAnalysis(db, analysisId) {
+  const row = await loadRawAnalysis(db, analysisId);
+  let manualReview = null;
+  try { manualReview = JSON.parse(row?.manual_review_json || "null"); } catch { manualReview = null; }
+  const fullAnalysis = row?.report_type === "premium" ? await loadAnalysisById(db, analysisId) : null;
+  const executionPlan = fullAnalysis ? buildDocumentModelFromAnalysis(fullAnalysis).executionPlan : null;
+  const executionIssues = row?.report_type === "premium" ? executionPlanApprovalIssues(executionPlan, manualReview?.executionPlan) : [];
+  if (executionIssues.length) {
+    return jsonResponse({
+      success: false,
+      error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED",
+      message: "Validez, corrigez ou marquez non applicables tous les éléments du plan d’exécution et ses livrables avant d’approuver le rapport.",
+      missing: executionIssues,
+    }, 409);
+  }
   const now = new Date().toISOString();
   await db.prepare(`
     UPDATE analyses

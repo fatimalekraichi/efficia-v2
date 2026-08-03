@@ -425,9 +425,10 @@ test("extrait un nom lisible depuis une URL Google Maps quand c'est possible", (
   });
 });
 
-test("admin audit launcher accepte une URL Google sans ville en utilisant un nom extrait pour l'observation", () => {
+test("admin audit launcher conserve une URL Google sans ville pour l'observation", () => {
+  const googleBusinessUrl = "https://www.google.com/maps/place/Arzani+Wafa+(Dr)/@49.6042636,5.824801,11z/";
   const prepared = __test__.buildPipelineInput({
-    googleBusinessUrl: "https://www.google.com/maps/place/Arzani+Wafa+(Dr)/@49.6042636,5.824801,11z/",
+    googleBusinessUrl,
   });
 
   assert.equal(prepared.ok, true);
@@ -435,7 +436,7 @@ test("admin audit launcher accepte une URL Google sans ville en utilisant un nom
     nom: "Arzani Wafa (Dr)",
     ville: "Non renseignée",
     activite: "",
-    observationQuery: "Arzani Wafa (Dr)",
+    googleBusinessUrl,
   });
 });
 
@@ -476,12 +477,15 @@ test("buildPipelineInput refuse Ville seule (sans Nom) et sans URL", () => {
 });
 
 test("buildPipelineInput continue d'accepter l'URL seule (Mode 1, comportement inchangé)", () => {
+  const googleBusinessUrl = "https://www.google.com/maps/place/Garage+Central/";
   const prepared = __test__.buildPipelineInput({
-    googleBusinessUrl: "https://www.google.com/maps/place/Garage+Central/",
+    googleBusinessUrl,
   });
 
   assert.equal(prepared.ok, true);
   assert.equal(prepared.pipelineInput.nom, "Garage Central");
+  assert.equal(prepared.pipelineInput.googleBusinessUrl, googleBusinessUrl);
+  assert.equal(prepared.pipelineInput.observationQuery, undefined);
 });
 
 test("normalise le type de rapport", () => {

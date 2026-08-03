@@ -317,7 +317,7 @@ test("page finale de conversion : apparaît après \"En résumé\", tient sur UN
   assert.doesNotMatch(html, /Option 2/);
 
   // Bloc 2 — une seule phrase de transition vers les packs.
-  const transitionIndex = html.indexOf("ne pas les mettre en œuvre vous-même");
+  const transitionIndex = html.indexOf("Vous disposez maintenant du plan complet");
   const packGridIndex = html.indexOf("<div class=\"pack-grid\">");
   assert.ok(transitionIndex > choicesLabelIndex, "la phrase de transition doit apparaître après le bloc de choix");
   assert.ok(packGridIndex > transitionIndex, "les packs doivent apparaître après la phrase de transition");
@@ -335,12 +335,12 @@ test("page finale de conversion : apparaît après \"En résumé\", tient sur UN
   assert.match(html, /499 €/);
   assert.match(html, /Solution complète/);
   assert.match(html, /En plus du Pack Visibilité/);
-  assert.match(html, /Nous appliquons directement les recommandations formulées dans ce rapport/);
+  assert.match(html, /Efficia applique à votre place la description, les catégories, les services/);
   assert.doesNotMatch(html, /Votre fiche sera optimisée/, "jamais une formule de brochure générique");
 
   const pack1Index = html.indexOf("Je souhaite gagner du temps");
   const productName1Index = html.indexOf("Pack Visibilité Google");
-  const outcome1Index = html.indexOf("Nous appliquons directement les recommandations formulées dans ce rapport,");
+  const outcome1Index = html.indexOf("Efficia applique à votre place la description");
   const findingsLabel1Index = html.indexOf("Ce que nous corrigeons, identifié dans ce rapport");
   assert.ok(productName1Index > pack1Index, "le nom du pack doit apparaître sous le titre-intention");
   assert.ok(outcome1Index > productName1Index, "le résultat attendu doit suivre le nom du pack");

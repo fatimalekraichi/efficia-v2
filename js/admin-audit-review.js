@@ -13,6 +13,8 @@ const criteriaGroupsBox = document.querySelector("[data-criteria-groups]");
 const criteriaSummaryBox = document.querySelector("[data-criteria-summary]");
 const criteriaNotVerifiedSummaryBox = document.querySelector("[data-criteria-not-verified-summary]");
 const fillUnknownButton = document.querySelector("[data-fill-unknown]");
+const executionEditor = document.querySelector("[data-execution-editor]");
+const executionPending = document.querySelector("[data-execution-pending]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 
 let currentAnalysis = null;
@@ -954,6 +956,83 @@ function markUnansweredCriteriaAsNotVerified() {
   updateCriteriaSummary();
 }
 
+const EXECUTION_STATUS_LABELS = {
+  approved: "Approuvé",
+  needs_confirmation: "À confirmer avant publication",
+  not_applicable: "Non applicable",
+};
+
+function executionStatusOptions(selected) {
+  return Object.entries(EXECUTION_STATUS_LABELS).map(([value, label]) =>
+    `<option value="${value}" ${selected === value ? "selected" : ""}>${escapeHtml(label)}</option>`
+  ).join("");
+}
+
+function executionItemHtml(group, index, item, valueKey = "text") {
+  const value = item?.[valueKey] || item?.text || item?.label || item?.subject || item?.title || "";
+  const pending = item?.status === "needs_confirmation";
+  const details = group === "photos" ? `<label>Cadrage<textarea data-execution-detail="text">${escapeHtml(item?.text || "")}</textarea></label><label>Objectif<textarea data-execution-detail="objective">${escapeHtml(item?.objective || "")}</textarea></label>` : "";
+  return `<div class="execution-editor__item${pending ? " is-pending" : ""}" data-execution-item data-execution-group="${escapeHtml(group)}" data-execution-index="${index}" data-execution-id="${escapeHtml(item?.id || "")}" data-execution-value-key="${escapeHtml(valueKey)}">
+    <label>Contenu<textarea data-execution-value>${escapeHtml(value)}</textarea></label>
+    ${details}
+    <label>Statut<select data-execution-status>${executionStatusOptions(item?.status)}</select></label>
+  </div>`;
+}
+
+function executionGroupHtml(title, group, items, valueKey = "text") {
+  return `<section class="execution-editor__group"><h3>${escapeHtml(title)}</h3>${items.map((item, index) => executionItemHtml(group, index, item, valueKey)).join("")}</section>`;
+}
+
+function renderExecutionPlan(analysis) {
+  if (!executionEditor) return;
+  const plan = analysis.executionPlanDraft;
+  if (!plan || analysis.reportType === "free") {
+    executionEditor.innerHTML = "<p class=\"admin-muted\">Le plan d’exécution est réservé à l’Audit Premium.</p>";
+    if (executionPending) executionPending.textContent = "";
+    return;
+  }
+  const linkItem = { id: "review-link", text: plan.reviews?.reviewLink?.value || "", status: plan.reviews?.reviewLink?.status || "needs_confirmation" };
+  executionEditor.innerHTML = [
+    executionGroupHtml("Description proposée", "description", [plan.description]),
+    executionGroupHtml("Catégories", "categoryItems", plan.profileMap?.categoryItems || [], "label"),
+    executionGroupHtml("Services et prestations", "serviceItems", plan.profileMap?.serviceItems || [], "label"),
+    executionGroupHtml("Photos du mois", "photos", plan.photos || [], "subject"),
+    executionGroupHtml("Messages de demande d’avis", "reviewMessages", plan.reviews?.messages || []),
+    executionGroupHtml("Modèles de réponses aux avis", "reviewResponses", plan.reviews?.responseTemplates || []),
+    executionGroupHtml("Lien direct d’avis", "reviewLink", [linkItem]),
+    executionGroupHtml("Quatre publications Google", "posts", plan.posts || []),
+    executionGroupHtml("Objectifs à 30 jours", "actions", plan.actions || [], "objective30Days"),
+  ].join("");
+  const missing = plan.integrity?.missing || [];
+  if (executionPending) executionPending.textContent = plan.pendingConfirmationCount || missing.length
+    ? `Éléments manquants avant approbation : ${plan.pendingConfirmationCount} confirmation(s). ${missing.join(" ; ")}`
+    : "Tous les éléments proposés ont un statut explicite.";
+}
+
+executionEditor?.addEventListener("change", (event) => {
+  const item = event.target.closest("[data-execution-item]");
+  if (item) item.classList.toggle("is-pending", item.querySelector("[data-execution-status]")?.value === "needs_confirmation");
+});
+
+function collectExecutionPlan() {
+  const previous = currentAnalysis?.manualReview?.executionPlan || {};
+  const result = { ...previous, description: null, categoryItems: [], serviceItems: [], photos: [], reviewMessages: {}, reviewResponses: [], posts: [], actions: [] };
+  executionEditor?.querySelectorAll("[data-execution-item]").forEach((node) => {
+    const group = node.dataset.executionGroup;
+    const id = node.dataset.executionId;
+    const valueKey = node.dataset.executionValueKey || "text";
+    const value = node.querySelector("[data-execution-value]")?.value?.trim() || "";
+    const previousItem = group === "reviewMessages" ? previous.reviewMessages?.[id] : (Array.isArray(previous[group]) ? previous[group].find((entry) => entry?.id === id) : null);
+    const item = { ...previousItem, id, [valueKey]: value, text: value, status: node.querySelector("[data-execution-status]")?.value || "needs_confirmation" };
+    node.querySelectorAll("[data-execution-detail]").forEach((field) => { item[field.dataset.executionDetail] = field.value.trim(); });
+    if (group === "description") result.description = item;
+    else if (group === "reviewLink") { result.reviewLink = value; result.reviewLinkStatus = item.status; }
+    else if (group === "reviewMessages") result.reviewMessages[id] = item;
+    else if (Array.isArray(result[group])) result[group].push(item);
+  });
+  return result;
+}
+
 function renderObservation(analysis) {
   const business = analysis.business || {};
   const benchmark = analysis.benchmark || {};
@@ -965,6 +1044,10 @@ function renderObservation(analysis) {
     : (Array.isArray(normalized.subtypes) && normalized.subtypes.length ? normalized.subtypes : null);
   const googleUrl = normalized.google_url || normalized.url || normalized.place_link || normalized.location_link || "";
   const benchmarkConfidence = benchmark.reviewed?.benchmarkConfidence || benchmark.confidence || null;
+  const observedBusinessName = business.name || business.nom || "";
+  const capitalizationAlert = /\b[A-Z]{2,}\s+[a-zà-ÿ]{2,}(?:\s+[a-zà-ÿ]{2,})+/u.test(observedBusinessName)
+    ? `Capitalisation à vérifier avec l’entreprise : « ${observedBusinessName} »`
+    : null;
 
   // Bug corrigé — "Catégorie principale" ne doit jamais afficher le nom de
   // l'entreprise. Le mapping est déjà corrigé à la source (functions/api/
@@ -995,6 +1078,7 @@ function renderObservation(analysis) {
     ["Localisation", business.ville],
     ["Concurrents valides", competitors.length],
     ["Confiance benchmark", { render: renderConfidenceBadge(benchmarkConfidence) }],
+    ...(capitalizationAlert ? [["Alerte nom commercial", capitalizationAlert]] : []),
   ];
 
   observationBox.innerHTML = rows.map(([label, value]) => `
@@ -1166,6 +1250,7 @@ async function loadAnalysis() {
   renderCriteriaReview();
   renderObservation(currentAnalysis);
   renderCompetitors(currentAnalysis);
+  renderExecutionPlan(currentAnalysis);
   fillCriteriaFromAnalysis(currentAnalysis);
   updateLinks(currentAnalysis);
   setStatus(currentAnalysis.status === "approved" ? "Rapport approuvé." : "Analyse prête à être validée.");
@@ -1200,6 +1285,7 @@ function collectPayload() {
     confirmedCompetitorIds,
     excludedCompetitorIds,
     criteriaReview: collectCriteriaReview(),
+    executionPlan: collectExecutionPlan(),
   };
 }
 
@@ -1226,6 +1312,7 @@ async function saveReview(event) {
     fillCriteriaFromAnalysis(currentAnalysis);
     renderObservation(currentAnalysis);
     renderCompetitors(currentAnalysis);
+    renderExecutionPlan(currentAnalysis);
     updateLinks(currentAnalysis);
     setStatus("Aperçu prêt. Relisez le rapport avant approbation.", "ok");
   } catch (error) {
@@ -1250,7 +1337,7 @@ async function approveReport() {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
-      throw new Error(data.error || "Impossible d’approuver le rapport.");
+      throw new Error(data.message || data.error || "Impossible d’approuver le rapport.");
     }
     currentAnalysis = { ...(currentAnalysis || {}), status: "approved" };
     updateLinks(currentAnalysis);

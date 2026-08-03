@@ -123,7 +123,7 @@ test("renderAnalysisById retourne du HTML pour une analyse existante", async () 
   assert.match(html, /La Planche des Saveurs/);
   assert.match(html, /Résumé exécutif/);
   assert.match(html, /97/);
-  assert.match(html, /Vos priorités/);
+  assert.match(html, /Votre plan d’exécution sur 30 jours/);
 });
 
 test("renderLatestAnalysis retourne du HTML pour la dernière analyse", async () => {

@@ -32,6 +32,7 @@ import {
   formatFrenchNumbersInText,
   formatApproximateSignalValue,
   formatDescriptionReasoning,
+  normalizeCategoryLabel,
 } from "./presentationFormatter.js";
 
 const EFFICIA_BLUE = "#2563eb";
@@ -60,6 +61,14 @@ function present(value) {
 
 function safeText(value, fallback = "Non disponible") {
   return escapeHtml(present(value) ? value : fallback);
+}
+
+function safePdfText(value, fallback = "Non disponible") {
+  return safeText(value, fallback);
+}
+
+function pdfCell(value, fallback = "Non disponible") {
+  return safePdfText(value, fallback);
 }
 
 function safeNumber(value, fallback = "Non disponible") {
@@ -411,6 +420,11 @@ function scoreGauge(score) {
 // Potentiel d'amélioration) pour l'échelle 0-5.
 function comparisonColumn(entity) {
   const ratingKnown = present(entity.rating);
+  const photosBelongToPanel = Boolean(entity.photosIsEstimate && entity.name);
+  const comparisonMeta = [
+    present(entity.reviews) ? formatCount(entity.reviews, "avis", "avis") : "Nombre d'avis non communiqué",
+    !photosBelongToPanel && present(entity.photos) ? formatCount(entity.photos, "photo", "photos") : null,
+  ].filter(Boolean).join(" · ");
   // Sprint 5 (objectif 2) : format français (virgule décimale, pluriel
   // correct) au lieu du format brut ("4.1" → "4,1", "1 photos" → "1 photo").
   return `
@@ -418,12 +432,7 @@ function comparisonColumn(entity) {
       <p class="comparison-label">${safeText(entity.label === "Meilleure fiche observée" ? "Fiche de référence observée" : entity.label)}</p>
       ${ratingKnown ? `<p class="comparison-stars">${stars(Math.round(entity.rating))}</p>` : ""}
       <p class="comparison-rating">${ratingKnown ? `${safeText(formatRatingDisplay(entity.rating))}/5` : "Non communiquée"}</p>
-      <p class="comparison-meta">
-        ${present(entity.reviews) ? safeText(formatCount(entity.reviews, "avis", "avis")) : "Nombre d'avis non communiqué"}
-        ·
-        ${present(entity.photos) ? safeText(formatCount(entity.photos, "photo", "photos")) : "Nombre de photos non communiqué"}
-      </p>
-      ${entity.photosLabel && entity.photosIsEstimate ? `<p class="comparison-note">Photos : ${safeText(entity.photosLabel === "Meilleure fiche observée" ? "Fiche de référence observée" : entity.photosLabel)}</p>` : ""}
+      <p class="comparison-meta">${safeText(comparisonMeta)}</p>
       ${entity.name ? `<p class="comparison-name">${safeText(entity.name)}</p>` : ""}
     </div>
   `;
@@ -442,7 +451,10 @@ function findPositionSignalValue(model) {
   for (const pool of pools) {
     const items = Array.isArray(pool) ? pool : [];
     const match = items.find((item) => item?.signal === "position" && present(item?.evidence?.value));
-    if (match) return match.evidence.value;
+    if (match) {
+      const value = Number(match.evidence.value);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    }
   }
   return null;
 }
@@ -456,6 +468,14 @@ function buildPedagogicalRankNote(model) {
   if (!rank || !Number.isFinite(rank.aheadCount) || rank.aheadCount <= 0) return rank?.text || "";
 
   const totalKnown = Number.isFinite(rank.totalCompetitors) && rank.totalCompetitors > 0;
+  const positionFinding = [model?.priorities, model?.weaknesses, model?.opportunities, model?.strengths]
+    .flatMap((items) => Array.isArray(items) ? items : [])
+    .find((item) => item?.signal === "position" && present(item?.evidence?.value));
+  const rawPosition = Number(positionFinding?.evidence?.value);
+  if (positionFinding && Number.isFinite(rawPosition) && rawPosition <= 0) {
+    const countLabel = rank.aheadCount === 3 ? "trois" : rank.aheadCount === 2 ? "deux" : String(rank.aheadCount);
+    return `La fiche n’a pas été détectée dans la zone de résultats observée. Les ${countLabel} concurrents analysés apparaissaient avant elle sur cette recherche.`;
+  }
   const positionValue = findPositionSignalValue(model);
   if (!present(positionValue) || !totalKnown) return rank.text || "";
 
@@ -485,13 +505,16 @@ function comparisonSection(model) {
     `;
   }
   const rankNote = buildPedagogicalRankNote(model);
+  const panelPhotos = card.best?.photosIsEstimate && present(card.best?.photos)
+    ? `Repère du panel : ${safeText(formatApproximateSignalValue("photos", card.best.photos))} en moyenne.` : "";
+  const comparisonNotes = [panelPhotos, rankNote ? safeText(rankNote) : ""].filter(Boolean);
   return `
     <div class="comparison-card">
       ${comparisonColumn(card.you)}
       <div class="comparison-divider" aria-hidden="true"></div>
       ${comparisonColumn(card.best)}
     </div>
-    ${rankNote ? `<p class="comparison-rank">${safeText(rankNote)}</p>` : ""}
+    ${comparisonNotes.length ? `<p class="comparison-rank">${comparisonNotes.map((note) => `<span class="comparison-note-line">${note}</span>`).join("")}</p>` : ""}
   `;
 }
 
@@ -525,8 +548,8 @@ function heroSection(model, sector) {
       <div class="cover-grid">
         <div class="cover-copy">
           <p class="eyebrow">${safeText(model.vocabulary?.eyebrow || "Diagnostic Google Business")}</p>
-          <h1>${safeText(hero.businessName, "Votre entreprise")}</h1>
-          <p class="cover-meta">${[hero.category, hero.city, hero.date].filter(Boolean).map((item) => safeText(item, "")).join(" · ")}</p>
+          <h1>${safePdfText(hero.businessName, "Votre entreprise")}</h1>
+          <p class="cover-meta">${[normalizeCategoryLabel(hero.category), hero.city, hero.date].filter(Boolean).map((item) => safeText(item, "")).join(" · ")}</p>
           <p class="headline">${safeText(presentableText(hero.headline, sector), "")}</p>
         </div>
         <div class="score-card">
@@ -543,7 +566,9 @@ function heroSection(model, sector) {
           <div>
             <p class="letter-label">Note d'analyse</p>
             <h2>Résumé exécutif</h2>
-            ${executiveSummaryBody(model.executiveSummary || {}, sector)}
+            ${executiveSummaryBody(model.executionPlan?.personalizedOverview
+              ? { ...(model.executiveSummary || {}), opening: model.executionPlan.personalizedOverview, text: model.executionPlan.personalizedOverview }
+              : (model.executiveSummary || {}), sector)}
           </div>
         </article>
         <div class="cover-side">
@@ -801,7 +826,7 @@ function limitsSection(model, sector) {
   }
 
   return `
-    <section class="page">
+    <section class="page axes-page">
       ${header("Axes d'amélioration")}
       <div class="section-intro">
         <p class="eyebrow">Visibilité et conversion</p>
@@ -926,6 +951,104 @@ function roadmapSection(model, sector) {
   `;
 }
 
+function executionActionCard(item, sector) {
+  return `<article class="execution-action-card">
+    <div class="action-content">
+      ${item.observed ? `<h4>Ce que nous avons observé</h4><p>${safeText(presentableText(item.observed, sector))}</p>` : ""}
+      <h4>Objectif à 30 jours</h4><p>${safeText(presentableText(item.objective30Days, sector))}</p>
+      <h4>Étapes exactes</h4><ol>${(item.steps || []).map((step) => `<li>${safeText(presentableText(step, sector))}</li>`).join("")}</ol>
+      ${item.deliverableMode === "approved" ? `<h4>Livrable associé</h4><p>Le livrable approuvé correspondant est présenté dans la section dédiée de ce rapport.</p>` : item.deliverableMode === "recommendation" ? `<h4>Recommandation associée</h4><p>Une structure ou un modèle à adapter est présenté dans la section dédiée de cet audit.</p>` : `<h4>Préparation nécessaire</h4><p>Le contenu doit être confirmé dans le back-office avant de pouvoir être utilisé ou publié.</p>`}
+      <dl>
+        <div><dt>Responsable recommandé</dt><dd>${safeText(presentableText(item.owner, sector))}</dd></div>
+        <div><dt>Temps estimé</dt><dd>${safeText(presentableText(item.estimatedTime, sector), "À planifier")}</dd></div>
+        <div><dt>Action terminée lorsque</dt><dd>${safeText(presentableText(item.doneWhen, sector))}</dd></div>
+        <div><dt>Indicateur à suivre</dt><dd>${safeText(presentableText(item.metric, sector))}</dd></div>
+      </dl>
+    </div>
+  </article>`;
+}
+
+function executionOverviewSection(model, sector) {
+  const plan = model.executionPlan;
+  if (!plan?.actions?.length) return "";
+  return `<section class="page">
+    ${header("Plan d’exécution 30 jours")}
+    <div class="section-intro"><p class="eyebrow">Vos trois résultats prioritaires</p><h2>Votre plan d’exécution sur 30 jours</h2><p>Ces résultats reprennent les priorités déjà identifiées dans l’audit, sans en ajouter de nouvelles.</p></div>
+    <ol class="summary-list">${plan.outcomes.map((outcome) => `<li>${safeText(presentableText(outcome, sector))}</li>`).join("")}</ol>
+    ${footer(model, "Plan d’exécution 30 jours")}
+  </section>
+  ${plan.actions.map((item) => `<section class="page execution-action-page">${header(`Priorité ${item.rank}`)}<div class="section-intro"><p class="eyebrow">Fiche d’action ${item.rank}</p><h2>${safePdfText(presentableText(item.title, sector))}</h2></div>${executionActionCard(item, sector)}${footer(model, `Priorité ${item.rank}`)}</section>`).join("")}`;
+}
+
+function executionDeliverablesSections(model) {
+  const plan = model.executionPlan;
+  if (!plan) return "";
+  const approved = plan.approved || {};
+  const sections = [];
+  if (approved.description) {
+    sections.push(`<section class="page">${header("Éléments prêts à publier")}<div class="section-intro"><p class="eyebrow">Fiche Google Business</p><h2>Description et éléments de fiche validés</h2></div>
+      <article class="method-card"><h3>Votre description Google prête à publier</h3><p>${safeText(presentableText(approved.description.text))}</p><p><strong>${safeNumber(approved.description.text.length)} caractères · Statut : Approuvée</strong></p><p>Dans Google Business, ouvrez « Modifier le profil », puis « Description », copiez ce texte, publiez-le et contrôlez son affichage public.</p><p><strong>Critère de fin :</strong> La description est visible publiquement dans Google Search ou Maps.</p></article>
+      ${footer(model, "Éléments de fiche")}</section>`);
+  }
+  if ((approved.categoryItems?.length || 0) + (approved.serviceItems?.length || 0) > 1) {
+    const rows = [
+      ...(approved.categoryItems || []).map((item, index) => [index ? "Catégorie secondaire" : "Catégorie principale", item.label || item.text, "À conserver si elle décrit toujours l’activité réelle", "Approuvée"]),
+      ...(approved.serviceItems || []).map((item) => ["Service", item.label || item.text, "À conserver uniquement s’il est réellement proposé", "Approuvé"]),
+    ];
+    sections.push(`<section class="page">${header("Catégories et services")}<div class="section-intro"><p class="eyebrow">Structure de la fiche</p><h2>Catégories et services validés</h2></div><table><thead><tr><th>${pdfCell("Élément")}</th><th>${pdfCell("Valeur actuelle")}</th><th>${pdfCell("Recommandation")}</th><th>${pdfCell("Statut")}</th></tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${pdfCell(presentableText(cell))}</td>`).join("")}</tr>`).join("")}</tbody></table>${footer(model, "Catégories et services")}</section>`);
+  }
+  if (approved.photos?.length) {
+    sections.push(`<section class="page">${header("Plan photos")}<div class="section-intro"><p class="eyebrow">Preuve visuelle</p><h2>Les photos à réaliser ce mois-ci</h2></div><div class="roadmap-list photo-deliverables">${approved.photos.map((item) => `<div class="roadmap-item"><span class="roadmap-checkbox"></span><div><p class="roadmap-action">${safeText(presentableText(item.subject || item.text))}</p><p><strong>Cadrage :</strong> ${safeText(presentableText(item.text))}</p><p><strong>Objectif :</strong> ${safeText(presentableText(item.objective))}</p><p class="roadmap-meta">Priorité ${safeText(item.priority)} · semaine ${safeNumber(item.week)}</p></div></div>`).join("")}</div>${footer(model, "Plan photos")}</section>`);
+  }
+  if (approved.reviewMessages?.length || approved.reviewResponses?.length || approved.reviewLink) {
+    sections.push(`<section class="page">${header("Système d’avis")}<div class="section-intro"><p class="eyebrow">Confiance</p><h2>Votre système d’avis prêt à utiliser</h2></div>
+      ${approved.reviewMessages?.map((item) => `<article class="method-card"><h3>${safeText(presentableText(item.label))}</h3><p>${safeText(presentableText(item.text))}</p></article>`).join("") || ""}
+      ${approved.reviewResponses?.length ? `<article class="method-card"><h3>Modèles de réponse approuvés</h3>${approved.reviewResponses.map((item) => `<h4>${safeText(presentableText(item.label))}</h4><p>${safeText(presentableText(item.text))}</p>`).join("")}</article>` : ""}
+      ${approved.reviewLink ? `<article class="method-card"><h3>Lien d’avis vérifié</h3><p><a href="${safeText(approved.reviewLink)}">${safeText(approved.reviewLink)}</a></p><p>Copiez ce lien dans les messages approuvés et testez-le depuis un téléphone extérieur à l’entreprise.</p></article>` : ""}
+      <article class="method-card"><h3>Routine hebdomadaire</h3><ul>${(plan.reviews.routine || []).map((item) => `<li>${safeText(presentableText(item))}</li>`).join("")}</ul></article>
+      ${plan.reviews.ratingEstimate ? `<article class="method-card"><h3>Objectif indicatif de note</h3><p>Note actuelle : ${safeText(presentableText(String(plan.reviews.currentRating)))} / 5 pour ${safeNumber(plan.reviews.currentReviews)} avis. Prochain palier prudent : ${safeText(String(plan.reviews.ratingEstimate.target).replace(".", ","))} / 5. Estimation : ${safeNumber(plan.reviews.ratingEstimate.needed)} nouvel avis 5 étoiles.</p><p>Estimation indicative, basée sur une moyenne mathématique simplifiée. La note affichée par Google peut être arrondie et évoluer différemment.</p></article>` : ""}
+      ${footer(model, "Système d’avis")}</section>`);
+  }
+  if (approved.posts?.length) {
+    sections.push(`<section class="page">${header("Publications Google")}<div class="section-intro"><p class="eyebrow">Activité</p><h2>Vos prochaines publications Google</h2></div>${approved.posts.map((item) => `<article class="method-card"><h3>${safeText(item.title)}</h3><p>${safeText(item.text)}</p><p>Semaine ${safeNumber(item.week)} · ${safeText(item.photoType)}</p></article>`).join("")}${footer(model, "Publications Google")}</section>`);
+  }
+  if (plan.actions.some((item) => item.signal === "position") && plan.visibility?.length) {
+    sections.push(`<section class="page">${header("Leviers de visibilité")}<div class="section-intro"><p class="eyebrow">Visibilité locale</p><h2>Les leviers contrôlables à vérifier</h2></div><table class="visibility-table"><thead><tr><th>${pdfCell("Élément")}</th><th>${pdfCell("État actuel")}</th><th>${pdfCell("Action")}</th><th>${pdfCell("Responsable")}</th></tr></thead><tbody>${plan.visibility.map((row) => `<tr><td>${pdfCell(presentableText(row.label))}</td><td>${pdfCell(presentableText(String(row.current)))}</td><td>${pdfCell(presentableText(row.action))}</td><td>${pdfCell(presentableText(row.owner))}</td></tr>`).join("")}</tbody></table><p>La position J0/J30 reste un indicateur de suivi : elle varie selon le lieu, le moment et l’appareil utilisés.</p>${footer(model, "Leviers de visibilité")}</section>`);
+  }
+  return sections.join("");
+}
+
+function executionGuidanceSections(model) {
+  const plan = model.executionPlan;
+  const guidance = plan?.guidance || {};
+  const sections = [];
+  if (guidance.description) {
+    const item = guidance.description;
+    sections.push(`<section class="page guidance-page">${header("Structure de description")}<div class="section-intro"><p class="eyebrow">Recommandation générée · À adapter</p><h2>${safeText(presentableText(item.title))}</h2><p>${safeText(presentableText(item.objective))}</p></div><div class="split-grid"><article class="method-card"><h3>Informations à intégrer</h3><ul>${item.fields.map((value) => `<li>${safeText(presentableText(value))}</li>`).join("")}</ul></article><article class="method-card"><h3>Trame conseillée</h3><ol>${item.outline.map((value) => `<li>${safeText(presentableText(value))}</li>`).join("")}</ol></article></div><article class="method-card"><h3>Informations restant à confirmer</h3><ul>${item.missing.map((value) => `<li>${safeText(presentableText(value))}</li>`).join("")}</ul><p><strong>Statut :</strong> À confirmer avant rédaction définitive.</p></article><p class="upsell-note">${safeText(presentableText(item.packNote))}</p>${footer(model, "Structure de description")}</section>`);
+  }
+  if (guidance.photos?.length) {
+    sections.push(`<section class="page guidance-page">${header("Recommandations photos")}<div class="section-intro"><p class="eyebrow">Recommandation générée · À adapter</p><h2>Les photos à ajouter en priorité</h2><p>Retenez uniquement les sujets qui existent réellement dans votre établissement.</p></div><table class="guidance-table"><thead><tr><th>Photo recommandée</th><th>Objectif</th><th>Conseil de prise de vue</th><th>Priorité</th><th>Publication</th></tr></thead><tbody>${guidance.photos.map((item) => `<tr><td>${safeText(presentableText(item.subject))}</td><td>${safeText(presentableText(item.objective))}</td><td>${safeText(presentableText(item.framing))}</td><td>${safeText(item.priority)}</td><td>Semaine ${safeNumber(item.week)}</td></tr>`).join("")}</tbody></table><p class="upsell-note">Dans le Pack Visibilité Google, Efficia organise cette liste avec vous, valide les sujets et prépare un calendrier de publication. Dans le Pack Performance, les publications et leur suivi sont intégrés au plan sur 30 jours.</p>${footer(model, "Recommandations photos")}</section>`);
+  }
+  if (guidance.reviews) {
+    const item = guidance.reviews;
+    sections.push(`<section class="page guidance-page">${header("Modèles de réponses")}<div class="section-intro"><p class="eyebrow">Modèles générés · À adapter</p><h2>Deux bases pour répondre aux avis</h2></div><div class="split-grid"><article class="method-card"><h3>Modèle positif</h3><p>${safeText(presentableText(item.positive))}</p></article><article class="method-card"><h3>Modèle négatif</h3><p>${safeText(presentableText(item.negative))}</p></article></div><article class="method-card"><h3>Règles d’utilisation</h3><p>${safeText(presentableText(item.usage))}</p><ul>${item.avoid.map((value) => `<li>${safeText(presentableText(value))}</li>`).join("")}</ul><p><strong>Statut :</strong> À adapter avant utilisation.</p></article><p class="upsell-note">${safeText(presentableText(item.packNote))}</p>${footer(model, "Modèles de réponses")}</section>`);
+  }
+  return sections.join("");
+}
+
+function executionCalendarSection(model) {
+  const plan = model.executionPlan;
+  if (!plan) return "";
+  const weeks = [1, 2, 3, 4].map((week) => ({ week, items: plan.calendar.filter((item) => item.week === week) }));
+  return `<section class="page">${header("Calendrier 30 jours")}<div class="section-intro"><p class="eyebrow">Suivi</p><h2>Votre calendrier d’exécution</h2></div><div class="roadmap-groups">${weeks.map(({ week, items }) => `<div class="roadmap-group"><h3 class="column-title">Semaine ${week}</h3>${items.length ? items.map((item) => `<div class="roadmap-item"><span class="roadmap-checkbox"></span><div><p class="roadmap-action">${safePdfText(presentableText(item.title))}</p><p class="roadmap-meta">${safePdfText(presentableText(item.owner))} · ${safePdfText(presentableText(item.estimatedTime), "À planifier")}</p><p>${safeText(presentableText(item.doneWhen))}</p></div></div>`).join("") : `<p>Contrôler les actions déjà réalisées et préparer la semaine suivante.</p>`}</div>`).join("")}</div>${footer(model, "Calendrier 30 jours")}</section>`;
+}
+
+function measurementSection(model) {
+  const rows = model.executionPlan?.measurement || [];
+  if (!rows.length) return "";
+  return `<section class="page">${header("Mesure J0 / J30")}<div class="section-intro"><p class="eyebrow">Mesure</p><h2>Comment mesurer les progrès dans 30 jours</h2></div><table><thead><tr><th>Indicateur</th><th>J0</th><th>J+30</th><th>Évolution</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${safeText(presentableText(row.indicator))}</td><td>${safeText(presentableText(String(row.today)))}</td><td></td><td></td></tr>`).join("")}</tbody></table><ol><li>Ouvrez votre fiche Google Business.</li><li>Accédez aux performances.</li><li>Choisissez la période de référence.</li><li>Relevez les valeurs.</li><li>Revenez dans 30 jours avec la même période de comparaison.</li></ol>${footer(model, "Mesure J0 / J30")}</section>`;
+}
+
 function methodologySection(model, sector) {
   return `
     <section class="page final-page">
@@ -982,6 +1105,9 @@ function conclusionSummarySection(model, sector) {
   const topStrength = (model.strengths || [])[0] || null;
   const topPriorities = (model.priorities || []).slice(0, 3);
   const firstAction = (model.actionPlan || [])[0] || null;
+  const executionActions = Array.isArray(model.executionPlan?.actions) ? model.executionPlan.actions : [];
+  const displayedPriorityTitle = (priority) =>
+    executionActions.find((action) => action?.signal === priority?.signal)?.title || priority?.title;
 
   return `
     <section class="page final-page">
@@ -994,15 +1120,17 @@ function conclusionSummarySection(model, sector) {
       <div class="summary-recap-grid">
         <article class="summary-recap-card">
           <span class="eyebrow">Qu'est-ce qui fonctionne déjà ?</span>
-          <p>${topStrength
+          <p>${model.executionPlan?.strengthSummary
+            ? safeText(presentableText(model.executionPlan.strengthSummary, sector))
+            : topStrength
             ? safeText(presentableText(topStrength.title, sector))
-            : safeText("Votre fiche est déjà en ligne et prête à être renforcée : c'est un bon point de départ.")}</p>
+            : safeText(presentableText(model.executionPlan?.personalizedOverview || "La fiche dispose de données publiques qui permettent d’identifier des améliorations concrètes.", sector))}</p>
         </article>
         <article class="summary-recap-card">
           <span class="eyebrow">Quels sont les principaux freins ?</span>
           ${topPriorities.length ? `
           <ul class="summary-recap-list">
-            ${topPriorities.map((item) => `<li>${icon("check")}<span>${safeText(presentableText(item.title, sector))}</span></li>`).join("")}
+            ${topPriorities.map((item) => `<li>${icon("check")}<span>${safeText(presentableText(displayedPriorityTitle(item), sector))}</span></li>`).join("")}
           </ul>` : `<p>${safeText("Aucun frein majeur n'a été identifié à ce stade.")}</p>`}
         </article>
         <article class="summary-recap-card">
@@ -1064,7 +1192,9 @@ const SIGNAL_SHORT_LABELS = {
 // texte complet (déjà affiché plus tôt dans le rapport), jamais une nouvelle
 // analyse. Repli générique et sobre si aucune priorité n'est disponible.
 function reportFindingLabels(model, limit = 4) {
-  const priorities = Array.isArray(model?.priorities) ? model.priorities : [];
+  const priorities = Array.isArray(model?.executionPlan?.actions) && model.executionPlan.actions.length
+    ? model.executionPlan.actions
+    : (Array.isArray(model?.priorities) ? model.priorities : []);
   const labels = [];
   for (const item of priorities) {
     const label = SIGNAL_SHORT_LABELS[item?.signal];
@@ -1112,8 +1242,8 @@ function packCard({ intentTitle, productName, price, badge, outcome, includesLab
   return `
     <article class="offer-card pack-card${modifierClass}">
       ${badge ? `<span class="pack-badge">${safeText(badge)}</span>` : ""}
-      <h3>${safeText(intentTitle)}</h3>
-      <div class="pack-price">${safeText(price)}</div>
+      <h3>${safePdfText(intentTitle)}</h3>
+      <div class="pack-price">${safePdfText(price)}</div>
       ${productName ? `<p class="pack-product-name">${safeText(productName)}</p>` : ""}
       ${outcome ? `<p class="pack-outcome">${safeText(outcome)}</p>` : ""}
       ${includesLabel ? `<p class="pack-includes">${safeText(includesLabel)}</p>` : ""}
@@ -1205,7 +1335,7 @@ function finalConversionSection(model) {
   const findings = reportFindingLabels(model);
 
   return `
-    <section class="page final-page">
+    <section class="page final-page conversion-page">
       ${header("Et maintenant ?")}
       <div class="section-intro conversion-intro">
         <p class="eyebrow">Et maintenant ?</p>
@@ -1231,7 +1361,7 @@ function finalConversionSection(model) {
            phrase ("Nous appliquons... Vous gagnez du temps... Vous
            bénéficiez de...") : une lecture côte à côte des deux cartes ne
            doit pas sonner comme un gabarit rempli deux fois. -->
-      <p class="conversion-transition">Si vous préférez ne pas les mettre en œuvre vous-même, voici les accompagnements proposés par Efficia Digital.</p>
+      <p class="conversion-transition">Vous disposez maintenant du plan complet. Vous pouvez l’appliquer vous-même ou nous confier sa mise en œuvre.</p>
 
       <div class="pack-grid">
         ${packCard({
@@ -1240,7 +1370,7 @@ function finalConversionSection(model) {
           price: "349 €",
           badge: "Le plus choisi",
           variant: "popular",
-          outcome: "Nous appliquons directement les recommandations formulées dans ce rapport, avec une mise en œuvre cohérente de bout en bout.",
+          outcome: "Efficia applique à votre place la description, les catégories, les services, les informations, le système d’avis et l’organisation des photos validés dans ce rapport.",
           findingsLabel: "Ce que nous corrigeons, identifié dans ce rapport",
           findings,
           ctaLabel: "Commencer avec le Pack Visibilité",
@@ -1251,7 +1381,7 @@ function finalConversionSection(model) {
           price: "499 €",
           badge: "Solution complète",
           variant: "premium",
-          outcome: "Nous allons plus loin que le Pack Visibilité : mise en œuvre complète des recommandations, stratégie d'avis et suivi dans la durée pour consolider les résultats.",
+          outcome: "Efficia ajoute la mise en œuvre complète, les publications, le suivi sur 30 jours, le contrôle des performances et l’ajustement du plan.",
           includesLabel: "En plus du Pack Visibilité :",
           findings: [
             "Stratégie d'amélioration des avis",
@@ -1266,17 +1396,19 @@ function finalConversionSection(model) {
       <!-- Objectif 3 (mission précédente) — le message principal n'est pas
            le montant, mais le fait qu'il n'est pas perdu : très visible,
            jamais "réduction". -->
-      <article class="score-card deductible-callout">
-        <p class="score-band">Votre Audit Premium n'est pas une dépense perdue.</p>
-        <p class="score-interpretation">Si vous choisissez un accompagnement dans les 30 jours, les 99 € déjà investis seront intégralement déduits.</p>
-      </article>
+      <div class="conversion-tail">
+        <article class="score-card deductible-callout">
+          <p class="score-band">Votre Audit Premium n'est pas une dépense perdue.</p>
+          <p class="score-interpretation">Si vous choisissez un accompagnement dans les 30 jours, les 99 € déjà investis seront intégralement déduits.</p>
+        </article>
 
       <!-- Mission "la page doit parler du client" — une conclusion plus
            humaine : le rapport reste la propriété du lecteur, la déduction
            n'est rappelée qu'en second, et la page se referme sur une
            signature plutôt qu'un argumentaire. -->
-      <p class="summary-closing-statement">Quelle que soit votre décision, cet audit reste votre feuille de route. Vous pouvez vous y référer à tout moment pour améliorer progressivement votre visibilité sur Google. Si vous préférez nous confier cette mission dans les 30 prochains jours, les 99 € déjà investis seront intégralement déduits.</p>
-      <p class="conversion-signature">Merci de votre confiance.<br>L'équipe Efficia Digital</p>
+        <div><p class="summary-closing-statement">Quelle que soit votre décision, cet audit reste votre feuille de route. Vous pouvez vous y référer à tout moment pour améliorer progressivement votre visibilité sur Google. Si vous préférez nous confier cette mission dans les 30 prochains jours, les 99 € déjà investis seront intégralement déduits.</p>
+        <p class="conversion-signature">Merci de votre confiance.<br>L'équipe Efficia Digital</p></div>
+      </div>
 
       ${footer(model, "Et maintenant ?")}
     </section>
@@ -1310,12 +1442,15 @@ export function renderPremiumAuditHtml(documentModel = {}) {
     heroSection(documentModel, sector),
     strengthsSection(documentModel, sector),
     limitsSection(documentModel, sector),
-    prioritiesSection(documentModel, sector),
-    actionPlanSection(documentModel, sector),
-    roadmapSection(documentModel, sector),
+    documentModel.executionPlan ? "" : prioritiesSection(documentModel, sector),
+    documentModel.executionPlan ? executionOverviewSection(documentModel, sector) : actionPlanSection(documentModel, sector),
+    documentModel.executionPlan ? executionGuidanceSections(documentModel) : "",
+    documentModel.executionPlan ? executionDeliverablesSections(documentModel) : roadmapSection(documentModel, sector),
+    documentModel.executionPlan ? executionCalendarSection(documentModel) : "",
+    documentModel.executionPlan ? measurementSection(documentModel) : "",
     methodologySection(documentModel, sector),
     conclusionSummarySection(documentModel, sector),
-    whatWeDoSection(documentModel, sector),
+    documentModel.executionPlan ? "" : whatWeDoSection(documentModel, sector),
     finalConversionSection(documentModel),
   ].filter((section) => section && section.trim().length > 0);
 
@@ -2913,13 +3048,92 @@ function styles() {
         background: #d7e5ff;
       }
 
-      .action-card {
+      .action-card,
+      .execution-action-card {
         position: relative;
         display: grid;
         grid-template-columns: 46px 1fr;
         gap: 14px;
         padding: 20px;
         box-shadow: none;
+      }
+
+      /* Les fiches d'exécution sont plus longues que les anciennes cartes.
+         Un conteneur grid est indivisible dans Chromium à l'impression et
+         repoussait toute la fiche après son en-tête. Un flux block conserve
+         la carte sur la même page et autorise une continuation propre si un
+         contenu validé devient exceptionnellement long. */
+      .execution-action-card {
+        display: block;
+      }
+
+      .execution-action-card .timeline-dot {
+        margin-bottom: 10px;
+      }
+
+      .execution-action-card h4 {
+        margin: 9px 0 3px;
+        font-size: 14px;
+      }
+
+      .execution-action-card p,
+      .execution-action-card li {
+        font-size: 13.5px;
+        line-height: 1.42;
+      }
+
+      .execution-action-card ol {
+        margin: 5px 0 8px;
+        padding-left: 22px;
+      }
+
+      .execution-action-card .action-content dl {
+        margin-top: 8px;
+        gap: 6px;
+      }
+
+      .execution-action-card .action-content dl div {
+        padding: 7px;
+      }
+
+      .execution-action-page h2 { letter-spacing: 0; }
+
+      @media print {
+        .execution-action-page { padding-top: 9mm; padding-bottom: 20mm; }
+        .execution-action-page .section-intro { padding-top: 12px; padding-bottom: 7px; }
+        .execution-action-page .section-intro h2 { font-size: 24px; line-height: 1.12; }
+        .execution-action-page .execution-action-card { padding: 10px 13px; }
+        .execution-action-page .execution-action-card h4 { margin-top: 6px; }
+        .execution-action-page .execution-action-card p,
+        .execution-action-page .execution-action-card li { font-size: 12.7px; line-height: 1.32; }
+        .execution-action-page .execution-action-card ol { margin-bottom: 5px; }
+        .execution-action-page .execution-action-card .action-content dl { grid-template-columns: 1fr 1fr; gap: 5px; }
+        .execution-action-page .execution-action-card .action-content dl div { padding: 5px 7px; }
+        .conversion-page { padding-top: 8mm; padding-bottom: 18mm; }
+        .conversion-page .conversion-intro { padding: 10px 0 4px; }
+        .conversion-page .conversion-intro h2 { font-size: 25px; }
+        .conversion-page .conversion-recap { grid-template-columns: 1fr 1fr; gap: 3px 14px; margin-top: 5px; }
+        .conversion-page .conversion-recap-label,
+        .conversion-page .conversion-choices-label { margin-top: 7px; }
+        .conversion-page .conversion-choices { grid-template-columns: 1fr 1fr; margin-top: 4px; line-height: 1.3; }
+        .conversion-page .conversion-transition { margin: 9px 0 4px; font-size: 13.5px; }
+        .conversion-page .pack-grid { grid-template-columns: 1fr; gap: 7px; }
+        .conversion-page .pack-card { padding: 11px; }
+        .conversion-page .pack-badge { margin-bottom: 6px; padding: 4px 9px; font-size: 9px; }
+        .conversion-page .pack-card h3 { font-size: 17px; }
+        .conversion-page .pack-price { margin-top: 4px; font-size: 23px; }
+        .conversion-page .pack-outcome { margin-top: 6px; font-size: 12px; line-height: 1.3; }
+        .conversion-page .pack-findings { margin-top: 7px; padding-top: 6px; }
+        .conversion-page .pack-features { gap: 3px; margin-top: 4px; }
+        .conversion-page .pack-features li,
+        .conversion-page .pack-findings .pack-features li { gap: 5px; font-size: 10.5px; line-height: 1.25; }
+        .conversion-page .pack-cta { margin-top: 7px; padding: 8px 10px; font-size: 11px; }
+        .conversion-page .deductible-callout { margin: 4px 0 0; padding: 7px 12px; }
+        .conversion-page .deductible-callout .score-band { font-size: 13px; line-height: 1.2; }
+        .conversion-page .deductible-callout .score-interpretation { margin-top: 3px; font-size: 10px; line-height: 1.25; }
+        .conversion-page .summary-closing-statement { margin-top: 4px; padding-top: 4px; font-size: 10px; line-height: 1.25; }
+        .conversion-page .conversion-signature { margin-top: 3px; font-size: 9.5px; line-height: 1.2; }
+        .conversion-page .conversion-tail { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 8px; align-items: start; break-inside: avoid; }
       }
 
       .timeline-dot {
@@ -3064,6 +3278,8 @@ function styles() {
         font-size: 15px;
         font-weight: 780;
       }
+
+      .comparison-note-line { display: block; }
 
       /* — Point 3 (Sprint 1, 2026-07-31) : score par domaine, page "Axes    */
       /*   d'amélioration" — passthrough du Score Efficia déjà calculé.      */
@@ -3252,6 +3468,56 @@ function styles() {
 
       .report-shell:not(.free-diagnostic) .section-intro,
       .report-shell:not(.free-diagnostic) .section-lead { max-width: 820px; }
+      /* Chromium détermine les séparations de mots du PDF à partir de la
+         distance physique entre glyphes. Les graisses fortes et les
+         letter-spacing négatifs des titres réduisaient parfois cette
+         distance sous son seuil, alors que l'espace existait bien dans le
+         HTML. Un espacement de mot explicite, limité au Premium, stabilise
+         à la fois le rendu et la couche texte sans caractère artificiel. */
+      .report-shell:not(.free-diagnostic) { word-spacing: normal; }
+      .report-shell:not(.free-diagnostic) h1,
+      .report-shell:not(.free-diagnostic) h2,
+      .report-shell:not(.free-diagnostic) h3,
+      .report-shell:not(.free-diagnostic) .roadmap-action,
+      .report-shell:not(.free-diagnostic) th,
+      .report-shell:not(.free-diagnostic) td,
+      .report-shell:not(.free-diagnostic) .pack-price { word-spacing: normal; }
+      .report-shell:not(.free-diagnostic) h1,
+      .report-shell:not(.free-diagnostic) h2,
+      .report-shell:not(.free-diagnostic) .roadmap-action { word-spacing: normal; }
+      .report-shell:not(.free-diagnostic) th,
+      .report-shell:not(.free-diagnostic) td { word-spacing: normal; }
+      .report-shell:not(.free-diagnostic) .visibility-table { border-collapse: separate; border-spacing: 7px 0; }
+      .report-shell:not(.free-diagnostic) .visibility-table th,
+      .report-shell:not(.free-diagnostic) .visibility-table td { padding-left: 3px; padding-right: 3px; }
+      .report-shell:not(.free-diagnostic) h1,
+      .report-shell:not(.free-diagnostic) h2,
+      .report-shell:not(.free-diagnostic) h3,
+      .report-shell:not(.free-diagnostic) h4,
+      .report-shell:not(.free-diagnostic) .roadmap-action,
+      .report-shell:not(.free-diagnostic) .pack-price,
+      .report-shell:not(.free-diagnostic) th,
+      .report-shell:not(.free-diagnostic) td {
+        letter-spacing: 0.012em;
+        font-kerning: none;
+        font-variant-ligatures: none;
+      }
+      /* En white-space normal, Chromium ne peint pas toujours un glyphe
+         espace dans le PDF : il avance seulement le curseur, puis les
+         extracteurs doivent deviner la séparation. pre-wrap conserve le
+         caractère espace du HTML dans la couche texte tout en autorisant
+         les retours à la ligne. Le contenu a déjà été nettoyé par le
+         Presentation Formatter, donc aucun espace multiple n'est conservé. */
+      .report-shell:not(.free-diagnostic) h1,
+      .report-shell:not(.free-diagnostic) h2,
+      .report-shell:not(.free-diagnostic) h3,
+      .report-shell:not(.free-diagnostic) h4,
+      .report-shell:not(.free-diagnostic) p,
+      .report-shell:not(.free-diagnostic) li,
+      .report-shell:not(.free-diagnostic) th,
+      .report-shell:not(.free-diagnostic) td,
+      .report-shell:not(.free-diagnostic) dt,
+      .report-shell:not(.free-diagnostic) dd { white-space: normal; }
       .report-shell:not(.free-diagnostic) .section-intro { padding: 26px 0 15px; }
       .report-shell:not(.free-diagnostic) .section-lead,
       .report-shell:not(.free-diagnostic) .section-intro p:not(.eyebrow) {
@@ -3316,7 +3582,8 @@ function styles() {
 
       .report-shell:not(.free-diagnostic) .action-group + .action-group { margin-top: 20px; }
       .report-shell:not(.free-diagnostic) .timeline { padding-left: 25px; }
-      .report-shell:not(.free-diagnostic) .action-card { grid-template-columns: 38px 1fr; gap: 10px; padding: 15px; }
+      .report-shell:not(.free-diagnostic) .action-card,
+      .report-shell:not(.free-diagnostic) .execution-action-card { grid-template-columns: 38px 1fr; gap: 10px; padding: 15px; }
       .report-shell:not(.free-diagnostic) .action-content dl { gap: 7px; margin-top: 10px; }
       .report-shell:not(.free-diagnostic) .action-content dl div { padding: 8px; }
       .report-shell:not(.free-diagnostic) .roadmap-groups { gap: 18px; margin-top: 7px; }
@@ -4311,6 +4578,18 @@ function styles() {
           page-break-after: auto;
           break-after: auto;
         }
+
+        /* La couverture Premium peut exceptionnellement occuper deux
+           feuilles physiques. Son break-after explicite ajoutait alors une
+           troisième feuille vide dans Chromium. Sa min-height conserve le
+           saut naturel lorsqu'elle tient sur une page. */
+        .report-shell:not(.free-diagnostic) .cover-page {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        .report-shell:not(.free-diagnostic) .axes-page .section-intro { padding-top: 16px; padding-bottom: 8px; }
+        .report-shell:not(.free-diagnostic) .axes-page .domain-row { padding: 5px 0; }
+        .report-shell:not(.free-diagnostic) .axes-page .doc-footer { bottom: 8mm; }
 
         .priority-card,
         .insight-card,
