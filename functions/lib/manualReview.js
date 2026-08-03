@@ -139,6 +139,7 @@ export function normalizeManualReview(payload = {}) {
     confirmedPosition: cleanOptionalNumber(payload.confirmedPosition),
     confirmedQuery: cleanText(payload.confirmedQuery, 240),
     criteriaReview: normalizeCriteriaReview(payload.criteriaReview),
+    executionPlan: normalizeExecutionPlanReview(payload.executionPlan),
   };
 }
 
@@ -225,3 +226,4 @@ export function buildReviewedData(row = {}, payload = {}) {
     reviewedBenchmark: buildReviewedBenchmark(row, manualReview),
   };
 }
+import { normalizeExecutionPlanReview } from "./executionPlanBuilder.js";

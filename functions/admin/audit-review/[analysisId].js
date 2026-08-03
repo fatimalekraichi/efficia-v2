@@ -65,6 +65,15 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, freeDiagnostic
     .review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
     .review-actions__primary { min-width: 260px; }
     .review-actions__secondary { display: flex; flex-wrap: wrap; gap: 10px; }
+    .execution-editor { display: grid; gap: 18px; }
+    .execution-editor__group { padding: 18px; border: 1px solid #e2e8f0; border-radius: 18px; background: #f8fafc; }
+    .execution-editor__group h3 { margin: 0 0 12px; color: #0f172a; }
+    .execution-editor__item { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 10px; margin-top: 10px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; }
+    .execution-editor__item textarea, .execution-editor__item input, .execution-editor__item select { width: 100%; }
+    .execution-editor__item textarea { min-height: 86px; resize: vertical; }
+    .execution-editor__item label { color: #475569; font-size: 12px; font-weight: 900; }
+    .execution-editor__item.is-pending { border-color: #f59e0b; background: #fffbeb; }
+    .execution-editor__notice { color: #92400e; font-weight: 800; }
     @media (max-width: 980px) { .review-kv { grid-template-columns: 1fr; } }
     @media (max-width: 720px) { .criteria-checklist { grid-template-columns: 1fr; } .criteria-category__head { display: block; } .criteria-category__head span { display: block; margin-top: 6px; } }
     @media (max-width: 640px) { .review-actions { flex-direction: column; align-items: stretch; } .review-actions__primary { width: 100%; } .review-actions__secondary { flex-direction: column; width: 100%; } .review-actions__secondary .admin-button { width: 100%; text-align: center; } }
@@ -119,6 +128,16 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, freeDiagnostic
         </div>
         <p class="criteria-not-verified-summary" data-criteria-not-verified-summary></p>
         <div class="criteria-groups" data-criteria-groups></div>
+      </section>
+
+      <section class="admin-card review-full-width">
+        <div class="admin-section-heading">
+          <span class="admin-kicker">Plan d’exécution</span>
+          <h2>Livrables à valider avant publication</h2>
+          <p class="admin-muted">Éditez les propositions, puis choisissez « Approuvé », « À confirmer » ou « Non applicable ». Le PDF utilise uniquement les éléments approuvés.</p>
+        </div>
+        <p class="execution-editor__notice" data-execution-pending></p>
+        <div class="execution-editor" data-execution-editor></div>
       </section>
 
       <section class="admin-card review-actions-card">

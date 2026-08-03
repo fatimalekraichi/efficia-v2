@@ -65,6 +65,16 @@ export function cleanTypography(text) {
     .trim();
 }
 
+export function normalizeCategoryLabel(value) {
+  if (!present(value)) return value;
+  const normalized = cleanTypography(value);
+  const known = new Map([
+    ["restaurants", "Restaurant"],
+    ["restaurant", "Restaurant"],
+  ]);
+  return known.get(String(normalized).toLowerCase()) || normalized;
+}
+
 // Premium Polish — objectif 9 (relecture éditoriale globale) : Composer
 // assemble parfois, pour un même texte, deux fragments Reasoning indépendants
 // (googleImpacts.js + businessImpacts.js) qui restent chacun pertinents pris
@@ -155,7 +165,7 @@ export function formatRatingDisplay(value) {
 // Ordinal français simple : 1 → "1er", tout le reste → "Ne" ("9e", "4e").
 export function formatOrdinal(value) {
   const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) return null;
+  if (!Number.isFinite(number) || number <= 0) return null;
   const rounded = Math.round(number);
   return rounded === 1 ? "première" : `${rounded}e`;
 }
@@ -492,7 +502,9 @@ const CONSTAT_BUILDERS = {
   categories: (value) => (value > 0
     ? `Actuellement, votre fiche référence ${formatSignalValue("categories", value)}.`
     : "Actuellement, votre fiche ne référence aucune catégorie secondaire."),
-  position: (value) => `Actuellement, votre fiche apparaît en ${formatSignalValue("position", value)} sur la recherche testée.`,
+  position: (value) => value <= 0
+    ? "Votre fiche n’a pas été détectée dans la zone de résultats analysée pour cette recherche. La position peut varier selon le lieu, le moment et l’appareil."
+    : `Actuellement, votre fiche apparaît en ${formatSignalValue("position", value)} sur la recherche testée.`,
 };
 
 export function buildConstat(item = {}) {

@@ -1,4 +1,5 @@
 import { computeBenchmarkConfidence } from "./manualReview.js";
+import { buildExecutionPlan } from "./executionPlanBuilder.js";
 
 function parseJson(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -31,7 +32,7 @@ export function formatAnalysisRow(row) {
   const scoreInputs = parseJson(row.score_inputs_json);
   const reviewedScore = parseJson(row.reviewed_score_json);
 
-  return {
+  const formatted = {
     analysisId: row.analysis_id,
     status: row.status || null,
     reportType: row.report_type || null,
@@ -103,6 +104,8 @@ export function formatAnalysisRow(row) {
       pdfGeneratedAt: row.pdf_generated_at || null,
     },
   };
+  formatted.executionPlanDraft = buildExecutionPlan({ analysis: formatted, documentModel: documentModel || {} });
+  return formatted;
 }
 
 export const ANALYSIS_SELECT = `

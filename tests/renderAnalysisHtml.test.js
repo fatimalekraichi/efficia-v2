@@ -102,7 +102,7 @@ test("renderAnalysisHtml produit un document HTML complet avec les sections atte
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /<html lang="fr">/);
   assert.match(html, /La Planche des Saveurs/);
-  assert.match(html, /restaurant · Dinant · 24 juillet 2026/);
+  assert.match(html, /Restaurant · Dinant · 24 juillet 2026/);
   assert.match(html, /80/);
   assert.match(html, /Résumé exécutif/);
   assert.match(html, /Les 3 priorités/);
