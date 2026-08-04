@@ -45,6 +45,14 @@
   font-size: 18px;
   line-height: 1.9;
   font-weight: 500;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+@media (max-width: 768px) {
+  .hero-text {
+    text-align: left;
+  }
 }
 
 .hero-actions {

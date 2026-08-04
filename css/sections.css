@@ -531,6 +531,14 @@
   font-size: 16px;
   line-height: 1.75;
   font-weight: 650;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+@media (max-width: 768px) {
+  .method-intro {
+    text-align: left;
+  }
 }
 
 .method-benefits {
