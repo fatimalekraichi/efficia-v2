@@ -19,12 +19,12 @@
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/header.css">
-  <link rel="stylesheet" href="css/hero.css">
-  <link rel="stylesheet" href="css/sections.css">
+  <link rel="stylesheet" href="css/hero.css?v=20260803-audit-card">
+  <link rel="stylesheet" href="css/sections.css?v=20260803-conversion">
   <link rel="stylesheet" href="css/pricing.css">
   <link rel="stylesheet" href="css/footer.css">
   <link rel="stylesheet" href="css/cookies.css">
-  <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/responsive.css?v=20260803-conversion">
 </head>
 
 <body>
@@ -97,47 +97,38 @@
 
       <div class="audit-card">
         <div class="audit-top">
-          <span>Analyse Efficia™</span>
-          <strong>Fiche analysée</strong>
+          <span>Score Efficia™</span>
         </div>
 
         <div class="score-block">
           <div class="score-circle">
-            <div class="score">92<span>/100</span></div>
+            <div class="score">55<span>/100</span></div>
           </div>
 
           <div class="score-copy">
-            <p>Score de confiance</p>
-            <strong>Votre fiche inspire confiance</strong>
-            <small>Excellente optimisation globale</small>
+            <p>Situation actuelle</p>
+            <strong>Potentiel inexploité</strong>
+            <small>Une lecture structurée des points solides et prioritaires.</small>
           </div>
         </div>
 
-        <div class="audit-list">
+        <div class="audit-list" aria-label="Exemple de résultats par domaine">
           <div class="audit-row">
-            <span>Photos</span>
-            <strong>Optimisées</strong>
+            <span>Visibilité locale</span>
+            <strong class="audit-status audit-status--solid">79/100 · Solide</strong>
           </div>
           <div class="audit-row">
-            <span>Avis</span>
-            <strong>Répondus</strong>
+            <span>Confiance</span>
+            <strong class="audit-status audit-status--warning">65/100 · À renforcer</strong>
           </div>
           <div class="audit-row">
-            <span>Description</span>
-            <strong>Claire</strong>
-          </div>
-          <div class="audit-row">
-            <span>Services</span>
-            <strong>Complets</strong>
-          </div>
-          <div class="audit-row">
-            <span>Publications</span>
-            <strong>Actives</strong>
+            <span>Conversion</span>
+            <strong class="audit-status audit-status--priority">13/100 · Prioritaire</strong>
           </div>
         </div>
 
         <div class="audit-footer">
-          <span>12 recommandations détectées</span>
+          <span>3 priorités expliquées : contenu, photos et avis</span>
         </div>
       </div>
     </div>
@@ -213,7 +204,7 @@
           <img class="profile-photo" src="assets/images/boulangerie-centre-avant.png" alt="Extérieur peu engageant de la Boulangerie du Centre">
           <div>
             <h3>Boulangerie du Centre</h3>
-            <p class="profile-rating"><span class="rating-stars"><span class="stars-filled">★★★</span><span class="stars-empty">★★</span></span> <strong>3,1</strong> <span>(23)</span></p>
+            <p class="profile-rating" aria-label="Note 4,1 sur 5, basée sur 23 avis"><span class="rating-stars" aria-hidden="true"><span class="stars-filled">★★★★</span><span class="star-partial" style="--rating-fill: 10%">★</span></span> <strong>4,1</strong> <span>(23)</span></p>
             <small class="profile-meta">Boulangerie • €€</small>
             <em class="profile-hours">Ouvert <span>• Ferme à 19:30</span></em>
           </div>
@@ -258,7 +249,7 @@
           <img class="profile-photo" src="assets/images/boulangerie-centre-apres.png" alt="Intérieur chaleureux de la Boulangerie du Centre avec pains et viennoiseries">
           <div>
             <h3>Boulangerie du Centre</h3>
-            <p class="profile-rating"><span class="rating-stars"><span class="stars-filled">★★★★</span><span class="star-half">★</span></span> <strong>4,6</strong> <span>(128)</span></p>
+            <p class="profile-rating" aria-label="Note 4,2 sur 5, basée sur 128 avis"><span class="rating-stars" aria-hidden="true"><span class="stars-filled">★★★★</span><span class="star-partial" style="--rating-fill: 20%">★</span></span> <strong>4,2</strong> <span>(128)</span></p>
             <small class="profile-meta">Boulangerie • €€</small>
             <em class="profile-hours">Ouvert <span>• Ferme à 19:30</span></em>
           </div>
@@ -288,91 +279,6 @@
           <li>Services complets</li>
         </ul>
       </article>
-    </div>
-  </div>
-</section>
-
-<section class="section pack-section">
-  <div class="container">
-    <div class="section-heading center wide">
-      <span class="section-kicker">Pack Visibilité Google</span>
-      <h2>Tout ce qu’il faut pour une fiche Google complète, attractive et performante.</h2>
-      <p>Chaque action a un objectif : plus de visibilité, plus de confiance, plus de clients.</p>
-    </div>
-
-    <div class="optimization-panel">
-      <div class="optimization-item essential-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
-        </span>
-        <div>
-          <span>Description qui donne envie</span>
-          <strong>Une raison claire de vous appeler.</strong>
-        </div>
-      </div>
-      <div class="optimization-item essential-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path><rect width="20" height="14" x="2" y="6" rx="2"></rect></svg>
-        </span>
-        <div>
-          <span>Services faciles à comprendre</span>
-          <strong>Vos offres deviennent lisibles.</strong>
-        </div>
-      </div>
-      <div class="optimization-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 2H2v10l9.3 9.3a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"></path><path d="M7 7h.01"></path></svg>
-        </span>
-        <div>
-          <span>Trouvé sur les bonnes recherches</span>
-          <strong>Votre fiche colle mieux aux recherches locales.</strong>
-        </div>
-      </div>
-      <div class="optimization-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4"></path><path d="M12 17h.01"></path></svg>
-        </span>
-        <div>
-          <span>Réponses avant l'appel</span>
-          <strong>Les doutes clés sont levés plus tôt.</strong>
-        </div>
-      </div>
-      <div class="optimization-item essential-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3Z"></path><circle cx="12" cy="13" r="3"></circle></svg>
-        </span>
-        <div>
-          <span>Photos qui inspirent confiance</span>
-          <strong>Une première impression plus professionnelle.</strong>
-        </div>
-      </div>
-      <div class="optimization-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="m22 2-7 20-4-9-9-4Z"></path></svg>
-        </span>
-        <div>
-          <span>Fiche active et rassurante</span>
-          <strong>Votre présence paraît vivante.</strong>
-        </div>
-      </div>
-      <div class="optimization-item essential-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M11.5 2.3a.6.6 0 0 1 1 0l2.9 5.8 6.4.9a.6.6 0 0 1 .3 1l-4.6 4.5 1.1 6.4a.6.6 0 0 1-.9.6L12 18.5l-5.7 3a.6.6 0 0 1-.9-.6l1.1-6.4L1.9 10a.6.6 0 0 1 .3-1l6.4-.9Z"></path></svg>
-        </span>
-        <div>
-          <span>Avis plus faciles à obtenir</span>
-          <strong>Un parcours simple pour renforcer la preuve sociale.</strong>
-        </div>
-      </div>
-      <div class="optimization-item">
-        <span class="optimization-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"></path><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>
-        </span>
-        <div>
-          <span>Fiche prête à convertir</span>
-          <strong>Une présence claire et exploitable.</strong>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -445,7 +351,9 @@
         <span class="price-icon">Audit</span>
         <h3>Audit de votre fiche Google</h3>
         <p>Analyse complète</p>
+        <p class="offer-purpose">Pour comprendre précisément quoi corriger et agir vous-même.</p>
         <div class="price">99 €</div>
+        <p class="premium-deduction-note">Déduit d’un pack acheté dans les 30 jours.</p>
         <ul>
           <li>Analyse complète de votre fiche</li>
           <li>40 points de contrôle</li>
@@ -463,6 +371,7 @@
         </span>
         <h3>Pack Visibilité Google</h3>
         <p>Optimisation complète</p>
+        <p class="offer-purpose">Pour nous confier les optimisations essentielles.</p>
         <div class="price">349 €</div>
         <ul>
           <li>Tout l’audit inclus</li>
@@ -480,6 +389,7 @@
         <span class="price-icon">Premium</span>
         <h3>Pack Performance</h3>
         <p>Optimisations avancées</p>
+        <p class="offer-purpose">Pour une optimisation plus complète et un suivi renforcé.</p>
         <div class="price">499 €</div>
         <ul>
           <li>Tout le Pack Visibilité</li>
@@ -525,6 +435,46 @@
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="section audit-preview-section" aria-labelledby="audit-preview-title">
+  <div class="container">
+    <div class="section-heading center compact-heading">
+      <span class="section-kicker">Votre rapport Premium</span>
+      <h2 id="audit-preview-title">Voyez exactement ce que vous recevez</h2>
+      <p>Score, priorités et recommandations personnalisées dans un rapport clair et exploitable.</p>
+    </div>
+
+    <ul class="audit-preview-benefits" aria-label="Contenu du rapport Premium">
+      <li>Score Efficia</li>
+      <li>Benchmark local</li>
+      <li>Recommandations personnalisées</li>
+      <li>Plan d’action priorisé</li>
+      <li>Feuille de route sur 30 jours</li>
+    </ul>
+
+    <div class="audit-preview-grid">
+      <figure class="audit-preview-card">
+        <a href="assets/images/audit-preview/score-efficia-anonymise.png" target="_blank" rel="noopener noreferrer" aria-label="Agrandir l’exemple anonymisé de Score Efficia">
+          <img src="assets/images/audit-preview/score-efficia-anonymise.png" alt="Exemple anonymisé de Score Efficia dans un Audit Premium" loading="lazy">
+        </a>
+        <figcaption><strong>Score Efficia</strong><span>Une lecture immédiate du niveau actuel de la fiche.</span></figcaption>
+      </figure>
+      <figure class="audit-preview-card">
+        <a href="assets/images/audit-preview/plan-action-anonymise.png" target="_blank" rel="noopener noreferrer" aria-label="Agrandir l’exemple anonymisé de fiche d’action personnalisée">
+          <img src="assets/images/audit-preview/plan-action-anonymise.png" alt="Exemple anonymisé de fiche d’action personnalisée issue du benchmark local" loading="lazy">
+        </a>
+        <figcaption><strong>Priorités expliquées</strong><span>Le constat, l’objectif et les étapes concrètes à suivre.</span></figcaption>
+      </figure>
+      <figure class="audit-preview-card">
+        <a href="assets/images/audit-preview/recommandations-anonymise.png" target="_blank" rel="noopener noreferrer" aria-label="Agrandir l’exemple anonymisé de recommandations photos">
+          <img src="assets/images/audit-preview/recommandations-anonymise.png" alt="Exemple anonymisé de recommandations photos personnalisées" loading="lazy">
+        </a>
+        <figcaption><strong>Recommandations personnalisées</strong><span>Des actions adaptées aux données réellement observées.</span></figcaption>
+      </figure>
+    </div>
+    <p class="audit-preview-note">Extraits de rapports réels. Les données, constats et recommandations varient selon chaque fiche analysée.</p>
   </div>
 </section>
 
@@ -597,7 +547,11 @@
 <section class="final-cta" id="diagnostic">
   <div class="container final-cta-inner">
     <h2>Obtenez gratuitement votre Score Efficia™</h2>
-    <p>Recevez gratuitement votre Score Efficia™, identifiez les principaux points qui limitent votre visibilité et découvrez les premières actions pour attirer davantage de clients.</p>
+    <div class="final-cta-comparison">
+      <p><strong>Le diagnostic gratuit vous donne un premier aperçu de votre fiche.</strong></p>
+      <p><strong>L’Audit Premium à 99&nbsp;€ comprend une analyse complète, un benchmark local, un plan d’action personnalisé et un rapport PDF détaillé.</strong></p>
+      <p class="final-cta-deduction">Les 99&nbsp;€ sont intégralement déduits si vous choisissez ensuite un pack dans les 30 jours.</p>
+    </div>
     <a
       href="#diagnostic"
       class="btn btn-light"

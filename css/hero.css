@@ -157,7 +157,7 @@
   border-radius: 50%;
   background:
     radial-gradient(circle at center, #fff 52%, transparent 53%),
-    conic-gradient(#2563eb 0 82%, rgba(37, 99, 235, 0.14) 82% 100%);
+    conic-gradient(#2563eb 0 55%, rgba(37, 99, 235, 0.14) 55% 100%);
 }
 
 .score {
@@ -228,6 +228,16 @@
   color: #3a7a4b;
   font-size: 13px;
   font-weight: 800;
+}
+
+.audit-row .audit-status--warning {
+  color: #b66a00;
+  background: #fff7df;
+}
+
+.audit-row .audit-status--priority {
+  color: #cf3340;
+  background: #fff0f1;
 }
 
 .audit-row:last-child {

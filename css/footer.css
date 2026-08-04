@@ -1,5 +1,5 @@
 .footer {
-  padding: 64px 0 30px;
+  padding: 54px 0 26px;
   background: #fff;
   border-top: 1px solid var(--border);
 }
@@ -7,7 +7,7 @@
 .footer-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.55fr) minmax(190px, 0.65fr);
-  gap: 64px;
+  gap: 56px;
   align-items: start;
 }
 
@@ -18,7 +18,7 @@
 
 .footer-brand p {
   max-width: 390px;
-  margin-top: 18px;
+  margin-top: 15px;
   color: var(--muted);
   font-size: 15px;
   line-height: 1.75;
@@ -51,8 +51,8 @@
 }
 
 .footer-bottom {
-  margin-top: 46px;
-  padding-top: 22px;
+  margin-top: 38px;
+  padding-top: 18px;
   border-top: 1px solid rgba(226, 232, 240, 0.82);
   color: #64748b;
   font-size: 13px;
@@ -60,7 +60,7 @@
 }
 
 .footer-social {
-  margin-top: 19px;
+  margin-top: 16px;
 }
 
 .footer-social > strong {

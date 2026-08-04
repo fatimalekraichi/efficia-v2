@@ -61,7 +61,7 @@ html {
 }
 
 .section {
-  padding: 112px 0;
+  padding: 100px 0;
 }
 
 .section-heading {
@@ -83,7 +83,7 @@ html {
 
 .section-kicker {
   display: inline-flex;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   color: var(--blue);
   font-size: 13px;
   font-weight: 800;
@@ -101,7 +101,7 @@ html {
 }
 
 .section-heading p {
-  margin-top: 22px;
+  margin-top: 19px;
   color: var(--muted);
   font-size: 18px;
   font-weight: 600;
