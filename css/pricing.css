@@ -34,7 +34,7 @@
 }
 
 .pricing-heading {
-  margin-bottom: 44px;
+  margin-bottom: 40px;
 }
 
 .pricing-grid {
@@ -80,6 +80,14 @@
   font-weight: 800;
 }
 
+.price-card > .offer-purpose {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
 .price {
   margin-top: 22px;
   padding-top: 22px;
@@ -87,6 +95,14 @@
   color: var(--navy);
   font-size: 50px;
   line-height: 1;
+  font-weight: 800;
+}
+
+.price-card > .premium-deduction-note {
+  margin-top: 8px;
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 1.4;
   font-weight: 800;
 }
 
