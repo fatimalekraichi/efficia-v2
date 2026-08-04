@@ -2,32 +2,17 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://efficiadigital.com/</loc>
-    <lastmod>2026-07-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://efficiadigital.com/mentions-legales.html</loc>
-    <lastmod>2026-07-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <loc>https://efficiadigital.com/mentions-legales</loc>
   </url>
   <url>
-    <loc>https://efficiadigital.com/politique-confidentialite.html</loc>
-    <lastmod>2026-07-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <loc>https://efficiadigital.com/politique-confidentialite</loc>
   </url>
   <url>
-    <loc>https://efficiadigital.com/cgv.html</loc>
-    <lastmod>2026-07-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <loc>https://efficiadigital.com/cgv</loc>
   </url>
   <url>
-    <loc>https://efficiadigital.com/politique-cookies.html</loc>
-    <lastmod>2026-07-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <loc>https://efficiadigital.com/politique-cookies</loc>
   </url>
 </urlset>
