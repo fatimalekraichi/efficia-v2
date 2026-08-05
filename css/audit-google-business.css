@@ -2,6 +2,14 @@ body {
   overflow-x: clip;
 }
 
+html {
+  scroll-padding-top: 92px;
+}
+
+[id] {
+  scroll-margin-top: 92px;
+}
+
 .audit-hero {
   padding: 142px 0 82px;
   background:
@@ -66,7 +74,22 @@ body {
   line-height: 1;
 }
 
-.audit-price-line span {
+.audit-price-display {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
+  white-space: nowrap;
+}
+
+.audit-price-display .audit-price-tax {
+  color: currentColor;
+  font-size: 0.28em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.68;
+}
+
+.audit-price-line > span {
   color: var(--muted);
   font-weight: 750;
 }
@@ -392,10 +415,16 @@ body {
   font-size: 32px;
 }
 
-.audit-offer-card__action span {
+.audit-offer-card__action > span {
   color: rgba(255, 255, 255, 0.75);
   font-size: 13px;
   font-weight: 700;
+}
+
+.audit-offer-card__action .audit-price-tax {
+  color: currentColor;
+  font-size: 0.28em;
+  font-weight: 600;
 }
 
 .audit-offer-card__action .btn {

@@ -2,16 +2,22 @@ const OFFERS = {
   audit: {
     name: "Audit fiche Google",
     price: "99 € TTC",
+    amount: "99 €",
+    tax: "TTC",
     taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   visibility: {
     name: "Pack Visibilité Google",
     price: "349 € TTC",
+    amount: "349 €",
+    tax: "TTC",
     taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   performance: {
     name: "Pack Performance",
     price: "499 € TTC",
+    amount: "499 €",
+    tax: "TTC",
     taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
 };
@@ -32,7 +38,15 @@ const product = new URLSearchParams(window.location.search).get("offre") || "vis
 const selectedOffer = OFFERS[product] ? product : "visibility";
 
 if (offerName) offerName.textContent = OFFERS[selectedOffer].name;
-if (offerPrice) offerPrice.textContent = OFFERS[selectedOffer].price;
+if (offerPrice) {
+  const amount = document.createElement("span");
+  amount.className = "purchase-price__amount";
+  amount.textContent = OFFERS[selectedOffer].amount;
+  const tax = document.createElement("span");
+  tax.className = "purchase-price__tax";
+  tax.textContent = OFFERS[selectedOffer].tax;
+  offerPrice.replaceChildren(amount, " ", tax);
+}
 if (offerTaxNote) {
   offerTaxNote.textContent = OFFERS[selectedOffer].taxNote || "";
   offerTaxNote.hidden = !OFFERS[selectedOffer].taxNote;

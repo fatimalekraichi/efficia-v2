@@ -82,12 +82,12 @@
   background: #f8fbff;
 }
 
-.purchase-summary span,
+.purchase-summary > div > span,
 .purchase-summary strong {
   display: block;
 }
 
-.purchase-summary span {
+.purchase-summary > div > span {
   color: #64748b;
   font-size: 13px;
   font-weight: 800;
@@ -101,9 +101,20 @@
 }
 
 .purchase-summary .purchase-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
+  white-space: nowrap;
   color: var(--blue);
   font-size: 28px;
   line-height: 1;
+}
+
+.purchase-price__tax {
+  color: #64748b;
+  font-size: 0.28em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .purchase-form {
