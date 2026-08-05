@@ -89,6 +89,10 @@
 }
 
 .price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
   margin-top: 22px;
   padding-top: 22px;
   border-top: 1px solid var(--border);
@@ -96,6 +100,13 @@
   font-size: 50px;
   line-height: 1;
   font-weight: 800;
+}
+
+.price-tax {
+  color: #64748b;
+  font-size: 0.32em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .price-card > .premium-deduction-note {

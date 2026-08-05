@@ -1,15 +1,18 @@
 const OFFERS = {
   audit: {
     name: "Audit fiche Google",
-    price: "99 €",
+    price: "99 € TTC",
+    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   visibility: {
     name: "Pack Visibilité Google",
-    price: "349 €",
+    price: "349 € TTC",
+    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   performance: {
     name: "Pack Performance",
-    price: "499 €",
+    price: "499 € TTC",
+    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
 };
 
@@ -18,6 +21,7 @@ const submitButton = document.querySelector("[data-purchase-submit]");
 const errorMessage = document.querySelector("[data-purchase-error]");
 const offerName = document.querySelector("[data-offer-name]");
 const offerPrice = document.querySelector("[data-offer-price]");
+const offerTaxNote = document.querySelector("[data-offer-tax-note]");
 const unknownGoogleBusiness = document.querySelector("[data-unknown-google-business]");
 const googleBusinessWrapper = document.querySelector("[data-google-business-field]");
 const googleBusinessField = googleBusinessWrapper?.querySelector("input");
@@ -29,6 +33,10 @@ const selectedOffer = OFFERS[product] ? product : "visibility";
 
 if (offerName) offerName.textContent = OFFERS[selectedOffer].name;
 if (offerPrice) offerPrice.textContent = OFFERS[selectedOffer].price;
+if (offerTaxNote) {
+  offerTaxNote.textContent = OFFERS[selectedOffer].taxNote || "";
+  offerTaxNote.hidden = !OFFERS[selectedOffer].taxNote;
+}
 
 const setError = (message) => {
   if (!errorMessage) return;
