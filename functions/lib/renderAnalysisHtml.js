@@ -44,7 +44,7 @@ const EFFICIA_BLUE = "#2563eb";
 // pondération réelle (scoreConfig.js, non modifié). N'affecte ni ne dépend
 // de la valeur du score — reste identique quel que soit le résultat, à la
 // différence de scoreInterpretationNote() juste en dessous.
-const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. Il est calculé à partir de plus de 120 signaux répartis dans plusieurs domaines, puis comparés aux meilleures fiches de votre secteur.";
+const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. La méthode Efficia™ évalue actuellement 29 critères répartis en six domaines, puis replace les résultats dans leur contexte local.";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1611,7 +1611,7 @@ function freeSituationSection(model) {
       </div>
       ${freeIndicesRow(free.indices)}
       ${freeMeaningBox(model)}
-      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} points de contrôle passés en revue, sur les 40+ de l'Audit Efficia™ complet.</p>
+      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} critères passés en revue selon la méthode Efficia™.</p>
       <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>
       ${footer(model, "Page 1/6")}
     </section>
@@ -1802,7 +1802,7 @@ function freeResolutionSection(model) {
       </div>
       <div class="paid-audit-box">
         <h3>Ce diagnostic gratuit couvre uniquement les freins visibles de l'extérieur.</h3>
-        <p>${safeText(reportLabel)} analyse les signaux publiquement observables. L'Audit Efficia™ complet analyse plus de 40 critères supplémentaires, notamment :</p>
+        <p>${safeText(reportLabel)} analyse les informations publiquement observables. L’Audit Google Business approfondit cette lecture avec une analyse structurée de plus de 20 critères, notamment :</p>
         <div class="teaser-grid">
           ${AUDIT_COMPLET_ITEMS.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
         </div>
@@ -1852,7 +1852,7 @@ function freeActionSection(model) {
           title: "Audit Efficia complet",
           price: "99 €",
           features: [
-            "Analyse complète — plus de 40 critères passés en revue",
+            "Analyse structurée — plus de 20 critères passés en revue",
             "Plan d'action détaillé, prêt à appliquer",
             "Ordre précis des priorités",
             "Recommandations point par point",
