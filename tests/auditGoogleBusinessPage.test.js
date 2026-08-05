@@ -116,13 +116,28 @@ test("les trois cartes et le tunnel affichent des prix TTC cohérents", async ()
   const pricingCss = await read("css/pricing.css");
   const purchaseHtml = await read("achat.html");
   const purchaseScript = await read("js/purchase.js");
+  const purchaseCss = await read("css/purchase.css");
   for (const amount of ["99", "349", "499"]) {
     assert.match(home, new RegExp(`<span class="price-amount">${amount} €<\\/span>\\s+<span class="price-tax">TTC<\\/span>`));
     assert.match(purchaseScript, new RegExp(`price: "${amount} € TTC"`));
   }
   assert.match(pricingCss, /\.price\s*{[\s\S]*?white-space:\s*nowrap/);
   assert.match(pricingCss, /\.price-tax\s*{[\s\S]*?font-size:\s*0\.32em;[\s\S]*?font-weight:\s*600/);
-  assert.match(purchaseHtml, /data-offer-price>349 € TTC</);
+  assert.match(purchaseHtml, /data-offer-price><span class="purchase-price__amount">349 €<\/span>\s+<span class="purchase-price__tax">TTC<\/span>/);
+  assert.match(purchaseScript, /className = "purchase-price__amount"/);
+  assert.match(purchaseScript, /className = "purchase-price__tax"/);
+  assert.match(purchaseCss, /\.purchase-summary \.purchase-price\s*{[\s\S]*?align-items:\s*baseline;[\s\S]*?white-space:\s*nowrap/);
+  assert.match(purchaseCss, /\.purchase-price__tax\s*{[\s\S]*?font-size:\s*0\.28em;[\s\S]*?font-weight:\s*600/);
+});
+
+test("les prix principaux de la page Audit hiérarchisent visuellement la mention TTC", async () => {
+  const html = await read("audit-google-business.html");
+  const css = await read("css/audit-google-business.css");
+  assert.equal((html.match(/class="audit-price-tax">TTC<\/span>/g) || []).length, 4);
+  assert.match(css, /\.audit-price-display\s*{[\s\S]*?align-items:\s*baseline;[\s\S]*?white-space:\s*nowrap/);
+  assert.match(css, /\.audit-price-display \.audit-price-tax\s*{[\s\S]*?font-size:\s*0\.28em;[\s\S]*?font-weight:\s*600/);
+  assert.match(css, /scroll-padding-top:\s*92px/);
+  assert.match(css, /scroll-margin-top:\s*92px/);
 });
 
 test("aucun composant initialement aria-hidden ne contient de contrôle sans inert", async () => {
