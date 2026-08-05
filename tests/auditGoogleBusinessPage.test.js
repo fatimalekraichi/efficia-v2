@@ -70,7 +70,7 @@ test("la FAQ visible est strictement identique au JSON-LD", async () => {
 
 test("le prix TTC, le délai, la méthode et les limites commerciales sont présents", async () => {
   const html = await read("audit-google-business.html");
-  assert.match(html, /99 € TTC — paiement unique, sans abonnement/);
+  assert.match(stripHtml(html), /99 € TTC — paiement unique, sans abonnement/);
   assert.match(html, /3 à 5 jours ouvrés après réception des informations nécessaires/);
   assert.match(html, /Analyse structurée de plus de 20 critères/);
   assert.match(html, /29 critères répartis en six domaines/);
@@ -133,11 +133,28 @@ test("les trois cartes et le tunnel affichent des prix TTC cohérents", async ()
 test("les prix principaux de la page Audit hiérarchisent visuellement la mention TTC", async () => {
   const html = await read("audit-google-business.html");
   const css = await read("css/audit-google-business.css");
-  assert.equal((html.match(/class="audit-price-tax">TTC<\/span>/g) || []).length, 4);
+  const body = html.match(/<body>([\s\S]*?)<\/body>/)?.[1] || "";
+  assert.equal((body.match(/class="price-tax">TTC<\/span>/g) || []).length, 9);
+  assert.doesNotMatch(body, /99 € TTC/);
   assert.match(css, /\.audit-price-display\s*{[\s\S]*?align-items:\s*baseline;[\s\S]*?white-space:\s*nowrap/);
-  assert.match(css, /\.audit-price-display \.audit-price-tax\s*{[\s\S]*?font-size:\s*0\.28em;[\s\S]*?font-weight:\s*600/);
+  assert.match(css, /\.audit-price-display \.price-tax\s*{[\s\S]*?font-size:\s*max\(12px, 0\.26em\);[\s\S]*?font-weight:\s*600/);
+  assert.match(css, /\.audit-summary-card ul\s*{[\s\S]*?padding-left:\s*0;[\s\S]*?list-style:\s*none/);
+  assert.match(css, /\.audit-comparison-grid ul\s*{[\s\S]*?padding-left:\s*0;[\s\S]*?list-style:\s*none/);
   assert.match(css, /scroll-padding-top:\s*92px/);
   assert.match(css, /scroll-margin-top:\s*92px/);
+});
+
+test("le comparatif et les CTA ne répètent pas les mentions commerciales", async () => {
+  const html = await read("audit-google-business.html");
+  const body = html.match(/<body>([\s\S]*?)<\/body>/)?.[1] || "";
+  const comparison = body.match(/<div class="audit-comparison-grid">([\s\S]*?)<\/div>\s*<\/div>\s*<\/section>/)?.[1] || "";
+  assert.equal((comparison.match(/Diagnostic gratuit/g) || []).length, 1);
+  assert.doesNotMatch(comparison, />Gratuit<\/strong>/);
+  assert.doesNotMatch(body, /Commander mon audit/);
+  assert.equal((body.match(/>Je veux mon audit<\/a>/g) || []).length, 4);
+  assert.equal((body.match(/href="\/achat\?offre=audit"/g) || []).length, 5);
+  assert.equal((body.match(/class="audit-secondary-link">Commencer par le diagnostic gratuit<\/a>/g) || []).length, 2);
+  assert.doesNotMatch(body, /class="btn btn-secondary">Commencer par le diagnostic gratuit/);
 });
 
 test("aucun composant initialement aria-hidden ne contient de contrôle sans inert", async () => {
