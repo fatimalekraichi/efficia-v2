@@ -66,18 +66,26 @@ const openModal = () => {
   if (!modal) return;
   lastFocusedElement = document.activeElement;
   resetModal();
-  modal.classList.add("is-open");
+  modal.removeAttribute("inert");
   modal.setAttribute("aria-hidden", "false");
+  modal.classList.add("is-open");
   document.body.classList.add("modal-open");
   window.setTimeout(focusFirstField, 80);
 };
 
 const closeModal = () => {
   if (!modal) return;
+  if (modal.contains(document.activeElement)) {
+    if (lastFocusedElement?.isConnected) {
+      lastFocusedElement.focus({ preventScroll: true });
+    } else {
+      document.activeElement?.blur?.();
+    }
+  }
   modal.classList.remove("is-open");
+  modal.setAttribute("inert", "");
   modal.setAttribute("aria-hidden", "true");
   document.body.classList.remove("modal-open");
-  lastFocusedElement?.focus?.({ preventScroll: true });
 };
 
 const isValidUrl = (value) => {
