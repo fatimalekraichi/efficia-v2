@@ -47,6 +47,7 @@ const createCookieConsent = () => {
   const preferences = document.createElement("div");
   preferences.className = "cookie-preferences";
   preferences.setAttribute("aria-hidden", "true");
+  preferences.setAttribute("inert", "");
   preferences.innerHTML = `
     <div class="cookie-preferences__backdrop" data-cookie-close></div>
     <div class="cookie-preferences__panel" role="dialog" aria-modal="true" aria-labelledby="cookie-preferences-title">
@@ -89,22 +90,34 @@ const createCookieConsent = () => {
 const { banner, preferences } = createCookieConsent();
 const statisticsInput = preferences.querySelector("[data-cookie-statistics]");
 const marketingInput = preferences.querySelector("[data-cookie-marketing]");
+let lastCookiePreferencesTrigger = null;
 
 const showCookieBanner = () => window.setTimeout(() => banner.classList.add("is-visible"), 350);
 const hideCookieBanner = () => banner.classList.remove("is-visible");
 
 const openCookiePreferences = () => {
+  lastCookiePreferencesTrigger = document.activeElement;
   const storedConsent = readCookieConsent();
   statisticsInput.checked = Boolean(storedConsent?.statistics);
   marketingInput.checked = Boolean(storedConsent?.marketing);
-  preferences.classList.add("is-open");
+  preferences.removeAttribute("inert");
   preferences.setAttribute("aria-hidden", "false");
+  preferences.classList.add("is-open");
   preferences.querySelector("[data-cookie-statistics]")?.focus({ preventScroll: true });
 };
 
 const closeCookiePreferences = () => {
+  if (preferences.contains(document.activeElement)) {
+    if (lastCookiePreferencesTrigger?.isConnected) {
+      lastCookiePreferencesTrigger.focus({ preventScroll: true });
+    } else {
+      document.activeElement?.blur?.();
+    }
+  }
   preferences.classList.remove("is-open");
+  preferences.setAttribute("inert", "");
   preferences.setAttribute("aria-hidden", "true");
+  lastCookiePreferencesTrigger = null;
 };
 
 const setConsentAndClose = (settings) => {
