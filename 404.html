@@ -30,6 +30,25 @@
     .not-found p {
       margin: 20px auto 30px;
     }
+
+    .not-found__actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px 20px;
+      align-items: center;
+    }
+
+    .not-found__link {
+      color: var(--navy);
+      font-weight: 600;
+      text-underline-offset: 4px;
+    }
+
+    .not-found__link:hover,
+    .not-found__link:focus-visible {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -48,7 +67,11 @@
           <span class="section-kicker">Erreur 404</span>
           <h1>Cette page n’existe pas.</h1>
           <p>La page demandée a peut-être été déplacée ou son adresse est incorrecte.</p>
-          <a href="/" class="btn btn-primary">Retour à l’accueil</a>
+          <div class="not-found__actions">
+            <a href="/" class="btn btn-primary">Retour à l’accueil</a>
+            <a href="/#diagnostic" class="not-found__link">Faire le diagnostic gratuit</a>
+            <a href="/#offres" class="not-found__link">Découvrir les offres</a>
+          </div>
         </div>
       </div>
     </section>
