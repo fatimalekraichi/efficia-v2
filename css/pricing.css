@@ -151,6 +151,38 @@
   margin-top: auto;
 }
 
+.price-detail-link {
+  align-self: center;
+  margin-top: 14px;
+  color: #52627a;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  text-align: center;
+  text-underline-offset: 4px;
+}
+
+.price-detail-link:hover,
+.price-detail-link:focus-visible {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.faq-detail-link {
+  margin-top: 18px;
+}
+
+.faq-detail-link a {
+  color: var(--blue);
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
+.faq-detail-link a:hover,
+.faq-detail-link a:focus-visible {
+  text-decoration: underline;
+}
+
 .price-btn[aria-disabled="true"] {
   pointer-events: none;
   opacity: 0.82;
