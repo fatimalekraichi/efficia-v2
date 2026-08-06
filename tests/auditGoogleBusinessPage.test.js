@@ -91,10 +91,13 @@ test("aucune ancienne promesse chiffrée contradictoire ne subsiste dans les con
   for (const path of paths) assert.doesNotMatch(await read(path), forbidden, path);
 });
 
-test("l’accueil contient quatre points de maillage vers la page Audit", async () => {
+test("l’accueil relie clairement la carte, l’aperçu, la FAQ et le CTA final à la page Audit", async () => {
   const html = await read("index.html");
   const links = html.match(/href="\/audit-google-business"/g) || [];
-  assert.ok(links.length >= 4, "maillage interne insuffisant");
+  assert.equal(links.length, 6, "les six points de maillage visibles doivent rester présents");
+  assert.match(html, /href="\/achat\?offre=audit" class="btn btn-secondary price-btn">Je veux mon audit<\/a>/);
+  assert.match(html, /href="\/audit-google-business" class="price-detail-link">Découvrir l’audit en détail<\/a>/);
+  assert.match(html, /href="\/audit-google-business">Découvrir le contenu complet de l’audit<\/a>/);
 });
 
 test("le sitemap contient uniquement l’URL propre de la page Audit", async () => {
