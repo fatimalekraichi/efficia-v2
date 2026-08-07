@@ -9,6 +9,11 @@
     grid-template-columns: 1fr;
   }
 
+  .founder-grid {
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 36px;
+  }
+
   .hero {
     min-height: auto;
     padding-top: 130px;
@@ -124,6 +129,26 @@
     width: min(100%, 330px);
   }
 
+  .founder-section {
+    padding: 46px 0 34px;
+  }
+
+  .founder-grid {
+    grid-template-columns: 1fr;
+    gap: 38px;
+  }
+
+  .founder-portrait {
+    width: min(100%, 290px);
+    height: 387px;
+    margin-inline: auto;
+  }
+
+  .founder-content {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+
   .comparison-bridge {
     order: 2;
     padding-top: 0;
@@ -219,6 +244,34 @@
   .diagnostic-banner,
   .feature-card {
     padding: 26px;
+  }
+
+  .founder-grid {
+    gap: 28px;
+  }
+
+  .founder-portrait {
+    width: min(100%, 260px);
+    height: 347px;
+    border-radius: var(--radius-md);
+  }
+
+  .founder-content h2 {
+    font-size: clamp(1.8rem, 8.2vw, 2.15rem);
+  }
+
+  .founder-text {
+    margin-top: 20px;
+  }
+
+  .founder-text p {
+    font-size: 15px;
+  }
+
+  .founder-reassurance {
+    display: grid;
+    gap: 12px;
+    margin-top: 24px;
   }
 
   .audit-preview-card > a {
