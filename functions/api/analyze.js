@@ -1,16 +1,22 @@
 // Cloudflare Pages Function — /api/analyze
-// 1) appelle /api/outscraper (Appel A) ; 2) normalise ; 3) enregistre dans D1 (ORDERS_DB)
-// avec un analysisId ; 4) retourne { analysisId, status: "collected" }.
+// 1) valide le corps JSON reçu par POST ; 2) appelle directement le module partagé
+// collectFiche ; 3) normalise ; 4) enregistre dans D1 (ORDERS_DB) avec un
+// analysisId ; 5) retourne l'identifiant opaque et le statut de l'analyse.
 //
 // Méthode : POST  (crée une analyse)
 // Auth    : Authorization: Bearer <CONNECTOR_TOKEN>
 // Entrée  : { "nom": "...", "ville": "...", "activite": "...", "observationQuery": "..." }
-//           (JSON body ; à défaut, paramètres ?nom=&ville=&activite=&observationQuery=)
-// Secrets : CONNECTOR_TOKEN (+ OUTSCRAPER_API_KEY utilisé par /api/outscraper)
+//           dans un corps JSON valide.
+// Secrets : CONNECTOR_TOKEN et OUTSCRAPER_API_KEY utilisés par les modules partagés.
 // D1      : binding ORDERS_DB, table `analyses` (migration 0003_analyses.sql)
 
 import { collectFiche } from "../lib/collectFiche.js";
 import { collectCompetitors } from "../lib/collectCompetitors.js";
+import {
+  loadDiagnosticRequestByIdempotency,
+  normalizeInternalDiagnosticRequest,
+  persistDiagnosticRequestAtomically,
+} from "../lib/diagnosticRequests.js";
 import { verifyConnectorToken } from "./_auth.js";
 
 const CORS_HEADERS = {
@@ -93,6 +99,7 @@ export async function onRequestPost(context) {
   let observationQuery = "";
   let selectedPlaceId = "";
   let selectedCandidate = null;
+  let diagnosticRequest = null;
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
@@ -117,18 +124,35 @@ export async function onRequestPost(context) {
     selectedCandidate = payload?.selectedCandidate && typeof payload.selectedCandidate === "object"
       ? payload.selectedCandidate
       : null;
+    if (payload?.diagnosticRequest !== undefined) {
+      const normalizedDiagnosticRequest = normalizeInternalDiagnosticRequest(payload.diagnosticRequest);
+      if (!normalizedDiagnosticRequest.ok) {
+        return jsonResponse({ error: "Invalid diagnostic request." }, 400);
+      }
+      diagnosticRequest = normalizedDiagnosticRequest.data;
+    }
   } catch {
-    // pas de body JSON : on tentera les paramètres d'URL
+    return jsonResponse({ error: "Invalid JSON body." }, 400);
   }
-  const url = new URL(request.url);
-  nom = nom || (url.searchParams.get("nom") || "").trim();
-  ville = ville || (url.searchParams.get("ville") || "").trim();
-  activite = activite || (url.searchParams.get("activite") || "").trim();
-  googleBusinessUrl = googleBusinessUrl || (url.searchParams.get("googleBusinessUrl") || url.searchParams.get("google_business_url") || "").trim();
-  observationQuery = observationQuery || (url.searchParams.get("observationQuery") || url.searchParams.get("queryOverride") || "").trim();
-  selectedPlaceId = selectedPlaceId || (url.searchParams.get("selectedPlaceId") || "").trim();
   if (!observationQuery && !googleBusinessUrl && (!nom || !ville)) {
     return jsonResponse({ error: "Missing required parameters: nom, ville or observationQuery." }, 400);
+  }
+
+  if (diagnosticRequest) {
+    try {
+      const existing = await loadDiagnosticRequestByIdempotency(db, diagnosticRequest.idempotencyKey);
+      if (existing?.analysis_id) {
+        return jsonResponse({
+          analysisId: existing.analysis_id,
+          status: existing.status || "awaiting_review",
+          mailerLiteStatus: existing.mailerlite_status || "pending",
+          idempotent: true,
+        });
+      }
+    } catch (error) {
+      console.error("analyze: diagnostic request lookup failed", { migration_required: true });
+      return jsonResponse({ error: "Storage configuration error." }, 500);
+    }
   }
 
   // 1) Collecte directe via le module partagé (plus d'auto-appel HTTP vers /api/outscraper).
@@ -140,6 +164,7 @@ export async function onRequestPost(context) {
     apiKey: env.OUTSCRAPER_API_KEY,
     selectedPlaceId: selectedPlaceId || undefined,
     selectedCandidate: selectedCandidate || undefined,
+    suppressSensitiveLogs: Boolean(diagnosticRequest),
   });
   if (!result.ok) {
     // Objectif 2 — plusieurs candidats plausibles, aucun ne dépasse le seuil
@@ -198,12 +223,14 @@ export async function onRequestPost(context) {
   const categorieDetectee = normalized.category || normalized.type || "";
   const resolvedActivite = activiteSaisie || categorieDetectee;
 
-  console.log("analyze:location-resolution", {
-    ville_saisie: Boolean(villeSaisie),
-    ville_detectee: villeDetectee || null,
-    activite_saisie: Boolean(activiteSaisie),
-    categorie_detectee: categorieDetectee || null,
-  });
+  if (!diagnosticRequest) {
+    console.log("analyze:location-resolution", {
+      ville_saisie: Boolean(villeSaisie),
+      ville_detectee: villeDetectee || null,
+      activite_saisie: Boolean(activiteSaisie),
+      categorie_detectee: categorieDetectee || null,
+    });
+  }
 
   let competitorData = {
     requete: resolvedActivite && resolvedVille ? `${resolvedActivite} ${resolvedVille}` : "",
@@ -211,7 +238,9 @@ export async function onRequestPost(context) {
     concurrents: [],
   };
   if (resolvedActivite && resolvedVille) {
-    console.log("analyze:calling-competitors", { activite: resolvedActivite, ville: resolvedVille });
+    if (!diagnosticRequest) {
+      console.log("analyze:calling-competitors", { activite: resolvedActivite, ville: resolvedVille });
+    }
     const competitorsResult = await collectCompetitors({
       activite: resolvedActivite,
       ville: resolvedVille,
@@ -222,6 +251,7 @@ export async function onRequestPost(context) {
       cidCible: normalized.cid,
       urlCible: normalized.location_link,
       apiKey: env.OUTSCRAPER_API_KEY,
+      suppressSensitiveLogs: Boolean(diagnosticRequest),
     });
     if (competitorsResult.ok) {
       competitorData = {
@@ -243,13 +273,13 @@ export async function onRequestPost(context) {
 
   console.log("analyze:saving-d1");
   try {
-    await db.prepare(`
+    const analysisStatement = db.prepare(`
       INSERT INTO analyses (
         analysis_id, nom, ville, query, place_id, name,
         rating, reviews, photos_count, description_length,
         activity, search_query, local_position, competitors_json,
-        status, fiche_json, normalized_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'collected', ?, ?, ?, ?)
+        status, fiche_json, normalized_json, created_at, updated_at, report_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       analysisId,
       storedNom,
@@ -265,11 +295,34 @@ export async function onRequestPost(context) {
       competitorData.requete || null,
       competitorData.position,
       JSON.stringify(competitorData.concurrents || []),
+      diagnosticRequest ? "awaiting_review" : "collected",
       JSON.stringify(fiche),
       JSON.stringify(normalized),
       now,
       now,
-    ).run();
+      diagnosticRequest ? "free" : null,
+    );
+
+    if (diagnosticRequest) {
+      const persisted = await persistDiagnosticRequestAtomically(db, {
+        analysisStatement,
+        request: {
+          ...diagnosticRequest,
+          analysisId,
+          createdAt: now,
+        },
+      });
+      return jsonResponse({
+        analysisId: persisted.analysisId,
+        status: persisted.status,
+        mailerLiteStatus: persisted.mailerLiteStatus,
+        idempotent: persisted.idempotent,
+        identificationConfidence: result.confidence ?? null,
+        identificationTier: result.tier ?? null,
+      });
+    }
+
+    await analysisStatement.run();
   } catch (err) {
     console.error("analyze: écriture D1 échouée", err && err.message);
     return jsonResponse({ error: "Storage failed." }, 500);

@@ -38,6 +38,12 @@ const unknownGoogleBusinessField = stepTwoForm?.querySelector('input[name="unkno
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let lastFocusedElement = null;
 let leadDraft = {};
+let diagnosticIdempotencyKey = "";
+
+const getDiagnosticIdempotencyKey = () => {
+  if (!diagnosticIdempotencyKey) diagnosticIdempotencyKey = window.crypto.randomUUID();
+  return diagnosticIdempotencyKey;
+};
 
 const showStep = (step) => {
   modal?.querySelectorAll(".conversion-step").forEach((panel) => {
@@ -237,7 +243,6 @@ const wait = (duration) => new Promise((resolve) => {
 });
 
 const submitLeadRequest = async (payload) => {
-  window.efficiaLeadPayload = payload;
   const response = await fetch("/subscribe", {
     method: "POST",
     headers: {
@@ -248,29 +253,13 @@ const submitLeadRequest = async (payload) => {
   });
 
   let data = null;
-  const responseText = await response.text();
-  try {
-    data = responseText ? JSON.parse(responseText) : null;
-  } catch {
-    data = { raw: responseText };
-  }
-
-  console.log("Réponse /subscribe", {
-    status: response.status,
-    ok: response.ok,
-    data,
-  });
+  data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    console.error("Erreur API /subscribe", {
-      status: response.status,
-      data,
-    });
     throw new Error("Lead submission failed");
   }
 
   if (!data?.success) {
-    console.error("Erreur API /subscribe", data);
     throw new Error("Lead submission failed");
   }
 
@@ -281,6 +270,8 @@ modalTriggers.forEach((trigger) => {
   trigger.addEventListener("click", (event) => {
     event.preventDefault();
     openModal();
+    window.trackAnalyticsEvent?.("diagnostic_cta_click");
+    window.trackAnalyticsEvent?.("diagnostic_step_1_view");
   });
 });
 
@@ -327,15 +318,15 @@ stepOneForm?.addEventListener("submit", async (event) => {
       source: "Score Efficia gratuit",
       created_at: createdAt,
     };
-    console.log("lead_capture envoyé", payload);
     await Promise.all([
       submitLeadRequest(payload),
       wait(650),
     ]);
-    console.log("lead_capture succès");
     leadDraft.createdAt = createdAt;
     setLoading(stepOneForm, false);
+    window.trackAnalyticsEvent?.("diagnostic_step_1_complete");
     showStep(2);
+    window.trackAnalyticsEvent?.("diagnostic_step_2_view");
     focusFirstField();
   } catch (error) {
     console.error("lead_capture erreur", error);
@@ -362,17 +353,18 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
       city: stepTwoData.city,
+      idempotency_key: getDiagnosticIdempotencyKey(),
       audit_status: "diagnostic demandé",
       completed_step_2: true,
       source: "Score Efficia gratuit",
       created_at: leadDraft.createdAt || new Date().toISOString(),
       submitted_at: new Date().toISOString(),
     };
-    console.log("diagnostic_request envoyé", payload);
     await Promise.all([submitLeadRequest(payload), wait(650)]);
-    console.log("diagnostic_request succès");
     setLoading(stepTwoForm, false);
+    window.trackAnalyticsEvent?.("diagnostic_submitted");
     showStep(3);
+    window.trackAnalyticsEvent?.("diagnostic_confirmation_view");
     confirmationStep?.querySelector("button")?.focus({ preventScroll: true });
   } catch (error) {
     console.error("diagnostic_request erreur", error);
@@ -440,12 +432,6 @@ const submitCheckoutRequest = async (product) => {
   });
 
   const data = await response.json().catch(() => ({}));
-  console.log("Réponse /create-checkout-session", {
-    ok: response.ok,
-    status: response.status,
-    data,
-  });
-
   if (!response.ok || !data.success || !data.url) {
     throw new Error(data.error || "Checkout session failed.");
   }
@@ -473,6 +459,7 @@ checkoutButtons.forEach((button) => {
 
     try {
       const checkoutUrl = await submitCheckoutRequest(product);
+      window.trackAnalyticsEvent?.("begin_checkout", { offer: product });
       window.location.href = checkoutUrl;
     } catch (error) {
       console.error("Erreur Stripe Checkout", error);

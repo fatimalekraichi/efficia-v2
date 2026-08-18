@@ -3181,24 +3181,30 @@ function escapeHtml(value){
     .replace(/'/g,"&#039;");
 }
 
-function contexteCommandeAdminDepuisUrl(){
+function analysisIdDepuisUrl(){
   const params = new URLSearchParams(window.location.search);
-  const contexte = {
-    company: (params.get("company") || "").trim(),
-    city: (params.get("city") || "").trim(),
-    firstName: (params.get("firstName") || "").trim(),
-    email: (params.get("email") || "").trim(),
-    offer: (params.get("offer") || "").trim(),
-    orderId: (params.get("orderId") || "").trim(),
-    taskId: (params.get("taskId") || "").trim(),
-    googleBusinessUrl: (params.get("googleBusinessUrl") || "").trim()
-  };
-  return Object.values(contexte).some(Boolean) ? contexte : null;
+  return (params.get("analysisId") || "").trim();
 }
 
-function initialiserContexteCommandeAdmin(){
-  const contexte = contexteCommandeAdminDepuisUrl();
-  if(!contexte) return;
+async function initialiserContexteCommandeAdmin(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
+
+  const rep = await fetch(`/api/admin/free-diagnostic-context/${encodeURIComponent(analysisId)}`, {
+    credentials:"same-origin",
+    headers:{"Accept":"application/json"}
+  });
+  if(rep.status === 401){
+    window.location.href = "/admin-login";
+    return;
+  }
+  const donnees = await rep.json().catch(() => ({}));
+  if(!rep.ok || !donnees.success || !donnees.context){
+    statut("Impossible de charger le contexte sécurisé du diagnostic.", "erreur");
+    return;
+  }
+
+  const contexte = donnees.context;
   window.efficiaAdminOrderContext = contexte;
 
   definirSiVide("p-entreprise", contexte.company);

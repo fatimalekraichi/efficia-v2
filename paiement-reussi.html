@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/header.css">
   <link rel="stylesheet" href="css/footer.css">
+  <link rel="stylesheet" href="css/cookies.css">
 
   <style>
     body {
@@ -100,13 +101,24 @@
   </header>
 
   <main class="success-page">
-    <section class="success-card" aria-labelledby="success-title">
-      <div class="success-icon" aria-hidden="true">✓</div>
-      <h1 id="success-title">Merci, votre paiement a bien été confirmé.</h1>
-      <p>Nous avons bien reçu votre commande. Vous recevrez prochainement un e-mail avec les prochaines étapes.</p>
+    <section class="success-card" aria-labelledby="success-title" data-checkout-success data-clarity-mask="true">
+      <div class="success-icon" aria-hidden="true" data-checkout-success-icon>…</div>
+      <h1 id="success-title" data-checkout-success-title>Votre paiement est en cours de vérification.</h1>
+      <p data-checkout-success-message>La confirmation peut prendre quelques instants. Votre commande sera traitée dès que Stripe l’aura confirmée.</p>
       <p>Vous pouvez consulter les <a href="/cgv">Conditions générales de vente</a> applicables à votre commande.</p>
       <a href="/" class="btn btn-primary">Retour à l’accueil</a>
     </section>
   </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 Efficia Digital — Tous droits réservés.</span>
+        <a href="#" data-cookie-preferences>Gérer mes préférences de confidentialité</a>
+      </div>
+    </div>
+  </footer>
+  <script src="js/checkout-success.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/cookies.js?v=20260818-clarity"></script>
 </body>
 </html>

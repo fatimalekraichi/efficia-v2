@@ -232,22 +232,6 @@ async function loadOrderFromQuery() {
   fillIfEmpty("email", linkedOrder.email);
 }
 
-function prefillFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  fillIfEmpty("googleBusinessUrl", params.get("googleBusinessUrl"));
-  fillIfEmpty("companyName", params.get("companyName") || params.get("company"));
-  fillIfEmpty("city", params.get("city"));
-  fillIfEmpty("email", params.get("email"));
-
-  const context = [
-    params.get("offer") ? `Offre : ${params.get("offer")}` : "",
-    params.get("orderId") ? `Order ID : ${params.get("orderId")}` : "",
-    params.get("taskId") ? `Task ID : ${params.get("taskId")}` : "",
-    params.get("firstName") ? `Contact : ${params.get("firstName")}` : "",
-  ].filter(Boolean).join("\n");
-  fillIfEmpty("internalNotes", context);
-}
-
 // Deux façons équivalentes d'identifier l'entreprise : l'URL Google Business
 // seule (Mode 1), ou le Nom + la Ville (Mode 2). Le formulaire est valide dès
 // que l'une des deux voies est complète — voir aussi updateRequiredState(),
@@ -426,7 +410,6 @@ async function submitAudit(event) {
 });
 
 form?.addEventListener("submit", submitAudit);
-prefillFromUrl();
 updateRequiredState();
 loadOrderFromQuery().then(updateRequiredState);
 

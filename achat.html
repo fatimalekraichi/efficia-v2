@@ -21,7 +21,9 @@
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/header.css">
   <link rel="stylesheet" href="css/footer.css">
+  <link rel="stylesheet" href="css/cookies.css">
   <link rel="stylesheet" href="css/purchase.css?v=20260818-cgv">
+  <link rel="stylesheet" href="css/responsive.css">
 </head>
 
 <body>
@@ -60,7 +62,7 @@
             </div>
           </div>
 
-          <form class="purchase-form" data-purchase-form data-cgv-version="2026-08-18-v2" novalidate>
+          <form class="purchase-form" data-purchase-form data-cgv-version="2026-08-18-v2" data-clarity-mask="true" novalidate>
             <div class="purchase-fields">
               <label class="purchase-field">
                 <span>Nom et prénom *</span>
@@ -124,6 +126,17 @@
     </div>
   </main>
 
-  <script src="js/purchase.js?v=20260818-cgv"></script>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© 2026 Efficia Digital — Tous droits réservés.</span>
+        <a href="#" data-cookie-preferences>Gérer mes préférences de confidentialité</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/analytics.js"></script>
+  <script src="js/purchase.js?v=20260818-clarity"></script>
+  <script src="js/cookies.js?v=20260818-clarity"></script>
 </body>
 </html>

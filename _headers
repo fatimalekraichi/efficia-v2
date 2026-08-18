@@ -1,0 +1,39 @@
+/
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/index.html
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/audit-google-business*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/achat*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/paiement-reussi*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/mentions-legales*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/cgv*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/politique-confidentialite*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/politique-cookies*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/404.html
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin

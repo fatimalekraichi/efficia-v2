@@ -453,12 +453,15 @@ export async function collectFiche({
   selectedCandidate,
   // Objectif 4 — signaux optionnels supplémentaires, voir computeConfidence.
   attendu,
+  suppressSensitiveLogs = false,
 } = {}) {
   if (selectedCandidate && typeof selectedCandidate === "object" && selectedCandidate.place_id) {
-    console.log("collectFiche:manual-selection-direct", {
-      place_id: selectedCandidate.place_id,
-      name: selectedCandidate.name || null,
-    });
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:manual-selection-direct", {
+        place_id: selectedCandidate.place_id,
+        name: selectedCandidate.name || null,
+      });
+    }
     return { ok: true, fiche: selectedCandidate, confidence: null, tier: "manual" };
   }
 
@@ -532,11 +535,13 @@ export async function collectFiche({
 
   // Objectif 5 (logs de diagnostic temporaires, à retirer une fois le
   // correctif validé sur la campagne réelle) : visibilité brute -> choisi.
-  console.log("collectFiche:raw-candidates", {
-    query,
-    count: candidates.length,
-    names: candidates.map((c) => c.name || "(sans nom)"),
-  });
+  if (!suppressSensitiveLogs) {
+    console.log("collectFiche:raw-candidates", {
+      query,
+      count: candidates.length,
+      names: candidates.map((c) => c.name || "(sans nom)"),
+    });
+  }
 
   if (!candidates.length) {
     return { ok: false, code: 404, error: "No business found." };
@@ -551,12 +556,14 @@ export async function collectFiche({
   // plus par ici.
   if (selectedPlaceId) {
     const chosen = candidates.find((c) => (c.place_id || "") === selectedPlaceId);
-    console.log("collectFiche:manual-selection", {
-      query,
-      selectedPlaceId,
-      found: Boolean(chosen),
-      name: chosen?.name || null,
-    });
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:manual-selection", {
+        query,
+        selectedPlaceId,
+        found: Boolean(chosen),
+        name: chosen?.name || null,
+      });
+    }
     if (!chosen) {
       return {
         ok: false,
@@ -573,7 +580,9 @@ export async function collectFiche({
   // les candidats — comportement historique conservé à l'identique (premier
   // résultat, déjà résolu par Outscraper à partir de l'URL elle-même).
   if (!nomTrim || !villeTrim) {
-    console.log("collectFiche:selected-without-scoring", { name: candidates[0].name || "(sans nom)" });
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:selected-without-scoring", { name: candidates[0].name || "(sans nom)" });
+    }
     return { ok: true, fiche: mapPlace(candidates[0]), tier: "auto" };
   }
 
@@ -597,23 +606,25 @@ export async function collectFiche({
       ? `${survivingCount} candidat(s) restant(s) après élimination de ville, ${plausibleCount} au nom raisonnablement proche -> validation humaine requise.`
       : `aucun candidat ne correspond à la ville demandée (${ranked.length} candidat(s) reçu(s), tous éliminés) -> aucune entreprise fiable trouvée.`;
 
-  console.log("collectFiche:decision-log", {
-    requested: { nom: nomTrim, ville: villeTrim },
-    candidates: ranked.map((entry) => ({
-      name: entry.place.name || "(sans nom)",
-      place_id: entry.place.place_id || null,
-      nameScore: Number(entry.nameScore.toFixed(3)),
-      nameOverlap: Number(entry.nameOverlap.toFixed(3)),
-      cityScore: entry.cityScore,
-      confidence: Number(entry.confidence.toFixed(3)),
-      cityMismatch: Boolean(entry.cityMismatch),
-    })),
-    survivingCount,
-    plausibleCount,
-    tier,
-    selected: tier === "auto" ? (outcome.best.place.name || "(sans nom)") : null,
-    reason,
-  });
+  if (!suppressSensitiveLogs) {
+    console.log("collectFiche:decision-log", {
+      requested: { nom: nomTrim, ville: villeTrim },
+      candidates: ranked.map((entry) => ({
+        name: entry.place.name || "(sans nom)",
+        place_id: entry.place.place_id || null,
+        nameScore: Number(entry.nameScore.toFixed(3)),
+        nameOverlap: Number(entry.nameOverlap.toFixed(3)),
+        cityScore: entry.cityScore,
+        confidence: Number(entry.confidence.toFixed(3)),
+        cityMismatch: Boolean(entry.cityMismatch),
+      })),
+      survivingCount,
+      plausibleCount,
+      tier,
+      selected: tier === "auto" ? (outcome.best.place.name || "(sans nom)") : null,
+      reason,
+    });
+  }
 
   if (tier === "rejected") {
     return {

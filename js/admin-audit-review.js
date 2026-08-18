@@ -1222,8 +1222,7 @@ function updateLinks(analysis) {
       // Le système gratuit utilise exclusivement l'ancien générateur exact de
       // main, servi statiquement depuis /admin/free-diagnostic-production/.
       // Jamais /api/pdf/{analysisId}, jamais /admin/legacy-free-diagnostic/{id}.
-      const query = analysis.freeDiagnosticQuery || legacyGeneratorLink.dataset.freeDiagnosticQuery || "";
-      legacyGeneratorLink.href = `${window.location.origin}/admin/free-diagnostic-production/${query ? `?${query}` : ""}`;
+      legacyGeneratorLink.href = `${window.location.origin}/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysis.analysisId || analysisId)}`;
     }
   }
 }
