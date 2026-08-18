@@ -33,7 +33,7 @@
       <div class="cookie-consent__inner">
         <div>
           <strong>Votre confidentialité</strong>
-          <p>Avec votre accord, Microsoft Clarity nous aide à comprendre la navigation et à améliorer le parcours. Vous pouvez accepter, refuser ou modifier ce choix à tout moment. <a href="/politique-cookies">En savoir plus</a>.</p>
+          <p>Avec votre accord, nous utilisons Microsoft Clarity pour comprendre comment le site est utilisé et l’améliorer. Vous pouvez accepter, refuser ou changer d’avis à tout moment. <a href="/politique-cookies">En savoir plus</a></p>
         </div>
         <div class="cookie-consent__actions">
           <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Tout accepter</button>
@@ -50,8 +50,8 @@
     preferences.innerHTML = `
       <div class="cookie-preferences__backdrop" data-cookie-close></div>
       <div class="cookie-preferences__panel" role="dialog" aria-modal="true" aria-labelledby="cookie-preferences-title">
-        <h2 id="cookie-preferences-title">Préférences de confidentialité</h2>
-        <p>Les fonctions nécessaires restent actives. Microsoft Clarity n’est chargé que si vous acceptez la mesure d’audience.</p>
+        <h2 id="cookie-preferences-title">Gérer mes préférences</h2>
+        <p>Les fonctions nécessaires restent actives. Microsoft Clarity est utilisé uniquement si vous l’acceptez.</p>
         <div class="cookie-options">
           <div class="cookie-option">
             <div>
@@ -62,15 +62,15 @@
           </div>
           <label class="cookie-option">
             <div>
-              <strong>Mesure d’audience avec Clarity</strong>
-              <span>Navigation, interactions et amélioration du parcours, avec masquage renforcé.</span>
+              <strong>Mesure d’audience</strong>
+              <span>Nous aide à comprendre l’utilisation du site et à améliorer votre expérience.</span>
             </div>
             <input type="checkbox" data-cookie-analytics>
           </label>
         </div>
         <div class="cookie-preferences__actions">
-          <button class="cookie-btn cookie-btn--secondary" type="button" data-cookie-close>Annuler</button>
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-save>Enregistrer mon choix</button>
+          <button class="cookie-btn cookie-btn--secondary" type="button" data-cookie-close>Retour</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-save>Enregistrer</button>
         </div>
       </div>
     `;

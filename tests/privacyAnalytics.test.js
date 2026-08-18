@@ -55,6 +55,26 @@ test("Clarity est centralisé et différé jusqu’au consentement explicite", a
   });
 });
 
+test("les textes simplifiés conservent les actions explicites de consentement", async () => {
+  const cookies = await readProjectFile("js/cookies.js");
+
+  assert.match(cookies, /<strong>Votre confidentialité<\/strong>/);
+  assert.match(cookies, /Avec votre accord, nous utilisons Microsoft Clarity pour comprendre comment le site est utilisé et l’améliorer\. Vous pouvez accepter, refuser ou changer d’avis à tout moment\. <a href="\/politique-cookies">En savoir plus<\/a>/);
+  assert.match(cookies, /<h2 id="cookie-preferences-title">Gérer mes préférences<\/h2>/);
+  assert.match(cookies, /Les fonctions nécessaires restent actives\. Microsoft Clarity est utilisé uniquement si vous l’acceptez\./);
+  assert.match(cookies, /<strong>Fonctions nécessaires<\/strong>\s*<span>Indispensables au fonctionnement et à la sécurité du site\.<\/span>/);
+  assert.match(cookies, /<strong>Mesure d’audience<\/strong>\s*<span>Nous aide à comprendre l’utilisation du site et à améliorer votre expérience\.<\/span>/);
+  assert.match(cookies, /data-cookie-close>Retour<\/button>/);
+  assert.match(cookies, /data-cookie-save>Enregistrer<\/button>/);
+  assert.doesNotMatch(cookies, /Mesure d’audience avec Clarity|masquage renforcé|Enregistrer mon choix|>Annuler<\/button>/);
+
+  assert.match(cookies, /target\.matches\("\[data-cookie-accept\]"\)\) applyConsent\(true\)/);
+  assert.match(cookies, /target\.matches\("\[data-cookie-refuse\]"\)\) applyConsent\(false\)/);
+  assert.match(cookies, /target\.matches\("\[data-cookie-save\]"\)\) applyConsent\(analyticsInput\.checked\)/);
+  assert.match(cookies, /target\.matches\("\[data-cookie-close\]"\)\) closeCookiePreferences\(\)/);
+  assert.doesNotMatch(cookies, /data-cookie-close[^\n]*applyConsent/);
+});
+
 test("les pages administratives ne chargent jamais Clarity", async () => {
   const adminFiles = [
     "admin/index.html",
