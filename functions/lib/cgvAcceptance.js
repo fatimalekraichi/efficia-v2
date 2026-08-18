@@ -1,4 +1,4 @@
-export const ACTIVE_CGV_VERSION = "2026-08-18";
+export const ACTIVE_CGV_VERSION = "2026-08-18-v2";
 
 export const CGV_ACCEPTANCE_ERROR = {
   success: false,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createHash, createHmac } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 import { onRequestPost as createCheckoutSession } from "../functions/create-checkout-session.js";
@@ -58,6 +58,13 @@ test("l’interface exige une acceptation explicite et accessible des CGV", asyn
   assert.match(html, /data-cgv-error role="alert" aria-live="polite"/);
   assert.match(html, new RegExp(ACTIVE_CGV_VERSION));
 
+  const form = html.match(/<form class="purchase-form"[\s\S]*?<\/form>/)?.[0] || "";
+  assert.equal((form.match(/name="cgv_acceptance"/g) || []).length, 1);
+  assert.doesNotMatch(form, /confirme[^<]*(?:activité|professionnel)|name="(?:bce|vat|tva|siren|siret|rcs|professional_id)"/iu);
+  assert.match(form, /name="company_name"/);
+  assert.match(form, /name="google_business_url"/);
+  assert.match(form, /name="city"/);
+
   assert.match(script, /if \(!cgvAcceptance\?\.checked\)/);
   assert.match(script, /cgvAcceptance\?\.focus\(\{ preventScroll: true \}\)/);
   assert.match(script, /cgv_accepted: true/);
@@ -91,7 +98,7 @@ test("le serveur rejette toute acceptation absente, fausse ou ambiguë avant les
     const obsoleteVersion = await prepareCheckout({
       request: jsonRequest("https://example.com/prepare-checkout", {
         ...validPurchase,
-        cgv_version: "2026-07-08",
+        cgv_version: "2026-08-18",
       }),
       env: checkoutEnv,
     });
@@ -279,11 +286,18 @@ test("le webhook associe la version et la date d’acceptation à la commande pa
   assert.equal(orderInsert.args[15], ACTIVE_CGV_VERSION);
 });
 
-test("les anciennes commandes sans métadonnées CGV restent compatibles", async () => {
+test("les anciennes commandes avec la version historique restent compatibles", async () => {
   const db = createOrdersDb();
   const secret = "whsec_test";
+  const historicalAcceptedAt = "2026-08-18T10:00:00.000Z";
   const response = await stripeWebhook({
-    request: signedWebhookRequest({ secret, session: paidSession({}) }),
+    request: signedWebhookRequest({
+      secret,
+      session: paidSession({
+        cgv_version: "2026-08-18",
+        cgv_accepted_at: historicalAcceptedAt,
+      }),
+    }),
     env: {
       STRIPE_WEBHOOK_SECRET: secret,
       STRIPE_PRICE_AUDIT: "price_audit",
@@ -293,20 +307,41 @@ test("les anciennes commandes sans métadonnées CGV restent compatibles", async
 
   assert.equal(response.status, 200);
   const orderInsert = db.writes.find(({ sql }) => sql.includes("INSERT OR IGNORE INTO orders"));
-  assert.equal(orderInsert.args[14], null);
-  assert.equal(orderInsert.args[15], null);
+  assert.equal(orderInsert.args[14], historicalAcceptedAt);
+  assert.equal(orderInsert.args[15], "2026-08-18");
 });
 
-test("la migration est additive et la confirmation donne accès aux CGV", async () => {
-  const [migration, successPage, cgvPage] = await Promise.all([
+test("la migration historique reste inchangée et aucune migration supplémentaire n’est créée", async () => {
+  const [migration, migrationFiles] = await Promise.all([
     readProjectFile("migrations/0012_order_cgv_acceptance.sql"),
-    readProjectFile("paiement-reussi.html"),
-    readProjectFile("cgv.html"),
+    readdir(new URL("migrations/", root)),
   ]);
 
-  assert.match(migration, /ALTER TABLE orders ADD COLUMN cgv_accepted_at TEXT;/);
-  assert.match(migration, /ALTER TABLE orders ADD COLUMN cgv_version TEXT;/);
-  assert.doesNotMatch(migration, /DROP\s+TABLE|DELETE\s+FROM|CREATE\s+TABLE/i);
-  assert.match(successPage, /href="\/cgv"[^>]*>Conditions générales de vente<\/a>/);
+  assert.equal(
+    createHash("sha256").update(migration).digest("hex"),
+    "3f73ac365c4a5d59d77c740c005327745385172c0fbde992c77a2a5fefe5d7e2",
+  );
+  assert.equal(migrationFiles.filter((file) => file.endsWith(".sql")).at(-1), "0012_order_cgv_acceptance.sql");
+});
+
+test("les CGV définissent le Client professionnel et la rétractation B2B", async () => {
+  const [successPage, cgvPage, sitemap] = await Promise.all([
+    readProjectFile("paiement-reussi.html"),
+    readProjectFile("cgv.html"),
+    readProjectFile("sitemap.xml"),
+  ]);
+
+  assert.equal(ACTIVE_CGV_VERSION, "2026-08-18-v2");
+  assert.match(cgvPage, /Version des CGV : 2026-08-18-v2/);
   assert.match(cgvPage, /Dernière mise à jour : 18 août 2026/);
+  assert.match(cgvPage, /Les services Efficia Digital sont exclusivement destinés aux professionnels\./);
+  assert.match(cgvPage, /Est considéré comme Client professionnel toute personne physique ou morale, publique ou privée/);
+  assert.match(cgvPage, /le Client déclare agir exclusivement dans le cadre de son activité professionnelle et non à titre privé/);
+  assert.match(cgvPage, /Les commandes effectuées en qualité de consommateur ne sont pas acceptées\./);
+  assert.doesNotMatch(cgvPage, /Lorsque le client est un consommateur[^<]*il bénéficie du droit de rétractation/);
+  assert.match(cgvPage, /le droit de rétractation de quatorze jours prévu pour les consommateurs ne s’applique pas aux commandes passées sur le site/);
+  assert.match(cgvPage, /dispositions impératives éventuellement applicables/);
+  assert.match(cgvPage, /<meta name="robots" content="noindex, follow">/);
+  assert.doesNotMatch(sitemap, /https:\/\/efficiadigital\.com\/cgv<\/loc>/);
+  assert.match(successPage, /href="\/cgv"[^>]*>Conditions générales de vente<\/a>/);
 });
