@@ -59,6 +59,19 @@ test("robots.txt autorise le site et référence le sitemap canonique", async ()
   assert.doesNotMatch(robots, /www\.|\.html/u);
 });
 
+test("le comparatif avant/après présente immédiatement son caractère fictif", async () => {
+  const html = await read("index.html");
+  const disclosure = "Exemple fictif à visée illustrative. Les données affichées servent uniquement à comparer la présentation d’une fiche avant et après optimisation ; elles ne constituent ni un résultat client ni une promesse de performance.";
+
+  assert.match(
+    html,
+    new RegExp(`<span class="section-kicker">Avant / Après</span>\\s*<h2>[^<]+</h2>\\s*<p>${disclosure}</p>`),
+  );
+  assert.doesNotMatch(html, /Voici l’impact concret d’une fiche Google Business travaillée avec la Méthode Efficia™\./u);
+  assert.match(html, /aria-label="Note 4,1 sur 5, basée sur 23 avis"/u);
+  assert.match(html, /aria-label="Note 4,2 sur 5, basée sur 128 avis"/u);
+});
+
 test("les pages transactionnelles, administratives et internes sont désindexées", async () => {
   const privatePages = [
     "achat.html",
