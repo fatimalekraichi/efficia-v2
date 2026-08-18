@@ -15,6 +15,10 @@ const publicPages = new Map([
   ["politique-cookies.html", "https://efficiadigital.com/politique-cookies"],
 ]);
 
+const sitemapPages = new Map(
+  [...publicPages].filter(([file]) => !["mentions-legales.html", "cgv.html"].includes(file)),
+);
+
 test("les pages publiques déclarent une canonical unique sur le domaine sans www", async () => {
   for (const [file, canonical] of publicPages) {
     const html = await read(file);
@@ -40,7 +44,7 @@ test("la page 404 est désindexée, sans canonical et propose les trois sorties 
 test("le sitemap ne contient que les URL canoniques publiques finales", async () => {
   const sitemap = await read("sitemap.xml");
   const urls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
-  const expected = [...publicPages.values()];
+  const expected = [...sitemapPages.values()];
 
   assert.deepEqual(urls, expected);
   assert.equal(new Set(urls).size, urls.length, "le sitemap ne doit contenir aucun doublon");

@@ -188,6 +188,11 @@ const getOrderLeadData = (session) => {
   };
 };
 
+const getCgvAcceptanceProof = (session) => ({
+  acceptedAt: normalizeText(session?.metadata?.cgv_accepted_at),
+  version: normalizeText(session?.metadata?.cgv_version),
+});
+
 const toSafeJson = (value) => {
   try {
     return JSON.stringify(value || {});
@@ -305,6 +310,7 @@ const createTraceableOrder = async ({ session, env }) => {
   const amountTotal = Number(session?.amount_total || 0);
   const currency = normalizeText(session?.currency || "eur").toLowerCase();
   const paymentIntentId = normalizeText(session?.payment_intent);
+  const cgvAcceptance = getCgvAcceptanceProof(session);
 
   console.log("Order persistence started", {
     stripe_session_id: sessionId,
@@ -331,10 +337,12 @@ const createTraceableOrder = async ({ session, env }) => {
       currency,
       status,
       paid_at,
+      cgv_accepted_at,
+      cgv_version,
       created_at,
       updated_at,
       raw_metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?)
   `).bind(
     orderId,
     sessionId,
@@ -350,6 +358,8 @@ const createTraceableOrder = async ({ session, env }) => {
     amountTotal,
     currency,
     paidAt,
+    cgvAcceptance.acceptedAt || null,
+    cgvAcceptance.version || null,
     now,
     now,
     toSafeJson(session?.metadata),
@@ -382,6 +392,8 @@ const createTraceableOrder = async ({ session, env }) => {
       currency = ?,
       status = 'paid',
       paid_at = ?,
+      cgv_accepted_at = COALESCE(NULLIF(?, ''), cgv_accepted_at),
+      cgv_version = COALESCE(NULLIF(?, ''), cgv_version),
       updated_at = ?,
       raw_metadata = ?
     WHERE stripe_session_id = ?
@@ -398,6 +410,8 @@ const createTraceableOrder = async ({ session, env }) => {
     amountTotal,
     currency,
     paidAt,
+    cgvAcceptance.acceptedAt,
+    cgvAcceptance.version,
     now,
     toSafeJson(session?.metadata),
     sessionId,

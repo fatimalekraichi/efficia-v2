@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/header.css">
   <link rel="stylesheet" href="css/footer.css">
-  <link rel="stylesheet" href="css/purchase.css?v=20260805-ttc">
+  <link rel="stylesheet" href="css/purchase.css?v=20260818-cgv">
 </head>
 
 <body>
@@ -60,7 +60,7 @@
             </div>
           </div>
 
-          <form class="purchase-form" data-purchase-form novalidate>
+          <form class="purchase-form" data-purchase-form data-cgv-version="2026-08-18" novalidate>
             <div class="purchase-fields">
               <label class="purchase-field">
                 <span>Nom et prénom *</span>
@@ -93,6 +93,21 @@
               </label>
             </div>
 
+            <div class="purchase-consent" data-cgv-consent>
+              <input
+                id="cgv-acceptance"
+                type="checkbox"
+                name="cgv_acceptance"
+                required
+                data-cgv-acceptance
+                aria-describedby="purchase-cgv-error"
+              >
+              <label for="cgv-acceptance">
+                J’ai lu et j’accepte les <a href="/cgv" target="_blank" rel="noopener noreferrer">Conditions générales de vente</a>.
+              </label>
+              <p id="purchase-cgv-error" class="purchase-consent__error" data-cgv-error role="alert" aria-live="polite"></p>
+            </div>
+
             <button class="btn btn-primary purchase-submit" type="submit" data-purchase-submit>
               Continuer vers le paiement sécurisé
             </button>
@@ -109,6 +124,6 @@
     </div>
   </main>
 
-  <script src="js/purchase.js?v=20260805-ttc"></script>
+  <script src="js/purchase.js?v=20260818-cgv"></script>
 </body>
 </html>

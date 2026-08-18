@@ -33,6 +33,10 @@ const googleBusinessWrapper = document.querySelector("[data-google-business-fiel
 const googleBusinessField = googleBusinessWrapper?.querySelector("input");
 const cityWrapper = document.querySelector("[data-city-field]");
 const cityField = cityWrapper?.querySelector("input");
+const cgvAcceptance = document.querySelector("[data-cgv-acceptance]");
+const cgvError = document.querySelector("[data-cgv-error]");
+
+const CGV_ACCEPTANCE_ERROR = "Vous devez lire et accepter les Conditions générales de vente avant de poursuivre.";
 
 const product = new URLSearchParams(window.location.search).get("offre") || "visibility";
 const selectedOffer = OFFERS[product] ? product : "visibility";
@@ -55,6 +59,12 @@ if (offerTaxNote) {
 const setError = (message) => {
   if (!errorMessage) return;
   errorMessage.textContent = message;
+};
+
+const setCgvError = (message) => {
+  if (!cgvError) return;
+  cgvError.textContent = message;
+  cgvAcceptance?.setAttribute("aria-invalid", String(Boolean(message)));
 };
 
 const setLoading = (isLoading) => {
@@ -110,6 +120,14 @@ const validateForm = (formElement) => {
   const city = String(formData.get("city") || "").trim();
   const isUnknown = Boolean(unknownGoogleBusiness?.checked);
 
+  if (!cgvAcceptance?.checked) {
+    setCgvError(CGV_ACCEPTANCE_ERROR);
+    cgvAcceptance?.focus({ preventScroll: true });
+    return null;
+  }
+
+  setCgvError("");
+
   const fullNameField = formElement.querySelector('input[name="full_name"]');
   const emailField = formElement.querySelector('input[name="email"]');
   const companyField = formElement.querySelector('input[name="company_name"]');
@@ -143,11 +161,17 @@ const validateForm = (formElement) => {
     google_business_url: isUnknown ? "" : googleBusinessUrl,
     unknown_google_business: isUnknown,
     city: isUnknown ? city : "",
+    cgv_accepted: true,
+    cgv_version: formElement.dataset.cgvVersion || "",
   };
 };
 
 unknownGoogleBusiness?.addEventListener("change", toggleBusinessFields);
 toggleBusinessFields();
+
+cgvAcceptance?.addEventListener("change", () => {
+  if (cgvAcceptance.checked) setCgvError("");
+});
 
 form?.addEventListener("input", (event) => {
   if (event.target instanceof HTMLInputElement) {

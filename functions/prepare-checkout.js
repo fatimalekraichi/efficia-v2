@@ -1,3 +1,9 @@
+import {
+  CGV_ACCEPTANCE_ERROR,
+  createCgvAcceptanceProof,
+  hasValidCgvAcceptance,
+} from "./lib/cgvAcceptance.js";
+
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
 const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
 const MAILERLITE_FIELDS_ENDPOINT = "https://connect.mailerlite.com/api/fields?limit=100";
@@ -383,7 +389,7 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   return { ok: true, groupId };
 };
 
-const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead }) => {
+const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead, cgvAcceptance }) => {
   console.log("Purchase checkout: creating Stripe Checkout session", {
     email: lead.email,
     product_code: productCode,
@@ -405,6 +411,8 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
   formData.set("metadata[product_code]", productCode);
   formData.set("metadata[product_name]", product.name);
   formData.set("metadata[source]", "efficiadigital.com");
+  formData.set("metadata[cgv_version]", cgvAcceptance.version);
+  formData.set("metadata[cgv_accepted_at]", cgvAcceptance.acceptedAt);
   formData.set("metadata[customer_name]", lead.fullName);
   formData.set("metadata[company_name]", lead.companyName);
   if (lead.googleBusinessUrl) formData.set("metadata[google_business_url]", lead.googleBusinessUrl);
@@ -505,6 +513,18 @@ export async function onRequest(context) {
 const handleCheckoutPreparation = async (context) => {
   console.log("Purchase checkout: request received");
 
+  let payload;
+  try {
+    payload = await context.request.json();
+  } catch {
+    return jsonResponse({ success: false, error: "Invalid JSON body." }, 400);
+  }
+
+  if (!hasValidCgvAcceptance(payload)) {
+    return jsonResponse(CGV_ACCEPTANCE_ERROR, 400);
+  }
+
+  const cgvAcceptance = createCgvAcceptanceProof();
   const stripeSecretKey = context.env.STRIPE_SECRET_KEY;
   const mailerLiteApiKey = context.env.MAILERLITE_API_KEY;
 
@@ -514,13 +534,6 @@ const handleCheckoutPreparation = async (context) => {
       hasMailerLiteApiKey: Boolean(mailerLiteApiKey),
     });
     return jsonResponse({ success: false, error: "Checkout configuration is missing." }, 500);
-  }
-
-  let payload;
-  try {
-    payload = await context.request.json();
-  } catch {
-    return jsonResponse({ success: false, error: "Invalid JSON body." }, 400);
   }
 
   const productCode = normalizeText(payload.product);
@@ -633,6 +646,7 @@ const handleCheckoutPreparation = async (context) => {
     productCode,
     product,
     lead,
+    cgvAcceptance,
   });
 
   if (!checkoutResult.ok) {

@@ -1,3 +1,9 @@
+import {
+  CGV_ACCEPTANCE_ERROR,
+  createCgvAcceptanceProof,
+  hasValidCgvAcceptance,
+} from "./lib/cgvAcceptance.js";
+
 const PAYMENTS_ENABLED = true;
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
 const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
@@ -55,6 +61,12 @@ export async function onRequestPost(context) {
     return jsonResponse({ success: false, error: "Invalid JSON body." }, 400);
   }
 
+  if (!hasValidCgvAcceptance(payload)) {
+    return jsonResponse(CGV_ACCEPTANCE_ERROR, 400);
+  }
+
+  const cgvAcceptance = createCgvAcceptanceProof();
+
   const productCode = typeof payload.product === "string" ? payload.product.trim() : "";
   const product = PRODUCTS[productCode];
 
@@ -84,6 +96,8 @@ export async function onRequestPost(context) {
   formData.set("metadata[product_code]", productCode);
   formData.set("metadata[product_name]", product.name);
   formData.set("metadata[source]", "efficiadigital.com");
+  formData.set("metadata[cgv_version]", cgvAcceptance.version);
+  formData.set("metadata[cgv_accepted_at]", cgvAcceptance.acceptedAt);
 
   if (isValidEmail(payload.customer_email)) {
     formData.set("customer_email", payload.customer_email.trim().toLowerCase());
