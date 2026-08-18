@@ -33,7 +33,7 @@
       <div class="cookie-consent__inner">
         <div>
           <strong>Votre confidentialité</strong>
-          <p>Avec votre accord, nous utilisons Microsoft Clarity pour comprendre comment le site est utilisé et l’améliorer. Vous pouvez accepter, refuser ou changer d’avis à tout moment. <a href="/politique-cookies">En savoir plus</a></p>
+          <p>Nous utilisons Microsoft Clarity pour améliorer le site, uniquement avec votre accord. Vous pouvez changer d’avis à tout moment. <a href="/politique-cookies">En savoir plus</a></p>
         </div>
         <div class="cookie-consent__actions">
           <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Tout accepter</button>
@@ -51,7 +51,7 @@
       <div class="cookie-preferences__backdrop" data-cookie-close></div>
       <div class="cookie-preferences__panel" role="dialog" aria-modal="true" aria-labelledby="cookie-preferences-title">
         <h2 id="cookie-preferences-title">Gérer mes préférences</h2>
-        <p>Les fonctions nécessaires restent actives. Microsoft Clarity est utilisé uniquement si vous l’acceptez.</p>
+        <p>Clarity reste désactivé tant que vous ne l’acceptez pas.</p>
         <div class="cookie-options">
           <div class="cookie-option">
             <div>
@@ -63,7 +63,7 @@
           <label class="cookie-option">
             <div>
               <strong>Mesure d’audience</strong>
-              <span>Nous aide à comprendre l’utilisation du site et à améliorer votre expérience.</span>
+              <span>Nous aide à comprendre l’utilisation du site et à l’améliorer.</span>
             </div>
             <input type="checkbox" data-cookie-analytics>
           </label>
