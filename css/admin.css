@@ -354,6 +354,50 @@
   font-weight: 900;
 }
 
+.admin-section-heading p {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 700;
+}
+
+.admin-section-heading-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.admin-orders-heading {
+  margin-bottom: 22px;
+}
+
+.admin-diagnostic-count {
+  min-width: 118px;
+  padding: 14px 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  background: #f8fbff;
+  text-align: center;
+}
+
+.admin-diagnostic-count span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-diagnostic-count strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--blue);
+  font-size: 26px;
+  font-weight: 900;
+}
+
 .admin-pipeline-list {
   display: grid;
   gap: 10px;
@@ -436,6 +480,37 @@
   border-collapse: collapse;
   min-width: 1220px;
   background: #fff;
+}
+
+.admin-diagnostic-table {
+  min-width: 1060px;
+}
+
+.admin-diagnostic-action {
+  min-height: 40px;
+  padding: 0 14px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.admin-badge.is-awaiting_review {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.admin-badge.is-mailerlite-synced {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.admin-badge.is-mailerlite-pending {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.admin-badge.is-mailerlite-failed {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .admin-table th,
@@ -784,6 +859,11 @@
   .admin-report-choice,
   .admin-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-section-heading-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .admin-main {

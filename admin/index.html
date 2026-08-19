@@ -30,9 +30,9 @@
     <div class="admin-layout">
       <section class="admin-title">
         <div>
-          <span class="admin-kicker">Commandes Stripe</span>
+          <span class="admin-kicker">Administration</span>
           <h1>Back-office interne</h1>
-          <p>Suivi simple des commandes payées et des tâches à traiter.</p>
+          <p>Suivi des diagnostics gratuits et des commandes payées.</p>
         </div>
       </section>
 
@@ -46,6 +46,46 @@
       </section>
 
       <section class="admin-card">
+        <div class="admin-section-heading admin-section-heading-row">
+          <div>
+            <span class="admin-kicker">Score Efficia</span>
+            <h2>Diagnostics gratuits à traiter</h2>
+            <p>Demandes reçues depuis le diagnostic public, indépendamment des commandes Stripe.</p>
+          </div>
+          <div class="admin-diagnostic-count" aria-label="Nombre de diagnostics gratuits à traiter">
+            <span>À traiter</span>
+            <strong data-admin-diagnostic-count>0</strong>
+          </div>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table admin-diagnostic-table">
+            <thead>
+              <tr>
+                <th>Entreprise</th>
+                <th>Ville</th>
+                <th>Prénom</th>
+                <th>E-mail</th>
+                <th>Soumis le</th>
+                <th>Traitement</th>
+                <th>MailerLite</th>
+                <th>Rapport</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody data-admin-diagnostics>
+              <tr><td colspan="9" class="admin-empty">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-section-heading admin-orders-heading">
+          <span class="admin-kicker">Paiements</span>
+          <h2>Commandes Stripe</h2>
+        </div>
+
         <form class="admin-filters" data-admin-filters>
           <label class="admin-filter">
             <span>Recherche</span>
