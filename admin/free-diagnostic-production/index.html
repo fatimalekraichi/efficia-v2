@@ -541,47 +541,21 @@
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
     <div class="val"><span id="score-live">0</span>/100</div>
     <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
-    <button class="btn btn-vert" id="btn-audit-premium" onclick="telechargerAuditPremium()">★ Générer l'Audit Premium (99 €)</button>
+    <button class="btn btn-vert" id="btn-audit-premium" onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn btn-blanc" onclick="apercuImpression()">Aperçu avant impression</button>
   </div>
 
   <div class="conteneur">
-    <h1>Analyse automatique d'une fiche Google Business</h1>
-    <p style="color:var(--gris);margin:6px 0 24px">Entrez le nom et la ville : l'outil interroge l'API Google, remplit automatiquement les critères mesurables (classement local, concurrence, note, avis, horaires…) et surligne en jaune les vérifications visuelles restantes.</p>
+    <h1>Traitement d'un diagnostic gratuit</h1>
+    <p style="color:var(--gris);margin:6px 0 24px">La collecte est lancée côté serveur à partir de l’analyse autorisée. Les informations détectées restent à vérifier avant toute livraison.</p>
 
     <div class="carte">
-      <h2 style="margin-bottom:14px">1. Clé API Google (une seule fois)</h2>
-      <label for="cle-api">Clé API Google Cloud</label>
-      <input type="password" id="cle-api" placeholder="AIza...">
-      <div id="statut-cle-api" class="mini-statut">Clé API non enregistrée sur cet appareil.</div>
-      <label for="url-connecteur" style="margin-top:14px">URL du connecteur scraping <span style="font-weight:400;color:var(--gris)">(optionnel — analyse approfondie via Outscraper, voir guide-mise-en-place-scraping.md)</span></label>
-      <input type="text" id="url-connecteur" placeholder="https://efficia-scraping.fatima-lekraichi.workers.dev">
-      <label for="token-connecteur" style="margin-top:14px">Jeton sécurisé du connecteur</label>
-      <input type="password" id="token-connecteur" placeholder="Jeton Cloudflare">
-      <p class="mini-statut">Le jeton est enregistré uniquement sur cet ordinateur et n'est jamais affiché en clair dans l'interface.</p>
-      <div class="actions-ligne">
-        <button class="btn-mini" onclick="effacerCleAPI()" type="button">Effacer la clé enregistrée</button>
-      </div>
-      <p class="mini-statut">Cette clé est stockée localement dans votre navigateur. Elle doit être restreinte aux domaines autorisés dans Google Cloud.</p>
-      <details>
-        <summary>Comment obtenir ma clé (10 min, gratuit) ?</summary>
-        <ol style="margin:8px 0 0 18px;display:grid;gap:4px">
-          <li>console.cloud.google.com → créez un projet « Efficia »</li>
-          <li>« API et services » → « Bibliothèque » → activez <strong>Maps JavaScript API</strong> et <strong>Places API (New)</strong></li>
-          <li>« Identifiants » → « Créer des identifiants » → « Clé API » → copiez-la ici</li>
-          <li>La facturation doit être activée, mais le quota gratuit couvre des milliers d'analyses/mois</li>
-        </ol>
-        <p style="margin-top:6px">La clé est mémorisée uniquement sur cet ordinateur (localStorage).</p>
-      </details>
-    </div>
-
-    <div class="carte">
-      <h2 style="margin-bottom:14px">2. Le prospect</h2>
+      <h2 style="margin-bottom:14px">Le prospect</h2>
       <div id="commande-admin-liee" style="display:none;margin-bottom:16px;padding:12px 14px;border:1px solid #bfdbfe;border-radius:12px;background:#f8fbff;color:#334155;font-size:.9rem;line-height:1.5"></div>
       <div class="infos-grid">
-        <div><label for="p-entreprise">Nom de l'entreprise *</label><input type="text" id="p-entreprise" placeholder="Boulangerie Martin"></div>
-        <div><label for="p-ville">Ville *</label><input type="text" id="p-ville" placeholder="Lyon"></div>
-        <div><label for="p-activite">Activité (pour le test de classement local) *</label><input type="text" id="p-activite" placeholder="boulangerie"></div>
+        <div><label for="p-entreprise">Nom de l'entreprise</label><input type="text" id="p-entreprise" placeholder="Fiche Google transmise"></div>
+        <div><label for="p-ville">Ville</label><input type="text" id="p-ville" placeholder="À détecter"></div>
+        <div><label for="p-activite">Activité détectée ou à confirmer</label><input type="text" id="p-activite" placeholder="À confirmer manuellement"></div>
         <div><label for="p-contact">Prénom du contact (pour le rapport)</label><input type="text" id="p-contact" placeholder="Julie"></div>
         <div>
           <label for="p-profil">Profil d'activité</label>
@@ -598,12 +572,10 @@
           <div id="profil-utilise" class="mini-statut">Profil utilisé : default</div>
         </div>
       </div>
-      <button class="btn btn-vert" style="margin-top:18px" id="btn-analyser" onclick="analyser()">⚡ Analyser automatiquement</button>
-      <button class="btn" style="margin-top:18px;margin-left:8px" id="btn-scraping" onclick="analyseScraping()">🔍 Analyse approfondie (scraping)</button>
+      <button class="btn btn-vert" style="margin-top:18px" id="btn-analyser" onclick="lancerCollecteDiagnosticGratuit()">⚡ Lancer le diagnostic gratuit</button>
       <div class="actions-ligne">
         <button class="btn-mini" onclick="reprendreDiagnostic()" type="button">Reprendre le dernier diagnostic</button>
         <button class="btn-mini" onclick="effacerDiagnostic()" type="button">Effacer le diagnostic enregistré</button>
-        <button class="btn-mini" onclick="reessayerEnregistrementAudit()" type="button">Réessayer l'enregistrement</button>
       </div>
       <div id="statut-archive-d1" class="mini-statut" style="display:none;margin-top:12px"></div>
       <div id="statut"></div>
@@ -638,7 +610,7 @@
 <div id="rapport">
   <div class="actions-rapport" style="padding-top:20px">
     <button class="btn" id="btn-pdf-rapport" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
-    <button class="btn btn-vert" id="btn-audit-premium-rapport" onclick="telechargerAuditPremium()">★ Générer l'Audit Premium (99 €)</button>
+    <button class="btn btn-vert" id="btn-audit-premium-rapport" onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn" onclick="window.print()">Aperçu avant impression</button>
     <button class="btn" style="background:var(--gris)" onclick="document.body.classList.remove('mode-rapport')">← Revenir à l'analyse</button>
   </div>
@@ -2151,7 +2123,6 @@ function calc(){
     restant === 0 ? "✓ tous les critères renseignés" : restant + " critère(s) restant à vérifier";
   mettreAJourIndicateursInternes(total, repondus, totalCrit);
   sauvegarderDiagnostic();
-  programmerCompletionAuditEfficia();
   return total;
 }
 
@@ -2361,421 +2332,92 @@ function reinitialiserAnalyse(){
   calc();
 }
 
-/* ============ ANALYSE AUTOMATIQUE (API Google Places) ============ */
+/* ============ COLLECTE SERVEUR DU DIAGNOSTIC GRATUIT ============ */
 const TYPES_GENERIQUES = ["point_of_interest","establishment","store","food","health","finance","general_contractor","place_of_worship"];
-let apiChargee = false;
-
 function statut(msg, type){ const s = document.getElementById("statut"); s.className = type; s.innerHTML = msg; }
 
-async function chargerAPI(cle){
-  if(apiChargee) return;
-  await new Promise((res, rej) => {
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cle)}&v=weekly&language=fr&loading=async&callback=__gmapsPret`;
-    window.__gmapsPret = res;
-    s.onerror = () => rej(new Error("Chargement de l'API impossible — vérifiez la clé et que « Maps JavaScript API » est activée."));
-    document.head.appendChild(s);
+function appliquerCollecteDiagnosticGratuit(business){
+  const detectedFields = {
+    "p-entreprise": business.company,
+    "p-ville": business.city,
+    "p-activite": business.activity
+  };
+  Object.entries(detectedFields).forEach(([id, value]) => {
+    const field = document.getElementById(id);
+    const clean = String(value || "").trim();
+    if(field && clean) field.value = clean;
   });
-  apiChargee = true;
-}
 
-async function analyser(){
-  const cle = document.getElementById("cle-api").value.trim();
-  const nom = document.getElementById("p-entreprise").value.trim();
-  const ville = document.getElementById("p-ville").value.trim();
-  const activite = document.getElementById("p-activite").value.trim();
-  if(!cle){ statut("Entrez votre clé API Google (voir « Comment obtenir ma clé »).", "erreur"); return; }
-  if(!nom || !ville || !activite){ statut("Renseignez le nom, la ville et l'activité.", "erreur"); return; }
-  localStorage.setItem("efficia_api_key", cle);
-  majStatutCleAPI();
-  reinitialiserAnalyse();
-  document.getElementById("btn-analyser").disabled = true;
+  const concurrents = Array.isArray(business.competitors) ? business.competitors.slice(0, 3) : [];
+  donneesAnalyse = {
+    ...donneesAnalyse,
+    nbAvis: estNombre(business.reviews) ? Number(business.reviews) : null,
+    nbPhotos: estNombre(business.photosCount) ? Number(business.photosCount) : null,
+    note: estNombre(business.rating) ? Number(business.rating) : null,
+    position: estNombre(business.localPosition) ? Number(business.localPosition) : null,
+    requeteTestee: business.searchQuery || null,
+    descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
+    concurrents: concurrents.map((item) => ({
+      label: item.name || "Concurrent",
+      note: estNombre(item.rating) ? Number(item.rating) : null,
+      avis: estNombre(item.reviews) ? Number(item.reviews) : null,
+      photos: estNombre(item.photos_count) ? Number(item.photos_count) : null
+    }))
+  };
 
-  try{
-    statut("Chargement de l'API Google…", "info");
-    await chargerAPI(cle);
-    const {Place} = await google.maps.importLibrary("places");
-
-    statut("Recherche de la fiche « " + nom + " " + ville + " »…", "info");
-    const {places} = await Place.searchByText({
-      textQuery: nom + " " + ville,
-      fields: ["id","displayName","formattedAddress"],
-      maxResultCount: 5, language: "fr", region: "fr"
+  concurrents.forEach((item, index) => {
+    const rank = index + 1;
+    const values = {
+      [`dc-nom-${rank}`]: item.name,
+      [`dc-note-${rank}`]: item.rating,
+      [`dc-avis-${rank}`]: item.reviews,
+      [`dc-photos-${rank}`]: item.photos_count
+    };
+    Object.entries(values).forEach(([id, value]) => {
+      const field = document.getElementById(id);
+      if(field && value !== null && value !== undefined) field.value = value;
     });
-    if(!places || !places.length){ statut("Aucune fiche trouvée. Vérifiez l'orthographe ou précisez la ville.", "erreur"); document.getElementById("btn-analyser").disabled = false; return; }
+  });
 
-    if(places.length === 1){ await analyserFiche(places[0], activite, ville); }
-    else{
-      const zone = document.getElementById("candidats");
-      zone.style.display = "block";
-      zone.innerHTML = "<p style='font-weight:600;margin-bottom:8px'>Plusieurs fiches trouvées — cliquez sur la bonne :</p>" +
-        places.map((p,i) => `<div class="candidat" data-i="${i}"><strong>${p.displayName}</strong><br><span style="color:var(--gris);font-size:.85rem">${p.formattedAddress||""}</span></div>`).join("");
-      zone.querySelectorAll(".candidat").forEach(el => el.onclick = () => { zone.style.display="none"; analyserFiche(places[parseInt(el.dataset.i)], activite, ville); });
-      statut("Sélectionnez la fiche du prospect ci-dessus.", "info");
-      document.getElementById("btn-analyser").disabled = false;
-      return;
-    }
-  }catch(e){
-    statut("Erreur : " + e.message + "<br>Vérifiez que « Places API (New) » et « Maps JavaScript API » sont activées et que la facturation du projet Google Cloud est active.", "erreur");
-  }
-  document.getElementById("btn-analyser").disabled = false;
-}
-
-async function analyserFiche(place, activite, ville){
-  statut("Récupération des données de la fiche…", "info");
-  await place.fetchFields({fields:[
-    "displayName","formattedAddress","nationalPhoneNumber","websiteURI","regularOpeningHours",
-    "rating","userRatingCount","reviews","photos","types","primaryType","primaryTypeDisplayName",
-    "businessStatus","paymentOptions","accessibilityOptions"
-  ]});
-  const ID = CRITERE_IDS;
-  donneesAnalyse = {nbAvis:place.userRatingCount || 0, nbPhotos:place.photos ? place.photos.length : 0, note:place.rating || null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
-  const selectProfil = document.getElementById("p-profil");
-  if(!selectProfil || selectProfil.value === "auto"){
-    profilActif = detecterProfilSecteur(place, activite);
-  } else {
-    profilActif = selectProfil.value;
-  }
-  afficherProfilUtilise();
-
-  /* — Catégorie principale — */
-  if(place.primaryType){
-    const generique = TYPES_GENERIQUES.includes(place.primaryType);
-    cocher(ID.categoriePrincipale, generique ? 2 : CONFIG.poids.informations.categoriePrincipale, "Catégorie détectée : « " + (place.primaryTypeDisplayName || place.primaryType) + " »" + (generique ? " — générique, à préciser" : ""), "prefill");
-  } else marquerManuel(ID.categoriePrincipale, "Catégorie non détectée par l'API.");
-
-  /* — Catégories secondaires — */
-  const secondaires = (place.types||[]).filter(t => !TYPES_GENERIQUES.includes(t) && t !== place.primaryType);
-  cocher(ID.categoriesSecondaires, secondaires.length >= 1 ? CONFIG.poids.informations.categoriesSecondaires : 0, secondaires.length + " catégorie(s) secondaire(s) détectée(s)", "prefill");
-
-  /* — Horaires — */
-  const jours = place.regularOpeningHours?.weekdayDescriptions?.length || 0;
-  if(jours === 7) cocher(ID.horaires, CONFIG.poids.informations.horaires, "Horaires renseignés sur 7 jours (jours fériés non vérifiables par l'API)", "prefill");
-  else if(jours > 0) cocher(ID.horaires, 1, "Horaires partiels : " + jours + " jour(s)", "auto");
-  else cocher(ID.horaires, 0, "Aucun horaire détecté", "auto");
-
-  /* — Téléphone + site — */
-  const tel = !!place.nationalPhoneNumber, site = !!place.websiteURI;
-  cocher(ID.contact, tel && site ? CONFIG.poids.informations.contact : (tel || site ? 1 : 0),
-    (tel ? "☎ " + place.nationalPhoneNumber : "☎ absent") + " • " + (site ? "site ✓" : "site absent"), "auto");
-
-  /* — Adresse — */
-  if(place.formattedAddress) cocher(ID.adresse, CONFIG.poids.informations.adresse, place.formattedAddress + " — vérifiez l'épingle visuellement", "prefill");
-  else cocher(ID.adresse, 0, "Adresse absente", "auto");
-
-  /* — Attributs — */
-  const attrs = (place.paymentOptions && Object.values(place.paymentOptions).some(v=>v!==null)) ||
-                (place.accessibilityOptions && Object.values(place.accessibilityOptions).some(v=>v!==null));
-  cocher(ID.attributs, attrs ? 1 : 0, attrs ? "Attributs partiellement détectés — vérifiez la section « À propos » pour affiner" : "Aucun attribut détecté", "prefill");
-
-  /* — Photos : volume — */
-  const nbPhotos = place.photos ? place.photos.length : 0;
-  cocher(ID.nombrePhotos, nbPhotos >= CONFIG.seuils.photosNombreMax ? CONFIG.poids.photos.nombre : nbPhotos >= CONFIG.seuils.photosNombreMoyen ? 1 : 0,
-    (nbPhotos >= CONFIG.seuils.photosNombreMax ? CONFIG.seuils.photosNombreMax + " photos ou plus" : nbPhotos + " photo(s)") + " (l'API plafonne à " + CONFIG.seuils.photosNombreMax + ")", "auto");
-
-  /* — Note moyenne — */
-  if(place.rating){
-    const n = place.rating;
-    cocher(ID.noteMoyenne, n >= CONFIG.seuils.noteExcellente ? CONFIG.poids.avis.note : n >= CONFIG.seuils.noteBonne ? 4 : n >= CONFIG.seuils.noteMoyenne ? 2 : 0, "Note : " + n.toFixed(1) + " ★ (" + (place.userRatingCount||0) + " avis)", "auto");
-  } else cocher(ID.noteMoyenne, 0, "Aucune note — fiche sans avis", "auto");
-
-  /* — Récence des avis — */
-  let dernierAvis = null;
-  (place.reviews||[]).forEach(r => { const d = r.publishTime ? new Date(r.publishTime) : null; if(d && (!dernierAvis || d > dernierAvis)) dernierAvis = d; });
-  if(dernierAvis){
-    donneesAnalyse.dernierAvis = dernierAvis.toISOString();
-    const joursDepuis = (Date.now() - dernierAvis.getTime()) / 864e5;
-    cocher(ID.recenceAvis, joursDepuis <= CONFIG.seuils.avisRecentJours ? CONFIG.poids.avis.recence : joursDepuis <= CONFIG.seuils.avisAncienJours ? 2 : 0,
-      "Dernier avis détecté : il y a ~" + Math.round(joursDepuis) + " jours (sur les 5 avis les plus pertinents)", "prefill");
-  } else marquerManuel(ID.recenceAvis, "Dates d'avis non fournies par l'API — vérifiez sur Maps.");
-
-  /* — Classement local + concurrence — */
-  statut("Test du classement local sur « " + activite + " " + ville + " »…", "info");
-  donneesAnalyse.requeteTestee = activite + " " + ville;
-  try{
-    const {Place} = await google.maps.importLibrary("places");
-    const {places: classement} = await Place.searchByText({
-      textQuery: activite + " " + ville,
-      fields: ["id","displayName","rating","userRatingCount"],
-      maxResultCount: 10, language: "fr", region: "fr"
-    });
-    const pos = classement.findIndex(p => p.id === place.id);
-    donneesAnalyse.position = pos > -1 ? pos + 1 : 0;
-    cocher(ID.classementLocal, pos > -1 && pos < 3 ? CONFIG.poids.visibilite.classement : pos > -1 ? 3 : 0,
-      pos > -1 ? "Position " + (pos+1) + "/" + classement.length + " sur « " + activite + " " + ville + " »" : "Absente des 10 premiers résultats sur « " + activite + " " + ville + " »", "auto");
-
-    const concurrents = classement.filter(p => p.id !== place.id).slice(0,3);
-    if(concurrents.length){
-      const volC = concurrents.reduce((s,p) => s + (p.userRatingCount||0), 0) / concurrents.length;
-      const noteC = concurrents.reduce((s,p) => s + (p.rating||0), 0) / concurrents.length;
-      const vol = place.userRatingCount||0, note = place.rating||0;
-      const tol = CONFIG.seuils.toleranceConcurrents;
-      const volSuperieur = vol > volC * (1 + tol);
-      const volComparable = vol >= volC * (1 - tol);
-      const noteComparable = note >= noteC - CONFIG.seuils.toleranceNoteConcurrents;
-      const devant = volSuperieur && noteComparable;
-      const derriere = !volComparable || note < noteC - CONFIG.seuils.ecartNotePenalisant;
-      donneesAnalyse.concurrence = {vol, volC, note, noteC, ecartConcurrentFaible:volComparable && noteComparable};
-      donneesAnalyse.concurrents = concurrents.map((c, i) => ({
-        label:"Concurrent " + String.fromCharCode(65 + i),
-        note:c.rating || null,
-        avis:c.userRatingCount || 0
-      }));
-      cocher(ID.attractiviteConcurrents, devant ? CONFIG.poids.visibilite.attractivite : derriere ? 0 : 2,
-        "Vous : " + note.toFixed(1) + "★/" + vol + " avis • Moyenne des 3 concurrents : " + noteC.toFixed(1) + "★/" + Math.round(volC) + " avis", "auto");
-      /* — Volume vs concurrents — */
-      cocher(ID.volumeAvis, volSuperieur ? CONFIG.poids.avis.volume : volComparable ? 3 : 0, vol + " avis vs " + Math.round(volC) + " en moyenne chez les concurrents", "auto");
-    }
-  }catch(e){ marquerManuel(ID.classementLocal, "Test de classement impossible : " + e.message); }
-
-  /* — Critères non automatisables : surlignage — */
-  const manuels = [
-    [ID.revendiquee,"Non fourni par l'API — ouvrez la fiche : mention « Vous êtes le propriétaire ? » = non revendiquée."],
-    [ID.nap,"Comparez la fiche et le site web (pied de page)."],
-    [ID.logoCouverture,"Regardez l'en-tête de la fiche sur Maps."],
-    [ID.photoRecente,"Ouvrez l'onglet Photos et triez par date."],
-    [ID.varietePhotos,"Parcourez la galerie : extérieur / intérieur / équipe / réalisations ?"],
-    [ID.qualitePhotos,"Cochez la check-list qualité : netteté, lumière, cadrage, résolution, absence de filigrane."],
-    [ID.tauxReponseAvis,"Parcourez les 10 derniers avis : y a-t-il des réponses du propriétaire ?"],
-    [ID.qualiteReponsesAvis,"Cochez la check-list qualité des réponses aux avis."],
-    [ID.descriptionRemplie,"Section « À propos » : la description est-elle remplie ?"],
-    [ID.descriptionQualite,"Cochez la check-list qualité de la description."],
-    [ID.servicesPresents,"Onglet Services/Produits de la fiche : les services sont-ils présents ?"],
-    [ID.servicesDecrits,"Onglet Services/Produits : les services sont-ils correctement décrits ?"],
-    [ID.questionsReponses,"Rubrique Questions/Réponses de la fiche."],
-    [ID.liensAction,"Y a-t-il un bouton Réserver / Devis (si pertinent) ?"],
-    [ID.publicationRecente,"Section Actualités : date du dernier post ?"],
-    [ID.rythmePublication,"Fréquence des posts sur les 3 derniers mois ?"],
-    [ID.recherchesSpecifiques,"Testez 2-3 recherches spécifiques en navigation privée."]
-  ];
-  manuels.forEach(([id, note]) => { if(lirePoints(id) === null) marquerManuel(id, note); });
-
-  calc();
-  const totalCrit = GRILLE.reduce((s, cat) => s + cat.criteres.length, 0);
-  const nbAuto = totalCrit - document.querySelectorAll(".critere.a-verifier").length;
-  statut("✓ Analyse terminée : <strong>" + nbAuto + " critères remplis automatiquement</strong>. Complétez les critères surlignés en jaune (ouvrez la fiche sur Maps), puis générez le Diagnostic Efficia™. Les critères « PRÉ-REMPLI » méritent un coup d'œil de confirmation.", "info");
-  document.getElementById("p-entreprise").value = place.displayName || document.getElementById("p-entreprise").value;
   preRemplirDonneesObservees();
-  window.scrollTo({top: document.getElementById("zone-criteres").offsetTop - 80, behavior:"smooth"});
+  calc();
 }
 
-/* ============ ANALYSE APPROFONDIE VIA CONNECTEUR SCRAPING ============
-   Complète l'API Google : fiche revendiquée, total réel de photos,
-   description, réponses aux avis, lien de réservation, concurrents
-   avec photos. Nécessite le Worker (voir guide-mise-en-place-scraping.md). */
-async function analyseScraping(){
-  const urlConnecteur = document.getElementById("url-connecteur").value.trim().replace(/\/+$/, "");
-  const tokenConnecteur = document.getElementById("token-connecteur").value.trim();
-  const nom = document.getElementById("p-entreprise").value.trim();
-  const ville = document.getElementById("p-ville").value.trim();
-  const activite = document.getElementById("p-activite").value.trim();
-  if(!urlConnecteur){ statut("Renseignez l'URL du connecteur scraping (voir guide-mise-en-place-scraping.md).", "erreur"); return; }
-  if(!tokenConnecteur){ statut("Renseignez le jeton sécurisé du connecteur.", "erreur"); return; }
-  if(!nom || !ville){ statut("Renseignez le nom et la ville.", "erreur"); return; }
-  localStorage.setItem("efficia_url_connecteur", urlConnecteur);
-  localStorage.setItem("efficia_token_connecteur", tokenConnecteur);
-  const btn = document.getElementById("btn-scraping");
-  btn.disabled = true;
-  statut("Analyse approfondie en cours (10-30 s : la fiche, les avis et les concurrents sont collectés)…", "info");
+async function lancerCollecteDiagnosticGratuit(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)){
+    statut("Impossible de lancer ce diagnostic.", "erreur");
+    return;
+  }
+
+  const button = document.getElementById("btn-analyser");
+  if(button) button.disabled = true;
+  statut("Collecte sécurisée en cours…", "info");
+
   try{
-    const rep = await fetch(
-      `${urlConnecteur}/?nom=${encodeURIComponent(nom)}&ville=${encodeURIComponent(ville)}&activite=${encodeURIComponent(activite)}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${tokenConnecteur}`
-        }
-      }
-    );
-    let r = {};
-    let texteReponse = "";
-    try{
-      texteReponse = await rep.text();
-      r = texteReponse ? JSON.parse(texteReponse) : {};
-    }catch(parseError){
-      console.error("Réponse non JSON du connecteur", parseError, texteReponse);
-      r = {erreur:"Réponse invalide du connecteur."};
-    }
-    if(!rep.ok){
-      const messageWorker = r.erreur || r.error || r.message || "Erreur retournée par le connecteur.";
-      if(rep.status === 401) statut("Jeton du connecteur incorrect ou expiré.", "erreur");
-      else if(rep.status === 404 || rep.status === 500) statut(messageWorker, "erreur");
-      else statut("Erreur du connecteur : HTTP " + rep.status, "erreur");
-      btn.disabled = false;
+    const activity = document.getElementById("p-activite")?.value.trim() || "";
+    const response = await fetch(`/api/admin/free-diagnostic-collect/${encodeURIComponent(analysisId)}`, {
+      method:"POST",
+      credentials:"same-origin",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({activity})
+    });
+    if(response.status === 401){
+      window.location.href = "/admin-login";
       return;
     }
-    if(r.erreur){ statut("Connecteur : " + r.erreur, "erreur"); btn.disabled = false; return; }
-    if(r.auditPublicId){
-      auditPublicIdActif = String(r.auditPublicId);
-      auditSourceActif = "scraping";
-      dernierPayloadAuditComplete = "";
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok || !data.success || data.analysisId !== analysisId || data.reportType !== "free"){
+      statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+      return;
     }
-    if(estNombre(r.analysisVersion)) analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
-    else if(auditPublicIdActif) analysisVersionActif = obtenirVersionCompatibiliteAudit(auditPublicIdActif);
-    const f = r.fiche || {}, avis = r.avis || {};
-
-    /* — Alimente les données observées (elles irriguent tout le rapport) — */
-    const d = donneesAnalyse;
-    if(estNombre(f.note)) d.note = Number(f.note);
-    else if(estNombre(f.rating)) d.note = Number(f.rating);
-    if(estNombre(f.nbAvis)) d.nbAvis = Number(f.nbAvis);
-    else if(estNombre(f.reviews)) d.nbAvis = Number(f.reviews);
-    if(estNombre(f.nbPhotos)) d.nbPhotos = Number(f.nbPhotos);
-    else if(estNombre(f.photos_count)) d.nbPhotos = Number(f.photos_count);
-    if(estNombre(f.descriptionLongueur)) d.descriptionLongueur = Number(f.descriptionLongueur);
-    else if(estTexte(f.description)) d.descriptionLongueur = f.description.length;
-    if(estNombre(r.position)) d.position = Number(r.position);
-    if(estTexte(r.requete)) d.requeteTestee = r.requete;
-    if(estTexte(f.description)) d.descriptionTexte = f.description;
-    if(Array.isArray(avis.textes)) d.avisTextes = avis.textes.filter(estTexte);
-    else if(Array.isArray(r.avisTextes)) d.avisTextes = r.avisTextes.filter(estTexte);
-    else { const rd = avis.reviews_data || r.reviews_data || f.reviews_data; if(Array.isArray(rd)) d.avisTextes = rd.map(x => x && (x.review_text || x.reviewText || x.text)).filter(estTexte); }
-    if(estNombre(f.nbServices)) d.nbServices = Number(f.nbServices);
-    if(estNombre(f.nbPublications)) d.nbPublications = Number(f.nbPublications);
-    else if(estNombre(f.posts)) d.nbPublications = Number(f.posts);
-    if(Array.isArray(f.photoUrls)) d.photosUrls = f.photoUrls.filter(estTexte);
-    else if(Array.isArray(f.photos) && f.photos.every(x => typeof x === "string")) d.photosUrls = f.photos.filter(estTexte);
-    else if(Array.isArray(f.photos_sample)) d.photosUrls = f.photos_sample.map(p => typeof p === "string" ? p : (p && (p.photo_url_big || p.photo_url || p.url))).filter(estTexte);
-    if(estTexte(r.captureRecherche)) d.captureRecherche = r.captureRecherche;
-    else if(estTexte(r.screenshotUrl)) d.captureRecherche = r.screenshotUrl;
-    if(estNombre(avis.dernierAvisTimestamp)) d.dernierAvis = new Date(avis.dernierAvisTimestamp * 1000).toISOString();
-    const avisAnalyses = avis.avisAnalyses ?? avis.reviewsAnalyzed ?? avis.nbAvisAnalyses ?? avis.count ?? avis.total;
-    const reponsesProprietaire = avis.reponsesProprietaire ?? avis.ownerResponses ?? avis.ownerResponsesCount ?? avis.nbReponsesProprietaire;
-    if(estNombre(avisAnalyses)) d.avisAnalyses = Number(avisAnalyses);
-    if(estNombre(reponsesProprietaire)) d.reponsesProprietaire = Number(reponsesProprietaire);
-    if(Array.isArray(r.concurrents) && r.concurrents.length) d.concurrents = r.concurrents.map(c => ({
-      label: c.label || c.name || c.title || "",
-      note: estNombre(c.note) ? Number(c.note) : (estNombre(c.rating) ? Number(c.rating) : null),
-      avis: estNombre(c.avis) ? Number(c.avis) : (estNombre(c.reviews) ? Number(c.reviews) : null),
-      photos: estNombre(c.photos) ? Number(c.photos) : (estNombre(c.photos_count) ? Number(c.photos_count) : null),
-      services: estNombre(c.services) ? Number(c.services) : null,
-      pubs: estNombre(c.pubs) ? Number(c.pubs) : null,
-      image: estTexte(c.image) ? c.image : (estTexte(c.photo) ? c.photo : (Array.isArray(c.photos_sample) && c.photos_sample[0] ? (c.photos_sample[0].photo_url_big || c.photos_sample[0].photo_url) : null))
-    }));
-    if(d.concurrents && d.concurrents.length){
-      const moy = (key) => { const a = d.concurrents.map(c => c && c[key]).filter(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0).map(Number); return a.length ? a.reduce((x,v)=>x+v,0)/a.length : null; };
-      d.moyennesConcurrents = {note:moy("note"), avis:moy("avis"), photos:moy("photos"), services:moy("services"), pubs:moy("pubs")};
-    }
-    if(estTexte(f.nom)) document.getElementById("p-entreprise").value = f.nom;
-    preRemplirDonneesObservees();
-    const setSiVide = (id, v) => { const el = document.getElementById(id); if(el && !el.value && estNombre(v)) el.value = String(nEntier(v)); };
-    setSiVide("d-desclen", f.descriptionLongueur);
-    setSiVide("d-photos", f.nbPhotos);
-    r.concurrents?.slice(0,3).forEach((c, i) => setSiVide("dc-photos-" + (i+1), c.photos));
-
-    /* — Coche automatiquement les critères couverts par le scraping — */
-    const K = CRITERE_IDS;
-    const cocheSur = (key, pts, note, type) => { if(K[key] !== undefined) cocher(K[key], pts, note, type || "auto"); };
-    if(f.revendiquee === true) cocheSur("revendiquee", trouverCritere(K.revendiquee).max, "Fiche revendiquée (donnée publique Google)");
-    else if(f.revendiquee === false) cocheSur("revendiquee", 0, "Fiche non revendiquée — mention « propriétaire ? » visible");
-    if(estNombre(f.nbPhotos)){
-      const cr = trouverCritere(K.nombrePhotos);
-      cocheSur("nombrePhotos", f.nbPhotos >= 10 ? cr.max : f.nbPhotos >= 3 ? Math.min(1, cr.max) : 0, f.nbPhotos + " photos au total (comptage réel, non plafonné)");
-    }
-    if(estNombre(f.nbSousCategories)) cocheSur("categoriesSecondaires", f.nbSousCategories >= 1 ? trouverCritere(K.categoriesSecondaires).max : 0, f.nbSousCategories + " catégorie(s) secondaire(s)", "prefill");
-    if(estNombre(f.descriptionLongueur)){
-      const cr = trouverCritere(K.descriptionRemplie);
-      cocheSur("descriptionRemplie", f.descriptionLongueur >= 600 ? cr.max : f.descriptionLongueur >= 200 ? Math.round(cr.max/2) : 0, "Description : " + f.descriptionLongueur + " caractères", "prefill");
-    } else if(K.descriptionRemplie !== undefined) cocheSur("descriptionRemplie", 0, "Aucune description détectée", "prefill");
-    if(estTexte(f.lienReservation)) cocheSur("liensAction", trouverCritere(K.liensAction).max, "Lien de réservation détecté");
-    if(estNombre(avis.avecReponseProprietaire) && estNombre(avis.analysés) && avis.analysés > 0){
-      const taux = avis.avecReponseProprietaire / avis.analysés;
-      const cr = trouverCritere(K.tauxReponseAvis);
-      cocheSur("tauxReponseAvis", taux >= 0.8 ? cr.max : taux >= 0.3 ? Math.round(cr.max/2) : 0,
-        avis.avecReponseProprietaire + " réponse(s) du propriétaire sur les " + avis.analysés + " derniers avis");
-    }
-    if(estNombre(avis.dernierAvisTimestamp)){
-      const jours = (Date.now()/1000 - avis.dernierAvisTimestamp) / 86400;
-      const cr = trouverCritere(K.recenceAvis);
-      cocheSur("recenceAvis", jours <= 31 ? cr.max : jours <= 185 ? Math.round(cr.max/2) : 0, "Dernier avis : il y a ~" + Math.round(jours) + " jours (tri par date réel)");
-    }
-    if(estNombre(f.note)){
-      const cr = trouverCritere(K.noteMoyenne), n = Number(f.note);
-      cocheSur("noteMoyenne", n >= 4.5 ? cr.max : n >= 4.0 ? Math.round(cr.max*2/3) : n >= 3.5 ? Math.round(cr.max/3) : 0, "Note : " + fmtNote(n) + " ★ (" + (estNombre(f.nbAvis) ? nEntier(f.nbAvis) : "?") + " avis)");
-    }
-    if(estNombre(r.position)){
-      const cr = trouverCritere(K.classementLocal);
-      cocheSur("classementLocal", r.position > 0 && r.position <= 3 ? cr.max : r.position > 0 ? Math.round(cr.max/2) : 0,
-        r.position > 0 ? "Position " + r.position + " sur « " + r.requete + " »" : "Absente des premiers résultats sur « " + r.requete + " »");
-    }
-    if(d.concurrents.length && estNombre(d.nbAvis)){
-      const volC = d.concurrents.map(c => c.avis).filter(estNombre);
-      if(volC.length){
-        const moyC = volC.reduce((s,v) => s + Number(v), 0) / volC.length;
-        const cr = trouverCritere(K.volumeAvis);
-        cocheSur("volumeAvis", d.nbAvis > moyC ? cr.max : d.nbAvis >= moyC * 0.6 ? Math.round(cr.max*0.6) : 0,
-          nEntier(d.nbAvis) + " avis vs " + nEntier(moyC) + " en moyenne chez les concurrents");
-      }
-    }
-    if(estNombre(f.nbServices) && K.servicesPresents !== undefined){
-      const crS = trouverCritere(K.servicesPresents);
-      if(crS) cocheSur("servicesPresents", f.nbServices >= 4 ? crS.max : f.nbServices >= 1 ? Math.round(crS.max/2) : 0, nEntier(f.nbServices) + " service(s) list\u00e9(s)", "prefill");
-    }
-    if(estNombre(d.nbPublications)){
-      if(K.publicationRecente !== undefined){ const crP = trouverCritere(K.publicationRecente); if(crP) cocheSur("publicationRecente", d.nbPublications >= 1 ? crP.max : 0, nEntier(d.nbPublications) + " publication(s) visible(s)", "prefill"); }
-      if(K.rythmePublication !== undefined && d.nbPublications >= 3){ const crR = trouverCritere(K.rythmePublication); if(crR) cocheSur("rythmePublication", crR.max, "Plusieurs publications visibles", "prefill"); }
-    }
-    calc();
-    const messageArchivage = await envoyerCompletionAuditEfficia();
-    const restant = document.querySelectorAll(".critere.a-verifier").length;
-    statut("✓ Analyse approfondie terminée. Données réelles intégrées : photos totales, description, réponses aux avis, statut de revendication, concurrents. " +
-      (messageArchivage ? messageArchivage + ". " : "") +
-      (restant ? "Vérifiez les critères encore surlignés, puis générez le rapport." : "Générez le rapport."), "info");
-  }catch(e){
-    statut("Connecteur injoignable : " + e.message + ". Vérifiez l'URL et que le Worker est déployé.", "erreur");
+    appliquerCollecteDiagnosticGratuit(data.business || {});
+    statut("Collecte terminée. Vérifiez les informations détectées avant de poursuivre.", "info");
+  }catch{
+    statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+  }finally{
+    if(button) button.disabled = false;
   }
-  btn.disabled = false;
-}
-const CONNECTEUR_SCRAPING_DEFAUT = "https://efficia-scraping.fatima-lekraichi.workers.dev";
-
-function initialiserConnecteurScraping(){
-  const champUrl = document.getElementById("url-connecteur");
-  const champToken = document.getElementById("token-connecteur");
-  if(champUrl){
-    champUrl.value = localStorage.getItem("efficia_url_connecteur") || CONNECTEUR_SCRAPING_DEFAUT;
-    champUrl.addEventListener("input", () => {
-      const valeur = champUrl.value.trim();
-      if(valeur) localStorage.setItem("efficia_url_connecteur", valeur);
-      else localStorage.removeItem("efficia_url_connecteur");
-    });
-  }
-  if(champToken){
-    champToken.value = localStorage.getItem("efficia_token_connecteur") || "";
-    champToken.addEventListener("input", () => {
-      const valeur = champToken.value.trim();
-      if(valeur) localStorage.setItem("efficia_token_connecteur", valeur);
-      else localStorage.removeItem("efficia_token_connecteur");
-    });
-  }
-}
-
-function majStatutCleAPI(){
-  const statutCle = document.getElementById("statut-cle-api");
-  if(!statutCle) return;
-  statutCle.textContent = localStorage.getItem("efficia_api_key")
-    ? "Clé API enregistrée sur cet appareil."
-    : "Clé API non enregistrée sur cet appareil.";
-}
-
-function initialiserCleAPI(){
-  const champ = document.getElementById("cle-api");
-  const cleMem = localStorage.getItem("efficia_api_key") || localStorage.getItem("efficia_cle_api");
-  if(cleMem) champ.value = cleMem;
-  champ.addEventListener("input", () => {
-    const valeur = champ.value.trim();
-    if(valeur) localStorage.setItem("efficia_api_key", valeur);
-    else localStorage.removeItem("efficia_api_key");
-    majStatutCleAPI();
-  });
-  majStatutCleAPI();
-}
-
-function effacerCleAPI(){
-  localStorage.removeItem("efficia_api_key");
-  localStorage.removeItem("efficia_cle_api");
-  const champ = document.getElementById("cle-api");
-  if(champ) champ.value = "";
-  majStatutCleAPI();
 }
 
 function collecterReponses(){
@@ -2936,7 +2578,7 @@ function construirePayloadAuditComplete(options = {}){
 function obtenirVersionAnalyseRapport(){
   if(Number.isFinite(Number(analysisVersionActif)) && Number(analysisVersionActif) >= 1){
     const version = "V" + nEntier(analysisVersionActif);
-    return {ok:true, label:version, fichier:version, source:"connecteur"};
+    return {ok:true, label:version, fichier:version, source:"analysis"};
   }
   if(auditPublicIdActif){
     const versionCompat = obtenirVersionCompatibiliteAudit(auditPublicIdActif);
@@ -2977,105 +2619,16 @@ function majStatutArchiveD1(message, type = "info"){
   el.style.padding = "10px 12px";
 }
 
-async function creerAuditProvisoireSiNecessaire(){
-  if(auditPublicIdActif) return true;
-  const urlConnecteur = document.getElementById("url-connecteur")?.value.trim().replace(/\/+$/, "");
-  const tokenConnecteur = document.getElementById("token-connecteur")?.value.trim();
-  if(!urlConnecteur || !tokenConnecteur){
-    majStatutArchiveD1("PDF généré, archivage D1 non confirmé : connecteur ou jeton absent.", "erreur");
+async function assurerVersionAnalyseRapport(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)){
+    statut("Analyse gratuite non autorisée.", "erreur");
     return false;
   }
-  const contexte = contexteArchiveAudit();
-  try{
-    const rep = await fetch(`${urlConnecteur}/audit/provisional`, {
-      method:"POST",
-      headers:{
-        Authorization:`Bearer ${tokenConnecteur}`,
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify(contexte)
-    });
-    let r = {};
-    try{ r = await rep.json(); }catch(_){ r = {}; }
-    if(rep.ok && r.success && r.auditPublicId){
-      auditPublicIdActif = String(r.auditPublicId);
-      auditSourceActif = contexte.source || "manual";
-      if(estNombre(r.analysisVersion)) analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
-      dernierPayloadAuditComplete = "";
-      sauvegarderDiagnostic();
-      majStatutArchiveD1(`Audit provisoire créé dans D1 — public_id : ${auditPublicIdActif}`);
-      return true;
-    }
-  }catch(e){
-    console.warn("Création audit provisoire impossible", e);
-  }
-  majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
-  return false;
-}
-
-function programmerCompletionAuditEfficia(){
-  if(!auditPublicIdActif) return;
-  clearTimeout(timerAuditComplete);
-  timerAuditComplete = setTimeout(() => {
-    envoyerCompletionAuditEfficia().catch(e => console.warn("Archivage Efficia impossible", e));
-  }, 600);
-}
-
-async function envoyerCompletionAuditEfficia(){
-  if(!auditPublicIdActif) return "";
-  const urlConnecteur = document.getElementById("url-connecteur")?.value.trim().replace(/\/+$/, "");
-  const tokenConnecteur = document.getElementById("token-connecteur")?.value.trim();
-  if(!urlConnecteur || !tokenConnecteur) return "";
-  const payload = construirePayloadAuditComplete({pdfFilename:dernierNomPdfGenere});
-  const payloadTexte = JSON.stringify(payload);
-  if(payloadTexte === dernierPayloadAuditComplete) return "";
-  dernierPayloadAuditComplete = payloadTexte;
-  try{
-    const rep = await fetch(`${urlConnecteur}/audit/${encodeURIComponent(auditPublicIdActif)}/complete`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokenConnecteur}`,
-        "Content-Type": "application/json"
-      },
-      body: payloadTexte
-    });
-    let r = {};
-    try{ r = await rep.json(); }catch(_){ r = {}; }
-    if(rep.ok && r.success){
-      if(estNombre(r.analysisVersion)){
-        analysisVersionActif = Math.max(1, nEntier(r.analysisVersion));
-        sauvegarderDiagnostic();
-      }
-      majStatutArchiveD1(`Audit enregistré dans la base de connaissances — public_id : ${auditPublicIdActif}${analysisVersionActif ? " · V" + nEntier(analysisVersionActif) : ""}`);
-      return "Analyse enregistrée dans la base Efficia";
-    } else {
-      majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
-      return "Analyse terminée, mais archivage impossible";
-    }
-  }catch(e){
-    console.warn("Archivage Efficia impossible", e);
-    majStatutArchiveD1("PDF généré, archivage D1 non confirmé.", "erreur");
-    return "Analyse terminée, mais archivage impossible";
-  }
-}
-
-async function assurerVersionAnalyseRapport(){
-  const versionInfo = obtenirVersionAnalyseRapport();
-  if(versionInfo.ok) return true;
-  await creerAuditProvisoireSiNecessaire();
-  if(auditPublicIdActif){
-    const msg = await envoyerCompletionAuditEfficia();
-    if(msg) statut(msg, msg.includes("enregistrée") ? "info" : "erreur");
-    if(obtenirVersionAnalyseRapport().ok) return true;
-  }
-  statut("D1 indisponible : le PDF continue avec une version locale non confirmée. Utilisez « Réessayer l'enregistrement » dès que possible.", "erreur");
-  return assurerVersionLocaleSecours();
-}
-
-async function reessayerEnregistrementAudit(){
-  await creerAuditProvisoireSiNecessaire();
-  const msg = await envoyerCompletionAuditEfficia();
-  if(msg) statut(msg, msg.includes("enregistrée") ? "info" : "erreur");
+  auditPublicIdActif = analysisId;
+  analysisVersionActif = analysisVersionActif || 1;
+  auditSourceActif = "free_diagnostic";
+  return true;
 }
 
 function appliquerReponses(reponses){
@@ -3156,8 +2709,6 @@ function effacerDiagnostic(){
   statut("Diagnostic enregistré effacé.", "info");
 }
 
-initialiserCleAPI();
-initialiserConnecteurScraping();
 afficherProfilUtilise();
 initialiserContexteCommandeAdmin();
 
@@ -3209,6 +2760,7 @@ async function initialiserContexteCommandeAdmin(){
 
   definirSiVide("p-entreprise", contexte.company);
   definirSiVide("p-ville", contexte.city);
+  definirSiVide("p-activite", contexte.activity);
   definirSiVide("p-contact", contexte.firstName);
 
   const urlGoogle = contexte.googleBusinessUrl || "";
@@ -3221,12 +2773,20 @@ async function initialiserContexteCommandeAdmin(){
   if(bloc){
     bloc.style.display = "block";
     bloc.innerHTML = `
-      <strong>Commande liée au back-office</strong><br>
-      Entreprise : ${escapeHtml(contexte.company || "—")} · Ville : ${escapeHtml(contexte.city || "—")}<br>
+      <strong>Demande de diagnostic gratuit</strong><br>
+      Entreprise : ${escapeHtml(contexte.company || "Fiche Google transmise")} · Ville : ${escapeHtml(contexte.city || "À détecter")}<br>
+      Activité : ${escapeHtml(contexte.activity || "À confirmer manuellement")}<br>
       Contact : ${escapeHtml(contexte.firstName || "—")} · Email : ${escapeHtml(contexte.email || "—")}<br>
-      Offre : ${escapeHtml(contexte.offer || "—")} · Order ID : <code>${escapeHtml(contexte.orderId || "—")}</code> · Task ID : <code>${escapeHtml(contexte.taskId || "—")}</code>${ligneGoogle}
+      Type de rapport : diagnostic gratuit${ligneGoogle}
     `;
   }
+
+  [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")]
+    .filter(Boolean)
+    .forEach((button) => {
+      button.hidden = !contexte.premiumAllowed;
+      button.disabled = !contexte.premiumAllowed;
+    });
 }
 
 async function enregistrerPdfGenereBackOffice(filename){
@@ -5384,8 +4944,6 @@ async function telechargerAuditPremium(){
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
     }
     pdf.save(filename);
-    const msgArchive = await envoyerCompletionAuditEfficia();
-    if(msgArchive && !msgArchive.includes("enregistrée")) statut(msgArchive, "erreur");
     await enregistrerPdfGenereBackOffice(filename);
     statut(`Audit Premium généré (${pages.length} pages).`, "info");
   }catch(e){
@@ -5446,8 +5004,6 @@ async function telechargerPDF(){
       return;
     }
     pdf.save(filename);
-    const msgArchive = await envoyerCompletionAuditEfficia();
-    if(msgArchive && !msgArchive.includes("enregistrée")) statut(msgArchive, "erreur");
     await enregistrerPdfGenereBackOffice(filename);
   }catch(e){
     console.error("Génération PDF échouée", e);

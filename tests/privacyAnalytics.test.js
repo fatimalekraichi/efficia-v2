@@ -173,22 +173,37 @@ test("Score Efficia ne reçoit plus de données personnelles par paramètres d�
 
 test("le contexte Score Efficia reste complet côté serveur", () => {
   const context = buildFreeDiagnosticProductionContext({
-    business: { nom: "Entreprise", ville: "Bruxelles", normalized: { google_url: "https://maps.example/fiche" } },
+    business: {
+      nom: "Entreprise",
+      ville: "Bruxelles",
+      normalized: { category: "Électricien", google_url: "https://maps.example/fiche" },
+    },
   }, {
-    first_name: "Fatima",
-    email: "fatima@example.com",
-    offer_code: "audit",
-    order_id: "order-1",
-    task_id: "task-1",
+    diagnosticRequest: {
+      first_name: "Fatima",
+      email: "fatima@example.com",
+    },
+    paidOrder: {
+      status: "paid",
+      offer_code: "audit",
+      order_id: "order-1",
+      task_id: "task-1",
+    },
   });
   assert.deepEqual(context, {
+    requestType: "free_diagnostic",
     company: "Entreprise",
+    companySource: "detected",
     city: "Bruxelles",
+    citySource: "provided",
+    activity: "Électricien",
+    activitySource: "detected",
     firstName: "Fatima",
     email: "fatima@example.com",
     offer: "audit",
     orderId: "order-1",
     taskId: "task-1",
+    premiumAllowed: true,
     googleBusinessUrl: "https://maps.example/fiche",
   });
 });

@@ -24,7 +24,7 @@ export async function onRequestGet(context) {
   return jsonResponse({
     success: true,
     context: buildFreeDiagnosticProductionContext(analysis, orderContext),
-  });
+  }, 200, { "Cache-Control": "no-store" });
 }
 
 export function onRequest(context) {
