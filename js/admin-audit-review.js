@@ -15,18 +15,26 @@ const criteriaNotVerifiedSummaryBox = document.querySelector("[data-criteria-not
 const fillUnknownButton = document.querySelector("[data-fill-unknown]");
 const executionEditor = document.querySelector("[data-execution-editor]");
 const executionPending = document.querySelector("[data-execution-pending]");
+const draftSaveButton = document.querySelector("[data-draft-save]");
+const draftStatus = document.querySelector("[data-draft-status]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 
 let currentAnalysis = null;
 let currentCriteriaGroups = null;
 let currentPrefillCriteria = new Map();
+let currentPrefillConditions = {};
+let draftSaveTimer = null;
+let draftSaveInFlight = false;
 
 const REPORT_TYPE_LABELS = {
   free: "Diagnostic gratuit",
   premium: "Audit Premium 99 €",
 };
 
-const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified"]);
+const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews"]);
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+const PHOTO_DEPENDENT_KEYS = ["nombrePhotos", "photoRecente", "varietePhotos", "qualitePhotos"];
+const REVIEW_DEPENDENT_KEYS = ["volumeAvis", "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis"];
 
 // Questions conditionnelles : une sous-question n'a de sens que si la
 // question parente a une réponse précise. Elle est retirée complètement de
@@ -149,6 +157,14 @@ const REVIEW_CRITERIA_GROUPS = [
   {
     category: "Photos et visuels",
     points: 12,
+    precondition: {
+      key: "photoPresence",
+      question: "La fiche contient-elle des photos ?",
+      options: [
+        { value: "present", label: "Oui" },
+        { value: "none", label: "Aucune photo" },
+      ],
+    },
     criteria: [
       {
         key: "logoCouverture",
@@ -220,12 +236,13 @@ const REVIEW_CRITERIA_GROUPS = [
     criteria: [
       {
         key: "noteMoyenne",
-        question: "La note moyenne est-elle rassurante ?",
+        question: "Quelle est la note moyenne ?",
         help: "Comparer la note à la moyenne des concurrents observés.",
         options: [
           ["compliant", "Très rassurante"],
           ["partial", "Correcte"],
           ["deficient", "À renforcer"],
+          ["no_reviews", "Aucun avis"],
           ["not_verified", "Non vérifié"],
         ],
       },
@@ -540,6 +557,7 @@ function setCriteriaCatalog(analysis) {
   currentPrefillCriteria = new Map((analysis?.scorePrefill?.criteria || [])
     .filter((item) => item?.key)
     .map((item) => [item.key, item]));
+  currentPrefillConditions = analysis?.scorePrefill?.conditions || {};
 }
 
 function renderCriteriaReview() {
@@ -551,6 +569,19 @@ function renderCriteriaReview() {
         <h3>${escapeHtml(getGroupLabel(group))}</h3>
         <span>${escapeHtml(getGroupPoints(group))} points</span>
       </div>
+      ${group.precondition ? `
+        <div class="criteria-precondition" data-questionnaire-condition="${escapeHtml(group.precondition.key)}">
+          <div class="criteria-item__question">${escapeHtml(group.precondition.question)}</div>
+          <div class="criteria-options">
+            ${group.precondition.options.map((option) => `
+              <label class="criteria-option">
+                <input type="radio" name="condition:${escapeHtml(group.precondition.key)}" value="${escapeHtml(option.value)}">
+                <span>${escapeHtml(option.label)}</span>
+              </label>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
       ${getGroupCriteria(group).map((criterion) => {
         const checklist = getCriterionChecklist(criterion);
         return `
@@ -596,7 +627,10 @@ function renderCriteriaReview() {
     </section>
   `).join("");
 
-  criteriaGroupsBox.onchange = updateCriteriaSummary;
+  criteriaGroupsBox.onchange = () => {
+    updateCriteriaSummary();
+    scheduleDraftSave();
+  };
   updateCriteriaSummary();
 }
 
@@ -820,16 +854,27 @@ function buildAutoCriteriaReview(analysis) {
   return reviews;
 }
 
-function fillCriteriaFromAnalysis(analysis) {
-  const savedCriteria = new Map((analysis.manualReview?.criteriaReview || [])
+function fillCriteriaFromAnalysis(analysis, draftReview = null) {
+  const activeReview = draftReview || analysis.manualReview || {};
+  const savedCriteria = new Map((activeReview.criteriaReview || [])
     .filter((item) => item?.key)
     .map((item) => [item.key, item]));
   const fallbackAutoCriteria = new Map(buildAutoCriteriaReview(analysis)
     .filter((item) => item?.key)
     .map((item) => [item.key, item]));
 
+  const photoPresence = activeReview.photoPresence || currentPrefillConditions.photoPresence || "unknown";
+  const reviewsPresence = activeReview.reviewsPresence || currentPrefillConditions.reviewsPresence || "unknown";
+  const photoPresenceRadio = criteriaGroupsBox?.querySelector(`input[name="condition:photoPresence"][value="${photoPresence}"]`);
+  if (photoPresenceRadio) photoPresenceRadio.checked = true;
+  if (reviewsPresence === "none") {
+    const noReviewsRadio = criteriaGroupsBox?.querySelector('input[name="criterion:noteMoyenne"][value="no_reviews"]');
+    if (noReviewsRadio) noReviewsRadio.checked = true;
+  }
+
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
+      if (reviewsPresence === "none" && criterion.key === "noteMoyenne") return;
       const saved = savedCriteria.get(criterion.key);
       const auto = currentPrefillCriteria.get(criterion.key) || fallbackAutoCriteria.get(criterion.key);
       const source = saved || auto;
@@ -859,12 +904,15 @@ function collectCriteriaReview() {
 
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
+      const criterionItem = criteriaGroupsBox?.querySelector(`[data-criteria-key="${criterion.key}"]`);
+      if (criterionItem?.classList.contains("is-dependency-hidden")) return;
       const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
       const checklist = [...(criteriaGroupsBox?.querySelectorAll(`[data-criteria-checklist="${criterion.key}"]:checked`) || [])]
         .map((input) => input.value);
 
       if (!selected && !checklist.length) return;
 
+      if (selected?.value === "no_reviews") return;
       const value = CRITERIA_VALUES.has(selected?.value) ? selected.value : "not_verified";
       const optionIndex = integerOrNull(selected?.dataset.optionIndex);
       const prefill = currentPrefillCriteria.get(criterion.key);
@@ -885,6 +933,30 @@ function collectCriteriaReview() {
   });
 
   return criteria;
+}
+
+function collectQuestionnaireConditions() {
+  const photoPresence = criteriaGroupsBox?.querySelector('input[name="condition:photoPresence"]:checked')?.value || "unknown";
+  const noteSelection = criteriaGroupsBox?.querySelector('input[name="criterion:noteMoyenne"]:checked')?.value;
+  return {
+    photoPresence,
+    reviewsPresence: noteSelection === "no_reviews" ? "none" : (noteSelection && noteSelection !== "not_verified" ? "present" : "unknown"),
+  };
+}
+
+function clearCriterionAnswer(key) {
+  criteriaGroupsBox?.querySelectorAll(`input[name="criterion:${key}"], [data-criteria-checklist="${key}"]`).forEach((input) => {
+    input.checked = false;
+  });
+}
+
+function setCriterionHidden(key, hidden) {
+  const item = criteriaGroupsBox?.querySelector(`[data-criteria-key="${key}"]`);
+  if (!item) return;
+  if (hidden) clearCriterionAnswer(key);
+  item.classList.toggle("is-dependency-hidden", hidden);
+  item.toggleAttribute("inert", hidden);
+  item.setAttribute("aria-hidden", hidden ? "true" : "false");
 }
 
 // Surbrillance des critères "Non vérifié" : purement visuelle, ne touche ni
@@ -913,35 +985,45 @@ function updateNotVerifiedHighlights() {
   return notVerifiedCount;
 }
 
-// Applique les règles CRITERIA_DEPENDENCIES : masque/affiche chaque
-// sous-question selon la réponse actuellement sélectionnée sur sa question
-// parente. La transition douce (150-250 ms) est gérée en CSS via la classe
-// "is-dependency-hidden" (voir .criteria-item__collapse) ; ici on ne fait que
-// basculer les classes/attributs, jamais la valeur des champs.
 function updateCriteriaDependencies() {
   if (!criteriaGroupsBox) return;
 
-  CRITERIA_DEPENDENCIES.forEach(({ parent, child, hideWhen }) => {
-    const childItem = criteriaGroupsBox.querySelector(`[data-criteria-key="${child}"]`);
-    if (!childItem) return;
+  const conditions = collectQuestionnaireConditions();
+  const conditionallyHidden = new Set([
+    ...(conditions.photoPresence === "none" ? PHOTO_DEPENDENT_KEYS : []),
+    ...(conditions.reviewsPresence === "none" ? REVIEW_DEPENDENT_KEYS : []),
+  ]);
+  PHOTO_DEPENDENT_KEYS.forEach((key) => setCriterionHidden(key, conditionallyHidden.has(key)));
+  REVIEW_DEPENDENT_KEYS.forEach((key) => setCriterionHidden(key, conditionallyHidden.has(key)));
 
+  CRITERIA_DEPENDENCIES.forEach(({ parent, child, hideWhen }) => {
     const parentSelected = criteriaGroupsBox.querySelector(`input[name="criterion:${parent}"]:checked`);
     const shouldHide = Boolean(parentSelected) && hideWhen.includes(parentSelected.value);
-
-    childItem.classList.toggle("is-dependency-hidden", shouldHide);
-    childItem.toggleAttribute("inert", shouldHide);
-    childItem.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+    setCriterionHidden(child, shouldHide || conditionallyHidden.has(child));
   });
 }
 
 function updateCriteriaSummary() {
-  updateNotVerifiedHighlights();
   updateCriteriaDependencies();
+  updateNotVerifiedHighlights();
   if (!criteriaSummaryBox) return;
-  const total = getCriteriaGroups().reduce((sum, group) => sum + getGroupCriteria(group).length, 0);
-  const answered = criteriaGroupsBox?.querySelectorAll("[data-criteria-option]:checked").length || 0;
-  const notVerified = criteriaGroupsBox?.querySelectorAll('[data-criteria-option]:checked[value="not_verified"]').length || 0;
+  const visibleItems = [...(criteriaGroupsBox?.querySelectorAll("[data-criteria-key]") || [])]
+    .filter((item) => !item.classList.contains("is-dependency-hidden"));
+  const total = visibleItems.length;
+  const answered = visibleItems.filter((item) => item.querySelector("[data-criteria-option]:checked")).length;
+  const notVerified = visibleItems.filter((item) => item.querySelector('[data-criteria-option]:checked[value="not_verified"]')).length;
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
+}
+
+function incompleteVisibleCriteria() {
+  const missing = [];
+  if (!criteriaGroupsBox?.querySelector('input[name="condition:photoPresence"]:checked')) missing.push("photoPresence");
+  criteriaGroupsBox?.querySelectorAll("[data-criteria-key]").forEach((item) => {
+    if (item.classList.contains("is-dependency-hidden")) return;
+    const selected = item.querySelector("[data-criteria-option]:checked");
+    if (!selected || selected.value === "not_verified") missing.push(item.dataset.criteriaKey);
+  });
+  return missing;
 }
 
 function markUnansweredCriteriaAsNotVerified() {
@@ -1012,7 +1094,10 @@ function renderExecutionPlan(analysis) {
 executionEditor?.addEventListener("change", (event) => {
   const item = event.target.closest("[data-execution-item]");
   if (item) item.classList.toggle("is-pending", item.querySelector("[data-execution-status]")?.value === "needs_confirmation");
+  scheduleDraftSave();
 });
+
+executionEditor?.addEventListener("input", scheduleDraftSave);
 
 function collectExecutionPlan() {
   const previous = currentAnalysis?.manualReview?.executionPlan || {};
@@ -1031,6 +1116,46 @@ function collectExecutionPlan() {
     else if (Array.isArray(result[group])) result[group].push(item);
   });
   return result;
+}
+
+function restoreExecutionPlan(review) {
+  if (!review || !executionEditor) return;
+  executionEditor.querySelectorAll("[data-execution-item]").forEach((node) => {
+    const group = node.dataset.executionGroup;
+    const id = node.dataset.executionId;
+    const index = Number(node.dataset.executionIndex);
+    let item = null;
+    if (group === "description") item = review.description;
+    else if (group === "reviewLink") item = { text: review.reviewLink, status: review.reviewLinkStatus };
+    else if (group === "reviewMessages") item = review.reviewMessages?.[id];
+    else if (Array.isArray(review[group])) {
+      item = review[group].find((entry) => entry?.id === id) || review[group][index];
+    }
+    if (!item) return;
+
+    const valueKey = node.dataset.executionValueKey || "text";
+    const valueField = node.querySelector("[data-execution-value]");
+    if (valueField) valueField.value = item[valueKey] ?? item.text ?? "";
+    node.querySelectorAll("[data-execution-detail]").forEach((field) => {
+      field.value = item[field.dataset.executionDetail] ?? "";
+    });
+    const statusField = node.querySelector("[data-execution-status]");
+    if (statusField && item.status in EXECUTION_STATUS_LABELS) statusField.value = item.status;
+    node.classList.toggle("is-pending", statusField?.value === "needs_confirmation");
+  });
+}
+
+function restoreCompetitorSelection(answers) {
+  const confirmed = new Set(answers?.confirmedCompetitorIds || []);
+  const excluded = new Set(answers?.excludedCompetitorIds || []);
+  competitorsBox?.querySelectorAll("[data-competitor-id]").forEach((row) => {
+    const id = row.dataset.competitorId;
+    const confirm = row.querySelector("[data-confirm-competitor]");
+    const exclude = row.querySelector("[data-exclude-competitor]");
+    if (confirm) confirm.checked = confirmed.has(id) && !excluded.has(id);
+    if (exclude) exclude.checked = excluded.has(id);
+  });
+  updateCompetitorsSummary();
 }
 
 function renderObservation(analysis) {
@@ -1251,6 +1376,7 @@ async function loadAnalysis() {
   renderCompetitors(currentAnalysis);
   renderExecutionPlan(currentAnalysis);
   fillCriteriaFromAnalysis(currentAnalysis);
+  await restoreDraft();
   updateLinks(currentAnalysis);
   setStatus(currentAnalysis.status === "approved" ? "Rapport approuvé." : "Analyse prête à être validée.");
 }
@@ -1267,6 +1393,8 @@ function collectPayload() {
 
   return {
     action: "complete_review",
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    ...collectQuestionnaireConditions(),
     reportType: previousReview.reportType || currentAnalysis?.reportType || "premium",
     descriptionStatus: previousReview.descriptionStatus,
     photoQuality: previousReview.photoQuality,
@@ -1288,8 +1416,71 @@ function collectPayload() {
   };
 }
 
+function formatDraftTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+async function saveDraft({ manual = false } = {}) {
+  if (!currentAnalysis || draftSaveInFlight) return;
+  draftSaveInFlight = true;
+  if (manual && draftSaveButton) draftSaveButton.disabled = true;
+  try {
+    const reportType = currentAnalysis.manualReview?.reportType || currentAnalysis.reportType || "premium";
+    const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        analysisId,
+        reportType,
+        currentStep: "questionnaire",
+        answers: collectPayload(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) return redirectToLogin();
+    if (!response.ok || !data.success) throw new Error("DRAFT_SAVE_FAILED");
+    if (draftStatus) draftStatus.textContent = `Brouillon enregistré à ${formatDraftTime(data.draft.updatedAt)}.`;
+  } catch {
+    if (draftStatus) draftStatus.textContent = "Le brouillon n’a pas pu être enregistré.";
+  } finally {
+    draftSaveInFlight = false;
+    if (manual && draftSaveButton) draftSaveButton.disabled = false;
+  }
+}
+
+function scheduleDraftSave() {
+  if (!currentAnalysis) return;
+  window.clearTimeout(draftSaveTimer);
+  draftSaveTimer = window.setTimeout(() => saveDraft(), 1200);
+}
+
+async function restoreDraft() {
+  const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 401) return redirectToLogin();
+  if (response.status === 404) return;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success || data.draft?.currentStep !== "questionnaire") return;
+  const answers = data.draft.answers;
+  if (!answers || answers.reportType !== (currentAnalysis.reportType || "premium")) return;
+  fillCriteriaFromAnalysis(currentAnalysis, answers);
+  restoreCompetitorSelection(answers);
+  restoreExecutionPlan(answers.executionPlan);
+  if (draftStatus) draftStatus.textContent = `Brouillon restauré, enregistré à ${formatDraftTime(data.draft.updatedAt)}.`;
+}
+
 async function saveReview(event) {
   event.preventDefault();
+  const incomplete = incompleteVisibleCriteria();
+  if (incomplete.length) {
+    setStatus("Complétez toutes les questions visibles avant de préparer l’aperçu.", "error");
+    return;
+  }
   submitButton.disabled = true;
   submitButton.textContent = "Préparation de l’aperçu...";
   setStatus("Validation enregistrée. Préparation de l’aperçu...");
@@ -1303,6 +1494,9 @@ async function saveReview(event) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
+      if (data.error === "INCOMPLETE_QUESTIONNAIRE") {
+        throw new Error("Complétez toutes les questions visibles avant de préparer l’aperçu.");
+      }
       throw new Error(data.detail || data.error || "Impossible de préparer l’aperçu.");
     }
     currentAnalysis = data.analysis;
@@ -1313,6 +1507,7 @@ async function saveReview(event) {
     renderCompetitors(currentAnalysis);
     renderExecutionPlan(currentAnalysis);
     updateLinks(currentAnalysis);
+    if (draftStatus) draftStatus.textContent = "Brouillon finalisé.";
     setStatus("Aperçu prêt. Relisez le rapport avant approbation.", "ok");
   } catch (error) {
     setStatus(error.message || "Une erreur est survenue pendant la validation.", "error");
@@ -1352,6 +1547,7 @@ async function approveReport() {
 renderCriteriaReview();
 loadAnalysis();
 form?.addEventListener("submit", saveReview);
+draftSaveButton?.addEventListener("click", () => saveDraft({ manual: true }));
 approveButton?.addEventListener("click", approveReport);
 fillUnknownButton?.addEventListener("click", markUnansweredCriteriaAsNotVerified);
 

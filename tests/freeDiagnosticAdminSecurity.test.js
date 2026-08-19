@@ -512,7 +512,7 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.match(html, /marquerManuel\(/);
   assert.match(html, /appliquerCollecteDiagnosticGratuit\(data\.business \|\| \{\}, data\.scorePrefill\)/);
   assert.match(html, /appliquerCollecteDiagnosticGratuit\(contexte\.collection, contexte\.scorePrefill\)/);
-  assert.match(html, /appliquerPreRemplissageDiagnosticGratuit\(scorePrefill\);\s*calc\(\);/);
+  assert.match(html, /appliquerPreRemplissageDiagnosticGratuit\(scorePrefill\);[\s\S]{0,700}majConditionsQuestionnaire\(\);\s*calc\(\);/);
   assert.doesNotMatch(html, /clarity|cloudflareinsights/i);
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);

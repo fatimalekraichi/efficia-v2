@@ -1,6 +1,7 @@
 const ordersBody = document.querySelector("[data-admin-orders]");
 const diagnosticsBody = document.querySelector("[data-admin-diagnostics]");
 const diagnosticCount = document.querySelector("[data-admin-diagnostic-count]");
+const draftsBody = document.querySelector("[data-admin-drafts]");
 const filtersForm = document.querySelector("[data-admin-filters]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const statElements = document.querySelectorAll("[data-stat]");
@@ -36,6 +37,7 @@ const mailerLiteStatusLabels = {
 
 const reportTypeLabels = {
   free: "Diagnostic gratuit",
+  premium: "Audit Premium 99 €",
 };
 
 const formatMoney = (amount, currency = "eur") => new Intl.NumberFormat("fr-FR", {
@@ -223,6 +225,59 @@ const renderDiagnostics = (diagnostics) => {
   `).join("");
 };
 
+const draftResumeUrl = (draft) => draft.reportType === "free"
+  ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(draft.analysisId)}`
+  : `/admin/audit-review/${encodeURIComponent(draft.analysisId)}`;
+
+const renderDrafts = (drafts) => {
+  if (!draftsBody) return;
+  if (!drafts.length) {
+    draftsBody.innerHTML = `<tr><td colspan="6" class="admin-empty">Aucun audit en cours.</td></tr>`;
+    return;
+  }
+  draftsBody.innerHTML = drafts.map((draft) => `
+    <tr>
+      <td><strong>${escapeHtml(draft.company || "—")}</strong></td>
+      <td>${escapeHtml(draft.city || "—")}</td>
+      <td>${escapeHtml(reportTypeLabels[draft.reportType] || draft.reportType)}</td>
+      <td>${escapeHtml(draft.currentStep || "questionnaire")}</td>
+      <td>${formatDate(draft.updatedAt)}</td>
+      <td><div class="admin-row-actions">
+        <a class="admin-button" href="${draftResumeUrl(draft)}">Reprendre</a>
+        <button class="admin-button is-danger" type="button" data-delete-draft="${escapeHtml(draft.draftId)}">Supprimer</button>
+      </div></td>
+    </tr>
+  `).join("");
+};
+
+const loadDrafts = async () => {
+  if (!draftsBody) return;
+  const response = await fetch("/api/admin/audit-drafts", {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 401) return redirectToLogin();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    draftsBody.innerHTML = `<tr><td colspan="6" class="admin-empty">Impossible de charger les brouillons.</td></tr>`;
+    return;
+  }
+  renderDrafts(data.drafts || []);
+};
+
+draftsBody?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-draft]");
+  if (!button || !window.confirm("Supprimer définitivement ce brouillon ?")) return;
+  button.disabled = true;
+  const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(button.dataset.deleteDraft)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 401) return redirectToLogin();
+  await loadDrafts();
+});
+
 const markTaskCompleted = async (taskId) => {
   if (!taskId) return;
   const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}`, {
@@ -352,3 +407,4 @@ ordersBody?.addEventListener("click", (event) => {
 
 loadOrders();
 loadDiagnostics();
+loadDrafts();

@@ -9,6 +9,12 @@ const CONSISTENCY_STATUS = new Set(["poor", "average", "strong", "unknown"]);
 const REPORT_TYPES = new Set(["free", "premium"]);
 const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "not_verified"]);
 
+import {
+  QUESTIONNAIRE_VERSION,
+  normalizeQuestionnaireConditions,
+  sanitizeConditionalCriteria,
+} from "./score-efficia/questionnaireRules.js";
+
 function cleanText(value, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -121,8 +127,13 @@ export function computeBenchmarkConfidence(competitors) {
 }
 
 export function normalizeManualReview(payload = {}) {
+  const normalizedCriteria = normalizeCriteriaReview(payload.criteriaReview);
+  const conditions = normalizeQuestionnaireConditions(payload, normalizedCriteria);
   return {
     reportType: pickAllowed(payload.reportType, REPORT_TYPES, "premium"),
+    questionnaireVersion: cleanText(payload.questionnaireVersion, 80) || QUESTIONNAIRE_VERSION,
+    photoPresence: conditions.photoPresence,
+    reviewsPresence: conditions.reviewsPresence,
     descriptionStatus: pickAllowed(payload.descriptionStatus, DESCRIPTION_STATUS, "unknown"),
     photoQuality: pickAllowed(payload.photoQuality, QUALITY_STATUS, "unknown"),
     photoRelevance: pickAllowed(payload.photoRelevance, BASIC_STATUS, "unknown"),
@@ -138,7 +149,7 @@ export function normalizeManualReview(payload = {}) {
     confirmedCategory: cleanText(payload.confirmedCategory, 160),
     confirmedPosition: cleanOptionalNumber(payload.confirmedPosition),
     confirmedQuery: cleanText(payload.confirmedQuery, 240),
-    criteriaReview: normalizeCriteriaReview(payload.criteriaReview),
+    criteriaReview: sanitizeConditionalCriteria(normalizedCriteria, conditions),
     executionPlan: normalizeExecutionPlanReview(payload.executionPlan),
   };
 }
@@ -156,9 +167,9 @@ export function buildReviewedObservation(row = {}, manualReview = {}) {
     city: manualReview.confirmedCity || row.ville || null,
     category: manualReview.confirmedCategory || row.activity || null,
     secondaryCategories: normalized.subtypes || normalized.secondary_categories || null,
-    rating: cleanOptionalNumber(row.rating),
-    reviews: cleanOptionalNumber(row.reviews),
-    photosCount: cleanOptionalNumber(row.photos_count),
+    rating: manualReview.reviewsPresence === "none" ? null : cleanOptionalNumber(row.rating),
+    reviews: manualReview.reviewsPresence === "none" ? 0 : cleanOptionalNumber(row.reviews),
+    photosCount: manualReview.photoPresence === "none" ? 0 : cleanOptionalNumber(row.photos_count),
     descriptionLength,
     descriptionStatus: confirmedDescriptionStatus,
     hasDescription: confirmedDescriptionStatus === "absent" ? false : descriptionLength === null ? null : descriptionLength > 0,

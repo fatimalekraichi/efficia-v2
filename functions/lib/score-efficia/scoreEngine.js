@@ -1,5 +1,10 @@
 import { GRILLE } from "./criteriaCatalog.js";
 import { BANDES, CONFIG, SCORING_VERSION } from "./scoreConfig.js";
+import {
+  QUESTIONNAIRE_VERSION,
+  conditionForCriterion,
+  normalizeQuestionnaireConditions,
+} from "./questionnaireRules.js";
 
 export const CRITERE_IDS = Object.fromEntries(
   GRILLE.flatMap((categorie) => categorie.criteres.map((critere) => [critere.key, critere.key])),
@@ -44,25 +49,28 @@ export function pointsFromManualStatus(criterion, review) {
 
 export function buildScoreInputsFromManualReview(manualReview = {}) {
   const reviews = new Map((manualReview.criteriaReview || []).map((item) => [item.key, item]));
+  const conditions = normalizeQuestionnaireConditions(manualReview, manualReview.criteriaReview);
   const answers = {};
   const criteria = [];
 
   for (const category of GRILLE) {
     for (const criterion of category.criteres) {
       const review = reviews.get(criterion.key) || null;
-      const points = pointsFromManualStatus(criterion, review);
+      const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
+      const explicitAbsence = absenceCondition === "no_photos" || absenceCondition === "no_reviews";
+      const points = explicitAbsence ? 0 : pointsFromManualStatus(criterion, review);
       answers[criterion.key] = points;
       criteria.push({
         key: criterion.key,
         category: category.key,
         categoryLabel: category.cat,
         question: criterion.q,
-        status: review?.value || "not_verified",
-        label: review?.label || null,
-        checklist: Array.isArray(review?.checklist) ? review.checklist : [],
-        selectedOptionIndex: review?.selectedOptionIndex ?? null,
-        source: review?.source || null,
-        evidence: review?.evidence || null,
+        status: explicitAbsence ? "absence_confirmed" : (absenceCondition ? "not_applicable" : (review?.value || "not_verified")),
+        label: absenceCondition === "no_photos" ? "Aucune photo" : (absenceCondition === "no_reviews" ? "Aucun avis" : (absenceCondition ? "Sans objet" : (review?.label || null))),
+        checklist: absenceCondition ? [] : (Array.isArray(review?.checklist) ? review.checklist : []),
+        selectedOptionIndex: absenceCondition ? null : (review?.selectedOptionIndex ?? null),
+        source: explicitAbsence ? "conditional_absence" : (absenceCondition ? "conditional_dependency" : (review?.source || null)),
+        evidence: absenceCondition ? { condition: absenceCondition } : (review?.evidence || null),
         points,
         max: criterion.max,
       });
@@ -71,6 +79,8 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
 
   return {
     scoringVersion: SCORING_VERSION,
+    questionnaireVersion: manualReview.questionnaireVersion || QUESTIONNAIRE_VERSION,
+    conditions,
     profileKey: manualReview.profileKey || "default",
     answers,
     criteria,

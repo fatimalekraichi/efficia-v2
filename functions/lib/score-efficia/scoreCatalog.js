@@ -1,7 +1,13 @@
 import { GRILLE } from "./criteriaCatalog.js";
 import { CONFIG, SCORING_VERSION } from "./scoreConfig.js";
+import {
+  PHOTO_DEPENDENT_KEYS,
+  QUESTIONNAIRE_VERSION,
+  REVIEW_DEPENDENT_KEYS,
+} from "./questionnaireRules.js";
 
-function optionValueForIndex(index, total) {
+function optionValueForIndex(index, total, explicitValue = null) {
+  if (explicitValue === "no_reviews") return "no_reviews";
   if (index === 0) return "compliant";
   if (index === total - 1) return "deficient";
   return "partial";
@@ -72,10 +78,11 @@ function findCriterion(key) {
 }
 
 function criteriaOptions(criterion) {
+  const scoredOptionCount = criterion.opts.filter(([, , explicitValue]) => explicitValue !== "no_reviews").length;
   return [
-    ...criterion.opts.map(([label, points], index) => ({
+    ...criterion.opts.map(([label, points, explicitValue], index) => ({
       index,
-      value: optionValueForIndex(index, criterion.opts.length),
+      value: optionValueForIndex(index, scoredOptionCount, explicitValue),
       label,
       points,
     })),
@@ -122,10 +129,19 @@ function addCriterion(items, item) {
 export function buildScoreCatalog() {
   return {
     scoringVersion: SCORING_VERSION,
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
     categories: GRILLE.map((category) => ({
       key: category.key,
       label: category.cat,
       points: category.pts,
+      precondition: category.key === "photos" ? {
+        key: "photoPresence",
+        question: "La fiche contient-elle des photos ?",
+        options: [
+          { value: "present", label: "Oui" },
+          { value: "none", label: "Aucune photo" },
+        ],
+      } : null,
       criteria: category.criteres.map((criterion) => ({
         key: criterion.key,
         question: criterion.q,
@@ -160,6 +176,12 @@ export function buildScorePrefill(analysis = {}) {
   const localPosition = asNumber(business.localPosition);
   const descriptionLength = asNumber(business.descriptionLength);
   const gaps = benchmark.gaps || {};
+  const conditions = {
+    photoPresence: photos === null ? "unknown" : (photos > 0 ? "present" : "none"),
+    reviewsPresence: reviewsCount === null && rating === null
+      ? "unknown"
+      : (reviewsCount === 0 ? "none" : "present"),
+  };
 
   addCriterion(criteria, primaryCategory
     ? optionForKey("categoriePrincipale", 0, "observed", { value: primaryCategory })
@@ -261,8 +283,15 @@ export function buildScorePrefill(analysis = {}) {
     "rythmePublication",
   ].forEach((key) => addCriterion(criteria, notVerified(key)));
 
+  const hiddenCriteria = new Set([
+    ...(conditions.photoPresence === "none" ? PHOTO_DEPENDENT_KEYS : []),
+    ...(conditions.reviewsPresence === "none" ? ["noteMoyenne", ...REVIEW_DEPENDENT_KEYS] : []),
+  ]);
+
   return {
     scoringVersion: SCORING_VERSION,
-    criteria,
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    conditions,
+    criteria: criteria.filter((criterion) => !hiddenCriteria.has(criterion.key)),
   };
 }

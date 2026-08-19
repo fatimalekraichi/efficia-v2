@@ -59,7 +59,7 @@ export const GRILLE = [
 ]},
 {key:"avis", cat:"Avis clients", pts:CONFIG.poids.avis.total, criteres:[
  {key:"noteMoyenne", q:"Quelle est la note moyenne ?", aide:"Sous le nom de la fiche.", max:CONFIG.poids.avis.note,
-  opts:[["4,5 et plus",CONFIG.poids.avis.note],["4,0 à 4,4",4],["3,5 à 3,9",2],[`Moins de ${String(CONFIG.seuils.noteMoyenne).replace(".",",")}`,0]],
+  opts:[["4,5 et plus",CONFIG.poids.avis.note],["4,0 à 4,4",4],["3,5 à 3,9",2],[`Moins de ${String(CONFIG.seuils.noteMoyenne).replace(".",",")}`,0],["Aucun avis",0,"no_reviews"]],
   reco:"Mettre en place un parcours de collecte d'avis (QR code, demande systématique) : une note faible peut limiter la confiance au moment de comparer plusieurs fiches.",
   force:"Excellente note moyenne — un vrai capital confiance."},
  {key:"volumeAvis", q:"Le volume d'avis est-il supérieur aux concurrents directs ?", aide:"Comparer avec les 3 fiches concurrentes les mieux placées. Un écart inférieur à 10 % est considéré comparable.", max:CONFIG.poids.avis.volume,

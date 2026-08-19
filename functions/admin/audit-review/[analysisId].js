@@ -43,6 +43,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     .criteria-category__head span { color: #64748b; font-size: 14px; font-weight: 900; white-space: nowrap; }
     .criteria-item { padding: 20px 24px; border-bottom: 1px solid #edf2f7; transition: background-color .15s ease, box-shadow .15s ease, padding .2s ease, border-color .2s ease; }
     .criteria-item:last-child { border-bottom: 0; }
+    .criteria-precondition { padding: 20px 24px; border-bottom: 1px solid #edf2f7; background: #f8fbff; }
     .criteria-item.is-not-verified { background: #fef6f6; box-shadow: inset 0 0 0 1px #fecaca; border-radius: 12px; }
     .criteria-item.is-dependency-hidden { padding-top: 0; padding-bottom: 0; border-bottom-color: transparent; }
     .criteria-item__collapse { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .2s ease, opacity .2s ease; }
@@ -148,12 +149,14 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
           <div class="review-actions">
             <button class="admin-button review-actions__primary" type="submit" data-review-submit>Valider et préparer l’aperçu</button>
             <div class="review-actions__secondary">
+              <button class="admin-button is-secondary" type="button" data-draft-save>Enregistrer le brouillon</button>
               <a class="admin-button is-secondary" href="#" target="_blank" rel="noopener" data-preview-link>Aperçu HTML</a>
               <button class="admin-button is-secondary" type="button" data-approve-button>Approuver le rapport</button>
               <a class="admin-button is-secondary is-disabled-link" href="#" target="_blank" rel="noopener" data-pdf-link${showLegacyFreeDiagnosticLink ? " hidden" : ""}>Générer le PDF</a>
               <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysisId)}" data-free-diagnostic-analysis-id="${analysisId}" target="_blank" rel="noopener" data-legacy-generator-link${showLegacyFreeDiagnosticLink ? "" : " hidden"}>Ouvrir l'ancien générateur gratuit</a>
             </div>
           </div>
+          <p class="admin-muted" data-draft-status></p>
           <p class="review-status" data-review-status></p>
         </form>
       </section>

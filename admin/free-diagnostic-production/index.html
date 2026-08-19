@@ -45,6 +45,8 @@
   @media(min-width:640px){.infos-grid{grid-template-columns:1fr 1fr}}
   .critere{border-bottom:1px solid var(--bord);padding:14px 0;border-radius:6px}
   .critere:last-child{border-bottom:none}
+  .critere.condition-hidden{display:none}
+  .critere-prealable{padding:14px 0;border-bottom:1px solid var(--bord)}
   .critere .q{font-weight:600;font-size:.95rem}
   .critere .aide{color:var(--gris);font-size:.82rem;margin:2px 0 8px}
   .critere .note-auto{font-size:.82rem;color:var(--bleu);background:var(--fond2);border-radius:6px;padding:4px 10px;display:inline-block;margin-bottom:8px}
@@ -577,7 +579,9 @@
       <div class="actions-ligne">
         <button class="btn-mini" onclick="reprendreDiagnostic()" type="button">Reprendre le dernier diagnostic</button>
         <button class="btn-mini" onclick="effacerDiagnostic()" type="button">Effacer le diagnostic enregistré</button>
+        <button class="btn-mini" id="btn-brouillon-d1" onclick="enregistrerBrouillonD1(true)" type="button">Enregistrer le brouillon</button>
       </div>
+      <div id="statut-brouillon-d1" class="mini-statut" aria-live="polite"></div>
       <div id="statut-archive-d1" class="mini-statut" style="display:none;margin-top:12px"></div>
       <div id="statut"></div>
       <div id="candidats"></div>
@@ -932,6 +936,13 @@ let html = "", idx = 0;
 const CRITERE_IDS = {};
 GRILLE.forEach(cat => {
   html += `<div class="carte"><div class="cat-titre"><h2>${cat.cat}</h2><span class="cat-pts">${cat.pts} points</span></div>`;
+  if(cat.key === "photos"){
+    html += `<div class="critere-prealable"><div class="q">La fiche contient-elle des photos ?</div>
+      <div class="opts">
+        <label><input type="radio" name="condition-photos" value="present" onchange="majConditionsQuestionnaire()">Oui</label>
+        <label><input type="radio" name="condition-photos" value="none" onchange="majConditionsQuestionnaire()">Aucune photo</label>
+      </div></div>`;
+  }
   cat.criteres.forEach(cr => {
     cr.id = idx;
     if(cr.key) CRITERE_IDS[cr.key] = idx;
@@ -945,8 +956,8 @@ GRILLE.forEach(cat => {
       html += `</div>`;
     }
     html += `<div class="opts">`;
-    cr.opts.forEach(([lab, pts]) => {
-      html += `<label><input type="radio" name="c${idx}" value="${pts}" onchange="calc()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
+    cr.opts.forEach(([lab, pts, special], optionIndex) => {
+      html += `<label><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}"${special ? ` data-special="${special}"` : ""} onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
     });
     html += `</div></div>`;
     idx++;
@@ -980,8 +991,61 @@ function majChecklist(id){
 }
 
 function lirePoints(id){
+  const critere = trouverCritere(id);
+  if(critere && conditionPhotos() === "none" && PHOTO_DEPENDENT_KEYS.includes(critere.key)) return 0;
+  if(critere && conditionAvis() === "none" && (critere.key === "noteMoyenne" || REVIEW_DEPENDENT_KEYS.includes(critere.key))) return 0;
   const coche = document.querySelector(`input[name="c${id}"]:checked`);
   return coche ? parseFloat(coche.value) : null;
+}
+const PHOTO_DEPENDENT_KEYS = ["nombrePhotos","photoRecente","varietePhotos","qualitePhotos"];
+const REVIEW_DEPENDENT_KEYS = ["volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"];
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+
+function conditionPhotos(){
+  return document.querySelector('input[name="condition-photos"]:checked')?.value || "unknown";
+}
+
+function conditionAvis(){
+  const id = CRITERE_IDS.noteMoyenne;
+  const selected = document.querySelector(`input[name="c${id}"]:checked`);
+  if(selected?.dataset.special === "no_reviews") return "none";
+  return selected ? "present" : "unknown";
+}
+
+function effacerReponseCritere(key){
+  const id = CRITERE_IDS[key];
+  if(id === undefined) return;
+  document.querySelectorAll(`input[name="c${id}"], input[data-check-crit="${id}"]`).forEach(input => { input.checked = false; });
+  const note = document.getElementById("crit-"+id)?.querySelector(".zone-note");
+  if(note) note.innerHTML = "";
+}
+
+function masquerCritereConditionnel(key, masquer){
+  const id = CRITERE_IDS[key];
+  const element = id === undefined ? null : document.getElementById("crit-"+id);
+  if(!element) return;
+  if(masquer) effacerReponseCritere(key);
+  element.classList.toggle("condition-hidden", masquer);
+  element.toggleAttribute("inert", masquer);
+  element.setAttribute("aria-hidden", masquer ? "true" : "false");
+}
+
+function majConditionsQuestionnaire(){
+  const sansPhotos = conditionPhotos() === "none";
+  const sansAvis = conditionAvis() === "none";
+  PHOTO_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansPhotos));
+  REVIEW_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansAvis));
+  if(sansPhotos) donneesAnalyse.nbPhotos = 0;
+  if(sansAvis){
+    donneesAnalyse.note = null;
+    donneesAnalyse.nbAvis = 0;
+    const noteInput = document.getElementById("d-note");
+    const reviewsInput = document.getElementById("d-avis");
+    if(noteInput) noteInput.value = "";
+    if(reviewsInput) reviewsInput.value = "0";
+  }
+  calc();
+  programmerSauvegardeBrouillonD1();
 }
 let profilActif = "default";
 let collecteDiagnosticEnCours = false;
@@ -2340,6 +2404,7 @@ function reinitialiserAnalyse(){
   analysisVersionActif = null;
   dernierPayloadAuditComplete = "";
   collecteDiagnosticValidee = false;
+  majConditionsQuestionnaire();
   calc();
 }
 
@@ -2426,11 +2491,25 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   collecteDiagnosticValidee = true;
   preRemplirDonneesObservees();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
+  const photoPresence = scorePrefill?.conditions?.photoPresence;
+  if(photoPresence === "present" || photoPresence === "none"){
+    const radio = document.querySelector(`input[name="condition-photos"][value="${photoPresence}"]`);
+    if(radio) radio.checked = true;
+  }
+  if(scorePrefill?.conditions?.reviewsPresence === "none"){
+    const noReviews = document.querySelector(`input[name="c${CRITERE_IDS.noteMoyenne}"][data-special="no_reviews"]`);
+    if(noReviews) noReviews.checked = true;
+  }
+  majConditionsQuestionnaire();
   calc();
 }
 
 function neutraliserCollecteDiagnosticGratuit(){
   collecteDiagnosticValidee = false;
+  document.querySelectorAll('input[name="condition-photos"]').forEach((input) => { input.checked = false; });
+  [CRITERE_IDS.noteMoyenne, ...PHOTO_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key]), ...REVIEW_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key])]
+    .filter(Boolean)
+    .forEach(effacerReponseCritere);
   ["d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"].forEach((id) => {
     const field = document.getElementById(id);
     if(field) field.value = "";
@@ -2451,6 +2530,7 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(note) note.innerHTML = "";
   });
   donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  majConditionsQuestionnaire();
   calc();
 }
 
@@ -2503,12 +2583,16 @@ async function lancerCollecteDiagnosticGratuit(){
 function collecterReponses(){
   const reponses = {};
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    const element = document.getElementById("crit-"+cr.id);
+    if(element?.classList.contains("condition-hidden")) return;
+    const selected = document.querySelector(`input[name="c${cr.id}"]:checked`);
+    if(selected?.dataset.special === "no_reviews") return;
     const p = lirePoints(cr.id);
     if(p !== null){
       const el = document.getElementById("crit-"+cr.id);
       const badge = el?.querySelector(".badges")?.textContent || "";
       const statut = badge.includes("AUTO") ? "automatique" : badge.includes("PRÉ-REMPLI") ? "pre-remplie" : "manuelle";
-      reponses[cr.key] = {points:p, statut};
+      reponses[cr.key] = {points:p, statut, selectedOptionIndex:Number(selected?.dataset.optionIndex)};
     }
   }));
   return reponses;
@@ -2716,7 +2800,10 @@ function appliquerReponses(reponses){
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(reponses[cr.key] === undefined) return;
     const valeur = typeof reponses[cr.key] === "object" ? reponses[cr.key].points : reponses[cr.key];
-    const radio = [...document.querySelectorAll(`input[name="c${cr.id}"]`)].find(r => parseFloat(r.value) === parseFloat(valeur));
+    const optionIndex = typeof reponses[cr.key] === "object" ? reponses[cr.key].selectedOptionIndex : null;
+    const radio = Number.isInteger(optionIndex)
+      ? document.querySelector(`input[name="c${cr.id}"][data-option-index="${optionIndex}"]`)
+      : [...document.querySelectorAll(`input[name="c${cr.id}"]`)].find(r => parseFloat(r.value) === parseFloat(valeur) && !r.dataset.special);
     if(radio) radio.checked = true;
   }));
 }
@@ -2747,6 +2834,10 @@ function sauvegarderDiagnostic(){
       analysisVersionActif,
       auditSourceActif,
       auditFallbackLocalId,
+      questionnaireVersion:QUESTIONNAIRE_VERSION,
+      photoPresence:conditionPhotos(),
+      reviewsPresence:conditionAvis(),
+      currentStep:"questionnaire",
       reponses:collecterReponses(),
       score:Math.round(calculScoreDetail().total),
       date:new Date().toISOString(),
@@ -2775,8 +2866,18 @@ function reprendreDiagnostic(){
     analysisVersionActif = estNombre(data.analysisVersionActif) ? Math.max(1, nEntier(data.analysisVersionActif)) : null;
     auditSourceActif = data.auditSourceActif || null;
     auditFallbackLocalId = data.auditFallbackLocalId || null;
+    if(data.photoPresence && data.photoPresence !== "unknown"){
+      const photoRadio = document.querySelector(`input[name="condition-photos"][value="${data.photoPresence}"]`);
+      if(photoRadio) photoRadio.checked = true;
+    }
+    if(data.reviewsPresence === "none"){
+      const noteId = CRITERE_IDS.noteMoyenne;
+      const noReviews = document.querySelector(`input[name="c${noteId}"][data-special="no_reviews"]`);
+      if(noReviews) noReviews.checked = true;
+    }
     collecteDiagnosticValidee = Boolean(data.reponses && Object.keys(data.reponses).length);
     appliquerReponses(data.reponses);
+    majConditionsQuestionnaire();
     afficherProfilUtilise();
     calc();
     statut("Dernier diagnostic repris.", "info");
@@ -2790,8 +2891,119 @@ function effacerDiagnostic(){
   statut("Diagnostic enregistré effacé.", "info");
 }
 
+let timerBrouillonD1 = null;
+let sauvegardeBrouillonD1EnCours = false;
+
+function champsBrouillonD1(){
+  const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"];
+  return Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || ""]));
+}
+
+function appliquerChampsBrouillonD1(champs){
+  Object.entries(champs || {}).forEach(([id, value]) => {
+    const field = document.getElementById(id);
+    if(field) field.value = typeof value === "string" ? value : "";
+  });
+}
+
+function payloadBrouillonD1(){
+  return {
+    questionnaireVersion:QUESTIONNAIRE_VERSION,
+    photoPresence:conditionPhotos(),
+    reviewsPresence:conditionAvis(),
+    fields:champsBrouillonD1(),
+    profileKey:profilActif,
+    responses:collecterReponses(),
+    observedData:donneesAnalyse
+  };
+}
+
+async function enregistrerBrouillonD1(manuel = false){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
+  if(sauvegardeBrouillonD1EnCours) return;
+  sauvegardeBrouillonD1EnCours = true;
+  const button = document.getElementById("btn-brouillon-d1");
+  if(manuel && button) button.disabled = true;
+  try{
+    const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+      method:"PUT",
+      credentials:"same-origin",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({
+        analysisId,
+        reportType:"free",
+        currentStep:"questionnaire",
+        answers:payloadBrouillonD1()
+      })
+    });
+    if(response.status === 401){ window.location.href = "/admin-login"; return; }
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok || !data.success) throw new Error("draft_save_failed");
+    const time = new Intl.DateTimeFormat("fr-FR", {hour:"2-digit",minute:"2-digit"}).format(new Date(data.draft.updatedAt));
+    const status = document.getElementById("statut-brouillon-d1");
+    if(status) status.textContent = `Brouillon enregistré à ${time}.`;
+  }catch{
+    const status = document.getElementById("statut-brouillon-d1");
+    if(status) status.textContent = "Le brouillon n’a pas pu être enregistré.";
+  }finally{
+    sauvegardeBrouillonD1EnCours = false;
+    if(manuel && button) button.disabled = false;
+  }
+}
+
+function programmerSauvegardeBrouillonD1(){
+  if(!auditPublicIdActif) return;
+  window.clearTimeout(timerBrouillonD1);
+  timerBrouillonD1 = window.setTimeout(() => enregistrerBrouillonD1(false), 1200);
+}
+
+async function restaurerBrouillonD1(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
+  const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+    credentials:"same-origin",
+    headers:{"Accept":"application/json"}
+  });
+  if(response.status === 401){ window.location.href = "/admin-login"; return; }
+  if(response.status === 404) return;
+  const data = await response.json().catch(() => ({}));
+  const draft = data.draft;
+  if(!response.ok || !data.success || draft?.reportType !== "free" || draft?.currentStep !== "questionnaire") return;
+  const answers = draft.answers || {};
+  appliquerChampsBrouillonD1(answers.fields);
+  profilActif = answers.profileKey || profilActif;
+  donneesAnalyse = answers.observedData && typeof answers.observedData === "object" ? answers.observedData : donneesAnalyse;
+  if(answers.photoPresence && answers.photoPresence !== "unknown"){
+    const radio = document.querySelector(`input[name="condition-photos"][value="${answers.photoPresence}"]`);
+    if(radio) radio.checked = true;
+  }
+  if(answers.reviewsPresence === "none"){
+    const noReviews = document.querySelector(`input[name="c${CRITERE_IDS.noteMoyenne}"][data-special="no_reviews"]`);
+    if(noReviews) noReviews.checked = true;
+  }
+  appliquerReponses(answers.responses);
+  collecteDiagnosticValidee = true;
+  majConditionsQuestionnaire();
+  afficherProfilUtilise();
+  const time = new Intl.DateTimeFormat("fr-FR", {hour:"2-digit",minute:"2-digit"}).format(new Date(draft.updatedAt));
+  const status = document.getElementById("statut-brouillon-d1");
+  if(status) status.textContent = `Brouillon restauré, enregistré à ${time}.`;
+}
+
+async function supprimerBrouillonD1ApresFinalisation(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
+  await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+    method:"DELETE",
+    credentials:"same-origin",
+    headers:{"Accept":"application/json"}
+  }).catch(() => {});
+}
+
 afficherProfilUtilise();
 initialiserContexteCommandeAdmin();
+document.getElementById("formulaire")?.addEventListener("input", programmerSauvegardeBrouillonD1);
 
 function champVide(id){
   const champ = document.getElementById(id);
@@ -2869,6 +3081,7 @@ async function initialiserContexteCommandeAdmin(){
       button.hidden = !premiumAllowed;
       button.disabled = !premiumAllowed;
     });
+  await restaurerBrouillonD1();
 }
 
 async function verifierAutorisationAuditPremium(){
@@ -4375,8 +4588,20 @@ function validerMiseEnPageRapport(){
 }
 
 async function apercuImpression(){
+  if(!questionnairePretPourFinalisation()) return;
   if(!await assurerVersionAnalyseRapport()) return;
   if(genererRapport()) window.print();
+}
+
+function questionnairePretPourFinalisation(){
+  const photoPresence = document.querySelector('input[name="condition-photos"]:checked');
+  const incomplete = [...document.querySelectorAll(".critere:not(.condition-hidden)")]
+    .filter(element => !element.querySelector('input[type="radio"]:checked'));
+  if(!collecteDiagnosticValidee || !photoPresence || incomplete.length){
+    statut("Complétez toutes les questions visibles avant de finaliser le rapport.", "erreur");
+    return false;
+  }
+  return true;
 }
 
 function slugPDF(valeur){
@@ -5012,6 +5237,10 @@ function nomFichierAuditPremium(){
 async function telechargerAuditPremium(){
   const btns = [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")].filter(Boolean);
   btns.forEach(b => { b.disabled = true; });
+  if(!questionnairePretPourFinalisation()){
+    btns.forEach(b => { b.disabled = false; });
+    return;
+  }
   if(!await verifierAutorisationAuditPremium()){
     btns.forEach(b => { b.hidden = true; b.disabled = true; });
     statut("L’Audit Premium nécessite une commande payée admissible.", "erreur");
@@ -5048,6 +5277,7 @@ async function telechargerAuditPremium(){
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
     }
     pdf.save(filename);
+    await supprimerBrouillonD1ApresFinalisation();
     await enregistrerPdfGenereBackOffice(filename);
     statut(`Audit Premium généré (${pages.length} pages).`, "info");
   }catch(e){
@@ -5060,6 +5290,7 @@ async function telechargerAuditPremium(){
 
 async function telechargerPDF(){
   const btns = [document.getElementById("btn-pdf"), document.getElementById("btn-pdf-rapport")].filter(Boolean);
+  if(!questionnairePretPourFinalisation()) return;
   if(!await assurerVersionAnalyseRapport()) return;
   await chargerLogoRapportDataUrl();
   if(!genererRapport()) return;
@@ -5108,6 +5339,7 @@ async function telechargerPDF(){
       return;
     }
     pdf.save(filename);
+    await supprimerBrouillonD1ApresFinalisation();
     await enregistrerPdfGenereBackOffice(filename);
   }catch(e){
     console.error("Génération PDF échouée", e);

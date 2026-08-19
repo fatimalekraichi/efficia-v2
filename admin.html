@@ -49,6 +49,26 @@
       <section class="admin-card">
         <div class="admin-section-heading admin-section-heading-row">
           <div>
+            <span class="admin-kicker">Sauvegardes D1</span>
+            <h2>Audits en cours</h2>
+            <p>Brouillons incomplets enregistrés depuis les questionnaires authentifiés.</p>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Entreprise</th><th>Ville</th><th>Type</th><th>Étape</th><th>Mis à jour</th><th>Actions</th></tr>
+            </thead>
+            <tbody data-admin-drafts>
+              <tr><td colspan="6" class="admin-empty">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-section-heading admin-section-heading-row">
+          <div>
             <span class="admin-kicker">Score Efficia</span>
             <h2>Diagnostics gratuits à traiter</h2>
             <p>Demandes reçues depuis le diagnostic public, indépendamment des commandes Stripe.</p>

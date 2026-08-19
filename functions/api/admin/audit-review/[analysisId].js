@@ -3,6 +3,7 @@ import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrd
 import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
+import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
 import { executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
 import { loadPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
@@ -113,6 +114,14 @@ async function saveManualReview({ context, db, analysisId, payload }) {
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
 
   const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, payload || {});
+  const incompleteFields = incompleteQuestionnaireFields(manualReview);
+  if (incompleteFields.length) {
+    return jsonResponse({
+      success: false,
+      error: "INCOMPLETE_QUESTIONNAIRE",
+      missing: incompleteFields,
+    }, 409);
+  }
   if (manualReview.reportType === "premium") {
     const authorization = await loadPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
@@ -179,6 +188,8 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     }, 502);
   }
 
+  await db.prepare(`DELETE FROM audit_drafts WHERE analysis_id = ?`).bind(analysisId).run();
+
   const refreshed = await loadAnalysisById(db, analysisId);
   return jsonResponse({
     success: true,
@@ -205,6 +216,10 @@ async function approveAnalysis(db, analysisId) {
   }
   let manualReview = null;
   try { manualReview = JSON.parse(row?.manual_review_json || "null"); } catch { manualReview = null; }
+  const incompleteFields = incompleteQuestionnaireFields(manualReview || {});
+  if (incompleteFields.length) {
+    return jsonResponse({ success: false, error: "INCOMPLETE_QUESTIONNAIRE" }, 409);
+  }
   const fullAnalysis = row?.report_type === "premium" ? await loadAnalysisById(db, analysisId) : null;
   const executionPlan = fullAnalysis ? buildDocumentModelFromAnalysis(fullAnalysis).executionPlan : null;
   const executionIssues = row?.report_type === "premium" ? executionPlanApprovalIssues(executionPlan, manualReview?.executionPlan) : [];
