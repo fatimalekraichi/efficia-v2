@@ -21,6 +21,77 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 const cleanText = (value, maxLength) => (typeof value === "string" ? value.trim().slice(0, maxLength) : "");
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
+const ANALYZE_ERROR_CODES = new Set([
+  "ANALYZE_UNAUTHORIZED",
+  "CONNECTOR_CONFIGURATION_ERROR",
+  "D1_BINDING_MISSING",
+  "INVALID_DIAGNOSTIC_REQUEST",
+  "INVALID_JSON",
+  "MISSING_ANALYSIS_INPUT",
+  "DIAGNOSTIC_LOOKUP_FAILED",
+  "AMBIGUOUS_CANDIDATES",
+  "SELECTED_CANDIDATE_NOT_FOUND",
+  "BUSINESS_NOT_FOUND",
+  "COLLECTION_FAILED",
+  "INSUFFICIENT_BUSINESS_DATA",
+  "D1_PERSISTENCE_FAILED",
+  "ANALYZE_INTERNAL_ERROR",
+]);
+
+function fallbackAnalyzeErrorCode(status) {
+  if (status === 400) return "ANALYZE_BAD_REQUEST";
+  if (status === 401) return "ANALYZE_UNAUTHORIZED";
+  if (status === 403) return "ANALYZE_FORBIDDEN";
+  if (status === 404) return "ANALYZE_NOT_FOUND";
+  if (status === 409) return "ANALYZE_CONFLICT";
+  if (status === 422) return "ANALYZE_UNPROCESSABLE_ENTITY";
+  if (Number.isInteger(status) && status >= 500) return "ANALYZE_SERVER_ERROR";
+  return "ANALYZE_HTTP_ERROR";
+}
+
+function analyzeResponseErrorCode(data, status) {
+  return ANALYZE_ERROR_CODES.has(data?.error_code)
+    ? data.error_code
+    : fallbackAnalyzeErrorCode(status);
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function redactErrorText(value, submission) {
+  if (typeof value !== "string") return null;
+  let output = value.slice(0, 500)
+    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, "[redacted]")
+    .replace(/https?:\/\/\S+/gi, "[redacted-url]")
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, "[redacted-id]");
+  for (const sensitiveValue of [
+    submission?.firstName,
+    submission?.email,
+    submission?.companyName,
+    submission?.city,
+    submission?.googleBusinessUrl,
+    submission?.idempotencyKey,
+  ]) {
+    if (typeof sensitiveValue === "string" && sensitiveValue) {
+      output = output.replace(new RegExp(escapeRegExp(sensitiveValue), "gi"), "[redacted]");
+    }
+  }
+  return output;
+}
+
+function logDiagnosticFailure(failure, submission) {
+  const error = failure.error;
+  console.error("Diagnostic request failed.", {
+    phase: failure.phase,
+    http_status: Number.isInteger(failure.status) ? failure.status : null,
+    error_code: failure.errorCode,
+    error: {
+      name: typeof error?.name === "string" ? error.name : null,
+      message: redactErrorText(error?.message, submission),
+      cause_message: redactErrorText(error?.cause?.message, submission),
+    },
+  });
+}
+
 const sendToMailerLite = (apiKey, payload) => fetch(MAILERLITE_ENDPOINT, {
   method: "POST",
   headers: {
@@ -34,36 +105,65 @@ const sendToMailerLite = (apiKey, payload) => fetch(MAILERLITE_ENDPOINT, {
 async function createDiagnosticAnalysis(context, submission) {
   const connectorToken = cleanText(context.env.CONNECTOR_TOKEN, 500);
   if (!connectorToken || !context.env.ORDERS_DB) {
-    return { ok: false, status: 500 };
+    return {
+      ok: false,
+      status: 500,
+      phase: "analysis_request_configuration",
+      errorCode: "ANALYZE_CLIENT_CONFIGURATION_ERROR",
+    };
   }
 
   const origin = new URL(context.request.url).origin;
-  const response = await fetch(`${origin}/api/analyze`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${connectorToken}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      nom: submission.googleBusinessUrl ? "" : submission.companyName,
-      ville: submission.googleBusinessUrl ? "" : submission.city,
-      activite: "",
-      googleBusinessUrl: submission.googleBusinessUrl,
-      diagnosticRequest: {
-        requestId: crypto.randomUUID(),
-        idempotencyKey: submission.idempotencyKey,
-        firstName: submission.firstName,
-        email: submission.email,
-        companyName: submission.companyName,
-        city: submission.city,
-        googleBusinessUrl: submission.googleBusinessUrl,
+  let response;
+  try {
+    response = await fetch(`${origin}/api/analyze`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${connectorToken}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        nom: submission.googleBusinessUrl ? "" : submission.companyName,
+        ville: submission.googleBusinessUrl ? "" : submission.city,
+        activite: "",
+        googleBusinessUrl: submission.googleBusinessUrl,
+        diagnosticRequest: {
+          requestId: crypto.randomUUID(),
+          idempotencyKey: submission.idempotencyKey,
+          firstName: submission.firstName,
+          email: submission.email,
+          companyName: submission.companyName,
+          city: submission.city,
+          googleBusinessUrl: submission.googleBusinessUrl,
+        },
+      }),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      phase: "analysis_request",
+      errorCode: "ANALYZE_FETCH_FAILED",
+      error,
+    };
+  }
   const data = await response.json().catch(() => null);
-  if (!response.ok || !data?.analysisId || data.status !== "awaiting_review") {
-    return { ok: false, status: response.status || 502, phase: "analysis_request" };
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      phase: "analysis_request",
+      errorCode: analyzeResponseErrorCode(data, response.status),
+    };
+  }
+  if (!data?.analysisId || data.status !== "awaiting_review") {
+    return {
+      ok: false,
+      status: response.status,
+      phase: "analysis_response_validation",
+      errorCode: "ANALYZE_INVALID_SUCCESS_RESPONSE",
+    };
   }
 
   const benchmarkResponse = await fetch(`${origin}/api/benchmark`, {
@@ -76,7 +176,12 @@ async function createDiagnosticAnalysis(context, submission) {
     body: JSON.stringify({ analysisId: data.analysisId }),
   });
   if (!benchmarkResponse.ok) {
-    return { ok: false, status: benchmarkResponse.status || 502, phase: "benchmark_request" };
+    return {
+      ok: false,
+      status: benchmarkResponse.status || 502,
+      phase: "benchmark_request",
+      errorCode: "BENCHMARK_HTTP_ERROR",
+    };
   }
   return {
     ok: true,
@@ -163,14 +268,14 @@ export async function onRequestPost(context) {
     } catch (error) {
       diagnostic = {
         ok: false,
-        status: 502,
+        status: null,
         phase: typeof error?.phase === "string" ? error.phase : "internal_request",
+        errorCode: "DIAGNOSTIC_INTERNAL_EXCEPTION",
+        error,
       };
     }
     if (!diagnostic.ok) {
-      console.error("Diagnostic request failed.", {
-        phase: diagnostic.phase || "analysis_request",
-      });
+      logDiagnosticFailure(diagnostic, submission);
       return jsonResponse({ success: false, error: ERROR_MESSAGE }, 502);
     }
     if (diagnostic.idempotent && diagnostic.mailerLiteStatus === "synced") {

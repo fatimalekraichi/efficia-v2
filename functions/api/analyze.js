@@ -30,6 +30,12 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
   headers: { "Content-Type": "application/json", ...CORS_HEADERS },
 });
 
+const jsonError = (errorCode, error, status, details = {}) => jsonResponse({
+  error,
+  error_code: errorCode,
+  ...details,
+}, status);
+
 const d1Nullable = (value) => (value === undefined ? null : value);
 
 function logD1Error(error, fallbackPhase) {
@@ -96,13 +102,19 @@ export async function onRequestPost(context) {
 
   // Auth Bearer.
   const auth = verifyConnectorToken(context);
-  if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status);
+  if (!auth.ok) {
+    return jsonError(
+      auth.status === 401 ? "ANALYZE_UNAUTHORIZED" : "CONNECTOR_CONFIGURATION_ERROR",
+      auth.error,
+      auth.status,
+    );
+  }
 
   // Base D1.
   const db = env.ORDERS_DB;
   if (!db) {
     console.error("analyze: binding ORDERS_DB indisponible.");
-    return jsonResponse({ error: "Server configuration error." }, 500);
+    return jsonError("D1_BINDING_MISSING", "Server configuration error.", 500);
   }
 
   // Entrée : body JSON, sinon paramètres d'URL.
@@ -141,15 +153,15 @@ export async function onRequestPost(context) {
     if (payload?.diagnosticRequest !== undefined) {
       const normalizedDiagnosticRequest = normalizeInternalDiagnosticRequest(payload.diagnosticRequest);
       if (!normalizedDiagnosticRequest.ok) {
-        return jsonResponse({ error: "Invalid diagnostic request." }, 400);
+        return jsonError("INVALID_DIAGNOSTIC_REQUEST", "Invalid diagnostic request.", 400);
       }
       diagnosticRequest = normalizedDiagnosticRequest.data;
     }
   } catch {
-    return jsonResponse({ error: "Invalid JSON body." }, 400);
+    return jsonError("INVALID_JSON", "Invalid JSON body.", 400);
   }
   if (!observationQuery && !googleBusinessUrl && (!nom || !ville)) {
-    return jsonResponse({ error: "Missing required parameters: nom, ville or observationQuery." }, 400);
+    return jsonError("MISSING_ANALYSIS_INPUT", "Missing required parameters: nom, ville or observationQuery.", 400);
   }
 
   if (diagnosticRequest) {
@@ -165,7 +177,7 @@ export async function onRequestPost(context) {
       }
     } catch (error) {
       console.error("analyze: diagnostic request lookup failed", { migration_required: true });
-      return jsonResponse({ error: "Storage configuration error." }, 500);
+      return jsonError("DIAGNOSTIC_LOOKUP_FAILED", "Storage configuration error.", 500);
     }
   }
 
@@ -186,16 +198,17 @@ export async function onRequestPost(context) {
     // administrateur n'a pas tranché. Aucune écriture D1 dans cette branche.
     if (result.error === "AMBIGUOUS_CANDIDATES") {
       console.log("analyze:ambiguous-candidates", { count: result.candidates?.length || 0 });
-      return jsonResponse({
-        error: "AMBIGUOUS_CANDIDATES",
+      return jsonError("AMBIGUOUS_CANDIDATES", "AMBIGUOUS_CANDIDATES", 409, {
         message: result.message,
         candidates: result.candidates || [],
-      }, 409);
+      });
     }
     // Le candidat choisi manuellement n'a pas pu être retrouvé (résultats
     // Outscraper changés entre les deux requêtes) — pas plus d'écriture D1.
     if (result.error === "SELECTED_CANDIDATE_NOT_FOUND") {
-      return jsonResponse({ error: "SELECTED_CANDIDATE_NOT_FOUND", message: result.message }, 409);
+      return jsonError("SELECTED_CANDIDATE_NOT_FOUND", "SELECTED_CANDIDATE_NOT_FOUND", 409, {
+        message: result.message,
+      });
     }
     if (result.code === 404) {
       // collectFiche() distingue "aucun résultat brut" (message par défaut)
@@ -203,10 +216,10 @@ export async function onRequestPost(context) {
       // result.message = "Aucune entreprise fiable trouvée.") : on relaie ce
       // message précis plutôt que de l'écraser, sans changer le code HTTP ni
       // la forme de la réponse existante.
-      return jsonResponse({ error: result.message || "No business found." }, 404);
+      return jsonError("BUSINESS_NOT_FOUND", result.message || "No business found.", 404);
     }
     console.error("analyze: collecte échouée", result.code, result.error);
-    return jsonResponse({ error: "Collection failed." }, 502);
+    return jsonError("COLLECTION_FAILED", "Collection failed.", 502);
   }
 
   // 2) Normalisation.
@@ -286,7 +299,7 @@ export async function onRequestPost(context) {
   const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
 
   if (![storedNom, storedVille, query].every((value) => typeof value === "string" && value.trim())) {
-    return jsonResponse({ error: "Insufficient business data for storage." }, 422);
+    return jsonError("INSUFFICIENT_BUSINESS_DATA", "Insufficient business data for storage.", 422);
   }
 
   console.log("analyze:saving-d1");
@@ -343,7 +356,7 @@ export async function onRequestPost(context) {
     await analysisStatement.run();
   } catch (err) {
     logD1Error(err, "analysis_insert");
-    return jsonResponse({ error: "Storage failed." }, 500);
+    return jsonError("D1_PERSISTENCE_FAILED", "Storage failed.", 500);
   }
 
   // 4) Réponse.
@@ -364,6 +377,6 @@ export async function onRequestPost(context) {
       phase: "request_processing",
       name: typeof err?.name === "string" ? err.name : "Error",
     });
-    return jsonResponse({ error: "Internal server error." }, 500);
+    return jsonError("ANALYZE_INTERNAL_ERROR", "Internal server error.", 500);
   }
 }

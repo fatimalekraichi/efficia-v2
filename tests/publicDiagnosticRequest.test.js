@@ -115,19 +115,34 @@ const makeSubscribeContext = (db, payload) => ({
   },
 });
 
-function installFetchRouter({ db, mailerLiteOk = true, benchmarkOk = true, sparseBusiness = false }) {
+function installFetchRouter({
+  db,
+  mailerLiteOk = true,
+  benchmarkOk = true,
+  sparseBusiness = false,
+  transformAnalyzeBody = null,
+  analyzeEnv = {},
+  analyzeError = null,
+  analyzeBoundaryResponse = null,
+}) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(String(input));
     calls.push({ url: url.href, options });
     if (url.pathname === "/api/analyze") {
+      if (analyzeError) throw analyzeError;
+      if (analyzeBoundaryResponse) return analyzeBoundaryResponse();
+      const requestOptions = transformAnalyzeBody
+        ? { ...options, body: JSON.stringify(transformAnalyzeBody(JSON.parse(options.body))) }
+        : options;
       return analyze({
-        request: new Request(url, options),
+        request: new Request(url, requestOptions),
         env: {
           CONNECTOR_TOKEN: TOKEN,
           OUTSCRAPER_API_KEY: "local-outscraper-key",
           ORDERS_DB: db,
+          ...analyzeEnv,
         },
       });
     }
@@ -257,6 +272,170 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
   }
 });
 
+test("subscribe respecte le contrat POST réel de /api/analyze pour les deux parcours", async () => {
+  for (const payload of [diagnosticPayload(), urlOnlyDiagnosticPayload()]) {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db });
+    try {
+      const response = await subscribe(makeSubscribeContext(db, payload));
+      assert.equal(response.status, 200);
+
+      const call = router.calls.find(({ url }) => new URL(url).pathname === "/api/analyze");
+      assert.ok(call);
+      assert.equal(call.url, `${PREVIEW_ORIGIN}/api/analyze`);
+      assert.equal(call.options.method, "POST");
+      const headers = new Headers(call.options.headers);
+      assert.equal(headers.get("Authorization"), `Bearer ${TOKEN}`);
+      assert.equal(headers.get("Content-Type"), "application/json");
+      assert.equal(headers.get("Accept"), "application/json");
+
+      const body = JSON.parse(call.options.body);
+      assert.deepEqual(Object.keys(body).sort(), [
+        "activite", "diagnosticRequest", "googleBusinessUrl", "nom", "ville",
+      ]);
+      assert.equal(body.activite, "");
+      assert.equal(typeof body.nom, "string");
+      assert.equal(typeof body.ville, "string");
+      assert.equal(typeof body.googleBusinessUrl, "string");
+      assert.deepEqual(Object.keys(body.diagnosticRequest).sort(), [
+        "city", "companyName", "email", "firstName", "googleBusinessUrl",
+        "idempotencyKey", "requestId",
+      ]);
+      assert.match(body.diagnosticRequest.requestId, /^[0-9a-f-]{36}$/i);
+
+      if (payload.google_business_url) {
+        assert.equal(body.nom, "");
+        assert.equal(body.ville, "");
+        assert.equal(body.googleBusinessUrl, payload.google_business_url);
+      } else {
+        assert.equal(body.nom, payload.company_name);
+        assert.equal(body.ville, payload.city);
+        assert.equal(body.googleBusinessUrl, "");
+      }
+    } finally {
+      router.restore();
+    }
+  }
+});
+
+test("l’intégration détecte un nom de champ incorrect et un champ obligatoire absent", async () => {
+  const cases = [
+    {
+      payload: urlOnlyDiagnosticPayload(),
+      transformAnalyzeBody: (body) => {
+        const { googleBusinessUrl, ...wrongBody } = body;
+        return { ...wrongBody, google_business_link: googleBusinessUrl };
+      },
+    },
+    {
+      payload: diagnosticPayload(),
+      transformAnalyzeBody: ({ ville, ...body }) => body,
+    },
+  ];
+
+  for (const scenario of cases) {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db, transformAnalyzeBody: scenario.transformAnalyzeBody });
+    const originalError = console.error;
+    const errorCalls = [];
+    console.error = (...values) => errorCalls.push(values);
+    try {
+      const response = await subscribe(makeSubscribeContext(db, scenario.payload));
+      assert.equal(response.status, 502);
+      assert.equal(db.count("analyses"), 0);
+      assert.equal(db.count("diagnostic_requests"), 0);
+      const boundaryLog = errorCalls.find(([message]) => message === "Diagnostic request failed.");
+      assert.ok(boundaryLog);
+      assert.equal(boundaryLog[1].phase, "analysis_request");
+      assert.equal(boundaryLog[1].http_status, 400);
+      assert.equal(boundaryLog[1].error_code, "MISSING_ANALYSIS_INPUT");
+    } finally {
+      console.error = originalError;
+      router.restore();
+    }
+  }
+});
+
+test("l’intégration conserve un statut 500 et un code fermé renvoyés par /api/analyze", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, analyzeEnv: { ORDERS_DB: undefined } });
+  const originalError = console.error;
+  const errorCalls = [];
+  console.error = (...values) => errorCalls.push(values);
+  try {
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 502);
+    const boundaryLog = errorCalls.find(([message]) => message === "Diagnostic request failed.");
+    assert.ok(boundaryLog);
+    assert.equal(boundaryLog[1].phase, "analysis_request");
+    assert.equal(boundaryLog[1].http_status, 500);
+    assert.equal(boundaryLog[1].error_code, "D1_BINDING_MISSING");
+    assert.deepEqual(boundaryLog[1].error, { name: null, message: null, cause_message: null });
+  } finally {
+    console.error = originalError;
+    router.restore();
+  }
+});
+
+test("l’intégration conserve une exception de transport sûre à la frontière analyze", async () => {
+  const db = new LocalD1();
+  const cause = new Error(`cause pour ${KEY_ONE} à Bruxelles`);
+  const analyzeError = new TypeError(
+    "transport pour FATIMA@EXAMPLE.COM, Fatima et Entreprise Test via https://www.google.com/maps/place/Test",
+    { cause },
+  );
+  const router = installFetchRouter({ db, analyzeError });
+  const originalError = console.error;
+  const errorCalls = [];
+  console.error = (...values) => errorCalls.push(values);
+  try {
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 502);
+    const boundaryLog = errorCalls.find(([message]) => message === "Diagnostic request failed.");
+    assert.ok(boundaryLog);
+    assert.equal(boundaryLog[1].phase, "analysis_request");
+    assert.equal(boundaryLog[1].http_status, null);
+    assert.equal(boundaryLog[1].error_code, "ANALYZE_FETCH_FAILED");
+    assert.equal(boundaryLog[1].error.name, "TypeError");
+    assert.match(boundaryLog[1].error.message, /\[redacted\]/);
+    assert.match(boundaryLog[1].error.cause_message, /\[redacted-id\]/);
+    assert.doesNotMatch(
+      JSON.stringify(errorCalls),
+      /Fatima|fatima@example\.com|Entreprise Test|Bruxelles|google\.com|51ed6ee4/i,
+    );
+  } finally {
+    console.error = originalError;
+    router.restore();
+  }
+});
+
+test("la frontière conserve un refus HTTP non JSON sans journaliser sa réponse brute", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({
+    db,
+    analyzeBoundaryResponse: () => new Response("<html>access denied</html>", {
+      status: 403,
+      headers: { "Content-Type": "text/html" },
+    }),
+  });
+  const originalError = console.error;
+  const errorCalls = [];
+  console.error = (...values) => errorCalls.push(values);
+  try {
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 502);
+    const boundaryLog = errorCalls.find(([message]) => message === "Diagnostic request failed.");
+    assert.ok(boundaryLog);
+    assert.equal(boundaryLog[1].phase, "analysis_request");
+    assert.equal(boundaryLog[1].http_status, 403);
+    assert.equal(boundaryLog[1].error_code, "ANALYZE_FORBIDDEN");
+    assert.doesNotMatch(JSON.stringify(errorCalls), /access denied|<html>/i);
+  } finally {
+    console.error = originalError;
+    router.restore();
+  }
+});
+
 test("un échec D1 empêche la confirmation et ne laisse aucune analyse orpheline", async () => {
   const db = new LocalD1({ failBatch: true });
   const router = installFetchRouter({ db });
@@ -283,6 +462,11 @@ test("un échec D1 empêche la confirmation et ne laisse aucune analyse orphelin
     assert.equal(d1Log[1].phase, "atomic_batch");
     assert.equal(d1Log[1].name, "Error");
     assert.equal(d1Log[1].message, "local_batch_failure");
+    const boundaryLog = errorCalls.find(([message]) => message === "Diagnostic request failed.");
+    assert.ok(boundaryLog);
+    assert.equal(boundaryLog[1].phase, "analysis_request");
+    assert.equal(boundaryLog[1].http_status, 500);
+    assert.equal(boundaryLog[1].error_code, "D1_PERSISTENCE_FAILED");
     assert.doesNotMatch(JSON.stringify(errorCalls), /Fatima|fatima@example\.com|Entreprise Test|Bruxelles/i);
   } finally {
     console.error = originalError;
