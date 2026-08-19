@@ -36,6 +36,7 @@ const stepOneErrorMessage = modal?.querySelector("[data-step-one-error]");
 const stepTwoErrorMessage = modal?.querySelector("[data-step-two-error]");
 const unknownGoogleBusinessField = stepTwoForm?.querySelector('input[name="unknownGoogleBusiness"]');
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const ambiguousCandidatesMessage = "Plusieurs fiches correspondent à votre recherche. Indiquez le lien exact de votre fiche Google Business ou précisez davantage le nom de l’entreprise.";
 let lastFocusedElement = null;
 let leadDraft = {};
 let diagnosticIdempotencyKey = "";
@@ -256,7 +257,9 @@ const submitLeadRequest = async (payload) => {
   data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error("Lead submission failed");
+    const error = new Error("Lead submission failed");
+    if (data?.error_code === "AMBIGUOUS_CANDIDATES") error.code = "AMBIGUOUS_CANDIDATES";
+    throw error;
   }
 
   if (!data?.success) {
@@ -370,7 +373,9 @@ stepTwoForm?.addEventListener("submit", async (event) => {
     console.error("diagnostic_request erreur", error);
     setLoading(stepTwoForm, false);
     if (stepTwoErrorMessage) {
-      stepTwoErrorMessage.textContent = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
+      stepTwoErrorMessage.textContent = error?.code === "AMBIGUOUS_CANDIDATES"
+        ? ambiguousCandidatesMessage
+        : "Une erreur est survenue. Merci de réessayer dans quelques instants.";
     }
   }
 });

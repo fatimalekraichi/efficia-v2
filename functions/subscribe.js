@@ -276,6 +276,13 @@ export async function onRequestPost(context) {
     }
     if (!diagnostic.ok) {
       logDiagnosticFailure(diagnostic, submission);
+      if (diagnostic.status === 409 && diagnostic.errorCode === "AMBIGUOUS_CANDIDATES") {
+        return jsonResponse({
+          success: false,
+          error: ERROR_MESSAGE,
+          error_code: "AMBIGUOUS_CANDIDATES",
+        }, 409);
+      }
       return jsonResponse({ success: false, error: ERROR_MESSAGE }, 502);
     }
     if (diagnostic.idempotent && diagnostic.mailerLiteStatus === "synced") {

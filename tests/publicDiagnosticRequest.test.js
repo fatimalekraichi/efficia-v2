@@ -377,6 +377,42 @@ test("l’intégration conserve un statut 500 et un code fermé renvoyés par /a
   }
 });
 
+test("une recherche ambiguë conserve le 409 et affiche le message public dédié", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({
+    db,
+    analyzeBoundaryResponse: () => Response.json({
+      error: "AMBIGUOUS_CANDIDATES",
+      error_code: "AMBIGUOUS_CANDIDATES",
+      candidates: [{ name: "Donnée fournisseur non publique" }],
+    }, { status: 409 }),
+  });
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      success: false,
+      error: "Une erreur est survenue. Merci de réessayer dans quelques instants.",
+      error_code: "AMBIGUOUS_CANDIDATES",
+    });
+    assert.equal(db.count("analyses"), 0);
+    assert.equal(db.count("diagnostic_requests"), 0);
+
+    const app = readFileSync(new URL("../js/app.js", import.meta.url), "utf8");
+    assert.match(app, /data\?\.error_code === "AMBIGUOUS_CANDIDATES"/);
+    assert.match(app, /error\?\.code === "AMBIGUOUS_CANDIDATES"[\s\S]*ambiguousCandidatesMessage[\s\S]*Une erreur est survenue\. Merci de réessayer dans quelques instants\./);
+    assert.match(
+      app,
+      /Plusieurs fiches correspondent à votre recherche\. Indiquez le lien exact de votre fiche Google Business ou précisez davantage le nom de l’entreprise\./,
+    );
+  } finally {
+    console.error = originalError;
+    router.restore();
+  }
+});
+
 test("l’intégration conserve une exception de transport sûre à la frontière analyze", async () => {
   const db = new LocalD1();
   const cause = new Error(`cause pour ${KEY_ONE} à Bruxelles`);
