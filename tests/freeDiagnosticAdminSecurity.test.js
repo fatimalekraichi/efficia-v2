@@ -7,6 +7,9 @@ import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestGet as getContext } from "../functions/api/admin/free-diagnostic-context/[analysisId].js";
 import { onRequestPost as collectDiagnostic } from "../functions/api/admin/free-diagnostic-collect/[analysisId].js";
 import { onRequestPost as authorizePremium } from "../functions/api/admin/premium-audit-authorization/[analysisId].js";
+import { loadAnalysisById } from "../functions/api/analysis/_shared.js";
+import { buildFreeDiagnosticCollectionState } from "../functions/lib/freeDiagnosticProductionLink.js";
+import { calculateScoreDetail } from "../functions/lib/score-efficia/scoreEngine.js";
 
 const ADMIN_SECRET = "local-admin-secret";
 const ANALYSIS_ID = "analysis-free-123";
@@ -213,6 +216,36 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.equal(body.business.activity, "Pâtisserie");
     assert.equal(body.business.activitySource, "detected");
     assert.equal(Object.hasOwn(body.business, "googleBusinessUrl"), false);
+    const historicalEngineOutput = buildFreeDiagnosticCollectionState(await loadAnalysisById(db, ANALYSIS_ID));
+    assert.deepEqual(body.scorePrefill, historicalEngineOutput.scorePrefill);
+    const automaticCriteria = body.scorePrefill.criteria.filter((criterion) => criterion.points !== null);
+    const manualCriteria = body.scorePrefill.criteria.filter((criterion) => criterion.points === null);
+    const prefilledKeys = new Set([
+      "categoriePrincipale", "categoriesSecondaires", "horaires", "adresse",
+      "descriptionRemplie", "servicesPresents",
+    ]);
+    assert.equal(body.scorePrefill.criteria.length, 29);
+    assert.equal(automaticCriteria.length, 7);
+    assert.equal(manualCriteria.length, 22);
+    assert.equal(automaticCriteria.filter((criterion) => prefilledKeys.has(criterion.key)).length, 2);
+    assert.equal(automaticCriteria.filter((criterion) => !prefilledKeys.has(criterion.key)).length, 5);
+    const scoreDetail = calculateScoreDetail(Object.fromEntries(
+      automaticCriteria.map((criterion) => [criterion.key, criterion.points]),
+    ));
+    assert.equal(Math.round(scoreDetail.total), 26);
+    assert.equal(scoreDetail.repondus, 7);
+    assert.equal(scoreDetail.totalCrit, 29);
+    for (const key of [
+      "revendiquee", "horaires", "contact", "adresse", "attributs", "nap",
+      "logoCouverture", "photoRecente", "varietePhotos", "qualitePhotos",
+      "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis", "descriptionQualite",
+      "servicesPresents", "servicesDecrits", "questionsReponses", "liensAction",
+      "publicationRecente", "rythmePublication", "recherchesSpecifiques",
+    ]) {
+      const criterion = body.scorePrefill.criteria.find((item) => item.key === key);
+      assert.equal(criterion?.points, null, `${key} doit rester manuel quand la fixture ne le démontre pas`);
+      assert.equal(criterion?.value, "not_verified");
+    }
     assert.ok(restoreFetch.calls.some((url) => url === GOOGLE_URL));
     assert.ok(restoreFetch.calls.some((url) => new URL(url).searchParams.get("query") === CANONICAL_GOOGLE_URL));
     assert.ok(!restoreFetch.calls.some((url) => new URL(url).hostname === "api.app.outscraper.com" && new URL(url).searchParams.get("query") === GOOGLE_URL));
@@ -236,6 +269,18 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.equal(db.count("orders"), 0);
     assert.equal(db.count("order_items"), 0);
     assert.equal(db.count("order_tasks"), 0);
+
+    const reloadResponse = await getContext({
+      request: new Request(`https://preview.local/api/admin/free-diagnostic-context/${ANALYSIS_ID}`, {
+        headers: { Cookie: await cookie() },
+      }),
+      params: { analysisId: ANALYSIS_ID },
+      env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+    });
+    const reloadBody = await reloadResponse.json();
+    assert.equal(reloadBody.context.collectionAvailable, true);
+    assert.deepEqual(reloadBody.context.scorePrefill, body.scorePrefill);
+    assert.equal(reloadBody.context.collection.company, "Maison Test");
   } finally {
     restoreFetch();
   }
@@ -462,6 +507,12 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.match(html, /Fiche Google introuvable\. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville\./);
   assert.doesNotMatch(html, /placeholder="Concurrent [123]"|placeholder="4,9"|placeholder="315"|placeholder="40"|placeholder="9"|placeholder="6"/);
   assert.doesNotMatch(html, /contexte\.googleBusinessUrl/);
+  assert.match(html, /function appliquerPreRemplissageDiagnosticGratuit\(scorePrefill\)/);
+  assert.match(html, /cocher\(/);
+  assert.match(html, /marquerManuel\(/);
+  assert.match(html, /appliquerCollecteDiagnosticGratuit\(data\.business \|\| \{\}, data\.scorePrefill\)/);
+  assert.match(html, /appliquerCollecteDiagnosticGratuit\(contexte\.collection, contexte\.scorePrefill\)/);
+  assert.match(html, /appliquerPreRemplissageDiagnosticGratuit\(scorePrefill\);\s*calc\(\);/);
   assert.doesNotMatch(html, /clarity|cloudflareinsights/i);
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);

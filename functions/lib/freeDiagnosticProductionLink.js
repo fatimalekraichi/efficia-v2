@@ -3,6 +3,7 @@
 
 import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
 import { loadPremiumAuthorization } from "./premiumAuthorization.js";
+import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -45,6 +46,83 @@ function firstNonEmpty(...values) {
   return "";
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function analysisWithCollectedBenchmark(analysis) {
+  const competitors = Array.isArray(analysis?.business?.competitors) ? analysis.business.competitors : [];
+  if (!competitors.length) return analysis;
+
+  const average = (key) => {
+    const values = competitors.map((item) => numberOrNull(item?.[key])).filter((value) => value !== null);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  };
+  const averages = {
+    rating: numberOrNull(analysis?.benchmark?.averages?.rating) ?? average("rating"),
+    reviews: numberOrNull(analysis?.benchmark?.averages?.reviews) ?? average("reviews"),
+    photos: numberOrNull(analysis?.benchmark?.averages?.photos) ?? average("photos_count"),
+  };
+  const gap = (businessValue, averageValue, savedGap) => {
+    const existing = numberOrNull(savedGap);
+    if (existing !== null) return existing;
+    const observed = numberOrNull(businessValue);
+    return observed !== null && averageValue !== null ? observed - averageValue : null;
+  };
+
+  return {
+    ...analysis,
+    benchmark: {
+      ...(analysis.benchmark || {}),
+      averages,
+      gaps: {
+        rating: gap(analysis.business?.rating, averages.rating, analysis?.benchmark?.gaps?.rating),
+        reviews: gap(analysis.business?.reviews, averages.reviews, analysis?.benchmark?.gaps?.reviews),
+        photos: gap(analysis.business?.photosCount, averages.photos, analysis?.benchmark?.gaps?.photos),
+      },
+    },
+  };
+}
+
+export function buildFreeDiagnosticCollectionState(analysis) {
+  const business = analysis?.business || {};
+  const normalized = business.normalized || {};
+  const fiche = business.fiche || {};
+  const company = firstNonEmpty(business.name, normalized.name, fiche.name, business.nom);
+  const placeId = firstNonEmpty(business.placeId, normalized.place_id, fiche.place_id);
+  const validPlaceId = Boolean(placeId && !/^__[^_]+(?:_[^_]+)*__$/.test(placeId));
+  if (!company || !validPlaceId) return null;
+
+  // Le moteur historique attend un benchmark (moyennes + écarts). Le parcours
+  // gratuit persiste déjà le panel brut : on adapte ces données au contrat du
+  // moteur, sans relancer le fournisseur et sans créer une seconde formule.
+  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis));
+
+  return {
+    business: {
+      company,
+      city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
+      activity: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type, business.activity),
+      activitySource: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type) ? "detected" : "manual",
+      rating: numberOrNull(business.rating),
+      reviews: numberOrNull(business.reviews),
+      photosCount: numberOrNull(business.photosCount),
+      descriptionLength: numberOrNull(business.descriptionLength),
+      localPosition: numberOrNull(business.localPosition),
+      searchQuery: firstNonEmpty(business.searchQuery),
+      competitors: (Array.isArray(business.competitors) ? business.competitors : []).map((competitor) => ({
+        name: firstNonEmpty(competitor?.name),
+        rating: numberOrNull(competitor?.rating),
+        reviews: numberOrNull(competitor?.reviews),
+        photos_count: numberOrNull(competitor?.photos_count),
+      })),
+    },
+    scorePrefill,
+  };
+}
+
 export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
   const business = analysis?.business || {};
   const normalized = business.normalized || {};
@@ -85,6 +163,7 @@ export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
     fiche.type,
   );
   const premiumAllowed = Boolean(paidOrder?.status === "paid");
+  const collectionState = buildFreeDiagnosticCollectionState(analysis);
 
   return {
     requestType: "free_diagnostic",
@@ -103,5 +182,9 @@ export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
     taskId: premiumAllowed ? firstNonEmpty(paidOrder?.task_id) : "",
     premiumAllowed,
     collectionAvailable,
+    ...(collectionState ? {
+      collection: collectionState.business,
+      scorePrefill: collectionState.scorePrefill,
+    } : {}),
   };
 }

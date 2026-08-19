@@ -2,6 +2,7 @@ import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
 import { collectCompetitors } from "../../../lib/collectCompetitors.js";
+import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
 
@@ -39,6 +40,10 @@ function normalizeFiche(fiche = {}) {
     address: normalizeText(fiche.address),
     city: normalizeText(fiche.city),
     borough: normalizeText(fiche.borough),
+    observed_fields: Array.isArray(fiche.observed_fields) ? fiche.observed_fields : [],
+    ...(Array.isArray(fiche.observed_fields) && fiche.observed_fields.includes("services")
+      ? { services: Array.isArray(fiche.services) ? fiche.services : [] }
+      : {}),
   };
 }
 
@@ -247,24 +252,26 @@ export async function onRequestPost(context) {
     return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
   }
 
+  let updatedAnalysis = null;
+  try {
+    updatedAnalysis = await loadAnalysisById(db, analysisId);
+  } catch (error) {
+    console.error("free-diagnostic-collect: failed", {
+      phase: "analysis_reload",
+      error_code: "ANALYSIS_READ_FAILED",
+      name: typeof error?.name === "string" ? error.name : "Error",
+    });
+    return safeFailure("ANALYSIS_READ_FAILED", 500);
+  }
+  const collectionState = buildFreeDiagnosticCollectionState(updatedAnalysis);
+  if (!collectionState) return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
+
   return jsonResponse({
     success: true,
     analysisId,
     status: analysis.status,
     reportType: "free",
-    business: {
-      company,
-      city,
-      activity,
-      activitySource: normalized.category || normalized.type ? "detected" : (activity ? "manual" : "missing"),
-      rating: normalized.rating,
-      reviews: normalized.reviews,
-      photosCount: normalized.photos_count,
-      descriptionLength: normalized.description_length,
-      localPosition: competitorData.position,
-      searchQuery: competitorData.requete,
-      competitors: competitorData.concurrents,
-    },
+    ...collectionState,
   }, 200, { "Cache-Control": "no-store" });
 }
 

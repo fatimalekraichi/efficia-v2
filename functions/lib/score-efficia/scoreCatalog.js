@@ -41,6 +41,13 @@ function hasNormalizedKey(normalized, keys) {
   return keys.some((key) => Object.prototype.hasOwnProperty.call(normalized, key));
 }
 
+function wasObserved(normalized, keys) {
+  if (Array.isArray(normalized?.observed_fields)) {
+    return keys.some((key) => normalized.observed_fields.includes(key));
+  }
+  return hasNormalizedKey(normalized, keys);
+}
+
 function getSecondaryCategories(normalized) {
   return [...new Set([
     ...asArray(normalized?.secondary_categories),
@@ -143,7 +150,7 @@ export function buildScorePrefill(analysis = {}) {
   const workingHours = getNormalizedValue(normalized, ["working_hours", "hours"]);
   const website = getNormalizedValue(normalized, ["website", "site"]);
   const phone = getNormalizedValue(normalized, ["phone", "phone_number"]);
-  const contactWasObserved = hasNormalizedKey(normalized, ["website", "site", "phone", "phone_number"]);
+  const contactWasObserved = wasObserved(normalized, ["website", "site", "phone", "phone_number"]);
   const address = getNormalizedValue(normalized, ["address", "full_address", "business_address", "street"]);
   const services = getServices(normalized);
   const photos = asNumber(business.photosCount);
@@ -160,7 +167,7 @@ export function buildScorePrefill(analysis = {}) {
 
   if (secondaryCategories.length) {
     addCriterion(criteria, optionForKey("categoriesSecondaires", 0, "observed", { value: secondaryCategories }));
-  } else if (hasNormalizedKey(normalized, ["secondary_categories", "subtypes", "categories"])) {
+  } else if (wasObserved(normalized, ["secondary_categories", "subtypes", "categories"])) {
     addCriterion(criteria, optionForKey("categoriesSecondaires", 1, "observed", { value: [] }));
   } else {
     addCriterion(criteria, notVerified("categoriesSecondaires"));
@@ -202,7 +209,7 @@ export function buildScorePrefill(analysis = {}) {
     addCriterion(criteria, optionForKey("volumeAvis", reviewsCount >= 30 ? 0 : (reviewsCount >= 10 ? 1 : 2), "observed", { value: reviewsCount }));
   }
 
-  if (descriptionLength === null) {
+  if (descriptionLength === null || !wasObserved(normalized, ["description", "description_length"])) {
     addCriterion(criteria, notVerified("descriptionRemplie"));
   } else {
     // Seuils historiques : ≥600 = complète, >0 = courte, 0 = vide (Absente).

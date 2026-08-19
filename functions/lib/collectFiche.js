@@ -394,6 +394,16 @@ function decideOutcome(ranked) {
 
 // Extraction + normalisation de la première fiche (mêmes champs que la sortie publique actuelle).
 function mapPlace(place) {
+  const hasAnyField = (...keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(place, key));
+  const observed_fields = [
+    hasAnyField("description") ? "description" : null,
+    hasAnyField("working_hours") ? "working_hours" : null,
+    hasAnyField("subtypes") ? "subtypes" : null,
+    hasAnyField("phone") ? "phone" : null,
+    hasAnyField("site", "website") ? "site" : null,
+    hasAnyField("address", "full_address") ? "address" : null,
+    hasAnyField("services", "service_options", "service_list") ? "services" : null,
+  ].filter(Boolean);
   const photos_sample = Array.isArray(place.photos_sample)
     ? place.photos_sample
         .slice(0, 5)
@@ -437,6 +447,10 @@ function mapPlace(place) {
     // si Outscraper ne les renvoie pas, ces champs restent vides.
     city: place.city || "",
     borough: place.borough || place.county || "",
+    observed_fields,
+    ...(observed_fields.includes("services") ? {
+      services: place.services ?? place.service_options ?? place.service_list ?? [],
+    } : {}),
   };
 }
 

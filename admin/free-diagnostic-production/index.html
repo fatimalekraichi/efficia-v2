@@ -2347,7 +2347,30 @@ function reinitialiserAnalyse(){
 const TYPES_GENERIQUES = ["point_of_interest","establishment","store","food","health","finance","general_contractor","place_of_worship"];
 function statut(msg, type){ const s = document.getElementById("statut"); s.className = type; s.innerHTML = msg; }
 
-function appliquerCollecteDiagnosticGratuit(business){
+const CRITERES_PRE_REMPLIS_A_CONFIRMER = new Set([
+  "categoriePrincipale", "categoriesSecondaires", "horaires", "adresse",
+  "descriptionRemplie", "servicesPresents"
+]);
+
+function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
+  const criteria = Array.isArray(scorePrefill?.criteria) ? scorePrefill.criteria : [];
+  const byKey = new Map(criteria.map((criterion) => [criterion.key, criterion]));
+  GRILLE.forEach((category) => category.criteres.forEach((criterion) => {
+    const prefill = byKey.get(criterion.key);
+    if(prefill && estNombre(prefill.points) && prefill.value !== "not_verified"){
+      cocher(
+        criterion.id,
+        Number(prefill.points),
+        "",
+        CRITERES_PRE_REMPLIS_A_CONFIRMER.has(criterion.key) ? "prefill" : "auto"
+      );
+      return;
+    }
+    marquerManuel(criterion.id, "");
+  }));
+}
+
+function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   const detectedFields = {
     "p-entreprise": business.company,
     "p-ville": business.city,
@@ -2402,6 +2425,7 @@ function appliquerCollecteDiagnosticGratuit(business){
 
   collecteDiagnosticValidee = true;
   preRemplirDonneesObservees();
+  appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
   calc();
 }
 
@@ -2466,7 +2490,7 @@ async function lancerCollecteDiagnosticGratuit(){
       }
       return;
     }
-    appliquerCollecteDiagnosticGratuit(data.business || {});
+    appliquerCollecteDiagnosticGratuit(data.business || {}, data.scorePrefill);
     statut("Collecte terminée. Vérifiez les informations détectées avant de poursuivre.", "info");
   }catch{
     statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
@@ -2832,7 +2856,11 @@ async function initialiserContexteCommandeAdmin(){
     `;
   }
 
-  if(contexte.collectionAvailable !== true) neutraliserCollecteDiagnosticGratuit();
+  if(contexte.collectionAvailable === true && contexte.collection && contexte.scorePrefill){
+    appliquerCollecteDiagnosticGratuit(contexte.collection, contexte.scorePrefill);
+  }else{
+    neutraliserCollecteDiagnosticGratuit();
+  }
 
   const premiumAllowed = contexte.premiumAllowed === true;
   [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")]
