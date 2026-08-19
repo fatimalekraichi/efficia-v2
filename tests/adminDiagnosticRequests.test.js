@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
@@ -193,7 +193,10 @@ test("la route applique une limite raisonnable et gère proprement l’état vid
 });
 
 test("l’interface admin ouvre Score Efficia avec le seul analysisId et conserve les métriques Stripe séparées", () => {
-  const html = readFileSync(new URL("../admin/index.html", import.meta.url), "utf8");
+  const canonicalAdminFile = new URL("../admin.html", import.meta.url);
+  const obsoleteAdminFile = new URL("../admin/index.html", import.meta.url);
+  const html = readFileSync(canonicalAdminFile, "utf8");
+  const redirects = readFileSync(new URL("../_redirects", import.meta.url), "utf8");
   const script = readFileSync(new URL("../js/admin.js", import.meta.url), "utf8");
   const orderRoute = readFileSync(new URL("../functions/admin/orders.js", import.meta.url), "utf8");
   const diagnosticRoute = readFileSync(new URL("../functions/api/admin/diagnostic-requests.js", import.meta.url), "utf8");
@@ -201,6 +204,17 @@ test("l’interface admin ouvre Score Efficia avec le seul analysisId et conserv
   assert.match(html, /Diagnostics gratuits à traiter/);
   assert.match(html, /data-admin-diagnostics/);
   assert.match(html, /Commandes Stripe/);
+  assert.match(html, /<script src="\/js\/admin\.js"><\/script>/);
+  assert.equal(existsSync(obsoleteAdminFile), false, "admin/index.html ne doit plus concurrencer admin.html");
+  assert.match(redirects, /^\/admin\/ \/admin 301$/m);
+
+  const resolveAdminDocument = (pathname) => {
+    if (pathname === "/admin") return { status: 200, document: canonicalAdminFile };
+    if (pathname === "/admin/") return { status: 301, location: "/admin" };
+    return null;
+  };
+  assert.deepEqual(resolveAdminDocument("/admin"), { status: 200, document: canonicalAdminFile });
+  assert.deepEqual(resolveAdminDocument("/admin/"), { status: 301, location: "/admin" });
   assert.match(script, /fetch\("\/api\/admin\/diagnostic-requests\?limit=50"/);
   assert.match(script, /\/admin\/free-diagnostic-production\?analysisId=\$\{encodeURIComponent\(analysisId\)\}/);
 

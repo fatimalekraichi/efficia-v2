@@ -84,7 +84,7 @@ test("les textes simplifiés conservent les actions explicites de consentement",
 
 test("les pages administratives ne chargent jamais Clarity", async () => {
   const adminFiles = [
-    "admin/index.html",
+    "admin.html",
     "admin/new-audit/index.html",
     "admin/free-diagnostic-production/index.html",
     "functions/admin/audit-review/[analysisId].js",

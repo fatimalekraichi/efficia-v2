@@ -81,7 +81,6 @@ test("les pages transactionnelles, administratives et internes sont désindexée
     "achat.html",
     "paiement-reussi.html",
     "admin.html",
-    "admin/index.html",
     "admin-login.html",
     "admin-login/index.html",
     "admin-order.html",
