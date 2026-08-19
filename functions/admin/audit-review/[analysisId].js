@@ -1,8 +1,7 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../api/analysis/_shared.js";
 import { normalizeText, requireAdminSession, requireOrdersDb } from "../_shared.js";
-import { buildFreeDiagnosticProductionQuery, loadOrderContextForAnalysis } from "../../lib/freeDiagnosticProductionLink.js";
 
-const html = (analysisId, { showLegacyFreeDiagnosticLink = false, freeDiagnosticProductionQuery = "" } = {}) => `<!DOCTYPE html>
+const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -152,7 +151,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, freeDiagnostic
               <a class="admin-button is-secondary" href="#" target="_blank" rel="noopener" data-preview-link>Aperçu HTML</a>
               <button class="admin-button is-secondary" type="button" data-approve-button>Approuver le rapport</button>
               <a class="admin-button is-secondary is-disabled-link" href="#" target="_blank" rel="noopener" data-pdf-link${showLegacyFreeDiagnosticLink ? " hidden" : ""}>Générer le PDF</a>
-              <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/${freeDiagnosticProductionQuery ? `?${freeDiagnosticProductionQuery}` : ""}" data-free-diagnostic-query="${freeDiagnosticProductionQuery}" target="_blank" rel="noopener" data-legacy-generator-link${showLegacyFreeDiagnosticLink ? "" : " hidden"}>Ouvrir l'ancien générateur gratuit</a>
+              <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysisId)}" data-free-diagnostic-analysis-id="${analysisId}" target="_blank" rel="noopener" data-legacy-generator-link${showLegacyFreeDiagnosticLink ? "" : " hidden"}>Ouvrir l'ancien générateur gratuit</a>
             </div>
           </div>
           <p class="review-status" data-review-status></p>
@@ -179,20 +178,15 @@ export async function onRequestGet(context) {
   // lecture ici ne doit pas empêcher l'affichage de la page de validation
   // elle-même : le lien est simplement masqué par défaut.
   let showLegacyFreeDiagnosticLink = false;
-  let freeDiagnosticProductionQuery = "";
   try {
     const db = requireOrdersDb(context.env);
     const analysis = await loadAnalysisById(db, analysisId);
     showLegacyFreeDiagnosticLink = analysis?.reportType === "free";
-    if (showLegacyFreeDiagnosticLink) {
-      const orderContext = await loadOrderContextForAnalysis(db, analysisId);
-      freeDiagnosticProductionQuery = buildFreeDiagnosticProductionQuery(analysis, orderContext);
-    }
   } catch (error) {
     console.error("audit-review: lecture reportType impossible", error);
   }
 
-  return new Response(html(analysisId, { showLegacyFreeDiagnosticLink, freeDiagnosticProductionQuery }), {
+  return new Response(html(analysisId, { showLegacyFreeDiagnosticLink }), {
     status: 200,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });

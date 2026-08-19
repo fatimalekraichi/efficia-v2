@@ -156,6 +156,24 @@ test("collectFiche : aucun résultat brut -> erreur générique (comportement hi
   }
 });
 
+test("collectFiche : la sentinelle fournisseur __NO_PLACE_FOUND__ n’est jamais une fiche valide", async () => {
+  const restore = mockFetchOnce({
+    data: [[{ place_id: "__NO_PLACE_FOUND__", error: "provider raw failure" }]],
+  });
+  try {
+    const result = await collectFiche({
+      queryOverride: "https://www.google.com/maps/place/Inconnue",
+      apiKey: "key",
+      suppressSensitiveLogs: true,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 404);
+    assert.equal(result.error, "No business found.");
+  } finally {
+    restore();
+  }
+});
+
 test("collectFiche : mode URL/observationQuery directe (sans nom+ville) conserve le comportement historique — pas de score", async () => {
   const restore = mockFetchOnce({
     data: [[

@@ -1,9 +1,9 @@
-// Construit le lien vers l'ancien générateur gratuit (outil-score-efficia-auto-v5.html
-// exact, extrait de main sans modification, servi statiquement depuis
-// /admin/free-diagnostic-production/). Ce module lit les tables `orders` /
-// `order_tasks` (inchangées, non modifiées par cette mission) pour retrouver
-// les paramètres déjà disponibles lors de la commande, avec repli sur les
-// données de l'analyse elle-même si aucune commande n'est liée.
+// Charge côté serveur le contexte de l'ancien générateur gratuit. Les données
+// personnelles ne doivent jamais être sérialisées dans son URL.
+
+import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
+import { loadPremiumAuthorization } from "./premiumAuthorization.js";
+import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -15,33 +15,28 @@
  * commande) : le lien utilisera alors uniquement les données de l'analyse.
  */
 export async function loadOrderContextForAnalysis(db, analysisId) {
+  let diagnosticRequest = null;
   try {
-    const byTask = await db.prepare(`
-      SELECT o.order_id, o.email, o.first_name, o.company_name, o.city, o.google_business_url, o.offer_code, t.task_id
-      FROM order_tasks t
-      JOIN orders o ON o.order_id = t.order_id
-      WHERE t.analysis_id = ?
-      LIMIT 1
-    `).bind(analysisId).first();
-    if (byTask) return byTask;
+    diagnosticRequest = await loadDiagnosticRequestContext(db, analysisId);
   } catch (error) {
-    console.error("freeDiagnosticProductionLink: lecture order_tasks impossible", error);
+    console.error("freeDiagnosticProductionLink: read failed", {
+      phase: "diagnostic_request",
+      name: typeof error?.name === "string" ? error.name : "Error",
+    });
   }
 
+  let paidOrder = null;
   try {
-    const byOrder = await db.prepare(`
-      SELECT o.order_id, o.email, o.first_name, o.company_name, o.city, o.google_business_url, o.offer_code, t.task_id
-      FROM analyses a
-      JOIN orders o ON o.order_id = a.order_id
-      LEFT JOIN order_tasks t ON t.order_id = o.order_id
-      WHERE a.analysis_id = ?
-      LIMIT 1
-    `).bind(analysisId).first();
-    return byOrder || null;
+    const authorization = await loadPremiumAuthorization(db, analysisId);
+    paidOrder = authorization.allowed ? authorization.order : null;
   } catch (error) {
-    console.error("freeDiagnosticProductionLink: lecture analyses/orders impossible", error);
-    return null;
+    console.error("freeDiagnosticProductionLink: read failed", {
+      phase: "premium_authorization",
+      name: typeof error?.name === "string" ? error.name : "Error",
+    });
   }
+
+  return { diagnosticRequest, paidOrder };
 }
 
 function firstNonEmpty(...values) {
@@ -51,36 +46,145 @@ function firstNonEmpty(...values) {
   return "";
 }
 
-/**
- * Construit la query string (sans "?") pour /admin/free-diagnostic-production/.
- * Réutilise les paramètres déjà disponibles dans la commande liée, avec repli
- * sur les données de l'analyse (business.nom, business.ville, etc.) quand
- * l'analyse n'est pas liée à une commande.
- */
-export function buildFreeDiagnosticProductionQuery(analysis, orderContext) {
-  const business = analysis?.business || {};
-  const normalized = business.normalized || {};
-  const params = new URLSearchParams();
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
 
-  const set = (key, value) => {
-    const text = firstNonEmpty(value);
-    if (text) params.set(key, text);
+function analysisWithCollectedBenchmark(analysis) {
+  const competitors = Array.isArray(analysis?.business?.competitors) ? analysis.business.competitors : [];
+  if (!competitors.length) return analysis;
+
+  const average = (key) => {
+    const values = competitors.map((item) => numberOrNull(item?.[key])).filter((value) => value !== null);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  };
+  const averages = {
+    rating: numberOrNull(analysis?.benchmark?.averages?.rating) ?? average("rating"),
+    reviews: numberOrNull(analysis?.benchmark?.averages?.reviews) ?? average("reviews"),
+    photos: numberOrNull(analysis?.benchmark?.averages?.photos) ?? average("photos_count"),
+  };
+  const gap = (businessValue, averageValue, savedGap) => {
+    const existing = numberOrNull(savedGap);
+    if (existing !== null) return existing;
+    const observed = numberOrNull(businessValue);
+    return observed !== null && averageValue !== null ? observed - averageValue : null;
   };
 
-  set("company", firstNonEmpty(orderContext?.company_name, business.nom, business.name));
-  set("city", firstNonEmpty(orderContext?.city, business.ville));
-  set("firstName", orderContext?.first_name);
-  set("email", orderContext?.email);
-  set("offer", orderContext?.offer_code);
-  set("orderId", orderContext?.order_id);
-  set("taskId", orderContext?.task_id);
-  set("googleBusinessUrl", firstNonEmpty(
-    orderContext?.google_business_url,
+  return {
+    ...analysis,
+    benchmark: {
+      ...(analysis.benchmark || {}),
+      averages,
+      gaps: {
+        rating: gap(analysis.business?.rating, averages.rating, analysis?.benchmark?.gaps?.rating),
+        reviews: gap(analysis.business?.reviews, averages.reviews, analysis?.benchmark?.gaps?.reviews),
+        photos: gap(analysis.business?.photosCount, averages.photos, analysis?.benchmark?.gaps?.photos),
+      },
+    },
+  };
+}
+
+export function buildFreeDiagnosticCollectionState(analysis) {
+  const business = analysis?.business || {};
+  const normalized = business.normalized || {};
+  const fiche = business.fiche || {};
+  const company = firstNonEmpty(business.name, normalized.name, fiche.name, business.nom);
+  const placeId = firstNonEmpty(business.placeId, normalized.place_id, fiche.place_id);
+  const validPlaceId = Boolean(placeId && !/^__[^_]+(?:_[^_]+)*__$/.test(placeId));
+  if (!company || !validPlaceId) return null;
+
+  // Le moteur historique attend un benchmark (moyennes + écarts). Le parcours
+  // gratuit persiste déjà le panel brut : on adapte ces données au contrat du
+  // moteur, sans relancer le fournisseur et sans créer une seconde formule.
+  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis));
+
+  return {
+    business: {
+      company,
+      city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
+      activity: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type, business.activity),
+      activitySource: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type) ? "detected" : "manual",
+      rating: numberOrNull(business.rating),
+      reviews: numberOrNull(business.reviews),
+      photosCount: numberOrNull(business.photosCount),
+      descriptionLength: numberOrNull(business.descriptionLength),
+      localPosition: numberOrNull(business.localPosition),
+      searchQuery: firstNonEmpty(business.searchQuery),
+      competitors: (Array.isArray(business.competitors) ? business.competitors : []).map((competitor) => ({
+        name: firstNonEmpty(competitor?.name),
+        rating: numberOrNull(competitor?.rating),
+        reviews: numberOrNull(competitor?.reviews),
+        photos_count: numberOrNull(competitor?.photos_count),
+      })),
+    },
+    scorePrefill,
+  };
+}
+
+export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
+  const business = analysis?.business || {};
+  const normalized = business.normalized || {};
+  const fiche = business.fiche || {};
+  const diagnosticRequest = orderContext?.diagnosticRequest || {};
+  const paidOrder = orderContext?.paidOrder || null;
+  const isUrl = (value) => /^https?:\/\//i.test(String(value || "").trim());
+  const usableText = (...values) => firstNonEmpty(...values.filter((value) => (
+    value !== "Non renseignée" && !isUrl(value)
+  )));
+
+  const detectedCompany = usableText(business.name, normalized.name, fiche.name, business.nom);
+  const providedCompany = usableText(diagnosticRequest.company_name);
+  const googleBusinessUrl = firstNonEmpty(
+    diagnosticRequest.google_business_url,
+    paidOrder?.google_business_url,
     normalized.google_url,
     normalized.url,
     normalized.place_link,
     normalized.location_link,
-  ));
+  );
+  const company = detectedCompany || providedCompany || (googleBusinessUrl ? "Fiche Google transmise" : "");
+  const placeId = firstNonEmpty(business.placeId, normalized.place_id, fiche.place_id);
+  const validPlaceId = Boolean(placeId && !/^__[^_]+(?:_[^_]+)*__$/.test(placeId));
+  const collectionAvailable = Boolean(detectedCompany && validPlaceId);
+  const city = usableText(
+    normalized.city,
+    normalized.borough,
+    fiche.city,
+    fiche.borough,
+    diagnosticRequest.city,
+    business.ville,
+  );
+  const activity = usableText(
+    normalized.category,
+    normalized.type,
+    fiche.category,
+    fiche.type,
+  );
+  const premiumAllowed = Boolean(paidOrder?.status === "paid");
+  const collectionState = buildFreeDiagnosticCollectionState(analysis);
 
-  return params.toString();
+  return {
+    requestType: "free_diagnostic",
+    company,
+    companySource: detectedCompany ? "detected" : (providedCompany ? "provided" : "google_url"),
+    city,
+    citySource: city && (normalized.city || normalized.borough || fiche.city || fiche.borough)
+      ? "detected"
+      : (city ? "provided" : "missing"),
+    activity,
+    activitySource: activity ? "detected" : "missing",
+    firstName: firstNonEmpty(diagnosticRequest.first_name, paidOrder?.first_name),
+    email: firstNonEmpty(diagnosticRequest.email, paidOrder?.email),
+    offer: premiumAllowed ? firstNonEmpty(paidOrder?.offer_code) : "free",
+    orderId: premiumAllowed ? firstNonEmpty(paidOrder?.order_id) : "",
+    taskId: premiumAllowed ? firstNonEmpty(paidOrder?.task_id) : "",
+    premiumAllowed,
+    collectionAvailable,
+    ...(collectionState ? {
+      collection: collectionState.business,
+      scorePrefill: collectionState.scorePrefill,
+    } : {}),
+  };
 }

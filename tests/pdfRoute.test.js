@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderPdfById } from "../functions/api/pdf/_shared.js";
 import { buildAuditPdfFilename } from "../functions/lib/pdfRenderer.js";
+import { createSessionCookie } from "../functions/admin/_shared.js";
 
 const TOKEN = "test-token";
+const ADMIN_SECRET = "admin-secret";
+const ADMIN_COOKIE = (await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET })).split(";")[0];
 const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\n%Efficia test\n");
 
 const analysisRow = {
@@ -27,15 +30,19 @@ const analysisRow = {
     top_priorities: [],
   }),
   created_at: "2026-07-24T07:00:00.000Z",
+  report_type: "premium",
 };
 
 function makeContext({ row = analysisRow, token = TOKEN, env = {} } = {}) {
   const db = {
-    prepare() {
+    prepare(sql) {
       return {
         bind() {
           return {
             async first() {
+              if (sql.includes("JOIN orders")) {
+                return { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 };
+              }
               return row;
             },
             async run() {
@@ -47,12 +54,13 @@ function makeContext({ row = analysisRow, token = TOKEN, env = {} } = {}) {
     },
   };
 
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers = token ? { Authorization: `Bearer ${token}`, Cookie: ADMIN_COOKIE } : {};
   return {
     request: new Request("http://local.test/api/pdf/analysis-1", { headers }),
     params: { analysisId: "analysis-1" },
     env: {
       CONNECTOR_TOKEN: TOKEN,
+      ADMIN_SESSION_SECRET: ADMIN_SECRET,
       ORDERS_DB: db,
       CLOUDFLARE_ACCOUNT_ID: "account-test",
       BROWSER_RENDERING_API_TOKEN: "browser-token-test",
@@ -118,6 +126,19 @@ test("renderPdfById retourne un PDF et un nom de fichier nettoyé", async () => 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("renderPdfById refuse un appel direct Premium sans paiement lié", async () => {
+  const context = makeContext();
+  context.env.ORDERS_DB.prepare = (sql) => ({
+    bind: () => ({
+      first: async () => sql.includes("JOIN orders") ? null : analysisRow,
+      run: async () => ({ success: true }),
+    }),
+  });
+  const response = await renderPdfById(context, "analysis-1");
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
 });
 
 test("buildAuditPdfFilename nettoie les caractères spéciaux", () => {

@@ -13,6 +13,7 @@ import {
   renderPdfWithCloudflareBrowserRun,
   renderFreeDiagnosticPdf,
 } from "../../lib/pdfRenderer.js";
+import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 
 const PDF_HEADERS = {
   "Content-Type": "application/pdf",
@@ -105,6 +106,11 @@ export async function renderPdfById(context, analysisId) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
 
+  const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
+  if (!premiumAuthorization.ok) {
+    return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
+  }
+
   return renderAnalysisPdf(context, verified.db, analysis);
 }
 
@@ -115,6 +121,11 @@ export async function renderLatestPdf(context) {
   const analysis = await loadLatestAnalysis(verified.db);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
+  }
+
+  const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
+  if (!premiumAuthorization.ok) {
+    return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
   }
 
   return renderAnalysisPdf(context, verified.db, analysis);

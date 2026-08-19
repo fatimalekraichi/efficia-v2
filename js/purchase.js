@@ -199,16 +199,11 @@ form?.addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
-    console.log("Réponse /prepare-checkout", {
-      ok: response.ok,
-      status: response.status,
-      data,
-    });
-
     if (!response.ok || !data.success || !data.url) {
       throw new Error(data.error || "Checkout preparation failed.");
     }
 
+    window.trackAnalyticsEvent?.("begin_checkout", { offer: selectedOffer });
     window.location.href = data.url;
   } catch (error) {
     console.error("Erreur préparation paiement", error);

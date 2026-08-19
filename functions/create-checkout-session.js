@@ -3,11 +3,10 @@ import {
   createCgvAcceptanceProof,
   hasValidCgvAcceptance,
 } from "./lib/cgvAcceptance.js";
+import { resolvePublicSite } from "./lib/environmentIsolation.js";
 
 const PAYMENTS_ENABLED = true;
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
-const CANCEL_URL = "https://efficiadigital.com/#offres";
 
 const PRODUCTS = {
   audit: {
@@ -65,6 +64,12 @@ export async function onRequestPost(context) {
     return jsonResponse(CGV_ACCEPTANCE_ERROR, 400);
   }
 
+  const site = resolvePublicSite(context.request, context.env);
+  if (!site.ok) {
+    console.error("Stripe Checkout site configuration rejected.", { error: site.error });
+    return jsonResponse({ success: false, error: site.error }, site.status);
+  }
+
   const cgvAcceptance = createCgvAcceptanceProof();
 
   const productCode = typeof payload.product === "string" ? payload.product.trim() : "";
@@ -90,12 +95,12 @@ export async function onRequestPost(context) {
   formData.set("mode", "payment");
   formData.set("line_items[0][price]", priceId);
   formData.set("line_items[0][quantity]", "1");
-  formData.set("success_url", SUCCESS_URL);
-  formData.set("cancel_url", CANCEL_URL);
+  formData.set("success_url", site.successUrl);
+  formData.set("cancel_url", site.cancelUrl);
   formData.set("billing_address_collection", "required");
   formData.set("metadata[product_code]", productCode);
   formData.set("metadata[product_name]", product.name);
-  formData.set("metadata[source]", "efficiadigital.com");
+  formData.set("metadata[source]", site.origin);
   formData.set("metadata[cgv_version]", cgvAcceptance.version);
   formData.set("metadata[cgv_accepted_at]", cgvAcceptance.acceptedAt);
 
@@ -122,7 +127,7 @@ export async function onRequestPost(context) {
   }
 
   if (!stripeResponse.ok) {
-    console.error("Stripe Checkout request failed", stripeResponse.status, responseText);
+    console.error("Stripe Checkout request failed", { status: stripeResponse.status });
     return jsonResponse({
       success: false,
       error: "Stripe Checkout request failed.",
@@ -131,7 +136,7 @@ export async function onRequestPost(context) {
   }
 
   if (!stripeData?.url) {
-    console.error("Stripe Checkout did not return a URL.", responseText);
+    console.error("Stripe Checkout did not return a URL.");
     return jsonResponse({ success: false, error: "Stripe Checkout URL is missing." }, 502);
   }
 

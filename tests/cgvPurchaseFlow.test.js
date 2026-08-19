@@ -24,11 +24,13 @@ const validPurchase = {
 };
 
 const checkoutEnv = {
+  SITE_URL: "https://efficiadigital.com",
   STRIPE_SECRET_KEY: "sk_test_example",
   STRIPE_PRICE_AUDIT: "price_audit",
   STRIPE_PRICE_VISIBILITY: "price_visibility",
   STRIPE_PRICE_PERFORMANCE: "price_performance",
   MAILERLITE_API_KEY: "mailer_test_example",
+  MAILERLITE_PRODUCTION_AUDIT_PROSPECT_GROUP_ID: "group-audit",
 };
 
 const jsonRequest = (url, body) => new Request(url, {
@@ -88,7 +90,7 @@ test("le serveur rejette toute acceptation absente, fausse ou ambiguë avant les
       else payload.cgv_accepted = value;
 
       const response = await prepareCheckout({
-        request: jsonRequest("https://example.com/prepare-checkout", payload),
+        request: jsonRequest("https://efficiadigital.com/prepare-checkout", payload),
         env: checkoutEnv,
       });
       assert.equal(response.status, 400);
@@ -96,7 +98,7 @@ test("le serveur rejette toute acceptation absente, fausse ou ambiguë avant les
     }
 
     const obsoleteVersion = await prepareCheckout({
-      request: jsonRequest("https://example.com/prepare-checkout", {
+      request: jsonRequest("https://efficiadigital.com/prepare-checkout", {
         ...validPurchase,
         cgv_version: "2026-08-18",
       }),
@@ -114,9 +116,6 @@ test("une acceptation valide conserve le parcours et ajoute la preuve serveur à
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), options });
-    if (String(url).includes("/api/groups")) {
-      return responseWithJson({ data: [{ id: "group-audit", name: "Prospects - Audit (paiement en cours)" }] });
-    }
     if (String(url).includes("/api/fields")) {
       return responseWithJson({
         data: [
@@ -142,7 +141,7 @@ test("une acceptation valide conserve le parcours et ajoute la preuve serveur à
 
   try {
     const response = await prepareCheckout({
-      request: jsonRequest("https://example.com/prepare-checkout", {
+      request: jsonRequest("https://efficiadigital.com/prepare-checkout", {
         ...validPurchase,
         cgv_accepted_at: "1900-01-01T00:00:00.000Z",
       }),
@@ -174,14 +173,14 @@ test("l’ancien endpoint direct ne permet pas de contourner l’acceptation", a
 
   try {
     const rejected = await createCheckoutSession({
-      request: jsonRequest("https://example.com/create-checkout-session", { product: "audit" }),
+      request: jsonRequest("https://efficiadigital.com/create-checkout-session", { product: "audit" }),
       env: checkoutEnv,
     });
     assert.equal(rejected.status, 400);
     assert.equal(fetchCount, 0);
 
     const accepted = await createCheckoutSession({
-      request: jsonRequest("https://example.com/create-checkout-session", {
+      request: jsonRequest("https://efficiadigital.com/create-checkout-session", {
         product: "audit",
         cgv_accepted: true,
         cgv_version: ACTIVE_CGV_VERSION,
@@ -235,7 +234,7 @@ const signedWebhookRequest = ({ session, secret }) => {
     .update(`${timestamp}.${payload}`)
     .digest("hex");
 
-  return new Request("https://example.com/stripe-webhook", {
+  return new Request("https://efficiadigital.com/stripe-webhook", {
     method: "POST",
     headers: { "Stripe-Signature": `t=${timestamp},v1=${signature}` },
     body: payload,
@@ -311,7 +310,7 @@ test("les anciennes commandes avec la version historique restent compatibles", a
   assert.equal(orderInsert.args[15], "2026-08-18");
 });
 
-test("la migration historique reste inchangée et aucune migration supplémentaire n’est créée", async () => {
+test("la migration CGV historique reste inchangée et la migration suivante est additive", async () => {
   const [migration, migrationFiles] = await Promise.all([
     readProjectFile("migrations/0012_order_cgv_acceptance.sql"),
     readdir(new URL("migrations/", root)),
@@ -321,7 +320,10 @@ test("la migration historique reste inchangée et aucune migration supplémentai
     createHash("sha256").update(migration).digest("hex"),
     "3f73ac365c4a5d59d77c740c005327745385172c0fbde992c77a2a5fefe5d7e2",
   );
-  assert.equal(migrationFiles.filter((file) => file.endsWith(".sql")).at(-1), "0012_order_cgv_acceptance.sql");
+  assert.deepEqual(
+    migrationFiles.filter((file) => file.endsWith(".sql")).slice(-2),
+    ["0012_order_cgv_acceptance.sql", "0013_diagnostic_requests.sql"],
+  );
 });
 
 test("les CGV définissent le Client professionnel et la rétractation B2B", async () => {

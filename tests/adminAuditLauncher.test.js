@@ -184,6 +184,7 @@ test("admin audit launcher accepte Nom + Ville sans aucune URL Google (Mode 2)",
       googleBusinessUrl: "",
       companyName: "Garage Central",
       city: "Arlon",
+      reportType: "free",
     }, { cookie }));
     const json = await response.json();
 
@@ -254,6 +255,7 @@ test("admin audit launcher charge une commande, préremplit le pipeline et assoc
     google_business_url: "https://www.google.com/maps/place/Garage+Central/",
     offer_code: "audit",
     offer_name: "Audit fiche Google",
+    status: "paid",
   };
   const task = {
     task_id: "task-123",
@@ -333,6 +335,7 @@ test("admin audit launcher indique la migration manquante si la relecture D1 éc
       googleBusinessUrl: "https://www.google.com/maps/place/La+Planche+des+Saveurs/",
       companyName: "La Planche des Saveurs",
       city: "Dinant",
+      reportType: "free",
     }, {
       cookie,
       db: makeDbWithFailingAnalysisRead(new Error("D1_ERROR: no such column: score_inputs_json")),
@@ -344,6 +347,27 @@ test("admin audit launcher indique la migration manquante si la relecture D1 éc
     assert.equal(json.error, "MISSING_D1_MIGRATION");
     assert.equal(json.stage, "review");
     assert.equal(json.message, "La base locale n’est pas à jour. Appliquez la migration 0011_score_efficia_historical.sql, puis relancez l’audit.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("admin audit launcher refuse un Premium sans commande payée admissible avant le pipeline", async () => {
+  const cookie = await makeAdminCookie();
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return Response.json({ success: true });
+  };
+  try {
+    const response = await onRequestPost(await makeContext({
+      googleBusinessUrl: "https://www.google.com/maps/place/Garage+Central/",
+      reportType: "premium",
+    }, { cookie }));
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
+    assert.equal(called, false);
   } finally {
     globalThis.fetch = originalFetch;
   }

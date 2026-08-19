@@ -4,6 +4,7 @@
 import { verifyConnectorToken } from "./_auth.js";
 import { isValidAnalysisId, loadAnalysisById } from "./analysis/_shared.js";
 import { runComposerForAnalysis } from "../lib/auditComposition.js";
+import { requirePremiumAnalysisAuthorization } from "../lib/premiumAuthorization.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +60,11 @@ export async function onRequestPost(context) {
   }
   if (!analysis.reasoning) {
     return jsonResponse({ success: false, error: "Reasoning not completed." }, 409);
+  }
+
+  const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, db, analysis);
+  if (!premiumAuthorization.ok) {
+    return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
   }
 
   const { output } = runComposerForAnalysis(analysis, analysis.reasoning);

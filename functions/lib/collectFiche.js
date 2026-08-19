@@ -1,3 +1,5 @@
+import { hasGoogleMapsHost, resolveGoogleMapsUrl } from "./googleMapsUrl.js";
+
 // Logique de collecte Outscraper (Appel A), partagée par /api/outscraper et /api/analyze.
 // Ne dépend d'AUCUN objet Request/Response : reçoit { nom, ville, apiKey }, renvoie un
 // résultat structuré :
@@ -62,6 +64,14 @@ const DOMINANT_GAP = 0.30;
 
 function toNumberOrNull(v) {
   return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+}
+
+function isUsablePlaceCandidate(place) {
+  if (!place || typeof place !== "object") return false;
+  const name = String(place.name || "").trim();
+  if (!name) return false;
+  const placeId = String(place.place_id || "").trim();
+  return !placeId || !/^__[^_]+(?:_[^_]+)*__$/.test(placeId);
 }
 
 // --- Objectif 2 : score de confiance entre l'entreprise demandée et une ----
@@ -384,6 +394,16 @@ function decideOutcome(ranked) {
 
 // Extraction + normalisation de la première fiche (mêmes champs que la sortie publique actuelle).
 function mapPlace(place) {
+  const hasAnyField = (...keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(place, key));
+  const observed_fields = [
+    hasAnyField("description") ? "description" : null,
+    hasAnyField("working_hours") ? "working_hours" : null,
+    hasAnyField("subtypes") ? "subtypes" : null,
+    hasAnyField("phone") ? "phone" : null,
+    hasAnyField("site", "website") ? "site" : null,
+    hasAnyField("address", "full_address") ? "address" : null,
+    hasAnyField("services", "service_options", "service_list") ? "services" : null,
+  ].filter(Boolean);
   const photos_sample = Array.isArray(place.photos_sample)
     ? place.photos_sample
         .slice(0, 5)
@@ -427,6 +447,10 @@ function mapPlace(place) {
     // si Outscraper ne les renvoie pas, ces champs restent vides.
     city: place.city || "",
     borough: place.borough || place.county || "",
+    observed_fields,
+    ...(observed_fields.includes("services") ? {
+      services: place.services ?? place.service_options ?? place.service_list ?? [],
+    } : {}),
   };
 }
 
@@ -453,20 +477,31 @@ export async function collectFiche({
   selectedCandidate,
   // Objectif 4 — signaux optionnels supplémentaires, voir computeConfidence.
   attendu,
+  suppressSensitiveLogs = false,
 } = {}) {
-  if (selectedCandidate && typeof selectedCandidate === "object" && selectedCandidate.place_id) {
-    console.log("collectFiche:manual-selection-direct", {
-      place_id: selectedCandidate.place_id,
-      name: selectedCandidate.name || null,
-    });
+  if (isUsablePlaceCandidate(selectedCandidate)) {
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:manual-selection-direct", {
+        place_id: selectedCandidate.place_id,
+        name: selectedCandidate.name || null,
+      });
+    }
     return { ok: true, fiche: selectedCandidate, confidence: null, tier: "manual" };
   }
 
   const nomTrim = (nom || "").trim();
   const villeTrim = (ville || "").trim();
-  const directQuery = (queryOverride || "").trim();
+  let directQuery = (queryOverride || "").trim();
   if (!directQuery && (!nomTrim || !villeTrim)) {
     return { ok: false, code: 400, error: "Missing required parameters: nom, ville." };
+  }
+
+  if (hasGoogleMapsHost(directQuery)) {
+    const resolution = await resolveGoogleMapsUrl(directQuery);
+    if (!resolution.ok) {
+      return { ok: false, code: 404, error: resolution.error };
+    }
+    directQuery = resolution.url;
   }
 
   // .trim() : évite un 401 si le secret a été stocké avec un espace / retour ligne final.
@@ -526,17 +561,19 @@ export async function collectFiche({
   if (Array.isArray(data) && data.length) {
     const firstQuery = data[0];
     candidates = Array.isArray(firstQuery)
-      ? firstQuery.filter((item) => item && typeof item === "object")
-      : (firstQuery && typeof firstQuery === "object" ? [firstQuery] : []);
+      ? firstQuery.filter(isUsablePlaceCandidate)
+      : (isUsablePlaceCandidate(firstQuery) ? [firstQuery] : []);
   }
 
   // Objectif 5 (logs de diagnostic temporaires, à retirer une fois le
   // correctif validé sur la campagne réelle) : visibilité brute -> choisi.
-  console.log("collectFiche:raw-candidates", {
-    query,
-    count: candidates.length,
-    names: candidates.map((c) => c.name || "(sans nom)"),
-  });
+  if (!suppressSensitiveLogs) {
+    console.log("collectFiche:raw-candidates", {
+      query,
+      count: candidates.length,
+      names: candidates.map((c) => c.name || "(sans nom)"),
+    });
+  }
 
   if (!candidates.length) {
     return { ok: false, code: 404, error: "No business found." };
@@ -551,12 +588,14 @@ export async function collectFiche({
   // plus par ici.
   if (selectedPlaceId) {
     const chosen = candidates.find((c) => (c.place_id || "") === selectedPlaceId);
-    console.log("collectFiche:manual-selection", {
-      query,
-      selectedPlaceId,
-      found: Boolean(chosen),
-      name: chosen?.name || null,
-    });
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:manual-selection", {
+        query,
+        selectedPlaceId,
+        found: Boolean(chosen),
+        name: chosen?.name || null,
+      });
+    }
     if (!chosen) {
       return {
         ok: false,
@@ -573,7 +612,9 @@ export async function collectFiche({
   // les candidats — comportement historique conservé à l'identique (premier
   // résultat, déjà résolu par Outscraper à partir de l'URL elle-même).
   if (!nomTrim || !villeTrim) {
-    console.log("collectFiche:selected-without-scoring", { name: candidates[0].name || "(sans nom)" });
+    if (!suppressSensitiveLogs) {
+      console.log("collectFiche:selected-without-scoring", { name: candidates[0].name || "(sans nom)" });
+    }
     return { ok: true, fiche: mapPlace(candidates[0]), tier: "auto" };
   }
 
@@ -597,23 +638,25 @@ export async function collectFiche({
       ? `${survivingCount} candidat(s) restant(s) après élimination de ville, ${plausibleCount} au nom raisonnablement proche -> validation humaine requise.`
       : `aucun candidat ne correspond à la ville demandée (${ranked.length} candidat(s) reçu(s), tous éliminés) -> aucune entreprise fiable trouvée.`;
 
-  console.log("collectFiche:decision-log", {
-    requested: { nom: nomTrim, ville: villeTrim },
-    candidates: ranked.map((entry) => ({
-      name: entry.place.name || "(sans nom)",
-      place_id: entry.place.place_id || null,
-      nameScore: Number(entry.nameScore.toFixed(3)),
-      nameOverlap: Number(entry.nameOverlap.toFixed(3)),
-      cityScore: entry.cityScore,
-      confidence: Number(entry.confidence.toFixed(3)),
-      cityMismatch: Boolean(entry.cityMismatch),
-    })),
-    survivingCount,
-    plausibleCount,
-    tier,
-    selected: tier === "auto" ? (outcome.best.place.name || "(sans nom)") : null,
-    reason,
-  });
+  if (!suppressSensitiveLogs) {
+    console.log("collectFiche:decision-log", {
+      requested: { nom: nomTrim, ville: villeTrim },
+      candidates: ranked.map((entry) => ({
+        name: entry.place.name || "(sans nom)",
+        place_id: entry.place.place_id || null,
+        nameScore: Number(entry.nameScore.toFixed(3)),
+        nameOverlap: Number(entry.nameOverlap.toFixed(3)),
+        cityScore: entry.cityScore,
+        confidence: Number(entry.confidence.toFixed(3)),
+        cityMismatch: Boolean(entry.cityMismatch),
+      })),
+      survivingCount,
+      plausibleCount,
+      tier,
+      selected: tier === "auto" ? (outcome.best.place.name || "(sans nom)") : null,
+      reason,
+    });
+  }
 
   if (tier === "rejected") {
     return {
@@ -669,4 +712,5 @@ export const __test__ = {
   DOMINANT_NAME_OVERLAP,
   DOMINANT_GAP,
   CANDIDATE_LIMIT,
+  isUsablePlaceCandidate,
 };

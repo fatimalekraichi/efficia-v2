@@ -5,6 +5,7 @@ import { renderAnalysisById, renderLatestAnalysis } from "../functions/api/rende
 
 const TOKEN = "test-token";
 const ADMIN_SECRET = "admin-secret";
+const ADMIN_COOKIE = (await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET })).split(";")[0];
 
 const analysisRow = {
   analysis_id: "analysis-1",
@@ -40,6 +41,7 @@ const analysisRow = {
   top_competitor_rating: 4.8,
   top_competitor_reviews: 324,
   benchmark_completed_at: "2026-07-24T07:00:30.000Z",
+  report_type: "premium",
   knowledge_json: JSON.stringify({
     version: "1.0.0",
     summary: "La fiche obtient une base solide.",
@@ -89,6 +91,9 @@ function makeContext(row, analysisId = "analysis-1") {
         bind() {
           return {
             async first() {
+              if (sql.includes("JOIN orders")) {
+                return { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 };
+              }
               return row;
             },
           };
@@ -102,7 +107,7 @@ function makeContext(row, analysisId = "analysis-1") {
 
   return {
     request: new Request("http://local.test/api/render/analysis-1", {
-      headers: { Authorization: `Bearer ${TOKEN}` },
+      headers: { Authorization: `Bearer ${TOKEN}`, Cookie: ADMIN_COOKIE },
     }),
     params: { analysisId },
     env: {
@@ -178,6 +183,18 @@ test("renderAnalysisById accepte aussi la session admin sans exposer le Bearer t
 
   assert.equal(response.status, 200);
   assert.match(html, /La Planche des Saveurs/);
+});
+
+test("renderAnalysisById refuse un Premium même approuvé sans commande payée liée", async () => {
+  const context = makeContext({ ...analysisRow, status: "approved" });
+  context.env.ORDERS_DB.prepare = (sql) => ({
+    bind: () => ({
+      first: async () => sql.includes("JOIN orders") ? null : { ...analysisRow, status: "approved" },
+    }),
+  });
+  const response = await renderAnalysisById(context, "analysis-1");
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
 });
 
 test("renderAnalysisById ajoute un bouton de téléchargement masqué à l'impression", async () => {

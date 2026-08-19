@@ -1,4 +1,6 @@
 const ordersBody = document.querySelector("[data-admin-orders]");
+const diagnosticsBody = document.querySelector("[data-admin-diagnostics]");
+const diagnosticCount = document.querySelector("[data-admin-diagnostic-count]");
 const filtersForm = document.querySelector("[data-admin-filters]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const statElements = document.querySelectorAll("[data-stat]");
@@ -18,6 +20,22 @@ const offerLabels = {
   audit: "Audit",
   visibility: "Pack Visibilité",
   performance: "Pack Performance",
+};
+
+const diagnosticStatusLabels = {
+  awaiting_review: "À traiter",
+  in_progress: "En cours",
+  completed: "Terminé",
+};
+
+const mailerLiteStatusLabels = {
+  pending: "En attente",
+  synced: "Synchronisé",
+  failed: "Échec",
+};
+
+const reportTypeLabels = {
+  free: "Diagnostic gratuit",
 };
 
 const formatMoney = (amount, currency = "eur") => new Intl.NumberFormat("fr-FR", {
@@ -177,6 +195,34 @@ const renderOrders = (orders) => {
   `).join("");
 };
 
+const buildFreeDiagnosticToolUrl = (analysisId) => (
+  `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(analysisId)}`
+);
+
+const renderDiagnostics = (diagnostics) => {
+  if (!diagnosticsBody) return;
+  if (!diagnostics.length) {
+    diagnosticsBody.innerHTML = `<tr><td colspan="9" class="admin-empty">Aucun diagnostic gratuit à traiter.</td></tr>`;
+    return;
+  }
+
+  diagnosticsBody.innerHTML = diagnostics.map((diagnostic) => `
+    <tr>
+      <td><strong>${escapeHtml(diagnostic.company || "—")}</strong></td>
+      <td>${escapeHtml(diagnostic.city || "—")}</td>
+      <td>${escapeHtml(diagnostic.firstName || "—")}</td>
+      <td>${escapeHtml(diagnostic.email || "—")}</td>
+      <td>${formatDate(diagnostic.submittedAt)}</td>
+      <td><span class="admin-badge is-${escapeHtml(diagnostic.status || "awaiting_review")}">${escapeHtml(diagnosticStatusLabels[diagnostic.status] || diagnostic.status || "À traiter")}</span></td>
+      <td><span class="admin-badge is-mailerlite-${escapeHtml(diagnostic.mailerLiteStatus || "pending")}">${escapeHtml(mailerLiteStatusLabels[diagnostic.mailerLiteStatus] || diagnostic.mailerLiteStatus || "En attente")}</span></td>
+      <td>${escapeHtml(reportTypeLabels[diagnostic.reportType] || diagnostic.reportType || "—")}</td>
+      <td>
+        <a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>
+      </td>
+    </tr>
+  `).join("");
+};
+
 const markTaskCompleted = async (taskId) => {
   if (!taskId) return;
   const response = await fetch(`/admin/tasks/${encodeURIComponent(taskId)}`, {
@@ -238,6 +284,31 @@ const loadOrders = async () => {
   renderOrders(data.orders || []);
 };
 
+const loadDiagnostics = async () => {
+  if (!diagnosticsBody) return;
+  diagnosticsBody.innerHTML = `<tr><td colspan="9" class="admin-empty">Chargement...</td></tr>`;
+
+  const response = await fetch("/api/admin/diagnostic-requests?limit=50", {
+    credentials: "same-origin",
+    headers: { "Accept": "application/json" },
+  });
+
+  if (response.status === 401) {
+    redirectToLogin();
+    return;
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    if (diagnosticCount) diagnosticCount.textContent = "—";
+    diagnosticsBody.innerHTML = `<tr><td colspan="9" class="admin-empty">Impossible de charger les diagnostics gratuits.</td></tr>`;
+    return;
+  }
+
+  if (diagnosticCount) diagnosticCount.textContent = String(data.pendingCount || 0);
+  renderDiagnostics(data.diagnostics || []);
+};
+
 const logout = async () => {
   await fetch("/admin/logout", {
     method: "POST",
@@ -280,3 +351,4 @@ ordersBody?.addEventListener("click", (event) => {
 });
 
 loadOrders();
+loadDiagnostics();

@@ -17,3 +17,6 @@ tmp/
 
 # Generated audit files
 audit-efficia.pdf
+.dev.vars*
+.env*
+output/

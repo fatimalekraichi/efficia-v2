@@ -12,6 +12,9 @@
     "test:composition": "node --test tests/compositionRoutes.test.js",
     "test:admin-audit": "node --test tests/adminAuditLauncher.test.js",
     "test:manual-review": "node --test tests/manualReviewGate.test.js",
-    "test:score-efficia": "node --test tests/scoreEfficiaHistorical.test.js"
+    "test:score-efficia": "node --test tests/scoreEfficiaHistorical.test.js",
+    "test:privacy": "node --test tests/privacyAnalytics.test.js",
+    "test:public-diagnostic": "node --test tests/publicDiagnosticRequest.test.js",
+    "test:environment-isolation": "node --test tests/environmentIsolation.test.js"
   }
 }

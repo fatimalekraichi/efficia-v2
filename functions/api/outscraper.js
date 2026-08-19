@@ -1,5 +1,5 @@
 // Cloudflare Pages Function — Connecteur Outscraper (Appel A : fiche par nom + ville)
-// Route : GET /api/outscraper?nom=...&ville=...
+// Route : POST /api/outscraper — les données métier restent dans le corps JSON.
 // Auth  : Authorization: Bearer <CONNECTOR_TOKEN>
 // La logique de collecte vit dans ../lib/collectFiche.js (partagée avec /api/analyze).
 
@@ -8,7 +8,7 @@ import { verifyConnectorToken } from "./_auth.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
@@ -22,17 +22,21 @@ export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function onRequestGet(context) {
+export async function onRequestPost(context) {
   const { request, env } = context;
 
   // Authentification par Bearer token.
   const auth = verifyConnectorToken(context);
   if (!auth.ok) return jsonResponse({ success: false, error: auth.error }, auth.status);
 
-  // Paramètres.
-  const url = new URL(request.url);
-  const nom = (url.searchParams.get("nom") || "").trim();
-  const ville = (url.searchParams.get("ville") || "").trim();
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
+  }
+  const nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
+  const ville = typeof payload?.ville === "string" ? payload.ville.trim() : "";
 
   // Collecte (module partagé). Les codes d'erreur (400/404/500/502) proviennent de collectFiche.
   const result = await collectFiche({ nom, ville, apiKey: env.OUTSCRAPER_API_KEY });
@@ -43,4 +47,10 @@ export async function onRequestGet(context) {
   }
 
   return jsonResponse({ success: true, fiche: result.fiche });
+}
+
+export async function onRequest(context) {
+  if (context.request.method === "OPTIONS") return onRequestOptions();
+  if (context.request.method === "POST") return onRequestPost(context);
+  return jsonResponse({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
 }

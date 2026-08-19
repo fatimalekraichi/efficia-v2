@@ -9,6 +9,7 @@ import {
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
 import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
 import { addPdfPrintStyles, addPreviewToolbar } from "../../lib/pdfRenderer.js";
+import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 
 const HTML_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -61,6 +62,10 @@ export async function renderAnalysisById(context, analysisId) {
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
+  const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
+  if (!premiumAuthorization.ok) {
+    return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
+  }
   if (analysis.status === "awaiting_review") {
     return jsonResponse({
       success: false,
@@ -85,6 +90,10 @@ export async function renderLatestAnalysis(context) {
   const analysis = await loadLatestAnalysis(verified.db);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
+  }
+  const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
+  if (!premiumAuthorization.ok) {
+    return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
   }
   if (analysis.status === "awaiting_review") {
     return jsonResponse({

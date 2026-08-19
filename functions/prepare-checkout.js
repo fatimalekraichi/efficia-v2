@@ -3,29 +3,27 @@ import {
   createCgvAcceptanceProof,
   hasValidCgvAcceptance,
 } from "./lib/cgvAcceptance.js";
+import {
+  resolveMailerLiteGroupId,
+  resolvePublicSite,
+} from "./lib/environmentIsolation.js";
 
 const STRIPE_CHECKOUT_ENDPOINT = "https://api.stripe.com/v1/checkout/sessions";
-const MAILERLITE_GROUPS_ENDPOINT = "https://connect.mailerlite.com/api/groups?limit=100";
 const MAILERLITE_FIELDS_ENDPOINT = "https://connect.mailerlite.com/api/fields?limit=100";
 const MAILERLITE_SUBSCRIBERS_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
-const SUCCESS_URL = "https://efficiadigital.com/paiement-reussi?session_id={CHECKOUT_SESSION_ID}";
-const CANCEL_URL = "https://efficiadigital.com/#offres";
 
 const PRODUCTS = {
   audit: {
     envKey: "STRIPE_PRICE_AUDIT",
     name: "Audit fiche Google",
-    mailerLiteGroupName: "Prospects - Audit (paiement en cours)",
   },
   visibility: {
     envKey: "STRIPE_PRICE_VISIBILITY",
     name: "Pack Visibilité Google",
-    mailerLiteGroupName: "Prospects - Pack Visibilité (paiement en cours)",
   },
   performance: {
     envKey: "STRIPE_PRICE_PERFORMANCE",
     name: "Pack Performance",
-    mailerLiteGroupName: "Prospects - Pack Performance (paiement en cours)",
   },
 };
 
@@ -52,11 +50,6 @@ const getValuePrefix = (value) => {
   return cleanValue ? "other" : "missing";
 };
 
-const normalizeForMatch = (value) => normalizeText(value)
-  .normalize("NFD")
-  .replace(/[\u0300-\u036f]/g, "")
-  .toLowerCase();
-
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
 const isValidUrl = (value) => {
@@ -75,51 +68,6 @@ const splitFullName = (fullName) => {
     firstName,
     lastName: parts.join(" "),
   };
-};
-
-const getMailerLiteGroupIdByName = async ({ apiKey, groupName }) => {
-  console.log("Purchase checkout: searching MailerLite group", { group_name: groupName });
-
-  let response;
-  try {
-    response = await fetch(MAILERLITE_GROUPS_ENDPOINT, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Accept": "application/json",
-      },
-    });
-  } catch (error) {
-    console.error("MailerLite groups request threw an exception.", error);
-    return "";
-  }
-
-  const responseText = await response.text();
-  if (!response.ok) {
-    console.error("MailerLite groups request failed", response.status, responseText);
-    return "";
-  }
-
-  let data = null;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    console.error("MailerLite groups response was not JSON.", responseText);
-    return "";
-  }
-
-  const expectedName = normalizeForMatch(groupName);
-  const group = data?.data?.find((item) => normalizeForMatch(item?.name) === expectedName);
-  const groupId = normalizeText(group?.id);
-
-  if (!groupId) {
-    console.error("Purchase checkout: MailerLite group not found by name", {
-      expected_group_name: groupName,
-      available_group_names: Array.isArray(data?.data) ? data.data.map((item) => item?.name).filter(Boolean) : [],
-    });
-  }
-
-  return groupId;
 };
 
 const getMailerLiteFieldKeys = async ({ apiKey }) => {
@@ -144,7 +92,7 @@ const getMailerLiteFieldKeys = async ({ apiKey }) => {
 
   const responseText = await response.text();
   if (!response.ok) {
-    console.error("MailerLite fields request failed", response.status, responseText);
+    console.error("MailerLite fields request failed", { status: response.status });
     return {
       ok: false,
       keys: new Set(),
@@ -155,7 +103,7 @@ const getMailerLiteFieldKeys = async ({ apiKey }) => {
   try {
     data = JSON.parse(responseText);
   } catch {
-    console.error("MailerLite fields response was not JSON.", responseText);
+    console.error("MailerLite fields response was not JSON.");
     return {
       ok: false,
       keys: new Set(),
@@ -271,8 +219,7 @@ const buildMailerLiteFields = ({ product, lead, fieldKeys }) => {
 
 const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) => {
   console.log("Purchase checkout: sending subscriber to MailerLite", {
-    email,
-    group_id: groupId || null,
+    has_group: Boolean(groupId),
     field_keys: Object.keys(fields),
   });
 
@@ -283,9 +230,7 @@ const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) =>
     fields,
   };
 
-  if (groupId) {
-    requestBody.groups = [groupId];
-  }
+  requestBody.groups = [groupId];
 
   let response;
   try {
@@ -309,11 +254,11 @@ const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) =>
 
   const responseText = await response.text();
   if (!response.ok) {
-    console.error("MailerLite subscriber request failed", response.status, responseText);
+    console.error("MailerLite subscriber request failed", { status: response.status });
     return {
       ok: false,
       status: response.status,
-      details: responseText,
+      details: "MailerLite subscriber request failed.",
     };
   }
 
@@ -323,30 +268,13 @@ const sendSubscriberToMailerLite = async ({ apiKey, email, groupId, fields }) =>
   };
 };
 
-const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
+const saveProspectToMailerLite = async ({ apiKey, product, lead, groupId, groupVariable }) => {
   console.log("Purchase checkout: saving prospect before Stripe", {
-    email: lead.email,
     product: product.name,
-    group_name: product.mailerLiteGroupName,
+    group_variable: groupVariable,
     has_google_business_url: Boolean(lead.googleBusinessUrl),
     has_city: Boolean(lead.city),
   });
-
-  const groupId = await getMailerLiteGroupIdByName({
-    apiKey,
-    groupName: product.mailerLiteGroupName,
-  });
-
-  if (!groupId) {
-    console.error("Purchase checkout: MailerLite group is required but was not found", {
-      email: lead.email,
-      group_name: product.mailerLiteGroupName,
-    });
-    return {
-      ok: false,
-      error: "MailerLite group was not found.",
-    };
-  }
 
   const fieldKeysResult = await getMailerLiteFieldKeys({ apiKey });
 
@@ -380,18 +308,14 @@ const saveProspectToMailerLite = async ({ apiKey, product, lead }) => {
   }
 
   console.log("Purchase checkout: MailerLite prospect saved before Stripe", {
-    email: lead.email,
-    group_id: groupId,
-    group_name: product.mailerLiteGroupName,
-    response_details: response.details,
+    group_variable: groupVariable,
   });
 
-  return { ok: true, groupId };
+  return { ok: true };
 };
 
-const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead, cgvAcceptance }) => {
+const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, product, lead, cgvAcceptance, site }) => {
   console.log("Purchase checkout: creating Stripe Checkout session", {
-    email: lead.email,
     product_code: productCode,
     product: product.name,
     has_price_id: Boolean(priceId),
@@ -404,13 +328,13 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
   formData.set("mode", "payment");
   formData.set("line_items[0][price]", priceId);
   formData.set("line_items[0][quantity]", "1");
-  formData.set("success_url", SUCCESS_URL);
-  formData.set("cancel_url", CANCEL_URL);
+  formData.set("success_url", site.successUrl);
+  formData.set("cancel_url", site.cancelUrl);
   formData.set("billing_address_collection", "required");
   formData.set("customer_email", lead.email);
   formData.set("metadata[product_code]", productCode);
   formData.set("metadata[product_name]", product.name);
-  formData.set("metadata[source]", "efficiadigital.com");
+  formData.set("metadata[source]", site.origin);
   formData.set("metadata[cgv_version]", cgvAcceptance.version);
   formData.set("metadata[cgv_accepted_at]", cgvAcceptance.acceptedAt);
   formData.set("metadata[customer_name]", lead.fullName);
@@ -451,7 +375,7 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
       statusCode: response.status,
       error_type: stripeError.type || null,
       error_code: stripeError.code || null,
-      error_message: stripeError.message || responseText,
+      has_error_message: Boolean(stripeError.message || responseText),
     });
     return {
       ok: false,
@@ -466,7 +390,7 @@ const createStripeCheckoutSession = async ({ apiKey, priceId, productCode, produ
   }
 
   if (!data?.url) {
-    console.error("Stripe Checkout did not return a URL.", responseText);
+    console.error("Stripe Checkout did not return a URL.");
     return {
       ok: false,
       error: "Stripe Checkout URL is missing.",
@@ -524,6 +448,12 @@ const handleCheckoutPreparation = async (context) => {
     return jsonResponse(CGV_ACCEPTANCE_ERROR, 400);
   }
 
+  const site = resolvePublicSite(context.request, context.env);
+  if (!site.ok) {
+    console.error("Checkout site configuration rejected.", { error: site.error });
+    return jsonResponse({ success: false, error: site.error }, site.status);
+  }
+
   const cgvAcceptance = createCgvAcceptanceProof();
   const stripeSecretKey = context.env.STRIPE_SECRET_KEY;
   const mailerLiteApiKey = context.env.MAILERLITE_API_KEY;
@@ -579,6 +509,23 @@ const handleCheckoutPreparation = async (context) => {
     }, 400);
   }
 
+  const mailerLiteGroup = resolveMailerLiteGroupId(context.env, site.environment, {
+    productCode,
+    role: "prospect",
+  });
+  if (!mailerLiteGroup.ok) {
+    console.error("Checkout MailerLite group configuration rejected.", {
+      error: mailerLiteGroup.error,
+      variable: mailerLiteGroup.variable || null,
+      conflicting_variable: mailerLiteGroup.conflictingVariable || null,
+    });
+    return jsonResponse({
+      success: false,
+      error: mailerLiteGroup.error,
+      variable: mailerLiteGroup.variable || null,
+    }, 500);
+  }
+
   if (!priceId) {
     console.error("Purchase checkout: Stripe price env variable is missing", {
       product_code: productCode,
@@ -589,7 +536,7 @@ const handleCheckoutPreparation = async (context) => {
     return jsonResponse({
       success: false,
       error: "MISSING_STRIPE_PRICE",
-      message: `${priceEnvKey} est absente dans l’environnement Production.`,
+      message: `${priceEnvKey} est absente dans l’environnement ${site.environment}.`,
     }, 400);
   }
 
@@ -633,6 +580,8 @@ const handleCheckoutPreparation = async (context) => {
     apiKey: mailerLiteApiKey,
     product,
     lead,
+    groupId: mailerLiteGroup.groupId,
+    groupVariable: mailerLiteGroup.variable,
   });
 
   if (!mailerLiteResult.ok) {
@@ -647,6 +596,7 @@ const handleCheckoutPreparation = async (context) => {
     product,
     lead,
     cgvAcceptance,
+    site,
   });
 
   if (!checkoutResult.ok) {
@@ -660,15 +610,13 @@ const handleCheckoutPreparation = async (context) => {
   }
 
   console.log("Purchase checkout: completed successfully", {
-    email: lead.email,
     product: product.name,
-    mailerlite_group_id: mailerLiteResult.groupId,
+    environment: site.environment,
   });
 
   return jsonResponse({
     success: true,
     url: checkoutResult.url,
-    mailerlite_group_id: mailerLiteResult.groupId,
     warning: mailerLiteResult.warning || null,
   });
 };
