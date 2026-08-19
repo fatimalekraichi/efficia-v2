@@ -71,6 +71,9 @@
   .score-flottant{position:sticky;top:0;z-index:10;background:var(--bleu);color:#fff;border-radius:0 0 14px 14px;
                   padding:14px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
   .score-flottant .val{font-size:1.6rem;font-weight:800}
+  .brouillon-controle{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .brouillon-etat{flex:1 1 100%;margin:0;color:#e2e8f0;font-size:.78rem;font-weight:700;text-align:right}
+  .brouillon-etat[data-state="error"]{color:#fecaca}
   .btn{background:var(--bleu);color:#fff;font-weight:700;border:none;border-radius:10px;padding:14px 26px;
        font-size:1rem;cursor:pointer;text-decoration:none;display:inline-block}
   [data-premium-action][hidden]{display:none!important}
@@ -86,6 +89,13 @@
   .actions-ligne{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
   .btn-mini{border:1px solid var(--bord);background:#fff;color:var(--encre);font-weight:700;border-radius:8px;padding:9px 12px;cursor:pointer}
   .btn-mini:hover{border-color:var(--bleu);color:var(--bleu);background:var(--fond2)}
+  @media (max-width:640px){
+    .score-flottant{padding:10px 12px;align-items:stretch}
+    .score-flottant>.btn,.score-flottant>.brouillon-controle{flex:1 1 100%;width:100%}
+    .score-flottant .btn{padding:12px 14px;text-align:center;white-space:normal}
+    .brouillon-controle .btn{flex:1 1 100%}
+    .brouillon-etat{text-align:left}
+  }
   #candidats{display:none;margin-top:14px}
   .candidat{border:1px solid var(--bord);border-radius:8px;padding:10px 14px;margin-bottom:8px;cursor:pointer}
   .candidat:hover{border-color:var(--bleu);background:var(--fond2)}
@@ -546,6 +556,10 @@
     <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
     <button class="btn btn-vert" id="btn-audit-premium" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn btn-blanc" onclick="apercuImpression()">Aperçu avant impression</button>
+    <div class="brouillon-controle">
+      <button class="btn btn-blanc" id="btn-brouillon-d1" onclick="enregistrerBrouillonD1(true)" type="button">Enregistrer le brouillon</button>
+      <p id="statut-brouillon-d1" class="brouillon-etat" data-state="dirty" role="status" aria-live="polite">Modifications non enregistrées</p>
+    </div>
   </div>
 
   <div class="conteneur">
@@ -579,9 +593,7 @@
       <div class="actions-ligne">
         <button class="btn-mini" onclick="reprendreDiagnostic()" type="button">Reprendre le dernier diagnostic</button>
         <button class="btn-mini" onclick="effacerDiagnostic()" type="button">Effacer le diagnostic enregistré</button>
-        <button class="btn-mini" id="btn-brouillon-d1" onclick="enregistrerBrouillonD1(true)" type="button">Enregistrer le brouillon</button>
       </div>
-      <div id="statut-brouillon-d1" class="mini-statut" aria-live="polite"></div>
       <div id="statut-archive-d1" class="mini-statut" style="display:none;margin-top:12px"></div>
       <div id="statut"></div>
       <div id="candidats"></div>
@@ -2893,6 +2905,19 @@ function effacerDiagnostic(){
 
 let timerBrouillonD1 = null;
 let sauvegardeBrouillonD1EnCours = false;
+let sauvegardeBrouillonD1Relancee = false;
+
+function majEtatBrouillonD1(etat, updatedAt = null){
+  const status = document.getElementById("statut-brouillon-d1");
+  if(!status) return;
+  status.dataset.state = etat;
+  if(etat === "saving") status.textContent = "Enregistrement…";
+  else if(etat === "saved"){
+    const time = new Intl.DateTimeFormat("fr-FR", {hour:"2-digit",minute:"2-digit"}).format(new Date(updatedAt));
+    status.textContent = `Brouillon enregistré à ${time}`;
+  }else if(etat === "error") status.textContent = "Échec de l’enregistrement — Réessayer";
+  else status.textContent = "Modifications non enregistrées";
+}
 
 function champsBrouillonD1(){
   const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"];
@@ -2921,10 +2946,15 @@ function payloadBrouillonD1(){
 async function enregistrerBrouillonD1(manuel = false){
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
-  if(sauvegardeBrouillonD1EnCours) return;
+  if(manuel) window.clearTimeout(timerBrouillonD1);
+  if(sauvegardeBrouillonD1EnCours){
+    if(manuel) sauvegardeBrouillonD1Relancee = true;
+    return;
+  }
   sauvegardeBrouillonD1EnCours = true;
   const button = document.getElementById("btn-brouillon-d1");
-  if(manuel && button) button.disabled = true;
+  if(button) button.disabled = true;
+  majEtatBrouillonD1("saving");
   try{
     const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
       method:"PUT",
@@ -2940,20 +2970,22 @@ async function enregistrerBrouillonD1(manuel = false){
     if(response.status === 401){ window.location.href = "/admin-login"; return; }
     const data = await response.json().catch(() => ({}));
     if(!response.ok || !data.success) throw new Error("draft_save_failed");
-    const time = new Intl.DateTimeFormat("fr-FR", {hour:"2-digit",minute:"2-digit"}).format(new Date(data.draft.updatedAt));
-    const status = document.getElementById("statut-brouillon-d1");
-    if(status) status.textContent = `Brouillon enregistré à ${time}.`;
+    majEtatBrouillonD1("saved", data.draft.updatedAt);
   }catch{
-    const status = document.getElementById("statut-brouillon-d1");
-    if(status) status.textContent = "Le brouillon n’a pas pu être enregistré.";
+    majEtatBrouillonD1("error");
   }finally{
     sauvegardeBrouillonD1EnCours = false;
-    if(manuel && button) button.disabled = false;
+    if(button) button.disabled = false;
+    if(sauvegardeBrouillonD1Relancee){
+      sauvegardeBrouillonD1Relancee = false;
+      enregistrerBrouillonD1(true);
+    }
   }
 }
 
 function programmerSauvegardeBrouillonD1(){
   if(!auditPublicIdActif) return;
+  majEtatBrouillonD1("dirty");
   window.clearTimeout(timerBrouillonD1);
   timerBrouillonD1 = window.setTimeout(() => enregistrerBrouillonD1(false), 1200);
 }
@@ -2986,9 +3018,7 @@ async function restaurerBrouillonD1(){
   collecteDiagnosticValidee = true;
   majConditionsQuestionnaire();
   afficherProfilUtilise();
-  const time = new Intl.DateTimeFormat("fr-FR", {hour:"2-digit",minute:"2-digit"}).format(new Date(draft.updatedAt));
-  const status = document.getElementById("statut-brouillon-d1");
-  if(status) status.textContent = `Brouillon restauré, enregistré à ${time}.`;
+  majEtatBrouillonD1("saved", draft.updatedAt);
 }
 
 async function supprimerBrouillonD1ApresFinalisation(){

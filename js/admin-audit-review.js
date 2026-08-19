@@ -25,6 +25,7 @@ let currentPrefillCriteria = new Map();
 let currentPrefillConditions = {};
 let draftSaveTimer = null;
 let draftSaveInFlight = false;
+let draftManualSaveQueued = false;
 
 const REPORT_TYPE_LABELS = {
   free: "Diagnostic gratuit",
@@ -1422,10 +1423,25 @@ function formatDraftTime(value) {
   return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+function setDraftState(state, updatedAt = null) {
+  if (!draftStatus) return;
+  draftStatus.dataset.state = state;
+  if (state === "saving") draftStatus.textContent = "Enregistrement…";
+  else if (state === "saved") draftStatus.textContent = `Brouillon enregistré à ${formatDraftTime(updatedAt)}`;
+  else if (state === "error") draftStatus.textContent = "Échec de l’enregistrement — Réessayer";
+  else draftStatus.textContent = "Modifications non enregistrées";
+}
+
 async function saveDraft({ manual = false } = {}) {
-  if (!currentAnalysis || draftSaveInFlight) return;
+  if (!currentAnalysis) return;
+  if (manual) window.clearTimeout(draftSaveTimer);
+  if (draftSaveInFlight) {
+    if (manual) draftManualSaveQueued = true;
+    return;
+  }
   draftSaveInFlight = true;
-  if (manual && draftSaveButton) draftSaveButton.disabled = true;
+  if (draftSaveButton) draftSaveButton.disabled = true;
+  setDraftState("saving");
   try {
     const reportType = currentAnalysis.manualReview?.reportType || currentAnalysis.reportType || "premium";
     const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
@@ -1442,17 +1458,22 @@ async function saveDraft({ manual = false } = {}) {
     const data = await response.json().catch(() => ({}));
     if (response.status === 401) return redirectToLogin();
     if (!response.ok || !data.success) throw new Error("DRAFT_SAVE_FAILED");
-    if (draftStatus) draftStatus.textContent = `Brouillon enregistré à ${formatDraftTime(data.draft.updatedAt)}.`;
+    setDraftState("saved", data.draft.updatedAt);
   } catch {
-    if (draftStatus) draftStatus.textContent = "Le brouillon n’a pas pu être enregistré.";
+    setDraftState("error");
   } finally {
     draftSaveInFlight = false;
-    if (manual && draftSaveButton) draftSaveButton.disabled = false;
+    if (draftSaveButton) draftSaveButton.disabled = false;
+    if (draftManualSaveQueued) {
+      draftManualSaveQueued = false;
+      saveDraft({ manual: true });
+    }
   }
 }
 
 function scheduleDraftSave() {
   if (!currentAnalysis) return;
+  setDraftState("dirty");
   window.clearTimeout(draftSaveTimer);
   draftSaveTimer = window.setTimeout(() => saveDraft(), 1200);
 }
@@ -1471,7 +1492,7 @@ async function restoreDraft() {
   fillCriteriaFromAnalysis(currentAnalysis, answers);
   restoreCompetitorSelection(answers);
   restoreExecutionPlan(answers.executionPlan);
-  if (draftStatus) draftStatus.textContent = `Brouillon restauré, enregistré à ${formatDraftTime(data.draft.updatedAt)}.`;
+  setDraftState("saved", data.draft.updatedAt);
 }
 
 async function saveReview(event) {

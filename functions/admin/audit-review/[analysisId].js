@@ -65,6 +65,9 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     .review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
     .review-actions__primary { min-width: 260px; }
     .review-actions__secondary { display: flex; flex-wrap: wrap; gap: 10px; }
+    .audit-draft-toolbar { position: sticky; top: 88px; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin: 18px 0; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 18px; background: rgba(255, 255, 255, .96); box-shadow: 0 16px 38px rgba(15, 23, 42, .10); backdrop-filter: blur(14px); }
+    .audit-draft-toolbar__status { flex: 1 1 240px; margin: 0; color: #64748b; font-size: 13px; font-weight: 800; }
+    .audit-draft-toolbar__status[data-state="error"] { color: #b91c1c; }
     .execution-editor { display: grid; gap: 18px; }
     .execution-editor__group { padding: 18px; border: 1px solid #e2e8f0; border-radius: 18px; background: #f8fafc; }
     .execution-editor__group h3 { margin: 0 0 12px; color: #0f172a; }
@@ -76,7 +79,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     .execution-editor__notice { color: #92400e; font-weight: 800; }
     @media (max-width: 980px) { .review-kv { grid-template-columns: 1fr; } }
     @media (max-width: 720px) { .criteria-checklist { grid-template-columns: 1fr; } .criteria-category__head { display: block; } .criteria-category__head span { display: block; margin-top: 6px; } }
-    @media (max-width: 640px) { .review-actions { flex-direction: column; align-items: stretch; } .review-actions__primary { width: 100%; } .review-actions__secondary { flex-direction: column; width: 100%; } .review-actions__secondary .admin-button { width: 100%; text-align: center; } }
+    @media (max-width: 640px) { .audit-draft-toolbar { top: 84px; align-items: stretch; } .audit-draft-toolbar .admin-button { width: 100%; } .audit-draft-toolbar__status { flex-basis: 100%; } .review-actions { flex-direction: column; align-items: stretch; } .review-actions__primary { width: 100%; } .review-actions__secondary { flex-direction: column; width: 100%; } .review-actions__secondary .admin-button { width: 100%; text-align: center; } }
   </style>
 </head>
 <body class="admin-page" data-analysis-id="${analysisId}">
@@ -100,6 +103,11 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
           <h1>Contrôler l’audit avant rédaction</h1>
           <p>Vérifiez les données automatiques, confirmez les points visuels et préparez l’aperçu avant approbation du PDF.</p>
         </div>
+      </section>
+
+      <section class="audit-draft-toolbar" aria-label="Sauvegarde du brouillon">
+        <button class="admin-button is-secondary" type="button" data-draft-save>Enregistrer le brouillon</button>
+        <p class="audit-draft-toolbar__status" data-draft-status data-state="dirty" role="status" aria-live="polite">Modifications non enregistrées</p>
       </section>
 
       <section class="admin-card">
@@ -149,14 +157,12 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
           <div class="review-actions">
             <button class="admin-button review-actions__primary" type="submit" data-review-submit>Valider et préparer l’aperçu</button>
             <div class="review-actions__secondary">
-              <button class="admin-button is-secondary" type="button" data-draft-save>Enregistrer le brouillon</button>
               <a class="admin-button is-secondary" href="#" target="_blank" rel="noopener" data-preview-link>Aperçu HTML</a>
               <button class="admin-button is-secondary" type="button" data-approve-button>Approuver le rapport</button>
               <a class="admin-button is-secondary is-disabled-link" href="#" target="_blank" rel="noopener" data-pdf-link${showLegacyFreeDiagnosticLink ? " hidden" : ""}>Générer le PDF</a>
               <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysisId)}" data-free-diagnostic-analysis-id="${analysisId}" target="_blank" rel="noopener" data-legacy-generator-link${showLegacyFreeDiagnosticLink ? "" : " hidden"}>Ouvrir l'ancien générateur gratuit</a>
             </div>
           </div>
-          <p class="admin-muted" data-draft-status></p>
           <p class="review-status" data-review-status></p>
         </form>
       </section>
