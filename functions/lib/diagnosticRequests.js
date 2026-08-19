@@ -7,6 +7,19 @@ const cleanText = (value, maxLength) => (typeof value === "string" ? value.trim(
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
+const d1Nullable = (value) => (value === undefined ? null : value);
+
+function persistenceError(phase, error) {
+  if (error?.phase) return error;
+  const wrapped = new Error(
+    typeof error?.message === "string" ? error.message : "D1 persistence failed.",
+    { cause: error },
+  );
+  wrapped.name = typeof error?.name === "string" ? error.name : "Error";
+  wrapped.phase = phase;
+  return wrapped;
+}
+
 export function isValidGoogleBusinessUrl(value) {
   if (!value) return false;
   try {
@@ -81,24 +94,29 @@ export async function loadDiagnosticRequestByIdempotency(db, idempotencyKey) {
 }
 
 export async function persistDiagnosticRequestAtomically(db, { analysisStatement, request }) {
-  const requestStatement = db.prepare(`
-    INSERT INTO diagnostic_requests (
-      request_id, idempotency_key, analysis_id, first_name, email,
-      company_name, city, google_business_url, status, mailerlite_status,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review', 'pending', ?, ?)
-  `).bind(
-    request.requestId,
-    request.idempotencyKey,
-    request.analysisId,
-    request.firstName,
-    request.email,
-    request.companyName || null,
-    request.city || null,
-    request.googleBusinessUrl || null,
-    request.createdAt,
-    request.createdAt,
-  );
+  let requestStatement;
+  try {
+    requestStatement = db.prepare(`
+      INSERT INTO diagnostic_requests (
+        request_id, idempotency_key, analysis_id, first_name, email,
+        company_name, city, google_business_url, status, mailerlite_status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review', 'pending', ?, ?)
+    `).bind(
+      request.requestId,
+      request.idempotencyKey,
+      request.analysisId,
+      request.firstName,
+      request.email,
+      d1Nullable(request.companyName || null),
+      d1Nullable(request.city || null),
+      d1Nullable(request.googleBusinessUrl || null),
+      request.createdAt,
+      request.createdAt,
+    );
+  } catch (error) {
+    throw persistenceError("diagnostic_request_insert", error);
+  }
 
   try {
     await db.batch([analysisStatement, requestStatement]);
@@ -118,7 +136,7 @@ export async function persistDiagnosticRequestAtomically(db, { analysisStatement
         idempotent: true,
       };
     }
-    throw error;
+    throw persistenceError("atomic_batch", error);
   }
 }
 

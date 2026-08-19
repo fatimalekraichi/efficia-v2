@@ -63,7 +63,7 @@ async function createDiagnosticAnalysis(context, submission) {
   });
   const data = await response.json().catch(() => null);
   if (!response.ok || !data?.analysisId || data.status !== "awaiting_review") {
-    return { ok: false, status: response.status || 502 };
+    return { ok: false, status: response.status || 502, phase: "analysis_request" };
   }
 
   const benchmarkResponse = await fetch(`${origin}/api/benchmark`, {
@@ -76,7 +76,7 @@ async function createDiagnosticAnalysis(context, submission) {
     body: JSON.stringify({ analysisId: data.analysisId }),
   });
   if (!benchmarkResponse.ok) {
-    return { ok: false, status: benchmarkResponse.status || 502 };
+    return { ok: false, status: benchmarkResponse.status || 502, phase: "benchmark_request" };
   }
   return {
     ok: true,
@@ -160,11 +160,17 @@ export async function onRequestPost(context) {
   if (step === "diagnostic_request") {
     try {
       diagnostic = await createDiagnosticAnalysis(context, submission);
-    } catch {
-      diagnostic = { ok: false, status: 502 };
+    } catch (error) {
+      diagnostic = {
+        ok: false,
+        status: 502,
+        phase: typeof error?.phase === "string" ? error.phase : "internal_request",
+      };
     }
     if (!diagnostic.ok) {
-      console.error("Diagnostic request: D1 analysis creation failed.");
+      console.error("Diagnostic request failed.", {
+        phase: diagnostic.phase || "analysis_request",
+      });
       return jsonResponse({ success: false, error: ERROR_MESSAGE }, 502);
     }
     if (diagnostic.idempotent && diagnostic.mailerLiteStatus === "synced") {

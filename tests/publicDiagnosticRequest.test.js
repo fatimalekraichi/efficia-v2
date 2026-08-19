@@ -39,12 +39,16 @@ class LocalD1 {
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
     });
     this.failBatch = failBatch;
+    this.boundStatements = [];
   }
 
   prepare(sql) {
     const database = this.sqlite;
     const makeBound = (params = []) => ({
-      bind: (...nextParams) => makeBound(nextParams),
+      bind: (...nextParams) => {
+        this.boundStatements.push({ sql, params: nextParams });
+        return makeBound(nextParams);
+      },
       first: async () => database.prepare(sql).get(...params) || null,
       run: async () => {
         const result = database.prepare(sql).run(...params);
@@ -111,7 +115,7 @@ const makeSubscribeContext = (db, payload) => ({
   },
 });
 
-function installFetchRouter({ db, mailerLiteOk = true }) {
+function installFetchRouter({ db, mailerLiteOk = true, benchmarkOk = true, sparseBusiness = false }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (input, options = {}) => {
@@ -128,6 +132,7 @@ function installFetchRouter({ db, mailerLiteOk = true }) {
       });
     }
     if (url.pathname === "/api/benchmark") {
+      if (!benchmarkOk) return Response.json({ error: "local_benchmark_failure" }, { status: 500 });
       return benchmark({
         request: new Request(url, options),
         env: { CONNECTOR_TOKEN: TOKEN, ORDERS_DB: db },
@@ -138,16 +143,17 @@ function installFetchRouter({ db, mailerLiteOk = true }) {
     }
     if (url.hostname.includes("outscraper")) {
       const isCompetitorRequest = url.searchParams.get("organizationsPerQueryLimit") === "10";
-      return Response.json({
-        data: [isCompetitorRequest ? [] : [{
-          name: "Entreprise Test",
-          place_id: "place-local-test",
-          category: "Consultant",
-          city: "Bruxelles",
-          rating: 4.7,
-          reviews: 18,
-        }]],
-      });
+      const business = sparseBusiness
+        ? { name: "Entreprise Test" }
+        : {
+            name: "Entreprise Test",
+            place_id: "place-local-test",
+            category: "Consultant",
+            city: "Bruxelles",
+            rating: 4.7,
+            reviews: 18,
+          };
+      return Response.json({ data: [isCompetitorRequest ? [] : [business]] });
     }
     throw new Error(`Unexpected local URL: ${url.href}`);
   };
@@ -218,6 +224,8 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
     assert.match(first.analysisId, /^[0-9a-f-]{36}$/i);
     assert.equal(db.count("analyses"), 1);
     assert.equal(db.count("diagnostic_requests"), 1);
+    assert.equal(db.count("orders"), 0);
+    assert.equal(db.count("order_tasks"), 0);
 
     const analysis = db.first("SELECT status, report_type, benchmark_completed_at, document_model_json, pdf_generated_at FROM analyses");
     assert.equal(analysis.status, "awaiting_review");
@@ -252,15 +260,54 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
 test("un échec D1 empêche la confirmation et ne laisse aucune analyse orpheline", async () => {
   const db = new LocalD1({ failBatch: true });
   const router = installFetchRouter({ db });
+  const originalError = console.error;
+  const errorCalls = [];
+  console.error = (...values) => errorCalls.push(values);
   try {
     const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
     const data = await response.json();
     assert.equal(response.status, 502);
-    assert.equal(data.success, false);
+    assert.deepEqual(data, {
+      success: false,
+      error: "Une erreur est survenue. Merci de réessayer dans quelques instants.",
+    });
     assert.equal(db.count("analyses"), 0);
     assert.equal(db.count("diagnostic_requests"), 0);
+    assert.equal(db.count("orders"), 0);
+    assert.equal(db.count("order_tasks"), 0);
     assert.equal(router.calls.some(({ url }) => url.includes("connect.mailerlite.com")), false);
+
+    const d1Log = errorCalls.find(([message]) => message === "analyze: D1 persistence failed");
+    assert.ok(d1Log);
+    assert.deepEqual(Object.keys(d1Log[1]).sort(), ["cause_message", "message", "name", "phase"]);
+    assert.equal(d1Log[1].phase, "atomic_batch");
+    assert.equal(d1Log[1].name, "Error");
+    assert.equal(d1Log[1].message, "local_batch_failure");
+    assert.doesNotMatch(JSON.stringify(errorCalls), /Fatima|fatima@example\.com|Entreprise Test|Bruxelles/i);
   } finally {
+    console.error = originalError;
+    router.restore();
+  }
+});
+
+test("un échec benchmark n’est pas attribué à tort à la création D1", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, benchmarkOk: false });
+  const originalError = console.error;
+  const errorCalls = [];
+  console.error = (...values) => errorCalls.push(values);
+  try {
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 502);
+    assert.equal(db.count("analyses"), 1);
+    assert.equal(db.count("diagnostic_requests"), 1);
+    assert.equal(router.calls.some(({ url }) => url.includes("connect.mailerlite.com")), false);
+    assert.ok(errorCalls.some(([message, details]) => (
+      message === "Diagnostic request failed." && details?.phase === "benchmark_request"
+    )));
+    assert.equal(errorCalls.some(([message]) => /D1 analysis creation failed/.test(message)), false);
+  } finally {
+    console.error = originalError;
     router.restore();
   }
 });
@@ -278,6 +325,38 @@ test("une URL Google Business valide suffit sans entreprise ni ville", async () 
       "https://www.google.com/maps/place/Entreprise+Test");
   } finally {
     router.restore();
+  }
+});
+
+test("les champs D1 facultatifs absents sont liés à null dans les deux parcours", async () => {
+  for (const payload of [diagnosticPayload(), urlOnlyDiagnosticPayload()]) {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db, sparseBusiness: true });
+    try {
+      const response = await subscribe(makeSubscribeContext(db, payload));
+      const data = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(data.success, true);
+      assert.equal(db.count("analyses"), 1);
+      assert.equal(db.count("diagnostic_requests"), 1);
+
+      const inserts = db.boundStatements.filter(({ sql }) => /INSERT INTO (?:analyses|diagnostic_requests)/.test(sql));
+      assert.equal(inserts.length, 2);
+      for (const { params } of inserts) {
+        assert.equal(params.includes(undefined), false);
+      }
+
+      const analysis = db.first("SELECT nom, ville, query, place_id, rating, reviews, photos_count FROM analyses");
+      assert.ok(analysis.nom.trim());
+      assert.ok(analysis.ville.trim());
+      assert.ok(analysis.query.trim());
+      assert.equal(analysis.place_id, null);
+      assert.equal(analysis.rating, null);
+      assert.equal(analysis.reviews, null);
+      assert.equal(analysis.photos_count, null);
+    } finally {
+      router.restore();
+    }
   }
 });
 

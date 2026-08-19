@@ -30,6 +30,20 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
   headers: { "Content-Type": "application/json", ...CORS_HEADERS },
 });
 
+const d1Nullable = (value) => (value === undefined ? null : value);
+
+function logD1Error(error, fallbackPhase) {
+  const details = {
+    phase: typeof error?.phase === "string" ? error.phase : fallbackPhase,
+    name: typeof error?.name === "string" ? error.name : "Error",
+    message: typeof error?.message === "string" ? error.message : "D1 persistence failed.",
+  };
+  if (typeof error?.cause?.message === "string") {
+    details.cause_message = error.cause.message;
+  }
+  console.error("analyze: D1 persistence failed", details);
+}
+
 export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -271,6 +285,10 @@ export async function onRequestPost(context) {
   const storedVille = resolvedVille || VILLE_PLACEHOLDER;
   const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
 
+  if (![storedNom, storedVille, query].every((value) => typeof value === "string" && value.trim())) {
+    return jsonResponse({ error: "Insufficient business data for storage." }, 422);
+  }
+
   console.log("analyze:saving-d1");
   try {
     const analysisStatement = db.prepare(`
@@ -285,15 +303,15 @@ export async function onRequestPost(context) {
       storedNom,
       storedVille,
       query,
-      normalized.place_id || null,
-      normalized.name || null,
-      normalized.rating,
-      normalized.reviews,
-      normalized.photos_count,
+      d1Nullable(normalized.place_id || null),
+      d1Nullable(normalized.name || null),
+      d1Nullable(normalized.rating),
+      d1Nullable(normalized.reviews),
+      d1Nullable(normalized.photos_count),
       normalized.description_length,
-      resolvedActivite || null,
-      competitorData.requete || null,
-      competitorData.position,
+      d1Nullable(resolvedActivite || null),
+      d1Nullable(competitorData.requete || null),
+      d1Nullable(competitorData.position),
       JSON.stringify(competitorData.concurrents || []),
       diagnosticRequest ? "awaiting_review" : "collected",
       JSON.stringify(fiche),
@@ -324,7 +342,7 @@ export async function onRequestPost(context) {
 
     await analysisStatement.run();
   } catch (err) {
-    console.error("analyze: écriture D1 échouée", err && err.message);
+    logD1Error(err, "analysis_insert");
     return jsonResponse({ error: "Storage failed." }, 500);
   }
 
@@ -342,10 +360,10 @@ export async function onRequestPost(context) {
     identificationTier: result.tier ?? null,
   });
   } catch (err) {
-    console.error(err);
-    return Response.json(
-      { success: false, error: err.message },
-      { status: 500 },
-    );
+    console.error("analyze: request processing failed", {
+      phase: "request_processing",
+      name: typeof err?.name === "string" ? err.name : "Error",
+    });
+    return jsonResponse({ error: "Internal server error." }, 500);
   }
 }
