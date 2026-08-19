@@ -204,7 +204,7 @@ test("le contexte Score Efficia reste complet côté serveur", () => {
     orderId: "order-1",
     taskId: "task-1",
     premiumAllowed: true,
-    googleBusinessUrl: "https://maps.example/fiche",
+    collectionAvailable: false,
   });
 });
 

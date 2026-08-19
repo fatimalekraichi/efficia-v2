@@ -50,6 +50,38 @@ function safeFailure(errorCode, status = 502) {
   }, status, { "Cache-Control": "no-store" });
 }
 
+function businessNotFoundFailure() {
+  return jsonResponse({
+    success: false,
+    error: "GOOGLE_BUSINESS_NOT_FOUND",
+    message: "Fiche Google introuvable. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville.",
+  }, 404, { "Cache-Control": "no-store" });
+}
+
+function isCollectedFiche(fiche) {
+  const name = usableText(fiche?.name);
+  const placeId = normalizeText(fiche?.place_id);
+  const validPlaceId = Boolean(placeId && !/^__[^_]+(?:_[^_]+)*__$/.test(placeId));
+  return Boolean(name && validPlaceId);
+}
+
+async function clearFailedCollection(db, analysisId, { company, city, activity }) {
+  await db.prepare(`
+    UPDATE analyses
+    SET nom = ?, ville = ?, place_id = NULL, name = NULL, rating = NULL, reviews = NULL,
+        photos_count = NULL, description_length = NULL, activity = ?, search_query = NULL,
+        local_position = NULL, competitors_json = '[]', fiche_json = NULL,
+        normalized_json = NULL, updated_at = ?
+    WHERE analysis_id = ? AND report_type = 'free' AND status = 'awaiting_review'
+  `).bind(
+    company || "Fiche Google transmise",
+    city || VILLE_PLACEHOLDER,
+    activity || null,
+    new Date().toISOString(),
+    analysisId,
+  ).run();
+}
+
 export const onRequestOptions = () => onOptions();
 
 export async function onRequestPost(context) {
@@ -103,15 +135,54 @@ export async function onRequestPost(context) {
     suppressSensitiveLogs: true,
   });
   if (!ficheResult.ok) {
+    const notFound = ficheResult.code === 404;
     console.error("free-diagnostic-collect: failed", {
       phase: "business_collection",
-      error_code: "BUSINESS_COLLECTION_FAILED",
+      error_code: notFound ? "GOOGLE_BUSINESS_NOT_FOUND" : "BUSINESS_COLLECTION_FAILED",
     });
-    return safeFailure("BUSINESS_COLLECTION_FAILED", ficheResult.code === 404 ? 404 : 502);
+    if (notFound) {
+      try {
+        await clearFailedCollection(db, analysisId, {
+          company: requestedCompany,
+          city: requestedCity,
+          activity: manualActivity,
+        });
+      } catch (error) {
+        console.error("free-diagnostic-collect: failed", {
+          phase: "analysis_cleanup",
+          error_code: "ANALYSIS_UPDATE_FAILED",
+          name: typeof error?.name === "string" ? error.name : "Error",
+        });
+        return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
+      }
+      return businessNotFoundFailure();
+    }
+    return safeFailure("BUSINESS_COLLECTION_FAILED", 502);
   }
 
   const fiche = ficheResult.fiche || {};
   const normalized = normalizeFiche(fiche);
+  if (!isCollectedFiche(normalized)) {
+    console.error("free-diagnostic-collect: failed", {
+      phase: "business_validation",
+      error_code: "GOOGLE_BUSINESS_NOT_FOUND",
+    });
+    try {
+      await clearFailedCollection(db, analysisId, {
+        company: requestedCompany,
+        city: requestedCity,
+        activity: manualActivity,
+      });
+    } catch (error) {
+      console.error("free-diagnostic-collect: failed", {
+        phase: "analysis_cleanup",
+        error_code: "ANALYSIS_UPDATE_FAILED",
+        name: typeof error?.name === "string" ? error.name : "Error",
+      });
+      return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
+    }
+    return businessNotFoundFailure();
+  }
   const company = usableText(normalized.name) || requestedCompany || "Fiche Google transmise";
   const city = usableText(normalized.city)
     || usableText(normalized.borough)
@@ -186,7 +257,6 @@ export async function onRequestPost(context) {
       city,
       activity,
       activitySource: normalized.category || normalized.type ? "detected" : (activity ? "manual" : "missing"),
-      googleBusinessUrl,
       rating: normalized.rating,
       reviews: normalized.reviews,
       photosCount: normalized.photos_count,
@@ -203,4 +273,4 @@ export function onRequest(context) {
   return jsonResponse({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
 }
 
-export const __test__ = { normalizeFiche, usableText };
+export const __test__ = { normalizeFiche, usableText, isCollectedFiche };

@@ -67,6 +67,9 @@ export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
     normalized.location_link,
   );
   const company = detectedCompany || providedCompany || (googleBusinessUrl ? "Fiche Google transmise" : "");
+  const placeId = firstNonEmpty(business.placeId, normalized.place_id, fiche.place_id);
+  const validPlaceId = Boolean(placeId && !/^__[^_]+(?:_[^_]+)*__$/.test(placeId));
+  const collectionAvailable = Boolean(detectedCompany && validPlaceId);
   const city = usableText(
     normalized.city,
     normalized.borough,
@@ -99,6 +102,6 @@ export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
     orderId: premiumAllowed ? firstNonEmpty(paidOrder?.order_id) : "",
     taskId: premiumAllowed ? firstNonEmpty(paidOrder?.task_id) : "",
     premiumAllowed,
-    googleBusinessUrl,
+    collectionAvailable,
   };
 }

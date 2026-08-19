@@ -1,3 +1,5 @@
+import { hasGoogleMapsHost, resolveGoogleMapsUrl } from "./googleMapsUrl.js";
+
 // Logique de collecte Outscraper (Appel A), partagée par /api/outscraper et /api/analyze.
 // Ne dépend d'AUCUN objet Request/Response : reçoit { nom, ville, apiKey }, renvoie un
 // résultat structuré :
@@ -62,6 +64,14 @@ const DOMINANT_GAP = 0.30;
 
 function toNumberOrNull(v) {
   return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+}
+
+function isUsablePlaceCandidate(place) {
+  if (!place || typeof place !== "object") return false;
+  const name = String(place.name || "").trim();
+  if (!name) return false;
+  const placeId = String(place.place_id || "").trim();
+  return !placeId || !/^__[^_]+(?:_[^_]+)*__$/.test(placeId);
 }
 
 // --- Objectif 2 : score de confiance entre l'entreprise demandée et une ----
@@ -455,7 +465,7 @@ export async function collectFiche({
   attendu,
   suppressSensitiveLogs = false,
 } = {}) {
-  if (selectedCandidate && typeof selectedCandidate === "object" && selectedCandidate.place_id) {
+  if (isUsablePlaceCandidate(selectedCandidate)) {
     if (!suppressSensitiveLogs) {
       console.log("collectFiche:manual-selection-direct", {
         place_id: selectedCandidate.place_id,
@@ -467,9 +477,17 @@ export async function collectFiche({
 
   const nomTrim = (nom || "").trim();
   const villeTrim = (ville || "").trim();
-  const directQuery = (queryOverride || "").trim();
+  let directQuery = (queryOverride || "").trim();
   if (!directQuery && (!nomTrim || !villeTrim)) {
     return { ok: false, code: 400, error: "Missing required parameters: nom, ville." };
+  }
+
+  if (hasGoogleMapsHost(directQuery)) {
+    const resolution = await resolveGoogleMapsUrl(directQuery);
+    if (!resolution.ok) {
+      return { ok: false, code: 404, error: resolution.error };
+    }
+    directQuery = resolution.url;
   }
 
   // .trim() : évite un 401 si le secret a été stocké avec un espace / retour ligne final.
@@ -529,8 +547,8 @@ export async function collectFiche({
   if (Array.isArray(data) && data.length) {
     const firstQuery = data[0];
     candidates = Array.isArray(firstQuery)
-      ? firstQuery.filter((item) => item && typeof item === "object")
-      : (firstQuery && typeof firstQuery === "object" ? [firstQuery] : []);
+      ? firstQuery.filter(isUsablePlaceCandidate)
+      : (isUsablePlaceCandidate(firstQuery) ? [firstQuery] : []);
   }
 
   // Objectif 5 (logs de diagnostic temporaires, à retirer une fois le
@@ -680,4 +698,5 @@ export const __test__ = {
   DOMINANT_NAME_OVERLAP,
   DOMINANT_GAP,
   CANDIDATE_LIMIT,
+  isUsablePlaceCandidate,
 };

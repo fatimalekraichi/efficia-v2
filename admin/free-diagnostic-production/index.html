@@ -540,7 +540,7 @@
 <div id="formulaire">
   <div class="score-flottant">
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
-    <div class="val"><span id="score-live">0</span>/100</div>
+    <div class="val"><span id="score-live">—</span>/100</div>
     <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
     <button class="btn btn-vert" id="btn-audit-premium" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn btn-blanc" onclick="apercuImpression()">Aperçu avant impression</button>
@@ -598,9 +598,9 @@
       </div>
       <h3 style="font-size:.95rem;margin:18px 0 8px">Top 3 concurrents sur la recherche testée <span style="font-weight:400;color:var(--gris);font-size:.82rem">(au moins le 1er ; noms affichés dans le rapport)</span></h3>
       <div class="conc-grid entete"><span>Nom de la fiche concurrente</span><span>Note</span><span>Avis</span><span>Photos</span><span>Services</span><span>Publis</span></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-1" placeholder="Concurrent 1"><input type="text" id="dc-note-1" placeholder="4,9"><input type="text" id="dc-avis-1" placeholder="315"><input type="text" id="dc-photos-1" placeholder="40"><input type="text" id="dc-services-1" placeholder="9"><input type="text" id="dc-pubs-1" placeholder="6"></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-2" placeholder="Concurrent 2"><input type="text" id="dc-note-2"><input type="text" id="dc-avis-2"><input type="text" id="dc-photos-2"><input type="text" id="dc-services-2"><input type="text" id="dc-pubs-2"></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-3" placeholder="Concurrent 3"><input type="text" id="dc-note-3"><input type="text" id="dc-avis-3"><input type="text" id="dc-photos-3"><input type="text" id="dc-services-3"><input type="text" id="dc-pubs-3"></div>
+      <div class="conc-grid"><input type="text" id="dc-nom-1" placeholder="Nom"><input type="text" id="dc-note-1" placeholder="Note"><input type="text" id="dc-avis-1" placeholder="Avis"><input type="text" id="dc-photos-1" placeholder="Photos"><input type="text" id="dc-services-1" placeholder="Services"><input type="text" id="dc-pubs-1" placeholder="Publications"></div>
+      <div class="conc-grid"><input type="text" id="dc-nom-2" placeholder="Nom"><input type="text" id="dc-note-2" placeholder="Note"><input type="text" id="dc-avis-2" placeholder="Avis"><input type="text" id="dc-photos-2" placeholder="Photos"><input type="text" id="dc-services-2" placeholder="Services"><input type="text" id="dc-pubs-2" placeholder="Publications"></div>
+      <div class="conc-grid"><input type="text" id="dc-nom-3" placeholder="Nom"><input type="text" id="dc-note-3" placeholder="Note"><input type="text" id="dc-avis-3" placeholder="Avis"><input type="text" id="dc-photos-3" placeholder="Photos"><input type="text" id="dc-services-3" placeholder="Services"><input type="text" id="dc-pubs-3" placeholder="Publications"></div>
     </div>
 
     <div id="zone-criteres"></div>
@@ -984,6 +984,8 @@ function lirePoints(id){
   return coche ? parseFloat(coche.value) : null;
 }
 let profilActif = "default";
+let collecteDiagnosticEnCours = false;
+let collecteDiagnosticValidee = false;
 const SCORING_VERSION = "score-efficia-v4";
 const AUDIT_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=audit&audit={{auditPublicId}}";
 const PACK_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=visibility&audit={{auditPublicId}}";
@@ -2118,6 +2120,13 @@ function calculScoreDetail(){
 function calc(){
   const detail = calculScoreDetail();
   const {total, repondus, totalCrit} = detail;
+  if(!collecteDiagnosticValidee){
+    document.getElementById("score-live").textContent = "—";
+    document.getElementById("compteur-restant").textContent = "analyse non lancée";
+    const zoneInterne = document.getElementById("indicateurs-internes");
+    if(zoneInterne){ zoneInterne.style.display = "none"; zoneInterne.innerHTML = ""; }
+    return total;
+  }
   document.getElementById("score-live").textContent = Math.round(total);
   const restant = totalCrit - repondus;
   document.getElementById("compteur-restant").textContent =
@@ -2330,6 +2339,7 @@ function reinitialiserAnalyse(){
   auditFallbackLocalId = null;
   analysisVersionActif = null;
   dernierPayloadAuditComplete = "";
+  collecteDiagnosticValidee = false;
   calc();
 }
 
@@ -2350,6 +2360,16 @@ function appliquerCollecteDiagnosticGratuit(business){
   });
 
   const concurrents = Array.isArray(business.competitors) ? business.competitors.slice(0, 3) : [];
+  ["d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"].forEach((id) => {
+    const field = document.getElementById(id);
+    if(field) field.value = "";
+  });
+  for(let rank = 1; rank <= 3; rank += 1){
+    ["nom","note","avis","photos","services","pubs"].forEach((key) => {
+      const field = document.getElementById(`dc-${key}-${rank}`);
+      if(field) field.value = "";
+    });
+  }
   donneesAnalyse = {
     ...donneesAnalyse,
     nbAvis: estNombre(business.reviews) ? Number(business.reviews) : null,
@@ -2380,11 +2400,38 @@ function appliquerCollecteDiagnosticGratuit(business){
     });
   });
 
+  collecteDiagnosticValidee = true;
   preRemplirDonneesObservees();
   calc();
 }
 
+function neutraliserCollecteDiagnosticGratuit(){
+  collecteDiagnosticValidee = false;
+  ["d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"].forEach((id) => {
+    const field = document.getElementById(id);
+    if(field) field.value = "";
+  });
+  for(let rank = 1; rank <= 3; rank += 1){
+    ["nom","note","avis","photos","services","pubs"].forEach((key) => {
+      const field = document.getElementById(`dc-${key}-${rank}`);
+      if(field) field.value = "";
+    });
+  }
+  document.querySelectorAll(".critere").forEach((element) => {
+    if(!element.querySelector(".badge-auto")) return;
+    element.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach((input) => { input.checked = false; });
+    element.classList.remove("a-verifier");
+    const badges = element.querySelector(".badges");
+    const note = element.querySelector(".zone-note");
+    if(badges) badges.innerHTML = "";
+    if(note) note.innerHTML = "";
+  });
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  calc();
+}
+
 async function lancerCollecteDiagnosticGratuit(){
+  if(collecteDiagnosticEnCours) return;
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)){
     statut("Impossible de lancer ce diagnostic.", "erreur");
@@ -2392,8 +2439,10 @@ async function lancerCollecteDiagnosticGratuit(){
   }
 
   const button = document.getElementById("btn-analyser");
-  if(button) button.disabled = true;
-  statut("Collecte sécurisée en cours…", "info");
+  const buttonLabel = button?.textContent || "⚡ Lancer le diagnostic gratuit";
+  collecteDiagnosticEnCours = true;
+  if(button){ button.disabled = true; button.textContent = "Collecte en cours…"; }
+  statut("Collecte en cours…", "info");
 
   try{
     const activity = document.getElementById("p-activite")?.value.trim() || "";
@@ -2409,7 +2458,12 @@ async function lancerCollecteDiagnosticGratuit(){
     }
     const data = await response.json().catch(() => ({}));
     if(!response.ok || !data.success || data.analysisId !== analysisId || data.reportType !== "free"){
-      statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+      if(data.error === "GOOGLE_BUSINESS_NOT_FOUND"){
+        neutraliserCollecteDiagnosticGratuit();
+        statut("Fiche Google introuvable. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville.", "erreur");
+      }else{
+        statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+      }
       return;
     }
     appliquerCollecteDiagnosticGratuit(data.business || {});
@@ -2417,7 +2471,8 @@ async function lancerCollecteDiagnosticGratuit(){
   }catch{
     statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
   }finally{
-    if(button) button.disabled = false;
+    collecteDiagnosticEnCours = false;
+    if(button){ button.disabled = false; button.textContent = buttonLabel; }
   }
 }
 
@@ -2696,6 +2751,7 @@ function reprendreDiagnostic(){
     analysisVersionActif = estNombre(data.analysisVersionActif) ? Math.max(1, nEntier(data.analysisVersionActif)) : null;
     auditSourceActif = data.auditSourceActif || null;
     auditFallbackLocalId = data.auditFallbackLocalId || null;
+    collecteDiagnosticValidee = Boolean(data.reponses && Object.keys(data.reponses).length);
     appliquerReponses(data.reponses);
     afficherProfilUtilise();
     calc();
@@ -2764,12 +2820,6 @@ async function initialiserContexteCommandeAdmin(){
   definirSiVide("p-activite", contexte.activity);
   definirSiVide("p-contact", contexte.firstName);
 
-  const urlGoogle = contexte.googleBusinessUrl || "";
-  const urlGoogleValide = /^https?:\/\//i.test(urlGoogle);
-  const ligneGoogle = urlGoogleValide
-    ? `<br>Fiche Google : <a href="${escapeHtml(urlGoogle)}" target="_blank" rel="noopener">ouvrir la fiche transmise par le client</a>`
-    : "";
-
   const bloc = document.getElementById("commande-admin-liee");
   if(bloc){
     bloc.style.display = "block";
@@ -2778,9 +2828,11 @@ async function initialiserContexteCommandeAdmin(){
       Entreprise : ${escapeHtml(contexte.company || "Fiche Google transmise")} · Ville : ${escapeHtml(contexte.city || "À détecter")}<br>
       Activité : ${escapeHtml(contexte.activity || "À confirmer manuellement")}<br>
       Contact : ${escapeHtml(contexte.firstName || "—")} · Email : ${escapeHtml(contexte.email || "—")}<br>
-      Type de rapport : diagnostic gratuit${ligneGoogle}
+      Type de rapport : diagnostic gratuit
     `;
   }
+
+  if(contexte.collectionAvailable !== true) neutraliserCollecteDiagnosticGratuit();
 
   const premiumAllowed = contexte.premiumAllowed === true;
   [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")]

@@ -11,6 +11,7 @@ import { onRequestPost as authorizePremium } from "../functions/api/admin/premiu
 const ADMIN_SECRET = "local-admin-secret";
 const ANALYSIS_ID = "analysis-free-123";
 const GOOGLE_URL = "https://maps.app.goo.gl/short-test";
+const CANONICAL_GOOGLE_URL = "https://www.google.com/maps/place/Maison-Test";
 const migrations = [
   "0001_orders_tasks.sql", "0002_audit_production_tracking.sql", "0003_analyses.sql",
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
@@ -46,13 +47,14 @@ class LocalD1 {
 
 function seedAnalysis(db, {
   analysisId = ANALYSIS_ID, reportType = "free", status = "awaiting_review", withRequest = true,
+  googleUrl = GOOGLE_URL, companyName = "", city = "",
 } = {}) {
   const now = "2026-08-19T10:00:00.000Z";
   db.sqlite.prepare(`
     INSERT INTO analyses (
       analysis_id, nom, ville, query, activity, status, created_at, updated_at, report_type
     ) VALUES (?, ?, 'Non renseignée', ?, 'boulangerie', ?, ?, ?, ?)
-  `).run(analysisId, GOOGLE_URL, GOOGLE_URL, status, now, now, reportType);
+  `).run(analysisId, companyName || googleUrl || "Maison saisie", googleUrl || `${companyName} ${city}`, status, now, now, reportType);
   if (withRequest) {
     db.sqlite.prepare(`
       INSERT INTO diagnostic_requests (
@@ -60,9 +62,9 @@ function seedAnalysis(db, {
         google_business_url, status, mailerlite_status, created_at, updated_at
       ) VALUES (
         'request-free-123', '7fd0a4a4-7fb7-4be3-bd4b-4290055134f8', ?, 'Fatima',
-        'fatima@example.com', ?, NULL, ?, 'awaiting_review', 'synced', ?, ?
+        'fatima@example.com', ?, ?, ?, 'awaiting_review', 'synced', ?, ?
       )
-    `).run(analysisId, GOOGLE_URL, GOOGLE_URL, now, now);
+    `).run(analysisId, companyName || null, city || null, googleUrl || null, now, now);
   }
 }
 
@@ -119,16 +121,25 @@ async function context(db, analysisId = ANALYSIS_ID, { authenticated = true, bod
   };
 }
 
-function installProviderFixture({ fail = false } = {}) {
+function installProviderFixture({ fail = false, notFound = false } = {}) {
   const originalFetch = globalThis.fetch;
+  const calls = [];
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
+    calls.push(url.toString());
+    if (url.hostname === "maps.app.goo.gl") {
+      assert.equal(init.redirect, "manual");
+      return new Response(null, { status: 302, headers: { Location: CANONICAL_GOOGLE_URL } });
+    }
     assert.equal(url.hostname, "api.app.outscraper.com");
     assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
     if (fail) {
       return new Response("fatima@example.com secret-provider-payload", { status: 500 });
     }
     const query = url.searchParams.get("query") || "";
+    if (notFound && query === CANONICAL_GOOGLE_URL) {
+      return Response.json({ data: [[{ place_id: "__NO_PLACE_FOUND__", error: "secret-provider-payload" }]] });
+    }
     const target = {
       name: "Maison Test",
       place_id: "place-target",
@@ -141,7 +152,7 @@ function installProviderFixture({ fail = false } = {}) {
       location_link: "https://www.google.com/maps/place/target",
       cid: "cid-target",
     };
-    const data = query === GOOGLE_URL
+    const data = query === CANONICAL_GOOGLE_URL
       ? [[target]]
       : [[target, {
         name: "Concurrent local",
@@ -156,7 +167,9 @@ function installProviderFixture({ fail = false } = {}) {
       headers: { "Content-Type": "application/json" },
     });
   };
-  return () => { globalThis.fetch = originalFetch; };
+  const restore = () => { globalThis.fetch = originalFetch; };
+  restore.calls = calls;
+  return restore;
 }
 
 test("la collecte du diagnostic gratuit exige une session admin", async () => {
@@ -199,6 +212,10 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.equal(body.business.city, "Bruxelles");
     assert.equal(body.business.activity, "Pâtisserie");
     assert.equal(body.business.activitySource, "detected");
+    assert.equal(Object.hasOwn(body.business, "googleBusinessUrl"), false);
+    assert.ok(restoreFetch.calls.some((url) => url === GOOGLE_URL));
+    assert.ok(restoreFetch.calls.some((url) => new URL(url).searchParams.get("query") === CANONICAL_GOOGLE_URL));
+    assert.ok(!restoreFetch.calls.some((url) => new URL(url).hostname === "api.app.outscraper.com" && new URL(url).searchParams.get("query") === GOOGLE_URL));
     assert.doesNotMatch(JSON.stringify(body), /simulated-provider-key|fatima@example\.com|raw/i);
 
     const row = db.sqlite.prepare(`
@@ -221,6 +238,77 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.equal(db.count("order_tasks"), 0);
   } finally {
     restoreFetch();
+  }
+});
+
+test("une fiche introuvable reste awaiting_review, efface les sentinelles et ne crée aucune donnée métier annexe", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db);
+  db.sqlite.prepare(`
+    UPDATE analyses SET place_id = '__NO_PLACE_FOUND__', rating = 4.9, reviews = 315,
+      photos_count = 40, competitors_json = '[{"name":"Concurrent 1"}]',
+      fiche_json = '{"error":"secret-provider-payload"}' WHERE analysis_id = ?
+  `).run(ANALYSIS_ID);
+  const restoreFetch = installProviderFixture({ notFound: true });
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...values) => logs.push(values.map(String).join(" "));
+  try {
+    const response = await collectDiagnostic(await context(db));
+    const body = await response.json();
+    assert.equal(response.status, 404);
+    assert.deepEqual(body, {
+      success: false,
+      error: "GOOGLE_BUSINESS_NOT_FOUND",
+      message: "Fiche Google introuvable. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville.",
+    });
+    const row = db.sqlite.prepare(`
+      SELECT analysis_id, status, report_type, place_id, rating, reviews, photos_count,
+             competitors_json, fiche_json, normalized_json
+      FROM analyses WHERE analysis_id = ?
+    `).get(ANALYSIS_ID);
+    assert.equal(row.analysis_id, ANALYSIS_ID);
+    assert.equal(row.status, "awaiting_review");
+    assert.equal(row.report_type, "free");
+    assert.equal(row.place_id, null);
+    assert.equal(row.rating, null);
+    assert.equal(row.reviews, null);
+    assert.equal(row.photos_count, null);
+    assert.equal(row.competitors_json, "[]");
+    assert.equal(row.fiche_json, null);
+    assert.equal(row.normalized_json, null);
+    assert.equal(db.count("analyses"), 1);
+    assert.equal(db.count("orders"), 0);
+    assert.equal(db.count("order_items"), 0);
+    assert.equal(db.count("order_tasks"), 0);
+    assert.doesNotMatch(logs.join("\n"), /maps\.app\.goo\.gl|Maison-Test|secret-provider-payload|simulated-provider-key|fatima@example\.com/i);
+  } finally {
+    console.error = originalError;
+    restoreFetch();
+  }
+});
+
+test("les parcours URL canonique et entreprise + ville restent fonctionnels", async () => {
+  for (const seed of [
+    { analysisId: "analysis-canonical", googleUrl: CANONICAL_GOOGLE_URL },
+    { analysisId: "analysis-company", googleUrl: "", companyName: "Maison Test", city: "Bruxelles" },
+  ]) {
+    const db = new LocalD1();
+    seedAnalysis(db, seed);
+    const restoreFetch = installProviderFixture();
+    try {
+      const response = await collectDiagnostic(await context(db, seed.analysisId));
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.analysisId, seed.analysisId);
+      assert.equal(db.count("analyses"), 1);
+      assert.equal(db.count("orders"), 0);
+      if (seed.googleUrl === CANONICAL_GOOGLE_URL) {
+        assert.ok(!restoreFetch.calls.some((url) => new URL(url).hostname === "maps.app.goo.gl"));
+      }
+    } finally {
+      restoreFetch();
+    }
   }
 });
 
@@ -265,7 +353,8 @@ test("le contexte URL seule n’utilise jamais l’URL comme nom et ne déclare 
   assert.equal(body.context.premiumAllowed, false);
   assert.equal(body.context.orderId, "");
   assert.equal(body.context.taskId, "");
-  assert.equal(body.context.googleBusinessUrl, GOOGLE_URL);
+  assert.equal(body.context.collectionAvailable, false);
+  assert.equal(Object.hasOwn(body.context, "googleBusinessUrl"), false);
   assert.equal(response.headers.get("Cache-Control"), "no-store");
 });
 
@@ -368,6 +457,11 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.match(html, /const premiumAllowed = contexte\.premiumAllowed === true/);
   assert.match(html, /\/api\/admin\/premium-audit-authorization\/\$\{encodeURIComponent\(analysisId\)\}/);
   assert.match(html, /method:"POST"/);
+  assert.match(html, /if\(collecteDiagnosticEnCours\) return/);
+  assert.match(html, /button\.textContent = "Collecte en cours…"/);
+  assert.match(html, /Fiche Google introuvable\. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville\./);
+  assert.doesNotMatch(html, /placeholder="Concurrent [123]"|placeholder="4,9"|placeholder="315"|placeholder="40"|placeholder="9"|placeholder="6"/);
+  assert.doesNotMatch(html, /contexte\.googleBusinessUrl/);
   assert.doesNotMatch(html, /clarity|cloudflareinsights/i);
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);
