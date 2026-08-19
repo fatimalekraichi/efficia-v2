@@ -71,6 +71,7 @@
   .score-flottant .val{font-size:1.6rem;font-weight:800}
   .btn{background:var(--bleu);color:#fff;font-weight:700;border:none;border-radius:10px;padding:14px 26px;
        font-size:1rem;cursor:pointer;text-decoration:none;display:inline-block}
+  [data-premium-action][hidden]{display:none!important}
   .btn:hover{background:var(--bleu-fonce)}
   .btn-blanc{background:#fff;color:var(--bleu)}
   .btn-vert{background:var(--vert)}
@@ -541,7 +542,7 @@
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
     <div class="val"><span id="score-live">0</span>/100</div>
     <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
-    <button class="btn btn-vert" id="btn-audit-premium" onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
+    <button class="btn btn-vert" id="btn-audit-premium" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn btn-blanc" onclick="apercuImpression()">Aperçu avant impression</button>
   </div>
 
@@ -610,7 +611,7 @@
 <div id="rapport">
   <div class="actions-rapport" style="padding-top:20px">
     <button class="btn" id="btn-pdf-rapport" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
-    <button class="btn btn-vert" id="btn-audit-premium-rapport" onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
+    <button class="btn btn-vert" id="btn-audit-premium-rapport" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
     <button class="btn" onclick="window.print()">Aperçu avant impression</button>
     <button class="btn" style="background:var(--gris)" onclick="document.body.classList.remove('mode-rapport')">← Revenir à l'analyse</button>
   </div>
@@ -2781,12 +2782,29 @@ async function initialiserContexteCommandeAdmin(){
     `;
   }
 
+  const premiumAllowed = contexte.premiumAllowed === true;
   [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")]
     .filter(Boolean)
     .forEach((button) => {
-      button.hidden = !contexte.premiumAllowed;
-      button.disabled = !contexte.premiumAllowed;
+      button.hidden = !premiumAllowed;
+      button.disabled = !premiumAllowed;
     });
+}
+
+async function verifierAutorisationAuditPremium(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
+  try{
+    const rep = await fetch(`/api/admin/premium-audit-authorization/${encodeURIComponent(analysisId)}`, {
+      method:"POST",
+      credentials:"same-origin",
+      headers:{"Accept":"application/json"}
+    });
+    const donnees = await rep.json().catch(() => ({}));
+    return rep.ok && donnees.success === true && donnees.premiumAllowed === true;
+  }catch{
+    return false;
+  }
 }
 
 async function enregistrerPdfGenereBackOffice(filename){
@@ -4913,6 +4931,12 @@ function nomFichierAuditPremium(){
 
 async function telechargerAuditPremium(){
   const btns = [document.getElementById("btn-audit-premium"), document.getElementById("btn-audit-premium-rapport")].filter(Boolean);
+  btns.forEach(b => { b.disabled = true; });
+  if(!await verifierAutorisationAuditPremium()){
+    btns.forEach(b => { b.hidden = true; b.disabled = true; });
+    statut("L’Audit Premium nécessite une commande payée admissible.", "erreur");
+    return;
+  }
   if(!await assurerVersionAnalyseRapport()) return;
   await chargerLogoRapportDataUrl();
   if(!genererEtPaginerAuditPremium()){ statut("Impossible de générer l'audit premium (données insuffisantes).", "erreur"); return; }

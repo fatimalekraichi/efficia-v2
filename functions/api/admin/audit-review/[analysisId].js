@@ -5,6 +5,7 @@ import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
+import { loadPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 
 async function readPayload(request) {
   try {
@@ -40,12 +41,13 @@ function withScoreReviewData(analysis) {
   };
 }
 
-async function callStage({ origin, connectorToken }, stage, analysisId) {
+async function callStage({ origin, connectorToken, cookie }, stage, analysisId) {
   const response = await fetch(`${origin}/api/${stage}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${connectorToken}`,
       "Content-Type": "application/json",
+      ...(cookie ? { Cookie: cookie } : {}),
     },
     body: JSON.stringify({ analysisId }),
   });
@@ -74,7 +76,11 @@ async function runPostReviewPipeline({ context, analysisId }) {
   }
 
   const origin = new URL(context.request.url).origin;
-  const stageConfig = { origin, connectorToken };
+  const stageConfig = {
+    origin,
+    connectorToken,
+    cookie: context.request.headers.get("Cookie") || "",
+  };
   const stages = {};
 
   for (const stage of ["knowledge", "reasoning", "composer"]) {
@@ -107,6 +113,12 @@ async function saveManualReview({ context, db, analysisId, payload }) {
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
 
   const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, payload || {});
+  if (manualReview.reportType === "premium") {
+    const authorization = await loadPremiumAuthorization(db, analysisId);
+    if (!authorization.allowed) {
+      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+    }
+  }
   const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview });
   const now = new Date().toISOString();
 
@@ -184,6 +196,13 @@ async function saveManualReview({ context, db, analysisId, payload }) {
 
 async function approveAnalysis(db, analysisId) {
   const row = await loadRawAnalysis(db, analysisId);
+  if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
+  if (row.report_type !== "free") {
+    const authorization = await loadPremiumAuthorization(db, analysisId);
+    if (!authorization.allowed) {
+      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+    }
+  }
   let manualReview = null;
   try { manualReview = JSON.parse(row?.manual_review_json || "null"); } catch { manualReview = null; }
   const fullAnalysis = row?.report_type === "premium" ? await loadAnalysisById(db, analysisId) : null;

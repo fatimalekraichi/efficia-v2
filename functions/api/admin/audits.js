@@ -1,5 +1,6 @@
 import { loadAnalysisById } from "../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../admin/_shared.js";
+import { loadPaidPremiumOrder } from "../../lib/premiumAuthorization.js";
 
 const GOOGLE_HOST_PATTERN = /(^|\.)google\.[a-z.]+$/i;
 const GOOGLE_MAPS_HOST_PATTERN = /(^|\.)googleapis\.com$|(^|\.)goo\.gl$|(^|\.)maps\.app\.goo\.gl$/i;
@@ -407,6 +408,13 @@ export async function onRequestPost(context) {
       error: prepared.error,
       message: prepared.message,
     }, prepared.status);
+  }
+
+  if (prepared.requestMetadata.reportType === "premium") {
+    const paidOrder = await loadPaidPremiumOrder(db, prepared.requestMetadata.orderId);
+    if (!paidOrder) {
+      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+    }
   }
 
   const origin = new URL(context.request.url).origin;

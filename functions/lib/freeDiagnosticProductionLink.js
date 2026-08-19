@@ -2,6 +2,7 @@
 // personnelles ne doivent jamais être sérialisées dans son URL.
 
 import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
+import { loadPremiumAuthorization } from "./premiumAuthorization.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -25,37 +26,11 @@ export async function loadOrderContextForAnalysis(db, analysisId) {
 
   let paidOrder = null;
   try {
-    const byTask = await db.prepare(`
-      SELECT o.order_id, o.email, o.first_name, o.company_name, o.city, o.google_business_url,
-             o.offer_code, o.status, t.task_id
-      FROM order_tasks t
-      JOIN orders o ON o.order_id = t.order_id
-      WHERE t.analysis_id = ?
-      LIMIT 1
-    `).bind(analysisId).first();
-    if (byTask?.status === "paid") paidOrder = byTask;
+    const authorization = await loadPremiumAuthorization(db, analysisId);
+    paidOrder = authorization.allowed ? authorization.order : null;
   } catch (error) {
     console.error("freeDiagnosticProductionLink: read failed", {
-      phase: "order_task",
-      name: typeof error?.name === "string" ? error.name : "Error",
-    });
-  }
-
-  try {
-    if (paidOrder) return { diagnosticRequest, paidOrder };
-    const byOrder = await db.prepare(`
-      SELECT o.order_id, o.email, o.first_name, o.company_name, o.city, o.google_business_url,
-             o.offer_code, o.status, t.task_id
-      FROM analyses a
-      JOIN orders o ON o.order_id = a.order_id
-      LEFT JOIN order_tasks t ON t.order_id = o.order_id
-      WHERE a.analysis_id = ?
-      LIMIT 1
-    `).bind(analysisId).first();
-    if (byOrder?.status === "paid") paidOrder = byOrder;
-  } catch (error) {
-    console.error("freeDiagnosticProductionLink: read failed", {
-      phase: "analysis_order",
+      phase: "premium_authorization",
       name: typeof error?.name === "string" ? error.name : "Error",
     });
   }

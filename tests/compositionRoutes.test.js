@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { onRequestPost as runComposerRoute } from "../functions/api/composer.js";
 import { onRequestPost as runReasoningRoute } from "../functions/api/reasoning.js";
+import { createSessionCookie } from "../functions/admin/_shared.js";
 
 const TOKEN = "test-token";
+const ADMIN_SECRET = "admin-secret";
+const ADMIN_COOKIE = (await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET })).split(";")[0];
 
 function makeAnalysisRow(overrides = {}) {
   return {
@@ -86,7 +89,7 @@ function makeAnalysisRow(overrides = {}) {
   };
 }
 
-function makeDb(row) {
+function makeDb(row, { premiumAuthorized = true } = {}) {
   return {
     row,
     updates: [],
@@ -95,6 +98,11 @@ function makeDb(row) {
       return {
         bind: (...params) => ({
           async first() {
+            if (sql.includes("JOIN orders")) {
+              return premiumAuthorized
+                ? { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 }
+                : null;
+            }
             return row;
           },
           async run() {
@@ -126,11 +134,13 @@ function makeContext(db) {
       headers: {
         Authorization: `Bearer ${TOKEN}`,
         "Content-Type": "application/json",
+        Cookie: ADMIN_COOKIE,
       },
       body: JSON.stringify({ analysisId: "analysis-1" }),
     }),
     env: {
       CONNECTOR_TOKEN: TOKEN,
+      ADMIN_SESSION_SECRET: ADMIN_SECRET,
       ORDERS_DB: db,
     },
   };
@@ -192,4 +202,16 @@ test("composer retourne 409 lorsque Reasoning n'a pas encore été exécuté", a
 
   assert.equal(response.status, 409);
   assert.deepEqual(json, { success: false, error: "Reasoning not completed." });
+});
+
+test("composer refuse la génération Premium sans commande payée liée", async () => {
+  const db = makeDb(makeAnalysisRow({
+    report_type: "premium",
+    reasoning_json: JSON.stringify({ reasoningVersion: "test", reasonings: [] }),
+  }), { premiumAuthorized: false });
+
+  const response = await runComposerRoute(makeContext(db));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
+  assert.equal(db.row.document_model_json, null);
 });

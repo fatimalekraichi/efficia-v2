@@ -138,6 +138,7 @@ test("aperçu prématuré : /api/render signale la génération en cours au lieu
   const row = {
     analysis_id: "analysis-1",
     status: "preview_ready",
+    report_type: "free",
     nom: "Petit Atelier Local",
     name: "Petit Atelier Local",
     created_at: "2026-07-28T08:00:00.000Z",
@@ -160,6 +161,7 @@ test("aperçu prématuré : ne bloque pas le recalcul légitime quand knowledge 
   const row = {
     analysis_id: "analysis-1",
     status: "preview_ready",
+    report_type: "free",
     nom: "Petit Atelier Local",
     name: "Petit Atelier Local",
     created_at: "2026-07-28T08:00:00.000Z",

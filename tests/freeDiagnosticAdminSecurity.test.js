@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestGet as getContext } from "../functions/api/admin/free-diagnostic-context/[analysisId].js";
 import { onRequestPost as collectDiagnostic } from "../functions/api/admin/free-diagnostic-collect/[analysisId].js";
+import { onRequestPost as authorizePremium } from "../functions/api/admin/premium-audit-authorization/[analysisId].js";
 
 const ADMIN_SECRET = "local-admin-secret";
 const ANALYSIS_ID = "analysis-free-123";
@@ -62,6 +63,36 @@ function seedAnalysis(db, {
         'fatima@example.com', ?, NULL, ?, 'awaiting_review', 'synced', ?, ?
       )
     `).run(analysisId, GOOGLE_URL, GOOGLE_URL, now, now);
+  }
+}
+
+function seedOrder(db, {
+  analysisId = ANALYSIS_ID,
+  orderId = "order-premium-123",
+  status = "paid",
+  offerCode = "audit",
+  link = true,
+} = {}) {
+  const now = "2026-08-19T10:05:00.000Z";
+  db.sqlite.prepare(`
+    INSERT INTO orders (
+      order_id, stripe_session_id, email, company_name, offer_code, offer_name,
+      amount_total, currency, status, paid_at, created_at, updated_at
+    ) VALUES (?, ?, 'client@example.com', 'Maison Test', ?, 'Offre test', 9900, 'eur', ?, ?, ?, ?)
+  `).run(orderId, `cs_test_${orderId}`, offerCode, status, now, now, now);
+  db.sqlite.prepare(`
+    INSERT INTO order_items (
+      order_item_id, order_id, stripe_price_id, offer_code, offer_name,
+      quantity, amount_total, currency, created_at
+    ) VALUES (?, ?, ?, ?, 'Offre test', 1, 9900, 'eur', ?)
+  `).run(`item-${orderId}`, orderId, `price-${orderId}`, offerCode, now);
+  db.sqlite.prepare(`
+    INSERT INTO order_tasks (
+      task_id, order_id, task_type, title, status, offer_code, created_at, updated_at, analysis_id
+    ) VALUES (?, ?, 'audit_to_do', 'Audit à réaliser', 'todo', ?, ?, ?, ?)
+  `).run(`task-${orderId}`, orderId, offerCode, now, now, link ? analysisId : "analysis-other");
+  if (link) {
+    db.sqlite.prepare("UPDATE analyses SET order_id = ? WHERE analysis_id = ?").run(orderId, analysisId);
   }
 }
 
@@ -238,6 +269,91 @@ test("le contexte URL seule n’utilise jamais l’URL comme nom et ne déclare 
   assert.equal(response.headers.get("Cache-Control"), "no-store");
 });
 
+test("Premium est refusé sans commande et pour tous les statuts non payés", async () => {
+  for (const status of [null, "pending", "failed", "expired", "refunded"]) {
+    const db = new LocalD1();
+    seedAnalysis(db);
+    if (status) seedOrder(db, { status });
+    const response = await authorizePremium({
+      request: new Request(`https://preview.local/api/admin/premium-audit-authorization/${ANALYSIS_ID}`, {
+        method: "POST",
+        headers: { Cookie: await cookie() },
+      }),
+      params: { analysisId: ANALYSIS_ID },
+      env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+    });
+    assert.equal(response.status, 403, `statut ${status || "commande absente"}`);
+    assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
+  }
+});
+
+test("Premium refuse une offre payée non autorisée et une commande liée à une autre analyse", async () => {
+  const unauthorizedOffer = new LocalD1();
+  seedAnalysis(unauthorizedOffer);
+  seedOrder(unauthorizedOffer, { offerCode: "consulting" });
+  const offerResponse = await authorizePremium({
+    request: new Request(`https://preview.local/api/admin/premium-audit-authorization/${ANALYSIS_ID}`, {
+      method: "POST",
+      headers: { Cookie: await cookie() },
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: unauthorizedOffer },
+  });
+  assert.equal(offerResponse.status, 403);
+
+  const wrongAnalysis = new LocalD1();
+  seedAnalysis(wrongAnalysis);
+  seedOrder(wrongAnalysis, { link: false });
+  const linkResponse = await authorizePremium({
+    request: new Request(`https://preview.local/api/admin/premium-audit-authorization/${ANALYSIS_ID}`, {
+      method: "POST",
+      headers: { Cookie: await cookie() },
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: wrongAnalysis },
+  });
+  assert.equal(linkResponse.status, 403);
+});
+
+test("Premium est autorisé uniquement pour la même analyse, payée et couverte par une offre admissible", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db);
+  seedOrder(db, { status: "paid", offerCode: "audit" });
+
+  const response = await authorizePremium({
+    request: new Request(`https://preview.local/api/admin/premium-audit-authorization/${ANALYSIS_ID}`, {
+      method: "POST",
+      headers: { Cookie: await cookie() },
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { success: true, premiumAllowed: true });
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+
+  const contextResponse = await getContext({
+    request: new Request(`https://preview.local/api/admin/free-diagnostic-context/${ANALYSIS_ID}`, {
+      headers: { Cookie: await cookie() },
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+  });
+  assert.equal((await contextResponse.json()).context.premiumAllowed, true);
+});
+
+test("l’appel direct de l’autorisation Premium exige une session admin", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db);
+  seedOrder(db);
+  const response = await authorizePremium({
+    request: new Request(`https://preview.local/api/admin/premium-audit-authorization/${ANALYSIS_ID}`, { method: "POST" }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+  });
+  assert.equal(response.status, 401);
+});
+
 test("le client admin ne reçoit aucun secret et garde Premium inactif sans paiement", () => {
   const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
   const route = readFileSync(new URL("../functions/api/admin/free-diagnostic-collect/[analysisId].js", import.meta.url), "utf8");
@@ -248,7 +364,11 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.doesNotMatch(html, /Commande liée au back-office/);
   assert.doesNotMatch(html, /value=["']boulangerie["']/i);
   assert.match(html, /id="btn-audit-premium"[^>]*hidden disabled/);
-  assert.match(html, /button\.hidden = !contexte\.premiumAllowed/);
+  assert.match(html, /\[data-premium-action\]\[hidden\]\{display:none!important\}/);
+  assert.match(html, /const premiumAllowed = contexte\.premiumAllowed === true/);
+  assert.match(html, /\/api\/admin\/premium-audit-authorization\/\$\{encodeURIComponent\(analysisId\)\}/);
+  assert.match(html, /method:"POST"/);
+  assert.doesNotMatch(html, /clarity|cloudflareinsights/i);
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);
 });
