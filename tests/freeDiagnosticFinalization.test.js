@@ -37,11 +37,13 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
   const locationElement = createElement();
   locationElement.querySelector = () => ({ focus() {} });
   const scoreLive = { textContent: "" };
+  const provisional = { hidden: true };
   const counter = { textContent: "" };
   const status = { textContent: "", className: "" };
   const document = {
     getElementById(id) {
       if (id === "score-live") return scoreLive;
+      if (id === "score-provisoire") return provisional;
       if (id === "compteur-restant") return counter;
       if (id === "statut") return status;
       if (id === "indicateurs-internes") return { style: {}, innerHTML: "" };
@@ -81,11 +83,15 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
   };
   context.globalThis = context;
   vm.runInNewContext(sharedSource, context);
+  context.localisationNonVerifiablePubliquement = () => context.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableServiceArea({
+    locationMode: state.mode,
+    serviceAreaVerification: state.serviceArea,
+  });
   const listCode = sliceBetween(html, "function listerElementsRestantsPourFinalisation()", "function calc()");
   const calcCode = sliceBetween(html, "function calc()", "function statsScore()");
   const validationCode = sliceBetween(html, "function questionnairePretPourFinalisation()", "function slugPDF(");
   vm.runInNewContext(`${listCode}\n${calcCode}\n${validationCode}\nglobalThis.api={listerElementsRestantsPourFinalisation,calc,questionnairePretPourFinalisation};`, context);
-  return { context, state, counter, status };
+  return { context, state, counter, status, provisional };
 }
 
 const relevantCriteria = [
@@ -145,6 +151,24 @@ test("nomConforme reste obligatoire et une réponse à zéro est valide", () => 
   assert.deepEqual(Array.from(harness.context.api.listerElementsRestantsPourFinalisation(), (item) => item.id), ["nomConforme"]);
   harness.context.document.querySelector = (selector) => selector === 'input[name="c8"]:checked' ? { value: "0" } : (selector === "[data-location-criterion]" ? createElement() : null);
   assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
+});
+
+test("une zone non vérifiable est complète, vaut zéro et marque le score provisoire", () => {
+  const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
+  const harness = createLegacyHarness({
+    criteria: relevantCriteria,
+    selected,
+    location: { mode: "service_area", serviceArea: "not_verifiable" },
+  });
+  assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
+  harness.context.api.calc();
+  assert.equal(harness.counter.textContent, "✓ Tous les éléments sont renseignés");
+  assert.equal(harness.provisional.hidden, false);
+  assert.equal(harness.context.api.questionnairePretPourFinalisation(), true);
+
+  harness.state.serviceArea = "coherent";
+  harness.context.api.calc();
+  assert.equal(harness.provisional.hidden, true);
 });
 
 test("les deux interfaces chargent le moteur commun et ne conservent pas l’ancien calcul divergent", () => {

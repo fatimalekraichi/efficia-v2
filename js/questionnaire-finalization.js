@@ -22,6 +22,15 @@
     return [...contexts, ...incompleteCriteria];
   }
 
+  function isServiceAreaVerificationComplete(value) {
+    return ["coherent", "partial", "incoherent", "not_verifiable"].includes(value);
+  }
+
+  function hasPubliclyUnverifiableServiceArea(conditions = {}) {
+    return ["service_area", "hybrid"].includes(conditions.locationMode)
+      && conditions.serviceAreaVerification === "not_verifiable";
+  }
+
   function formaterResumeElementsRestants(elements = []) {
     const count = elements.length;
     if (!count) return "✓ Tous les éléments sont renseignés";
@@ -33,5 +42,7 @@
   global.EfficiaQuestionnaireFinalization = Object.freeze({
     listerElementsRestantsPourFinalisation,
     formaterResumeElementsRestants,
+    isServiceAreaVerificationComplete,
+    hasPubliclyUnverifiableServiceArea,
   });
 }(globalThis));

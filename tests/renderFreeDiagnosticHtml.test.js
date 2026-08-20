@@ -254,3 +254,23 @@ test("Diagnostic gratuit : ne modifie pas le Score Efficia ni le contenu premium
   assert.doesNotMatch(premiumHtml, /Vos points forts/);
   assert.match(premiumHtml, /Séquence recommandée/);
 });
+
+test("les rapports gratuit et Premium présentent la zone non vérifiable sans anomalie ni recommandation négative", async () => {
+  const freeModel = await buildDocumentModel("free");
+  freeModel.freeDiagnostic.provisional = true;
+  freeModel.freeDiagnostic.locationConfirmation = "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  const freeHtml = renderFreeDiagnosticHtml(freeModel);
+
+  const premiumModel = await buildDocumentModel("premium");
+  premiumModel.scoreProvisional = true;
+  premiumModel.locationConfirmation = "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  const premiumHtml = renderPremiumAuditHtml(premiumModel);
+
+  for (const html of [freeHtml, premiumHtml]) {
+    assert.match(html, /Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer\./);
+    assert.match(html, /Zone desservie : à confirmer — information non vérifiable publiquement\./);
+    assert.doesNotMatch(html, /Zone desservie : absente ou incohérente/i);
+    assert.doesNotMatch(html, /corriger la zone desservie/i);
+  }
+  assert.match(premiumHtml, /Score Efficia™ provisoire/);
+});

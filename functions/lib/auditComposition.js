@@ -108,6 +108,10 @@ export function buildScoreContext(analysis = {}) {
     categories: reviewedScore?.categories || null,
     projectedPackScore: reviewedScore?.projectedPackScore || null,
     criteria: scoreInputs?.criteria || null,
+    provisional: scoreInputs?.provisional === true || reviewedScore?.provisional === true,
+    locationConfirmation: scoreInputs?.criteria?.find((item) => (
+      item?.key === "adresse" && item?.source === "publicly_unverifiable"
+    ))?.label || null,
   };
 }
 

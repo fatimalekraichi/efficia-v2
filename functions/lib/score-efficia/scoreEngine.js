@@ -3,6 +3,7 @@ import { BANDES, CONFIG, SCORING_VERSION } from "./scoreConfig.js";
 import {
   QUESTIONNAIRE_VERSION,
   conditionForCriterion,
+  isPubliclyUnverifiableLocation,
   normalizeQuestionnaireConditions,
 } from "./questionnaireRules.js";
 
@@ -85,6 +86,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
     scoringVersion: SCORING_VERSION,
     questionnaireVersion: manualReview.questionnaireVersion || QUESTIONNAIRE_VERSION,
     conditions,
+    provisional: isPubliclyUnverifiableLocation(conditions),
     profileKey: manualReview.profileKey || "default",
     answers,
     criteria,
@@ -247,6 +249,7 @@ export function runScoreEfficia({ manualReview = {} } = {}) {
       projectedPackScore: scoreProjetePack(scoreInputs.answers),
       band: findBand(roundedScore),
       categories: detail.categories,
+      provisional: scoreInputs.provisional,
     },
   };
 }

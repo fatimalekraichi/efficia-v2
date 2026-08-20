@@ -34,6 +34,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     .review-full-width { margin-top: 24px; }
     .criteria-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 18px 0 14px; }
     .criteria-summary { color: #64748b; font-weight: 800; }
+    .score-provisional-notice { margin: 0 0 14px; padding: 10px 14px; border: 1px solid #fde68a; border-radius: 14px; background: #fffbeb; color: #92400e; font-size: 13px; font-weight: 800; line-height: 1.5; }
     .criteria-not-verified-summary { margin: 0 0 22px; padding: 12px 16px; border-radius: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; font-weight: 800; font-size: 14px; }
     .criteria-not-verified-summary.has-pending { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
     .criteria-groups { display: grid; gap: 18px; }
@@ -137,6 +138,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
           <div class="criteria-summary" data-criteria-summary>0 critère renseigné</div>
           <button class="admin-button is-secondary" type="button" data-fill-unknown>Marquer les non vérifiés</button>
         </div>
+        <p class="score-provisional-notice" data-score-provisional hidden>Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.</p>
         <p class="criteria-not-verified-summary" data-criteria-not-verified-summary></p>
         <div class="criteria-groups" data-criteria-groups></div>
       </section>

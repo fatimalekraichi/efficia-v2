@@ -65,6 +65,11 @@ export function normalizeQuestionnaireConditions(payload = {}, criteriaReview = 
   };
 }
 
+export function isPubliclyUnverifiableLocation(conditions = {}) {
+  return ["service_area", "hybrid"].includes(conditions.locationMode)
+    && conditions.serviceAreaVerification === "not_verifiable";
+}
+
 export function locationScore(conditions = {}) {
   const { locationMode, addressVerification, serviceAreaVerification } = conditions;
   if (locationMode === "storefront") {
@@ -75,12 +80,13 @@ export function locationScore(conditions = {}) {
   if (locationMode === "service_area") {
     if (serviceAreaVerification === "coherent") return 2;
     if (serviceAreaVerification === "partial") return 1;
-    if (serviceAreaVerification === "incoherent") return 0;
+    if (["incoherent", "not_verifiable"].includes(serviceAreaVerification)) return 0;
     return null;
   }
   if (locationMode === "hybrid") {
-    if (!["exact", "inaccurate"].includes(addressVerification)
-      || !["coherent", "partial", "incoherent"].includes(serviceAreaVerification)) return null;
+    if (!["exact", "inaccurate"].includes(addressVerification)) return null;
+    if (serviceAreaVerification === "not_verifiable") return 0;
+    if (!["coherent", "partial", "incoherent"].includes(serviceAreaVerification)) return null;
     if (addressVerification === "exact" && serviceAreaVerification === "coherent") return 2;
     if (addressVerification === "inaccurate" && serviceAreaVerification === "incoherent") return 0;
     return 1;
@@ -92,7 +98,10 @@ export function normalizeLocationCriterion(criteriaReview = [], conditions = {})
   if (!LOCATION_MODE_VALUES.has(conditions.locationMode)) return criteriaReview;
   const withoutLegacyLocation = criteriaReview.filter((item) => item?.key !== "adresse");
   const points = locationScore(conditions);
-  const value = points === 2 ? "compliant" : (points === 1 ? "partial" : (points === 0 ? "deficient" : "not_verified"));
+  const publiclyUnverifiable = isPubliclyUnverifiableLocation(conditions);
+  const value = publiclyUnverifiable
+    ? "not_verified"
+    : (points === 2 ? "compliant" : (points === 1 ? "partial" : (points === 0 ? "deficient" : "not_verified")));
   const labels = {
     storefront: points === 2 ? "Adresse et épingle exactes" : (points === 0 ? "Adresse ou épingle imprécise" : "Adresse à confirmer"),
     service_area: points === 2 ? "Zone renseignée et cohérente" : (points === 1 ? "Zone partielle ou imprécise" : (points === 0 ? "Zone absente ou incohérente" : "Zone à confirmer")),
@@ -107,10 +116,12 @@ export function normalizeLocationCriterion(criteriaReview = [], conditions = {})
         ? "La zone desservie est-elle renseignée et cohérente ?"
         : "L’adresse, l’épingle et la zone desservie sont-elles cohérentes ?"),
     value,
-    label: labels[conditions.locationMode],
+    label: publiclyUnverifiable
+      ? "Zone desservie : à confirmer — information non vérifiable publiquement."
+      : labels[conditions.locationMode],
     checklist: [],
     points,
-    source: "manual_location_mode",
+    source: publiclyUnverifiable ? "publicly_unverifiable" : "manual_location_mode",
   }];
 }
 
@@ -153,7 +164,14 @@ export function incompleteQuestionnaireFields(manualReview = {}) {
   const conditions = normalizeQuestionnaireConditions(manualReview, manualReview.criteriaReview);
   const criteria = new Map((manualReview.criteriaReview || []).map((item) => [item.key, item]));
   const missing = requiredVisibleCriterionKeys(conditions, manualReview.criteriaReview)
-    .filter((key) => !criteria.has(key) || criteria.get(key)?.value === "not_verified");
+    .filter((key) => {
+      const criterion = criteria.get(key);
+      if (!criterion) return true;
+      if (criterion.value !== "not_verified") return false;
+      return !(key === "adresse"
+        && criterion.source === "publicly_unverifiable"
+        && Number(criterion.points) === 0);
+    });
 
   if (conditions.photoPresence === "unknown") missing.unshift("photoPresence");
   if (conditions.reviewsPresence === "unknown" && !criteria.has("noteMoyenne")) missing.unshift("reviewsPresence");
@@ -164,7 +182,7 @@ export function incompleteQuestionnaireFields(manualReview = {}) {
     if (["storefront", "hybrid"].includes(conditions.locationMode)
       && ["unknown", "not_verifiable"].includes(conditions.addressVerification)) missing.unshift("addressVerification");
     if (["service_area", "hybrid"].includes(conditions.locationMode)
-      && ["unknown", "not_verifiable"].includes(conditions.serviceAreaVerification)) missing.unshift("serviceAreaVerification");
+      && conditions.serviceAreaVerification === "unknown") missing.unshift("serviceAreaVerification");
   }
   return [...new Set(missing)];
 }

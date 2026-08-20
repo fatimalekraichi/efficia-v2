@@ -97,6 +97,8 @@ function buildFreeDiagnostic(bundle, scoreContext = {}) {
     indices: scoreContext.indices || null,
     domains: buildDomains(scoreContext.categories),
     criteriaSummary: buildCriteriaSummary(scoreContext.criteria),
+    provisional: scoreContext.provisional === true,
+    locationConfirmation: scoreContext.locationConfirmation || null,
     projectedScore: scoreContext.projectedPackScore?.projete ?? null,
     priorities: freeSelections.priorities.map(buildFreePriorityCard),
   };
@@ -202,6 +204,8 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
     reportType: depth.reportType,
     vocabulary: depth.vocabulary,
     freeDiagnostic: buildFreeDiagnostic(bundle, bundle.scoreContext),
+    scoreProvisional: bundle.scoreContext?.provisional === true,
+    locationConfirmation: bundle.scoreContext?.locationConfirmation || null,
     // Point 3 du plan : score par domaine, déjà calculé par le Score Efficia
     // (scoreEngine.js) et déjà mis en forme par buildDomains() ci-dessus —
     // simplement exposé au modèle premium en plus de freeDiagnostic.domains.

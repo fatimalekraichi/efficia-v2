@@ -74,6 +74,8 @@
   .score-flottant{position:sticky;top:0;z-index:10;background:var(--bleu);color:#fff;border-radius:0 0 14px 14px;
                   padding:14px 24px;display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:10px 18px}
   .score-flottant .val{font-size:1.6rem;font-weight:800}
+  .score-provisoire{display:inline-block;margin-left:7px;padding:3px 8px;border:1px solid rgba(255,255,255,.55);border-radius:999px;font-size:.68rem;font-weight:800;vertical-align:middle}
+  .score-provisoire[hidden]{display:none}
   .score-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;min-width:0}
   .score-actions .btn:focus-visible{outline:3px solid #facc15;outline-offset:3px}
   .brouillon-etat{grid-column:1/-1;margin:0;color:#e2e8f0;font-size:.78rem;font-weight:700;text-align:right}
@@ -555,7 +557,7 @@
 <div id="formulaire">
   <div class="score-flottant">
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
-    <div class="val"><span id="score-live">—</span>/100</div>
+    <div class="val"><span id="score-live">—</span>/100 <span id="score-provisoire" class="score-provisoire" hidden>provisoire</span></div>
     <div class="score-actions">
       <button class="btn btn-blanc" id="btn-pdf" onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
       <button class="btn btn-vert" id="btn-audit-premium" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
@@ -1050,13 +1052,21 @@ let legacyLocationPoints = null;
 function modeLocalisation(){ return document.querySelector('input[name="condition-location-mode"]:checked')?.value || "unknown"; }
 function reponseAdresse(){ return document.querySelector('input[name="location-address"]:checked')?.value || "unknown"; }
 function reponseZoneDesserte(){ return document.querySelector('input[name="location-service-area"]:checked')?.value || "unknown"; }
+function localisationNonVerifiablePubliquement(){
+  return globalThis.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableServiceArea({
+    locationMode:modeLocalisation(),
+    serviceAreaVerification:reponseZoneDesserte()
+  });
+}
 function scoreLocalisation(){
   const mode = modeLocalisation(), adresse = reponseAdresse(), zone = reponseZoneDesserte();
   if(mode === "unknown") return legacyLocationPoints;
   if(mode === "storefront") return adresse === "exact" ? 2 : (adresse === "inaccurate" ? 0 : null);
-  if(mode === "service_area") return zone === "coherent" ? 2 : (zone === "partial" ? 1 : (zone === "incoherent" ? 0 : null));
+  if(mode === "service_area") return zone === "coherent" ? 2 : (zone === "partial" ? 1 : (["incoherent","not_verifiable"].includes(zone) ? 0 : null));
   if(mode === "hybrid"){
-    if(!["exact","inaccurate"].includes(adresse) || !["coherent","partial","incoherent"].includes(zone)) return null;
+    if(!["exact","inaccurate"].includes(adresse)) return null;
+    if(zone === "not_verifiable") return 0;
+    if(!["coherent","partial","incoherent"].includes(zone)) return null;
     if(adresse === "exact" && zone === "coherent") return 2;
     if(adresse === "inaccurate" && zone === "incoherent") return 0;
     return 1;
@@ -1075,9 +1085,17 @@ function majLocalisation(){
     if(block){ block.hidden = !applicable; block.toggleAttribute("inert", !applicable); }
   });
   const unresolved = (addressApplicable && ["unknown","not_verifiable"].includes(reponseAdresse()))
-    || (serviceAreaApplicable && ["unknown","not_verifiable"].includes(reponseZoneDesserte()));
+    || (serviceAreaApplicable && !globalThis.EfficiaQuestionnaireFinalization.isServiceAreaVerificationComplete(reponseZoneDesserte()));
+  const publiclyUnverifiable = localisationNonVerifiablePubliquement();
   const note = document.querySelector("[data-location-confirmation]");
-  if(note) note.innerHTML = unresolved ? '<span class="note-auto">🔎 À confirmer avant finalisation — aucune anomalie n’est déduite automatiquement.</span>' : "";
+  if(note) note.innerHTML = publiclyUnverifiable
+    ? '<span class="note-auto">Zone desservie : à confirmer — information non vérifiable publiquement.</span>'
+    : (unresolved ? '<span class="note-auto">🔎 À confirmer avant finalisation — aucune anomalie n’est déduite automatiquement.</span>' : "");
+  if(!unresolved){
+    const serviceAreaBlock = document.querySelector('[data-location-control="service_area"]');
+    serviceAreaBlock?.classList.remove("finalisation-manquante");
+    serviceAreaBlock?.removeAttribute("aria-invalid");
+  }
   calc();
   programmerSauvegardeBrouillonD1();
 }
@@ -1134,6 +1152,10 @@ function critereEstMasque(cr){
 
 function critereEstNonApplicable(cr){
   return conditionAvis() === "none" && cr?.key === "tauxReponseAvis";
+}
+
+function critereEstNonVerifiablePubliquement(cr){
+  return cr?.key === "adresse" && localisationNonVerifiablePubliquement();
 }
 
 function majConditionsQuestionnaire(){
@@ -2334,7 +2356,7 @@ function listerElementsRestantsPourFinalisation(){
       id:"serviceAreaVerification",
       label:"Zone desservie à confirmer",
       required:["service_area","hybrid"].includes(mode),
-      complete:["coherent","partial","incoherent"].includes(reponseZoneDesserte()),
+      complete:globalThis.EfficiaQuestionnaireFinalization.isServiceAreaVerificationComplete(reponseZoneDesserte()),
       element:locationElement?.querySelector('[data-location-control="service_area"]') || locationElement,
       focusTarget:locationElement?.querySelector('input[name="location-service-area"]'),
       reason:"service_area_verification_missing"
@@ -2362,6 +2384,7 @@ function calc(){
   const detail = calculScoreDetail();
   const {total, repondus, totalCrit} = detail;
   const elementsRestants = listerElementsRestantsPourFinalisation();
+  document.getElementById("score-provisoire").hidden = !localisationNonVerifiablePubliquement();
   if(!collecteDiagnosticValidee){
     document.getElementById("score-live").textContent = "—";
     document.getElementById("compteur-restant").textContent = "analyse non lancée";
@@ -2381,7 +2404,7 @@ function calc(){
 function statsScore(){
   let ameliorables = 0, pointsPerdus = 0;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr) || critereEstNonVerifiablePubliquement(cr)) return;
     const p = lirePoints(cr.id);
     if(p !== null && p < cr.max){
       ameliorables++;
@@ -2449,7 +2472,7 @@ function calculerTempsInterne(){
   const repartition = {};
   const taches = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr) || critereEstNonVerifiablePubliquement(cr)) return;
     const p = lirePoints(cr.id);
     if(p === null || p >= cr.max) return;
     const configTache = CONFIG.tempsTaches[cr.key];
@@ -2783,6 +2806,7 @@ function collecterReponses(){
 }
 
 function statutVerificationCritere(cr){
+  if(critereEstNonVerifiablePubliquement(cr)) return "not_verified";
   const el = document.getElementById("crit-"+cr.id);
   const badge = el?.querySelector(".badges")?.textContent || "";
   if(lirePoints(cr.id) === null) return "not_verified";
@@ -2808,7 +2832,8 @@ function collecterCriteresAudit(){
     if(critereEstMasque(cr)) return;
     const points = lirePoints(cr.id);
     const nonApplicable = critereEstNonApplicable(cr);
-    const evaluationStatus = nonApplicable ? "not_applicable" : statutEvaluationCritere(cr, points);
+    const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
+    const evaluationStatus = nonApplicable ? "not_applicable" : (publiclyUnverifiable ? "not_verified" : statutEvaluationCritere(cr, points));
     criteria.push({
       key: cr.key,
       label: libelleQuestionLocalisation(cr),
@@ -2817,7 +2842,7 @@ function collecterCriteresAudit(){
       pointsAwarded: evaluationStatus === "not_evaluated" ? null : Number(points),
       maxPoints: Number(cr.max),
       evaluationStatus,
-      verificationStatus: nonApplicable ? "not_applicable" : statutVerificationCritere(cr)
+      verificationStatus: nonApplicable ? "not_applicable" : (publiclyUnverifiable ? "not_verified" : statutVerificationCritere(cr))
     });
   }));
   return criteria;
@@ -2867,7 +2892,7 @@ function collecterRecommandationsAudit(){
   const ctx = contexteRapport();
   const candidats = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr) || critereEstNonVerifiablePubliquement(cr)) return;
     const points = lirePoints(cr.id);
     if(points !== null && points < cr.max) candidats.push({critere:cr, points, perdu:cr.max - points});
   }));
@@ -3475,6 +3500,11 @@ function scoreGaugeHtml(score){
   </div>`;
 }
 
+function mentionScoreProvisoireHtml(className = "methode-note"){
+  if(!localisationNonVerifiablePubliquement()) return "";
+  return `<p class="${className}">Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.<br>Zone desservie : à confirmer — information non vérifiable publiquement.</p>`;
+}
+
 function potentielScoreHtml(scoreActuel, scoreProjete){
   if(!estNombre(scoreProjete) || Number(scoreProjete) <= Number(scoreActuel) + 2) return "";
   return `<div class="score-potential">Potentiel estimé : <span>${nEntier(scoreProjete)}/100</span></div>
@@ -3721,6 +3751,7 @@ function concurrenceHtml(compact=true){
 
 function libelleOption(cr, points){
   if(cr.key === "adresse"){
+    if(localisationNonVerifiablePubliquement()) return "Zone desservie : à confirmer — information non vérifiable publiquement.";
     const mode = modeLocalisation();
     if(mode === "storefront") return points === 2 ? "Adresse et épingle exactes" : "Adresse ou épingle imprécise";
     if(mode === "service_area") return points === 2 ? "Zone renseignée et cohérente" : (points === 1 ? "Zone partielle ou imprécise" : "Zone absente ou incohérente");
@@ -3953,7 +3984,7 @@ function scoreProjetePack(){
     cat.criteres.forEach(cr => {
       const p = lirePoints(cr.id);
       if(p === null) return;
-      const fixable = PACK_CRITERES.includes(cr.key);
+      const fixable = PACK_CRITERES.includes(cr.key) && !critereEstNonVerifiablePubliquement(cr);
       if(p < cr.max){ ameliorables++; if(fixable) corriges++; }
       brut += fixable ? cr.max : p;
       maxEvalue += cr.max;
@@ -4273,13 +4304,16 @@ function checklistHtml(){
     const items = visibleCriteria.map(cr => {
       const p = lirePoints(cr.id);
       const nonApplicable = critereEstNonApplicable(cr);
-      const statut = nonApplicable ? "not_applicable" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
+      const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
+      const statut = nonApplicable ? "not_applicable" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
       if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else if(statut !== "not_applicable") warn++;
       const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" || statut === "not_applicable" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
-      const label = nonApplicable ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)` : (LIBELLES_COURTS[cr.key] || cr.q);
+      const label = nonApplicable
+        ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)`
+        : (publiclyUnverifiable ? "Zone desservie : à confirmer — information non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
     }).join("");
-    const evalues = visibleCriteria.filter(cr => !critereEstNonApplicable(cr) && lirePoints(cr.id) !== null);
+    const evalues = visibleCriteria.filter(cr => !critereEstNonApplicable(cr) && !critereEstNonVerifiablePubliquement(cr) && lirePoints(cr.id) !== null);
     const conformes = evalues.filter(cr => lirePoints(cr.id) >= cr.max).length;
     return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || visibleCriteria.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
   }).join("");
@@ -4616,6 +4650,7 @@ function genererRapport(){
       const p = lirePoints(cr.id);
       if(p === null) return;
       pts += p;
+      if(critereEstNonVerifiablePubliquement(cr)) return;
       if(p >= cr.max) forces.push({txt:forceRapport(cr), poids:cr.max, cr});
       else priorites.push({critere:cr, points:p, perdu:cr.max - p});
     });
@@ -4728,6 +4763,7 @@ function genererRapport(){
         <p class="hero-analysis-text">${texteIntroConsultant}</p>
       </div>
     </div>
+    ${mentionScoreProvisoireHtml()}
     ${indicesHtml}
     ${significationBloc}
     <p class="methode-note"><strong>Méthode</strong> — analyse réalisée le ${dateStr} sur l'état public de votre fiche Google Business${estTexte(donneesAnalyse.requeteTestee) ? `, recherche testée en navigation neutre : « ${libelleRechercheRapport(donneesAnalyse.requeteTestee)} »` : ""}. ${nbControles} critères passés en revue selon la méthode Efficia™.${benchTable ? "" : " Par rigueur, aucune comparaison concurrentielle n'est affichée : les données publiques des fiches concurrentes n'étaient pas assez fiables au moment de l'analyse."}</p>
@@ -5225,13 +5261,17 @@ function construireBlocsAuditPremium(){
       if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
       const p = lirePoints(cr.id);
       if(p === null) return;
+      if(critereEstNonVerifiablePubliquement(cr)) return;
       if(p >= cr.max) forces.push(cr);
-      else faiblesses.push({critere:cr, perdu:cr.max - p});
+      else faiblesses.push({critere:cr, categoryKey:c.cat.key, perdu:cr.max - p});
     });
   });
   const catsEval = categoriesTriees.filter(c => c.evalue);
   const fort = [...catsEval].sort((a,b) => b.pct - a.pct)[0];
-  const faible = [...catsEval].sort((a,b) => a.pct - b.pct)[0];
+  const categoriesAvecFaiblesseActionnable = new Set(faiblesses.map((item) => item.categoryKey));
+  const faible = [...catsEval]
+    .filter((item) => categoriesAvecFaiblesseActionnable.has(item.key))
+    .sort((a,b) => a.pct - b.pct)[0];
 
   const parFamille = new Map();
   faiblesses.forEach(f => {
@@ -5263,6 +5303,7 @@ function construireBlocsAuditPremium(){
       <div><div class="aud-band" style="color:${bande.couleur}">${bande.nom}</div>
       <div class="aud-cover-lead">${phraseDirecteScore(score).texte}</div></div>
     </div>
+    ${mentionScoreProvisoireHtml("aud-p")}
     ${chips.length ? `<div class="aud-chips">${chips.join("")}</div>` : ""}
   </section>`);
 
@@ -5273,6 +5314,7 @@ function construireBlocsAuditPremium(){
   push(`<section class="aud-block">
     <h2 class="aud-h2">Résumé exécutif</h2>
     <p class="aud-lead">${resume}</p>
+    ${mentionScoreProvisoireHtml("aud-p")}
     <div class="aud-kpis">
       <div class="aud-kpi"><div class="n" style="color:${bande.couleur}">${score}</div><div class="l">Score actuel / 100</div></div>
       <div class="aud-kpi"><div class="n" style="color:#059669">${proj.projete}</div><div class="l">Potentiel atteignable</div></div>

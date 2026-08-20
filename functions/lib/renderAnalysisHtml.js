@@ -45,6 +45,7 @@ const EFFICIA_BLUE = "#2563eb";
 // de la valeur du score — reste identique quel que soit le résultat, à la
 // différence de scoreInterpretationNote() juste en dessous.
 const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. La méthode Efficia™ évalue actuellement 29 critères répartis en six domaines, puis replace les résultats dans leur contexte local.";
+const PROVISIONAL_SCORE_NOTE = "Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -553,10 +554,12 @@ function heroSection(model, sector) {
           <p class="headline">${safeText(presentableText(hero.headline, sector), "")}</p>
         </div>
         <div class="score-card">
-          <span class="score-label">Score Efficia™</span>
+          <span class="score-label">Score Efficia™${model.scoreProvisional ? " provisoire" : ""}</span>
           ${scoreGauge(hero.score)}
           <div class="score-band">${safeText(hero.scoreBand, "Score analysé")}</div>
           <p class="score-authority">${SCORE_AUTHORITY_NOTE}</p>
+          ${model.scoreProvisional ? `<p class="score-authority">${PROVISIONAL_SCORE_NOTE}</p>` : ""}
+          ${model.locationConfirmation ? `<p class="score-authority">${safeText(model.locationConfirmation)}</p>` : ""}
           <p class="score-interpretation">${safeText(presentableText(scoreInterpretationNote(hero.score), sector))}</p>
         </div>
       </div>
@@ -1610,6 +1613,7 @@ function freeSituationSection(model) {
           <p class="hero-analysis-text">${safeText(model.executiveSummary?.text, "Résumé non disponible.")}</p>
         </div>
       </div>
+      ${free.provisional ? `<p class="methode-note">${PROVISIONAL_SCORE_NOTE} ${safeText(free.locationConfirmation, "")}</p>` : ""}
       ${freeIndicesRow(free.indices)}
       ${freeMeaningBox(model)}
       <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} critères passés en revue selon la méthode Efficia™.</p>

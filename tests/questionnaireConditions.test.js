@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { buildReviewedObservation, normalizeManualReview } from "../functions/lib/manualReview.js";
+import { buildScoreContext } from "../functions/lib/auditComposition.js";
 import { GRILLE } from "../functions/lib/score-efficia/criteriaCatalog.js";
 import {
   QUESTIONNAIRE_VERSION,
@@ -275,7 +276,7 @@ test("le mode de réception pilote le critère historique adresse sans ajouter d
   assert.doesNotMatch(serviceAreaCriterion.question, /adresse/i);
 });
 
-test("non vérifiable reste à confirmer et bloque la finalisation sans pénalité arbitraire", () => {
+test("zone non vérifiable vaut zéro, reste neutre et ne bloque plus la finalisation", () => {
   const manualReview = normalizeManualReview({
     questionnaireVersion: QUESTIONNAIRE_VERSION,
     photoPresence: "present",
@@ -284,8 +285,51 @@ test("non vérifiable reste à confirmer et bloque la finalisation sans pénalit
     serviceAreaVerification: "not_verifiable",
     criteriaReview: completeCriteria(),
   });
-  assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers.adresse, null);
-  assert.ok(incompleteQuestionnaireFields(manualReview).includes("serviceAreaVerification"));
+  const result = runScoreEfficia({ manualReview });
+  const locationCriterion = result.scoreInputs.criteria.find((item) => item.key === "adresse");
+  assert.equal(result.scoreInputs.answers.adresse, 0);
+  assert.equal(result.scoreInputs.provisional, true);
+  assert.equal(result.reviewedScore.provisional, true);
+  assert.equal(result.reviewedScore.totalCrit, 29);
+  assert.equal(locationCriterion.status, "not_verified");
+  assert.equal(locationCriterion.source, "publicly_unverifiable");
+  assert.equal(locationCriterion.label, "Zone desservie : à confirmer — information non vérifiable publiquement.");
+  assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
+
+  const scoreContext = buildScoreContext({ reviewedScore: result.reviewedScore, scoreInputs: result.scoreInputs });
+  assert.equal(scoreContext.provisional, true);
+  assert.equal(scoreContext.locationConfirmation, locationCriterion.label);
+});
+
+test("une réponse définitive ou un changement de mode retire immédiatement le statut provisoire", () => {
+  const makeReview = (serviceAreaVerification) => normalizeManualReview({
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    photoPresence: "present",
+    reviewsPresence: "present",
+    locationMode: "service_area",
+    serviceAreaVerification,
+    criteriaReview: completeCriteria(),
+  });
+  const provisional = runScoreEfficia({ manualReview: makeReview("not_verifiable") });
+  const coherent = runScoreEfficia({ manualReview: makeReview("coherent") });
+  const partial = runScoreEfficia({ manualReview: makeReview("partial") });
+  const incoherent = runScoreEfficia({ manualReview: makeReview("incoherent") });
+
+  assert.equal(provisional.scoreInputs.answers.adresse, 0);
+  assert.equal(coherent.scoreInputs.answers.adresse, 2);
+  assert.equal(partial.scoreInputs.answers.adresse, 1);
+  assert.equal(incoherent.scoreInputs.answers.adresse, 0);
+  for (const result of [coherent, partial, incoherent]) assert.equal(result.reviewedScore.provisional, false);
+  assert.ok(coherent.reviewedScore.score > partial.reviewedScore.score);
+  assert.ok(partial.reviewedScore.score > incoherent.reviewedScore.score);
+
+  const switched = normalizeManualReview({
+    ...makeReview("not_verifiable"),
+    locationMode: "storefront",
+    addressVerification: "exact",
+  });
+  assert.equal(switched.serviceAreaVerification, "unknown");
+  assert.equal(runScoreEfficia({ manualReview: switched }).reviewedScore.provisional, false);
 });
 
 test("un audit historique conserve son ancien score adresse jusqu’au choix explicite d’un mode", () => {
@@ -332,6 +376,25 @@ test("les deux questionnaires effacent les valeurs de localisation devenues invi
   assert.match(legacy, /if\(!applicable\) document\.querySelectorAll\(`input\[name="\$\{name\}"\]`\)\.forEach/);
   assert.match(legacy, /\["storefront","hybrid"\]\.includes\(mode\)/);
   assert.match(legacy, /\["service_area","hybrid"\]\.includes\(mode\)/);
+});
+
+test("les deux interfaces partagent la règle non vérifiable et les rapports la traitent sans recommandation négative", () => {
+  const modern = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
+  const legacy = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  const shared = readFileSync(new URL("../js/questionnaire-finalization.js", import.meta.url), "utf8");
+  const modernPage = readFileSync(new URL("../functions/admin/audit-review/[analysisId].js", import.meta.url), "utf8");
+
+  assert.match(shared, /isServiceAreaVerificationComplete/);
+  assert.match(shared, /"not_verifiable"/);
+  assert.match(modern, /moteur\.isServiceAreaVerificationComplete\(location\.serviceAreaVerification\)/);
+  assert.match(legacy, /EfficiaQuestionnaireFinalization\.isServiceAreaVerificationComplete\(reponseZoneDesserte\(\)\)/);
+  assert.match(modernPage, /data-score-provisional/);
+  for (const source of [modernPage, legacy]) {
+    assert.match(source, /Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer\./);
+  }
+  assert.match(legacy, /critereEstNonVerifiablePubliquement\(cr\)/);
+  assert.match(legacy, /Zone desservie : à confirmer — information non vérifiable publiquement\./);
+  assert.match(legacy, /if\(critereEstNonVerifiablePubliquement\(cr\)\) return;/);
 });
 
 test("les brouillons des deux questionnaires sauvegardent et restaurent exactement la localisation", () => {

@@ -11,6 +11,7 @@ const legacyGeneratorLink = document.querySelector("[data-legacy-generator-link]
 const statusBox = document.querySelector("[data-review-status]");
 const criteriaGroupsBox = document.querySelector("[data-criteria-groups]");
 const criteriaSummaryBox = document.querySelector("[data-criteria-summary]");
+const scoreProvisionalBox = document.querySelector("[data-score-provisional]");
 const criteriaNotVerifiedSummaryBox = document.querySelector("[data-criteria-not-verified-summary]");
 const fillUnknownButton = document.querySelector("[data-fill-unknown]");
 const executionEditor = document.querySelector("[data-execution-editor]");
@@ -996,6 +997,7 @@ function collectQuestionnaireConditions() {
 }
 
 function updateLocationControls() {
+  const moteur = globalThis.EfficiaQuestionnaireFinalization;
   const conditions = collectQuestionnaireConditions();
   const addressApplicable = ["storefront", "hybrid"].includes(conditions.locationMode);
   const serviceAreaApplicable = ["service_area", "hybrid"].includes(conditions.locationMode);
@@ -1008,9 +1010,15 @@ function updateLocationControls() {
   }
   const refreshed = collectQuestionnaireConditions();
   const unresolved = (addressApplicable && ["unknown", "not_verifiable"].includes(refreshed.addressVerification))
-    || (serviceAreaApplicable && ["unknown", "not_verifiable"].includes(refreshed.serviceAreaVerification));
+    || (serviceAreaApplicable && !moteur.isServiceAreaVerificationComplete(refreshed.serviceAreaVerification));
+  const publiclyUnverifiable = moteur.hasPubliclyUnverifiableServiceArea(refreshed);
   const confirmation = criteriaGroupsBox?.querySelector("[data-location-confirmation]");
-  if (confirmation) confirmation.hidden = !unresolved;
+  if (confirmation) {
+    confirmation.hidden = !unresolved && !publiclyUnverifiable;
+    confirmation.textContent = publiclyUnverifiable
+      ? "Zone desservie : à confirmer — information non vérifiable publiquement."
+      : "Cette information doit être confirmée avant la finalisation. Aucune anomalie n’est déduite automatiquement.";
+  }
 }
 
 function clearCriterionAnswer(key) {
@@ -1053,7 +1061,7 @@ function updateNotVerifiedHighlights() {
       const conditions = collectQuestionnaireConditions();
       const isNotVerified = conditions.locationMode === "unknown"
         || (["storefront", "hybrid"].includes(conditions.locationMode) && ["unknown", "not_verifiable"].includes(conditions.addressVerification))
-        || (["service_area", "hybrid"].includes(conditions.locationMode) && ["unknown", "not_verifiable"].includes(conditions.serviceAreaVerification));
+        || (["service_area", "hybrid"].includes(conditions.locationMode) && conditions.serviceAreaVerification === "unknown");
       item.classList.toggle("is-not-verified", isNotVerified);
       const badge = item.querySelector("[data-not-verified-badge]");
       if (badge) badge.hidden = !isNotVerified;
@@ -1107,9 +1115,10 @@ function updateCriteriaSummary() {
     .filter((item) => !item.classList.contains("is-dependency-hidden"));
   const total = visibleItems.length;
   const location = collectQuestionnaireConditions();
+  const moteur = globalThis.EfficiaQuestionnaireFinalization;
   const locationAnswered = location.locationMode !== "unknown"
     && (!["storefront", "hybrid"].includes(location.locationMode) || ["exact", "inaccurate"].includes(location.addressVerification))
-    && (!["service_area", "hybrid"].includes(location.locationMode) || ["coherent", "partial", "incoherent"].includes(location.serviceAreaVerification));
+    && (!["service_area", "hybrid"].includes(location.locationMode) || moteur.isServiceAreaVerificationComplete(location.serviceAreaVerification));
   const answered = visibleItems.filter((item) => item.dataset.criteriaKey === "adresse"
     ? locationAnswered
     : item.querySelector("[data-criteria-option]:checked")).length;
@@ -1117,6 +1126,7 @@ function updateCriteriaSummary() {
     ? !locationAnswered
     : item.querySelector('[data-criteria-option]:checked[value="not_verified"]')).length;
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
+  if (scoreProvisionalBox) scoreProvisionalBox.hidden = !moteur.hasPubliclyUnverifiableServiceArea(location);
 }
 
 function listerElementsRestantsPourFinalisation() {
@@ -1146,7 +1156,7 @@ function listerElementsRestantsPourFinalisation() {
       id: "serviceAreaVerification",
       label: "Zone desservie à confirmer",
       required: ["service_area", "hybrid"].includes(location.locationMode),
-      complete: ["coherent", "partial", "incoherent"].includes(location.serviceAreaVerification),
+      complete: moteur.isServiceAreaVerificationComplete(location.serviceAreaVerification),
       element: locationElement?.querySelector('[data-location-control="service_area"]') || locationElement,
       focusTarget: locationElement?.querySelector('input[name="location:serviceArea"]'),
       reason: "service_area_verification_missing",
