@@ -44,6 +44,8 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     .criteria-item { padding: 20px 24px; border-bottom: 1px solid #edf2f7; transition: background-color .15s ease, box-shadow .15s ease, padding .2s ease, border-color .2s ease; }
     .criteria-item:last-child { border-bottom: 0; }
     .criteria-precondition { padding: 20px 24px; border-bottom: 1px solid #edf2f7; background: #f8fbff; }
+    [data-location-control] { margin-top: 18px; padding: 16px; border: 1px solid #dbe4f0; border-radius: 16px; background: #f8fbff; }
+    [data-location-control][hidden] { display: none !important; }
     .criteria-item.is-not-verified { background: #fef6f6; box-shadow: inset 0 0 0 1px #fecaca; border-radius: 12px; }
     .criteria-item.is-dependency-hidden { padding-top: 0; padding-bottom: 0; border-bottom-color: transparent; }
     .criteria-item__collapse { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .2s ease, opacity .2s ease; }

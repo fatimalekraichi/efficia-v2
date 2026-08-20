@@ -11,7 +11,9 @@ const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "no
 
 import {
   QUESTIONNAIRE_VERSION,
+  LEGACY_QUESTIONNAIRE_VERSION,
   normalizeQuestionnaireConditions,
+  normalizeLocationCriterion,
   sanitizeConditionalCriteria,
 } from "./score-efficia/questionnaireRules.js";
 
@@ -129,11 +131,16 @@ export function computeBenchmarkConfidence(competitors) {
 export function normalizeManualReview(payload = {}) {
   const normalizedCriteria = normalizeCriteriaReview(payload.criteriaReview);
   const conditions = normalizeQuestionnaireConditions(payload, normalizedCriteria);
+  const conditionalCriteria = sanitizeConditionalCriteria(normalizedCriteria, conditions);
   return {
     reportType: pickAllowed(payload.reportType, REPORT_TYPES, "premium"),
-    questionnaireVersion: cleanText(payload.questionnaireVersion, 80) || QUESTIONNAIRE_VERSION,
+    questionnaireVersion: cleanText(payload.questionnaireVersion, 80)
+      || (normalizedCriteria.some((item) => item.key === "adresse") ? LEGACY_QUESTIONNAIRE_VERSION : QUESTIONNAIRE_VERSION),
     photoPresence: conditions.photoPresence,
     reviewsPresence: conditions.reviewsPresence,
+    locationMode: conditions.locationMode,
+    addressVerification: conditions.addressVerification,
+    serviceAreaVerification: conditions.serviceAreaVerification,
     descriptionStatus: pickAllowed(payload.descriptionStatus, DESCRIPTION_STATUS, "unknown"),
     photoQuality: pickAllowed(payload.photoQuality, QUALITY_STATUS, "unknown"),
     photoRelevance: pickAllowed(payload.photoRelevance, BASIC_STATUS, "unknown"),
@@ -149,7 +156,7 @@ export function normalizeManualReview(payload = {}) {
     confirmedCategory: cleanText(payload.confirmedCategory, 160),
     confirmedPosition: cleanOptionalNumber(payload.confirmedPosition),
     confirmedQuery: cleanText(payload.confirmedQuery, 240),
-    criteriaReview: sanitizeConditionalCriteria(normalizedCriteria, conditions),
+    criteriaReview: normalizeLocationCriterion(conditionalCriteria, conditions),
     executionPlan: normalizeExecutionPlanReview(payload.executionPlan),
   };
 }

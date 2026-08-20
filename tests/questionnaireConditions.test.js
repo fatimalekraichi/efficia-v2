@@ -5,10 +5,13 @@ import test from "node:test";
 import { buildReviewedObservation, normalizeManualReview } from "../functions/lib/manualReview.js";
 import { GRILLE } from "../functions/lib/score-efficia/criteriaCatalog.js";
 import {
+  QUESTIONNAIRE_VERSION,
   PHOTO_DEPENDENT_KEYS,
   REVIEW_DEPENDENT_KEYS,
   incompleteQuestionnaireFields,
+  locationScore,
 } from "../functions/lib/score-efficia/questionnaireRules.js";
+import { buildScorePrefill } from "../functions/lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../functions/lib/score-efficia/scoreEngine.js";
 
 const completeCriteria = () => GRILLE.flatMap((category) => category.criteres.map((criterion) => ({
@@ -116,4 +119,118 @@ test("les deux interfaces masquent et effacent les dépendances sans modifier le
   assert.match(modern, /if \(hidden\) clearCriterionAnswer\(key\)/);
   assert.match(modern, /reviewsPresence === "none" && criterion\.key === "noteMoyenne"/);
   assert.match(legacy, /if\(masquer\) effacerReponseCritere\(key\)/);
+});
+
+test("le mode de réception pilote le critère historique adresse sans ajouter de trentième critère", () => {
+  const flatCriteria = GRILLE.flatMap((category) => category.criteres);
+  assert.equal(flatCriteria.length, 29);
+  assert.equal(flatCriteria.reduce((sum, criterion) => sum + criterion.max, 0), 100);
+  assert.equal(flatCriteria.filter((criterion) => criterion.key === "adresse").length, 1);
+  assert.equal(flatCriteria.find((criterion) => criterion.key === "adresse").max, 2);
+  assert.equal(flatCriteria.some((criterion) => criterion.key === "locationMode"), false);
+
+  assert.equal(locationScore({ locationMode: "storefront", addressVerification: "exact" }), 2);
+  assert.equal(locationScore({ locationMode: "storefront", addressVerification: "inaccurate" }), 0);
+  assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "coherent" }), 2);
+  assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "partial" }), 1);
+  assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "incoherent" }), 0);
+  assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "exact", serviceAreaVerification: "coherent" }), 2);
+  assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "exact", serviceAreaVerification: "incoherent" }), 1);
+  assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "inaccurate", serviceAreaVerification: "coherent" }), 1);
+  assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "inaccurate", serviceAreaVerification: "incoherent" }), 0);
+
+  const switchedToStorefront = normalizeManualReview({
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    locationMode: "storefront",
+    addressVerification: "exact",
+    serviceAreaVerification: "coherent",
+    criteriaReview: completeCriteria(),
+  });
+  assert.equal(switchedToStorefront.addressVerification, "exact");
+  assert.equal(switchedToStorefront.serviceAreaVerification, "unknown");
+
+  const serviceAreaReview = normalizeManualReview({
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    locationMode: "service_area",
+    serviceAreaVerification: "partial",
+    criteriaReview: completeCriteria(),
+  });
+  const serviceAreaCriterion = runScoreEfficia({ manualReview: serviceAreaReview }).scoreInputs.criteria
+    .find((criterion) => criterion.key === "adresse");
+  assert.equal(serviceAreaCriterion.points, 1);
+  assert.match(serviceAreaCriterion.question, /zone desservie/i);
+  assert.doesNotMatch(serviceAreaCriterion.question, /adresse/i);
+});
+
+test("non vérifiable reste à confirmer et bloque la finalisation sans pénalité arbitraire", () => {
+  const manualReview = normalizeManualReview({
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    photoPresence: "present",
+    reviewsPresence: "present",
+    locationMode: "service_area",
+    serviceAreaVerification: "not_verifiable",
+    criteriaReview: completeCriteria(),
+  });
+  assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers.adresse, null);
+  assert.ok(incompleteQuestionnaireFields(manualReview).includes("serviceAreaVerification"));
+});
+
+test("un audit historique conserve son ancien score adresse jusqu’au choix explicite d’un mode", () => {
+  const oldReview = normalizeManualReview({
+    photoPresence: "present",
+    reviewsPresence: "present",
+    criteriaReview: completeCriteria().map((item) => item.key === "adresse" ? { ...item, points: 2 } : item),
+  });
+  assert.equal(oldReview.locationMode, "unknown");
+  assert.equal(runScoreEfficia({ manualReview: oldReview }).scoreInputs.answers.adresse, 2);
+
+  const edited = normalizeManualReview({
+    ...oldReview,
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    locationMode: "hybrid",
+    addressVerification: "exact",
+    serviceAreaVerification: "partial",
+  });
+  assert.equal(runScoreEfficia({ manualReview: edited }).scoreInputs.answers.adresse, 1);
+  assert.deepEqual(incompleteQuestionnaireFields(edited), []);
+});
+
+test("le préremplissage fournisseur ne déduit jamais le mode de réception depuis une adresse", () => {
+  const prefill = buildScorePrefill({
+    business: { normalized: { address: "1 rue Exemple", full_address: "1 rue Exemple, Bruxelles" } },
+  });
+  assert.equal(prefill.conditions.locationMode, "unknown");
+  assert.equal(prefill.conditions.addressVerification, "unknown");
+  assert.equal(prefill.criteria.find((criterion) => criterion.key === "adresse").value, "not_verified");
+});
+
+test("les deux questionnaires effacent les valeurs de localisation devenues invisibles", () => {
+  const modern = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
+  const legacy = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  for (const source of [modern, legacy]) {
+    assert.match(source, /Comment l’entreprise reçoit-elle ses clients \?/);
+    assert.match(source, /L’adresse et l’épingle Google Maps sont-elles exactes \?/);
+    assert.match(source, /La zone desservie est-elle renseignée et cohérente \?/);
+    assert.match(source, /not_verifiable/);
+  }
+  assert.match(modern, /if \(!applicable\) block\.querySelectorAll\('input\[type="radio"\]'\)\.forEach/);
+  assert.match(modern, /\["storefront", "hybrid"\]\.includes\(conditions\.locationMode\)/);
+  assert.match(modern, /\["service_area", "hybrid"\]\.includes\(conditions\.locationMode\)/);
+  assert.match(legacy, /if\(!applicable\) document\.querySelectorAll\(`input\[name="\$\{name\}"\]`\)\.forEach/);
+  assert.match(legacy, /\["storefront","hybrid"\]\.includes\(mode\)/);
+  assert.match(legacy, /\["service_area","hybrid"\]\.includes\(mode\)/);
+});
+
+test("les brouillons des deux questionnaires sauvegardent et restaurent exactement la localisation", () => {
+  const modern = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
+  const legacy = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  for (const source of [modern, legacy]) {
+    assert.match(source, /locationMode/);
+    assert.match(source, /addressVerification/);
+    assert.match(source, /serviceAreaVerification/);
+    assert.match(source, /1200/);
+  }
+  assert.match(modern, /fillCriteriaFromAnalysis\(currentAnalysis, answers\)/);
+  assert.match(legacy, /restaurerLocalisation\(answers\)/);
+  assert.match(legacy, /restaurerLocalisation\(data\)/);
 });

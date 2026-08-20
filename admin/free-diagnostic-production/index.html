@@ -47,6 +47,8 @@
   .critere:last-child{border-bottom:none}
   .critere.condition-hidden{display:none}
   .critere-prealable{padding:14px 0;border-bottom:1px solid var(--bord)}
+  .controle-localisation{margin-top:12px;padding:12px;border:1px solid var(--bord);border-radius:10px;background:var(--fond2)}
+  .controle-localisation[hidden]{display:none!important}
   .critere .q{font-weight:600;font-size:.95rem}
   .critere .aide{color:var(--gris);font-size:.82rem;margin:2px 0 8px}
   .critere .note-auto{font-size:.82rem;color:var(--bleu);background:var(--fond2);border-radius:6px;padding:4px 10px;display:inline-block;margin-bottom:8px}
@@ -810,9 +812,9 @@ const CONTENU_DIAGNOSTIC = {
     premiereAction:"Tester et corriger le téléphone et le lien du site."
   },
   adresse: {
-    constat:"L'adresse ou la zone de service demande une vérification.",
-    impact:"Une localisation imprécise peut compliquer l'itinéraire et réduire la confiance.",
-    premiereAction:"Vérifier l'adresse, la zone et la position de l'épingle."
+    constat:"Le contrôle de localisation applicable demande une vérification.",
+    impact:"Une information de localisation imprécise peut compliquer le parcours du client et réduire la confiance.",
+    premiereAction:"Vérifier les informations correspondant au mode d’accueil de l’entreprise."
   },
   attributs: {
     constat:"Les attributs utiles semblent partiellement renseignés.",
@@ -958,6 +960,39 @@ GRILLE.forEach(cat => {
   cat.criteres.forEach(cr => {
     cr.id = idx;
     if(cr.key) CRITERE_IDS[cr.key] = idx;
+    if(cr.key === "adresse"){
+      html += `<div class="critere" id="crit-${idx}" data-location-criterion>
+        <div class="q">Comment l’entreprise reçoit-elle ses clients ?<span class="badges"></span></div>
+        <div class="aide">💡 Ce choix détermine le contrôle de localisation applicable et n’ajoute aucun point.</div>
+        <div class="opts">
+          <label><input type="radio" name="condition-location-mode" value="storefront" onchange="majLocalisation()">Les clients se rendent à l’adresse</label>
+          <label><input type="radio" name="condition-location-mode" value="service_area" onchange="majLocalisation()">L’entreprise se déplace uniquement chez les clients</label>
+          <label><input type="radio" name="condition-location-mode" value="hybrid" onchange="majLocalisation()">Les deux</label>
+        </div>
+        <div class="controle-localisation" data-location-control="address" hidden inert>
+          <div class="q">L’adresse et l’épingle Google Maps sont-elles exactes ?</div>
+          <div class="aide">💡 Vérifier l’adresse publique et la position de l’épingle sur Google Maps.</div>
+          <div class="opts">
+            <label><input type="radio" name="location-address" value="exact" onchange="majLocalisation()">Exactes</label>
+            <label><input type="radio" name="location-address" value="inaccurate" onchange="majLocalisation()">Erreur ou imprécision</label>
+            <label><input type="radio" name="location-address" value="not_verifiable" onchange="majLocalisation()">Non vérifiable publiquement</label>
+          </div>
+        </div>
+        <div class="controle-localisation" data-location-control="service_area" hidden inert>
+          <div class="q">La zone desservie est-elle renseignée et cohérente ?</div>
+          <div class="aide">💡 Sur la fiche publique, rechercher “Zone desservie” ou “Dessert…”. Avec un accès propriétaire : Modifier le profil → Localisation → Zone desservie.</div>
+          <div class="opts">
+            <label><input type="radio" name="location-service-area" value="coherent" onchange="majLocalisation()">Renseignée et cohérente</label>
+            <label><input type="radio" name="location-service-area" value="partial" onchange="majLocalisation()">Partielle ou imprécise</label>
+            <label><input type="radio" name="location-service-area" value="incoherent" onchange="majLocalisation()">Absente ou incohérente</label>
+            <label><input type="radio" name="location-service-area" value="not_verifiable" onchange="majLocalisation()">Non vérifiable publiquement</label>
+          </div>
+        </div>
+        <div class="zone-note" data-location-confirmation></div>
+      </div>`;
+      idx++;
+      return;
+    }
     html += `<div class="critere" id="crit-${idx}"><div class="q">${cr.q}<span class="badges"></span></div>
              <div class="aide">💡 ${cr.aide}</div><div class="zone-note"></div>`;
     if(cr.checklist && CONFIG.checklist.criteres[cr.checklist]){
@@ -1004,6 +1039,7 @@ function majChecklist(id){
 
 function lirePoints(id){
   const critere = trouverCritere(id);
+  if(critere?.key === "adresse") return scoreLocalisation();
   if(critere && conditionPhotos() === "none" && PHOTO_DEPENDENT_KEYS.includes(critere.key)) return 0;
   if(critere && conditionAvis() === "none" && (critere.key === "noteMoyenne" || REVIEW_DEPENDENT_KEYS.includes(critere.key))) return 0;
   const coche = document.querySelector(`input[name="c${id}"]:checked`);
@@ -1011,7 +1047,43 @@ function lirePoints(id){
 }
 const PHOTO_DEPENDENT_KEYS = ["nombrePhotos","photoRecente","varietePhotos","qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"];
-const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
+let legacyLocationPoints = null;
+
+function modeLocalisation(){ return document.querySelector('input[name="condition-location-mode"]:checked')?.value || "unknown"; }
+function reponseAdresse(){ return document.querySelector('input[name="location-address"]:checked')?.value || "unknown"; }
+function reponseZoneDesserte(){ return document.querySelector('input[name="location-service-area"]:checked')?.value || "unknown"; }
+function scoreLocalisation(){
+  const mode = modeLocalisation(), adresse = reponseAdresse(), zone = reponseZoneDesserte();
+  if(mode === "unknown") return legacyLocationPoints;
+  if(mode === "storefront") return adresse === "exact" ? 2 : (adresse === "inaccurate" ? 0 : null);
+  if(mode === "service_area") return zone === "coherent" ? 2 : (zone === "partial" ? 1 : (zone === "incoherent" ? 0 : null));
+  if(mode === "hybrid"){
+    if(!["exact","inaccurate"].includes(adresse) || !["coherent","partial","incoherent"].includes(zone)) return null;
+    if(adresse === "exact" && zone === "coherent") return 2;
+    if(adresse === "inaccurate" && zone === "incoherent") return 0;
+    return 1;
+  }
+  return null;
+}
+
+function majLocalisation(){
+  const mode = modeLocalisation();
+  legacyLocationPoints = null;
+  const addressApplicable = ["storefront","hybrid"].includes(mode);
+  const serviceAreaApplicable = ["service_area","hybrid"].includes(mode);
+  [["address",addressApplicable,"location-address"],["service_area",serviceAreaApplicable,"location-service-area"]].forEach(([key, applicable, name]) => {
+    const block = document.querySelector(`[data-location-control="${key}"]`);
+    if(!applicable) document.querySelectorAll(`input[name="${name}"]`).forEach(input => { input.checked = false; });
+    if(block){ block.hidden = !applicable; block.toggleAttribute("inert", !applicable); }
+  });
+  const unresolved = (addressApplicable && ["unknown","not_verifiable"].includes(reponseAdresse()))
+    || (serviceAreaApplicable && ["unknown","not_verifiable"].includes(reponseZoneDesserte()));
+  const note = document.querySelector("[data-location-confirmation]");
+  if(note) note.innerHTML = unresolved ? '<span class="note-auto">🔎 À confirmer avant finalisation — aucune anomalie n’est déduite automatiquement.</span>' : "";
+  calc();
+  programmerSauvegardeBrouillonD1();
+}
 
 function conditionPhotos(){
   return document.querySelector('input[name="condition-photos"]:checked')?.value || "unknown";
@@ -2402,6 +2474,7 @@ function marquerManuel(id, note){
 
 function reinitialiserAnalyse(){
   document.querySelectorAll('#zone-criteres input[type="radio"], #zone-criteres input[type="checkbox"]').forEach(input => input.checked = false);
+  legacyLocationPoints = null;
   document.querySelectorAll(".critere").forEach(el => {
     el.classList.remove("a-verifier");
     const badges = el.querySelector(".badges");
@@ -2425,7 +2498,7 @@ const TYPES_GENERIQUES = ["point_of_interest","establishment","store","food","he
 function statut(msg, type){ const s = document.getElementById("statut"); s.className = type; s.innerHTML = msg; }
 
 const CRITERES_PRE_REMPLIS_A_CONFIRMER = new Set([
-  "categoriePrincipale", "categoriesSecondaires", "horaires", "adresse",
+  "categoriePrincipale", "categoriesSecondaires", "horaires",
   "descriptionRemplie", "servicesPresents"
 ]);
 
@@ -2597,14 +2670,18 @@ function collecterReponses(){
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     const element = document.getElementById("crit-"+cr.id);
     if(element?.classList.contains("condition-hidden")) return;
-    const selected = document.querySelector(`input[name="c${cr.id}"]:checked`);
+    const selected = cr.key === "adresse"
+      ? null
+      : document.querySelector(`input[name="c${cr.id}"]:checked`);
     if(selected?.dataset.special === "no_reviews") return;
     const p = lirePoints(cr.id);
     if(p !== null){
       const el = document.getElementById("crit-"+cr.id);
       const badge = el?.querySelector(".badges")?.textContent || "";
       const statut = badge.includes("AUTO") ? "automatique" : badge.includes("PRÉ-REMPLI") ? "pre-remplie" : "manuelle";
-      reponses[cr.key] = {points:p, statut, selectedOptionIndex:Number(selected?.dataset.optionIndex)};
+      reponses[cr.key] = cr.key === "adresse"
+        ? {points:p, statut:"manuelle"}
+        : {points:p, statut, selectedOptionIndex:Number(selected?.dataset.optionIndex)};
     }
   }));
   return reponses;
@@ -2637,7 +2714,7 @@ function collecterCriteresAudit(){
     const evaluationStatus = statutEvaluationCritere(cr, points);
     criteria.push({
       key: cr.key,
-      label: cr.q,
+      label: libelleQuestionLocalisation(cr),
       categoryKey: cat.key,
       categoryLabel: cat.cat,
       pointsAwarded: evaluationStatus === "not_evaluated" ? null : Number(points),
@@ -2812,6 +2889,10 @@ function appliquerReponses(reponses){
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(reponses[cr.key] === undefined) return;
     const valeur = typeof reponses[cr.key] === "object" ? reponses[cr.key].points : reponses[cr.key];
+    if(cr.key === "adresse"){
+      legacyLocationPoints = estNombre(valeur) ? Number(valeur) : null;
+      return;
+    }
     const optionIndex = typeof reponses[cr.key] === "object" ? reponses[cr.key].selectedOptionIndex : null;
     const radio = Number.isInteger(optionIndex)
       ? document.querySelector(`input[name="c${cr.id}"][data-option-index="${optionIndex}"]`)
@@ -2849,6 +2930,9 @@ function sauvegarderDiagnostic(){
       questionnaireVersion:QUESTIONNAIRE_VERSION,
       photoPresence:conditionPhotos(),
       reviewsPresence:conditionAvis(),
+      locationMode:modeLocalisation(),
+      addressVerification:reponseAdresse(),
+      serviceAreaVerification:reponseZoneDesserte(),
       currentStep:"questionnaire",
       reponses:collecterReponses(),
       score:Math.round(calculScoreDetail().total),
@@ -2887,6 +2971,7 @@ function reprendreDiagnostic(){
       const noReviews = document.querySelector(`input[name="c${noteId}"][data-special="no_reviews"]`);
       if(noReviews) noReviews.checked = true;
     }
+    restaurerLocalisation(data);
     collecteDiagnosticValidee = Boolean(data.reponses && Object.keys(data.reponses).length);
     appliquerReponses(data.reponses);
     majConditionsQuestionnaire();
@@ -2931,11 +3016,32 @@ function appliquerChampsBrouillonD1(champs){
   });
 }
 
+function restaurerLocalisation(source = {}){
+  const mode = ["storefront","service_area","hybrid"].includes(source.locationMode) ? source.locationMode : "unknown";
+  if(mode === "unknown") return;
+  const modeRadio = document.querySelector(`input[name="condition-location-mode"][value="${mode}"]`);
+  if(modeRadio) modeRadio.checked = true;
+  const adresse = ["exact","inaccurate","not_verifiable"].includes(source.addressVerification) ? source.addressVerification : "unknown";
+  const zone = ["coherent","partial","incoherent","not_verifiable"].includes(source.serviceAreaVerification) ? source.serviceAreaVerification : "unknown";
+  if(adresse !== "unknown"){
+    const radio = document.querySelector(`input[name="location-address"][value="${adresse}"]`);
+    if(radio) radio.checked = true;
+  }
+  if(zone !== "unknown"){
+    const radio = document.querySelector(`input[name="location-service-area"][value="${zone}"]`);
+    if(radio) radio.checked = true;
+  }
+  majLocalisation();
+}
+
 function payloadBrouillonD1(){
   return {
     questionnaireVersion:QUESTIONNAIRE_VERSION,
     photoPresence:conditionPhotos(),
     reviewsPresence:conditionAvis(),
+    locationMode:modeLocalisation(),
+    addressVerification:reponseAdresse(),
+    serviceAreaVerification:reponseZoneDesserte(),
     fields:champsBrouillonD1(),
     profileKey:profilActif,
     responses:collecterReponses(),
@@ -3014,6 +3120,7 @@ async function restaurerBrouillonD1(){
     const noReviews = document.querySelector(`input[name="c${CRITERE_IDS.noteMoyenne}"][data-special="no_reviews"]`);
     if(noReviews) noReviews.checked = true;
   }
+  restaurerLocalisation(answers);
   appliquerReponses(answers.responses);
   collecteDiagnosticValidee = true;
   majConditionsQuestionnaire();
@@ -3503,8 +3610,23 @@ function concurrenceHtml(compact=true){
 }
 
 function libelleOption(cr, points){
+  if(cr.key === "adresse"){
+    const mode = modeLocalisation();
+    if(mode === "storefront") return points === 2 ? "Adresse et épingle exactes" : "Adresse ou épingle imprécise";
+    if(mode === "service_area") return points === 2 ? "Zone renseignée et cohérente" : (points === 1 ? "Zone partielle ou imprécise" : "Zone absente ou incohérente");
+    if(mode === "hybrid") return points === 2 ? "Adresse et zone correctes" : (points === 1 ? "Un élément reste à corriger" : "Adresse et zone incorrectes");
+  }
   const opt = cr.opts.find(([,pts]) => Number(pts) === Number(points));
   return opt ? opt[0] : "Non optimal";
+}
+
+function libelleQuestionLocalisation(cr){
+  if(cr.key !== "adresse") return cr.q;
+  const mode = modeLocalisation();
+  if(mode === "storefront") return "Exactitude de l’adresse et de l’épingle Google Maps";
+  if(mode === "service_area") return "Cohérence de la zone desservie";
+  if(mode === "hybrid") return "Cohérence de l’adresse, de l’épingle et de la zone desservie";
+  return "Localisation de l’entreprise";
 }
 
 function formatNombre(val){
@@ -3610,6 +3732,27 @@ function detailsPriorite(item){
       reassurance: item.reassurance || ""
     };
   }
+  if(cr.key === "adresse"){
+    const mode = modeLocalisation();
+    if(mode === "service_area") return {
+      constat:"La zone desservie affichée demande une correction ou une précision.",
+      pourquoi:"Une zone d’intervention claire aide les clients à vérifier rapidement si l’entreprise se déplace chez eux.",
+      action:"Renseigner précisément la zone desservie dans les paramètres de localisation de la fiche.",
+      reassurance:reassuranceTexte(cr)
+    };
+    if(mode === "hybrid") return {
+      constat:"L’adresse, l’épingle ou la zone desservie demande une correction.",
+      pourquoi:"Ces informations doivent être cohérentes pour les clients qui se déplacent comme pour ceux qui demandent une intervention.",
+      action:"Corriger l’élément imprécis dans les paramètres de localisation de la fiche.",
+      reassurance:reassuranceTexte(cr)
+    };
+    return {
+      constat:"L’adresse publique ou la position de l’épingle Google Maps demande une correction.",
+      pourquoi:"Une adresse et une épingle exactes évitent les erreurs d’itinéraire et rassurent avant un déplacement.",
+      action:"Corriger l’adresse ou replacer précisément l’épingle Google Maps.",
+      reassurance:reassuranceTexte(cr)
+    };
+  }
   const obs = observationPersonnalisee(cr);
   return {
     constat: obs || `${cr.constat} ${enrichirConstatAvecDonnees(cr, item.points)}`.trim(),
@@ -3655,6 +3798,11 @@ function forcesCompactesHtml(forces){
 }
 
 function forceRapport(cr){
+  if(cr.key === "adresse"){
+    if(modeLocalisation() === "service_area") return "Zone desservie claire — les clients comprennent où l’entreprise intervient.";
+    if(modeLocalisation() === "hybrid") return "Adresse, épingle et zone desservie cohérentes — les deux modes d’accueil sont clairs.";
+    return "Adresse et épingle exactes — l’itinéraire et la localisation sont fiables.";
+  }
   const forces = {
     noteMoyenne:"Votre note moyenne est élevée — c'est la chose la plus longue à construire, et vous l'avez déjà.",
     tauxReponseAvis:"Réponses régulières aux avis — la relation client est visible et bien entretenue.",
@@ -3662,7 +3810,6 @@ function forceRapport(cr){
     volumeAvis:"Volume d'avis favorable par rapport aux concurrents analysés.",
     categoriePrincipale:"Votre catégorie principale est bien choisie — un client comprend d'emblée votre activité.",
     contact:"Coordonnées accessibles — le passage à l'action est facilité.",
-    adresse:"Adresse ou zone de service claire — la fiche paraît plus fiable.",
     nombrePhotos:"Galerie photo suffisamment fournie — l'entreprise est plus facile à visualiser.",
     descriptionRemplie:"Description renseignée — l'offre est mieux contextualisée.",
     servicesPresents:"Services présents — l'offre est plus lisible.",
@@ -4626,8 +4773,12 @@ async function apercuImpression(){
 function questionnairePretPourFinalisation(){
   const photoPresence = document.querySelector('input[name="condition-photos"]:checked');
   const incomplete = [...document.querySelectorAll(".critere:not(.condition-hidden)")]
-    .filter(element => !element.querySelector('input[type="radio"]:checked'));
-  if(!collecteDiagnosticValidee || !photoPresence || incomplete.length){
+    .filter(element => !element.hasAttribute("data-location-criterion") && !element.querySelector('input[type="radio"]:checked'));
+  const mode = modeLocalisation();
+  const localisationIncomplete = mode === "unknown"
+    || (["storefront","hybrid"].includes(mode) && !["exact","inaccurate"].includes(reponseAdresse()))
+    || (["service_area","hybrid"].includes(mode) && !["coherent","partial","incoherent"].includes(reponseZoneDesserte()));
+  if(!collecteDiagnosticValidee || !photoPresence || localisationIncomplete || incomplete.length){
     statut("Complétez toutes les questions visibles avant de finaliser le rapport.", "erreur");
     return false;
   }

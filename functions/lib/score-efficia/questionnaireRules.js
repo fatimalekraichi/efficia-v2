@@ -1,6 +1,10 @@
 import { GRILLE } from "./criteriaCatalog.js";
 
-export const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+export const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
+export const LEGACY_QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+export const LOCATION_MODES = Object.freeze(["storefront", "service_area", "hybrid"]);
+export const ADDRESS_VERIFICATIONS = Object.freeze(["exact", "inaccurate", "not_verifiable"]);
+export const SERVICE_AREA_VERIFICATIONS = Object.freeze(["coherent", "partial", "incoherent", "not_verifiable"]);
 export const PHOTO_DEPENDENT_KEYS = Object.freeze([
   "nombrePhotos",
   "photoRecente",
@@ -21,6 +25,9 @@ export const CRITERIA_DEPENDENCIES = Object.freeze([
 ]);
 
 const PRESENCE_VALUES = new Set(["present", "none", "unknown"]);
+const LOCATION_MODE_VALUES = new Set(LOCATION_MODES);
+const ADDRESS_VALUES = new Set(ADDRESS_VERIFICATIONS);
+const SERVICE_AREA_VALUES = new Set(SERVICE_AREA_VERIFICATIONS);
 
 function cleanPresence(value) {
   return PRESENCE_VALUES.has(value) ? value : "unknown";
@@ -40,7 +47,67 @@ export function normalizeQuestionnaireConditions(payload = {}, criteriaReview = 
     reviewsPresence = "present";
   }
 
-  return { photoPresence, reviewsPresence };
+  const locationMode = LOCATION_MODE_VALUES.has(payload.locationMode) ? payload.locationMode : "unknown";
+  return {
+    photoPresence,
+    reviewsPresence,
+    locationMode,
+    addressVerification: ["storefront", "hybrid"].includes(locationMode) && ADDRESS_VALUES.has(payload.addressVerification)
+      ? payload.addressVerification
+      : "unknown",
+    serviceAreaVerification: ["service_area", "hybrid"].includes(locationMode) && SERVICE_AREA_VALUES.has(payload.serviceAreaVerification)
+      ? payload.serviceAreaVerification
+      : "unknown",
+  };
+}
+
+export function locationScore(conditions = {}) {
+  const { locationMode, addressVerification, serviceAreaVerification } = conditions;
+  if (locationMode === "storefront") {
+    if (addressVerification === "exact") return 2;
+    if (addressVerification === "inaccurate") return 0;
+    return null;
+  }
+  if (locationMode === "service_area") {
+    if (serviceAreaVerification === "coherent") return 2;
+    if (serviceAreaVerification === "partial") return 1;
+    if (serviceAreaVerification === "incoherent") return 0;
+    return null;
+  }
+  if (locationMode === "hybrid") {
+    if (!["exact", "inaccurate"].includes(addressVerification)
+      || !["coherent", "partial", "incoherent"].includes(serviceAreaVerification)) return null;
+    if (addressVerification === "exact" && serviceAreaVerification === "coherent") return 2;
+    if (addressVerification === "inaccurate" && serviceAreaVerification === "incoherent") return 0;
+    return 1;
+  }
+  return null;
+}
+
+export function normalizeLocationCriterion(criteriaReview = [], conditions = {}) {
+  if (!LOCATION_MODE_VALUES.has(conditions.locationMode)) return criteriaReview;
+  const withoutLegacyLocation = criteriaReview.filter((item) => item?.key !== "adresse");
+  const points = locationScore(conditions);
+  const value = points === 2 ? "compliant" : (points === 1 ? "partial" : (points === 0 ? "deficient" : "not_verified"));
+  const labels = {
+    storefront: points === 2 ? "Adresse et épingle exactes" : (points === 0 ? "Adresse ou épingle imprécise" : "Adresse à confirmer"),
+    service_area: points === 2 ? "Zone renseignée et cohérente" : (points === 1 ? "Zone partielle ou imprécise" : (points === 0 ? "Zone absente ou incohérente" : "Zone à confirmer")),
+    hybrid: points === 2 ? "Adresse et zone correctes" : (points === 1 ? "Un élément reste à corriger" : (points === 0 ? "Adresse et zone incorrectes" : "Adresse et zone à confirmer")),
+  };
+  return [...withoutLegacyLocation, {
+    key: "adresse",
+    category: "Informations essentielles",
+    question: conditions.locationMode === "storefront"
+      ? "L’adresse et l’épingle Google Maps sont-elles exactes ?"
+      : (conditions.locationMode === "service_area"
+        ? "La zone desservie est-elle renseignée et cohérente ?"
+        : "L’adresse, l’épingle et la zone desservie sont-elles cohérentes ?"),
+    value,
+    label: labels[conditions.locationMode],
+    checklist: [],
+    points,
+    source: "manual_location_mode",
+  }];
 }
 
 export function sanitizeConditionalCriteria(criteriaReview = [], conditions = {}) {
@@ -83,5 +150,14 @@ export function incompleteQuestionnaireFields(manualReview = {}) {
 
   if (conditions.photoPresence === "unknown") missing.unshift("photoPresence");
   if (conditions.reviewsPresence === "unknown" && !criteria.has("noteMoyenne")) missing.unshift("reviewsPresence");
+  const requiresLocationMode = manualReview.questionnaireVersion === QUESTIONNAIRE_VERSION
+    || LOCATION_MODE_VALUES.has(conditions.locationMode);
+  if (requiresLocationMode) {
+    if (conditions.locationMode === "unknown") missing.unshift("locationMode");
+    if (["storefront", "hybrid"].includes(conditions.locationMode)
+      && ["unknown", "not_verifiable"].includes(conditions.addressVerification)) missing.unshift("addressVerification");
+    if (["service_area", "hybrid"].includes(conditions.locationMode)
+      && ["unknown", "not_verifiable"].includes(conditions.serviceAreaVerification)) missing.unshift("serviceAreaVerification");
+  }
   return [...new Set(missing)];
 }

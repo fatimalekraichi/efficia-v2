@@ -167,7 +167,6 @@ export function buildScorePrefill(analysis = {}) {
   const website = getNormalizedValue(normalized, ["website", "site"]);
   const phone = getNormalizedValue(normalized, ["phone", "phone_number"]);
   const contactWasObserved = wasObserved(normalized, ["website", "site", "phone", "phone_number"]);
-  const address = getNormalizedValue(normalized, ["address", "full_address", "business_address", "street"]);
   const services = getServices(normalized);
   const photos = asNumber(business.photosCount);
   const rating = asNumber(business.rating);
@@ -181,6 +180,9 @@ export function buildScorePrefill(analysis = {}) {
     reviewsPresence: reviewsCount === null && rating === null
       ? "unknown"
       : (reviewsCount === 0 ? "none" : "present"),
+    locationMode: "unknown",
+    addressVerification: "unknown",
+    serviceAreaVerification: "unknown",
   };
 
   addCriterion(criteria, primaryCategory
@@ -207,9 +209,10 @@ export function buildScorePrefill(analysis = {}) {
     addCriterion(criteria, notVerified("liensAction"));
   }
 
-  addCriterion(criteria, address
-    ? optionForKey("adresse", 0, "observed", { value: address })
-    : notVerified("adresse"));
+  // Une adresse publique ne permet pas de conclure si l'activité reçoit sur
+  // place, intervient chez le client ou combine les deux. Le contrôle de
+  // localisation reste donc manuel et n'expose jamais la donnée brute.
+  addCriterion(criteria, notVerified("adresse"));
 
   if (photos === null) {
     addCriterion(criteria, notVerified("nombrePhotos"));

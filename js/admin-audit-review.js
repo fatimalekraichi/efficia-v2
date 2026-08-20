@@ -23,6 +23,7 @@ let currentAnalysis = null;
 let currentCriteriaGroups = null;
 let currentPrefillCriteria = new Map();
 let currentPrefillConditions = {};
+let currentLegacyLocationReview = null;
 let draftSaveTimer = null;
 let draftSaveInFlight = false;
 let draftManualSaveQueued = false;
@@ -33,7 +34,7 @@ const REPORT_TYPE_LABELS = {
 };
 
 const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews"]);
-const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
 const PHOTO_DEPENDENT_KEYS = ["nombrePhotos", "photoRecente", "varietePhotos", "qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis", "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis"];
 
@@ -561,6 +562,39 @@ function setCriteriaCatalog(analysis) {
   currentPrefillConditions = analysis?.scorePrefill?.conditions || {};
 }
 
+function locationCriterionHtml() {
+  return `<article class="criteria-item" data-criteria-key="adresse" data-location-criterion>
+    <div class="criteria-item__question">Comment l’entreprise reçoit-elle ses clients ? <span class="criteria-not-verified-badge" data-not-verified-badge hidden>À vérifier manuellement</span></div>
+    <div class="criteria-item__help">Ce choix détermine le contrôle de localisation applicable et n’ajoute aucun point.</div>
+    <div class="criteria-options" data-location-modes>
+      <label class="criteria-option"><input type="radio" name="condition:locationMode" value="storefront"><span>Les clients se rendent à l’adresse</span></label>
+      <label class="criteria-option"><input type="radio" name="condition:locationMode" value="service_area"><span>L’entreprise se déplace uniquement chez les clients</span></label>
+      <label class="criteria-option"><input type="radio" name="condition:locationMode" value="hybrid"><span>Les deux</span></label>
+    </div>
+    <div data-location-control="address" hidden inert>
+      <div class="criteria-item__question">L’adresse et l’épingle Google Maps sont-elles exactes ?</div>
+      <div class="criteria-item__help">Vérifier l’adresse publique et la position de l’épingle sur Google Maps.</div>
+      <div class="criteria-options">
+        <label class="criteria-option"><input type="radio" name="location:address" value="exact"><span>Exactes</span></label>
+        <label class="criteria-option"><input type="radio" name="location:address" value="inaccurate"><span>Erreur ou imprécision</span></label>
+        <label class="criteria-option"><input type="radio" name="location:address" value="not_verifiable"><span>Non vérifiable publiquement</span></label>
+      </div>
+    </div>
+    <div data-location-control="service_area" hidden inert>
+      <div class="criteria-item__question">La zone desservie est-elle renseignée et cohérente ?</div>
+      <div class="criteria-item__help">Sur la fiche publique, rechercher “Zone desservie” ou “Dessert…”. Avec un accès propriétaire : Modifier le profil → Localisation → Zone desservie.</div>
+      <div class="criteria-options">
+        <label class="criteria-option"><input type="radio" name="location:serviceArea" value="coherent"><span>Renseignée et cohérente</span></label>
+        <label class="criteria-option"><input type="radio" name="location:serviceArea" value="partial"><span>Partielle ou imprécise</span></label>
+        <label class="criteria-option"><input type="radio" name="location:serviceArea" value="incoherent"><span>Absente ou incohérente</span></label>
+        <label class="criteria-option"><input type="radio" name="location:serviceArea" value="not_verifiable"><span>Non vérifiable publiquement</span></label>
+      </div>
+    </div>
+    <p class="criteria-item__help" data-location-confirmation hidden>Cette information doit être confirmée avant la finalisation. Aucune anomalie n’est déduite automatiquement.</p>
+    <p class="criteria-item__help" data-legacy-location hidden>Ancienne réponse conservée pour la lecture. Sélectionnez le mode d’activité avant toute nouvelle finalisation.</p>
+  </article>`;
+}
+
 function renderCriteriaReview() {
   if (!criteriaGroupsBox) return;
 
@@ -584,6 +618,7 @@ function renderCriteriaReview() {
         </div>
       ` : ""}
       ${getGroupCriteria(group).map((criterion) => {
+        if (criterion.key === "adresse") return locationCriterionHtml();
         const checklist = getCriterionChecklist(criterion);
         return `
         <article class="criteria-item" data-criteria-key="${escapeHtml(criterion.key)}">
@@ -814,14 +849,15 @@ function buildAutoCriteriaReview(analysis) {
   const website = getNormalizedValue(normalized, ["website", "site"]);
   const phone = getNormalizedValue(normalized, ["phone", "phone_number"]);
   const contactWasObserved = hasNormalizedKey(normalized, ["website", "site", "phone", "phone_number"]);
-  const address = getNormalizedValue(normalized, ["address", "full_address", "business_address", "street"]);
   const services = getServices(normalized);
 
   add("categoriePrincipale", primaryCategory ? "compliant" : "not_verified");
   add("categoriesSecondaires", secondaryCategories.length > 1 ? "compliant" : "not_verified");
   add("horaires", workingHours ? "compliant" : "not_verified");
   add("contact", contactWasObserved ? (phone && website ? "compliant" : (phone || website ? "partial" : "deficient")) : "not_verified");
-  add("adresse", address ? "compliant" : (business.ville ? "partial" : "not_verified"));
+  // Le mode d'accueil et la conformité de la localisation ne sont jamais
+  // déduits de la seule présence ou absence d'une adresse publique.
+  add("adresse", "not_verified");
   add("nombrePhotos", measuredPhotoStatus(business.photosCount));
   add("noteMoyenne", measuredRatingStatus(business.rating));
   add("volumeAvis", measuredReviewsStatus(business.reviews, benchmark.averages?.reviews));
@@ -866,15 +902,26 @@ function fillCriteriaFromAnalysis(analysis, draftReview = null) {
 
   const photoPresence = activeReview.photoPresence || currentPrefillConditions.photoPresence || "unknown";
   const reviewsPresence = activeReview.reviewsPresence || currentPrefillConditions.reviewsPresence || "unknown";
+  const locationMode = activeReview.locationMode || "unknown";
   const photoPresenceRadio = criteriaGroupsBox?.querySelector(`input[name="condition:photoPresence"][value="${photoPresence}"]`);
   if (photoPresenceRadio) photoPresenceRadio.checked = true;
   if (reviewsPresence === "none") {
     const noReviewsRadio = criteriaGroupsBox?.querySelector('input[name="criterion:noteMoyenne"][value="no_reviews"]');
     if (noReviewsRadio) noReviewsRadio.checked = true;
   }
+  const locationModeRadio = criteriaGroupsBox?.querySelector(`input[name="condition:locationMode"][value="${locationMode}"]`);
+  if (locationModeRadio) locationModeRadio.checked = true;
+  const addressRadio = criteriaGroupsBox?.querySelector(`input[name="location:address"][value="${activeReview.addressVerification}"]`);
+  if (addressRadio) addressRadio.checked = true;
+  const serviceAreaRadio = criteriaGroupsBox?.querySelector(`input[name="location:serviceArea"][value="${activeReview.serviceAreaVerification}"]`);
+  if (serviceAreaRadio) serviceAreaRadio.checked = true;
+  currentLegacyLocationReview = locationMode === "unknown" ? (savedCriteria.get("adresse") || null) : null;
+  const legacyNotice = criteriaGroupsBox?.querySelector("[data-legacy-location]");
+  if (legacyNotice) legacyNotice.hidden = !currentLegacyLocationReview;
 
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
+      if (criterion.key === "adresse") return;
       if (reviewsPresence === "none" && criterion.key === "noteMoyenne") return;
       const saved = savedCriteria.get(criterion.key);
       const auto = currentPrefillCriteria.get(criterion.key) || fallbackAutoCriteria.get(criterion.key);
@@ -905,6 +952,7 @@ function collectCriteriaReview() {
 
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
+      if (criterion.key === "adresse") return;
       const criterionItem = criteriaGroupsBox?.querySelector(`[data-criteria-key="${criterion.key}"]`);
       if (criterionItem?.classList.contains("is-dependency-hidden")) return;
       const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
@@ -933,6 +981,10 @@ function collectCriteriaReview() {
     });
   });
 
+  if (collectQuestionnaireConditions().locationMode === "unknown" && currentLegacyLocationReview) {
+    criteria.push(currentLegacyLocationReview);
+  }
+
   return criteria;
 }
 
@@ -942,7 +994,28 @@ function collectQuestionnaireConditions() {
   return {
     photoPresence,
     reviewsPresence: noteSelection === "no_reviews" ? "none" : (noteSelection && noteSelection !== "not_verified" ? "present" : "unknown"),
+    locationMode: criteriaGroupsBox?.querySelector('input[name="condition:locationMode"]:checked')?.value || "unknown",
+    addressVerification: criteriaGroupsBox?.querySelector('input[name="location:address"]:checked')?.value || "unknown",
+    serviceAreaVerification: criteriaGroupsBox?.querySelector('input[name="location:serviceArea"]:checked')?.value || "unknown",
   };
+}
+
+function updateLocationControls() {
+  const conditions = collectQuestionnaireConditions();
+  const addressApplicable = ["storefront", "hybrid"].includes(conditions.locationMode);
+  const serviceAreaApplicable = ["service_area", "hybrid"].includes(conditions.locationMode);
+  for (const [key, applicable] of [["address", addressApplicable], ["service_area", serviceAreaApplicable]]) {
+    const block = criteriaGroupsBox?.querySelector(`[data-location-control="${key}"]`);
+    if (!block) continue;
+    if (!applicable) block.querySelectorAll('input[type="radio"]').forEach((input) => { input.checked = false; });
+    block.hidden = !applicable;
+    block.toggleAttribute("inert", !applicable);
+  }
+  const refreshed = collectQuestionnaireConditions();
+  const unresolved = (addressApplicable && ["unknown", "not_verifiable"].includes(refreshed.addressVerification))
+    || (serviceAreaApplicable && ["unknown", "not_verifiable"].includes(refreshed.serviceAreaVerification));
+  const confirmation = criteriaGroupsBox?.querySelector("[data-location-confirmation]");
+  if (confirmation) confirmation.hidden = !unresolved;
 }
 
 function clearCriterionAnswer(key) {
@@ -968,6 +1041,17 @@ function updateNotVerifiedHighlights() {
 
   criteriaGroupsBox.querySelectorAll("[data-criteria-key]").forEach((item) => {
     const key = item.dataset.criteriaKey;
+    if (key === "adresse") {
+      const conditions = collectQuestionnaireConditions();
+      const isNotVerified = conditions.locationMode === "unknown"
+        || (["storefront", "hybrid"].includes(conditions.locationMode) && ["unknown", "not_verifiable"].includes(conditions.addressVerification))
+        || (["service_area", "hybrid"].includes(conditions.locationMode) && ["unknown", "not_verifiable"].includes(conditions.serviceAreaVerification));
+      item.classList.toggle("is-not-verified", isNotVerified);
+      const badge = item.querySelector("[data-not-verified-badge]");
+      if (badge) badge.hidden = !isNotVerified;
+      if (isNotVerified) notVerifiedCount += 1;
+      return;
+    }
     const selected = criteriaGroupsBox.querySelector(`input[name="criterion:${key}"]:checked`);
     const isNotVerified = selected?.value === "not_verified";
     item.classList.toggle("is-not-verified", isNotVerified);
@@ -988,6 +1072,8 @@ function updateNotVerifiedHighlights() {
 
 function updateCriteriaDependencies() {
   if (!criteriaGroupsBox) return;
+
+  updateLocationControls();
 
   const conditions = collectQuestionnaireConditions();
   const conditionallyHidden = new Set([
@@ -1011,15 +1097,28 @@ function updateCriteriaSummary() {
   const visibleItems = [...(criteriaGroupsBox?.querySelectorAll("[data-criteria-key]") || [])]
     .filter((item) => !item.classList.contains("is-dependency-hidden"));
   const total = visibleItems.length;
-  const answered = visibleItems.filter((item) => item.querySelector("[data-criteria-option]:checked")).length;
-  const notVerified = visibleItems.filter((item) => item.querySelector('[data-criteria-option]:checked[value="not_verified"]')).length;
+  const location = collectQuestionnaireConditions();
+  const locationAnswered = location.locationMode !== "unknown"
+    && (!["storefront", "hybrid"].includes(location.locationMode) || ["exact", "inaccurate"].includes(location.addressVerification))
+    && (!["service_area", "hybrid"].includes(location.locationMode) || ["coherent", "partial", "incoherent"].includes(location.serviceAreaVerification));
+  const answered = visibleItems.filter((item) => item.dataset.criteriaKey === "adresse"
+    ? locationAnswered
+    : item.querySelector("[data-criteria-option]:checked")).length;
+  const notVerified = visibleItems.filter((item) => item.dataset.criteriaKey === "adresse"
+    ? !locationAnswered
+    : item.querySelector('[data-criteria-option]:checked[value="not_verified"]')).length;
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
 }
 
 function incompleteVisibleCriteria() {
   const missing = [];
   if (!criteriaGroupsBox?.querySelector('input[name="condition:photoPresence"]:checked')) missing.push("photoPresence");
+  const location = collectQuestionnaireConditions();
+  if (location.locationMode === "unknown") missing.push("locationMode");
+  if (["storefront", "hybrid"].includes(location.locationMode) && ["unknown", "not_verifiable"].includes(location.addressVerification)) missing.push("addressVerification");
+  if (["service_area", "hybrid"].includes(location.locationMode) && ["unknown", "not_verifiable"].includes(location.serviceAreaVerification)) missing.push("serviceAreaVerification");
   criteriaGroupsBox?.querySelectorAll("[data-criteria-key]").forEach((item) => {
+    if (item.dataset.criteriaKey === "adresse") return;
     if (item.classList.contains("is-dependency-hidden")) return;
     const selected = item.querySelector("[data-criteria-option]:checked");
     if (!selected || selected.value === "not_verified") missing.push(item.dataset.criteriaKey);
@@ -1030,6 +1129,7 @@ function incompleteVisibleCriteria() {
 function markUnansweredCriteriaAsNotVerified() {
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
+      if (criterion.key === "adresse") return;
       const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
       if (selected) return;
       const fallback = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"][value="not_verified"]`);

@@ -64,8 +64,12 @@ test("un brouillon incomplet conserve son type, ses réponses versionnées et so
   const db = new LocalD1();
   seed(db, FREE_ID, "free");
   const answers = {
+    questionnaireVersion: "score-efficia-questionnaire-v3",
     photoPresence: "none",
     reviewsPresence: "none",
+    locationMode: "hybrid",
+    addressVerification: "exact",
+    serviceAreaVerification: "partial",
     criteriaReview: [{ key: "nap", value: "not_verified" }],
     confirmedCompetitorIds: ["place-confirmed"],
     excludedCompetitorIds: ["place-excluded"],
@@ -85,7 +89,7 @@ test("un brouillon incomplet conserve son type, ses réponses versionnées et so
   assert.equal(savedBody.draft.status, "draft");
   assert.equal(savedBody.draft.reportType, "free");
   assert.equal(savedBody.draft.currentStep, "questionnaire");
-  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v2");
+  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v3");
   assert.deepEqual(savedBody.draft.answers, answers);
 
   const restored = await getDraft(await context(db));

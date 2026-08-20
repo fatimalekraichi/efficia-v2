@@ -58,13 +58,16 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
       const review = reviews.get(criterion.key) || null;
       const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
       const explicitAbsence = absenceCondition === "no_photos" || absenceCondition === "no_reviews";
-      const points = explicitAbsence ? 0 : pointsFromManualStatus(criterion, review);
+      const locationPoints = criterion.key === "adresse" && conditions.locationMode !== "unknown"
+        ? (Number.isFinite(review?.points) ? Math.max(0, Math.min(2, Number(review.points))) : null)
+        : undefined;
+      const points = explicitAbsence ? 0 : (locationPoints !== undefined ? locationPoints : pointsFromManualStatus(criterion, review));
       answers[criterion.key] = points;
       criteria.push({
         key: criterion.key,
         category: category.key,
         categoryLabel: category.cat,
-        question: criterion.q,
+        question: review?.question || criterion.q,
         status: explicitAbsence ? "absence_confirmed" : (absenceCondition ? "not_applicable" : (review?.value || "not_verified")),
         label: absenceCondition === "no_photos" ? "Aucune photo" : (absenceCondition === "no_reviews" ? "Aucun avis" : (absenceCondition ? "Sans objet" : (review?.label || null))),
         checklist: absenceCondition ? [] : (Array.isArray(review?.checklist) ? review.checklist : []),
