@@ -33,7 +33,11 @@ export const GRILLE = [
  {key:"nap", q:"Nom, adresse et téléphone sont-ils identiques sur le site web ?", aide:"Comparer fiche et site (pied de page, page contact).", max:CONFIG.poids.informations.nap,
   opts:[["Cohérents",CONFIG.poids.informations.nap],["Différences",0]],
   reco:"Harmoniser nom, adresse et téléphone entre la fiche et le site : les incohérences dégradent le référencement local.",
-  force:"Coordonnées cohérentes entre fiche et site."}
+  force:"Coordonnées cohérentes entre fiche et site."},
+ {key:"nomConforme", q:"Le nom de la fiche correspond-il au nom réel de l’entreprise, sans ajout artificiel de mots-clés ?", aide:"Comparer avec l’enseigne, le site officiel et les mentions légales. Ne pas pénaliser une ville, un métier ou un service lorsqu’il fait réellement partie du nom commercial utilisé par l’entreprise.", max:CONFIG.poids.informations.nomConforme,
+  opts:[["Conforme au nom réel",2],["Douteux / légèrement surchargé",1],["Ajouts artificiels manifestes",0]],
+  reco:"Retirer les mots-clés ajoutés artificiellement au nom de la fiche et conserver uniquement le nom réellement utilisé par l’entreprise.",
+  force:"Nom de fiche conforme au nom réel de l’entreprise."}
 ]},
 {key:"photos", cat:"Photos & visuels", pts:CONFIG.poids.photos.total, criteres:[
  {key:"logoCouverture", q:"Logo et photo de couverture sont-ils définis ?", aide:"En-tête de la fiche sur Maps.", max:CONFIG.poids.photos.logoCouverture,
@@ -41,7 +45,7 @@ export const GRILLE = [
   reco:"Ajouter un logo et une photo de couverture : ce sont les premiers pixels que voit un prospect.",
   force:"Logo et couverture en place — identité visuelle claire."},
  {key:"nombrePhotos", q:`La fiche compte-t-elle au moins ${CONFIG.seuils.photosNombreMax} photos ?`, aide:"Onglet Photos.", max:CONFIG.poids.photos.nombre,
-  opts:[[`${CONFIG.seuils.photosNombreMax} et plus`,CONFIG.poids.photos.nombre],[`${CONFIG.seuils.photosNombreMoyen} à ${CONFIG.seuils.photosNombreMax-1}`,1],[`Moins de ${CONFIG.seuils.photosNombreMoyen}`,0]],
+  opts:[[`${CONFIG.seuils.photosNombreMax} et plus`,CONFIG.poids.photos.nombre],[`${CONFIG.seuils.photosNombreMoyen} à ${CONFIG.seuils.photosNombreMax-1}`,1],[`Moins de ${CONFIG.seuils.photosNombreMoyen}`,0],["Aucune photo",0,"no_photos"]],
   reco:"Publier au moins 10 photos : les fiches bien fournies reçoivent nettement plus de demandes d'itinéraire et de clics.",
   force:"Galerie photos bien fournie."},
  {key:"photoRecente", q:`La photo la plus récente a-t-elle moins de ${CONFIG.seuils.photosRecenteMois} mois ?`, aide:"Trier les photos par date sur Maps.", max:CONFIG.poids.photos.recente,
@@ -123,9 +127,5 @@ export const GRILLE = [
  {key:"attractiviteConcurrents", q:"Face aux 3 concurrents directs, la fiche est-elle plus attractive ?", aide:"Comparaison note + volume d'avis calculée automatiquement avec une tolérance de 10 %.", max:CONFIG.poids.visibilite.attractivite,
   opts:[["Devant",CONFIG.poids.visibilite.attractivite],["Comparable",2],["Derrière",0]],
   reco:"Combler l'écart avec les concurrents directs : le prospect compare toujours 2-3 fiches avant de choisir.",
-  force:"Fiche plus attractive que les concurrents directs."},
- {key:"recherchesSpecifiques", q:"La fiche ressort-elle sur des recherches de services spécifiques ?", aide:"Tester 2-3 recherches précises, ex. « pain sans gluten lyon ».", max:CONFIG.poids.visibilite.recherchesSpecifiques,
-  opts:[["Oui",CONFIG.poids.visibilite.recherchesSpecifiques],["Partiellement",1],["Non",0]],
-  reco:"Couvrir les recherches spécifiques via les services, la description et les posts : ce sont souvent les requêtes les plus proches de l'achat.",
-  force:"Visible sur les recherches spécifiques."}
+  force:"Fiche plus attractive que les concurrents directs."}
 ]}];

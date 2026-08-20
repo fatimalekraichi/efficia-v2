@@ -1,6 +1,7 @@
 import { GRILLE } from "./criteriaCatalog.js";
 import { CONFIG, SCORING_VERSION } from "./scoreConfig.js";
 import {
+  CRITERIA_DEPENDENCIES,
   PHOTO_DEPENDENT_KEYS,
   QUESTIONNAIRE_VERSION,
   REVIEW_DEPENDENT_KEYS,
@@ -8,6 +9,7 @@ import {
 
 function optionValueForIndex(index, total, explicitValue = null) {
   if (explicitValue === "no_reviews") return "no_reviews";
+  if (explicitValue === "no_photos") return "no_photos";
   if (index === 0) return "compliant";
   if (index === total - 1) return "deficient";
   return "partial";
@@ -78,7 +80,7 @@ function findCriterion(key) {
 }
 
 function criteriaOptions(criterion) {
-  const scoredOptionCount = criterion.opts.filter(([, , explicitValue]) => explicitValue !== "no_reviews").length;
+  const scoredOptionCount = criterion.opts.filter(([, , explicitValue]) => !["no_reviews", "no_photos"].includes(explicitValue)).length;
   return [
     ...criterion.opts.map(([label, points, explicitValue], index) => ({
       index,
@@ -134,14 +136,7 @@ export function buildScoreCatalog() {
       key: category.key,
       label: category.cat,
       points: category.pts,
-      precondition: category.key === "photos" ? {
-        key: "photoPresence",
-        question: "La fiche contient-elle des photos ?",
-        options: [
-          { value: "present", label: "Oui" },
-          { value: "none", label: "Aucune photo" },
-        ],
-      } : null,
+      precondition: null,
       criteria: category.criteres.map((criterion) => ({
         key: criterion.key,
         question: criterion.q,
@@ -216,6 +211,8 @@ export function buildScorePrefill(analysis = {}) {
 
   if (photos === null) {
     addCriterion(criteria, notVerified("nombrePhotos"));
+  } else if (photos === 0) {
+    addCriterion(criteria, optionForKey("nombrePhotos", 3, "observed", { value: 0 }));
   } else {
     addCriterion(criteria, optionForKey("nombrePhotos", photos >= CONFIG.seuils.photosNombreMax ? 0 : (photos >= CONFIG.seuils.photosNombreMoyen ? 1 : 2), "observed", { value: photos }));
   }
@@ -266,9 +263,9 @@ export function buildScorePrefill(analysis = {}) {
     addCriterion(criteria, optionForKey("attractiviteConcurrents", positiveSignals >= 2 ? 0 : (positiveSignals === 1 ? 1 : 2), "observed", { competitors: competitors.length, gaps }));
   }
 
-  // Historique : la présence sur des recherches spécifiques est un test visuel
-  // (navigation privée) → jamais inférée, toujours manuelle.
-  addCriterion(criteria, notVerified("recherchesSpecifiques"));
+  // La conformité du nom nécessite une comparaison humaine avec les sources
+  // publiques de l'entreprise et n'est jamais déduite du fournisseur.
+  addCriterion(criteria, notVerified("nomConforme"));
 
   [
     "revendiquee",
@@ -290,6 +287,10 @@ export function buildScorePrefill(analysis = {}) {
     ...(conditions.photoPresence === "none" ? PHOTO_DEPENDENT_KEYS : []),
     ...(conditions.reviewsPresence === "none" ? ["noteMoyenne", ...REVIEW_DEPENDENT_KEYS] : []),
   ]);
+  const byKey = new Map(criteria.map((criterion) => [criterion.key, criterion]));
+  CRITERIA_DEPENDENCIES.forEach(({ parent, child, hideWhen }) => {
+    if (hideWhen.includes(byKey.get(parent)?.value)) hiddenCriteria.add(child);
+  });
 
   return {
     scoringVersion: SCORING_VERSION,

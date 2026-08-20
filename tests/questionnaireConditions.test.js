@@ -102,23 +102,99 @@ test("une sous-question masquée par une réponse déficiente ne bloque pas la f
   });
   assert.equal(manualReview.criteriaReview.some((item) => item.key === "descriptionQualite"), false);
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
-  assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers.descriptionQualite, null);
+  assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers.descriptionQualite, 0);
 });
 
 test("les deux interfaces masquent et effacent les dépendances sans modifier les 29 critères", () => {
   const modern = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
   const legacy = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  const legacyCatalog = readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8");
   assert.equal(GRILLE.flatMap((category) => category.criteres).length, 29);
   for (const source of [modern, legacy]) {
-    assert.match(source, /La fiche contient-elle des photos \?/);
-    assert.match(source, /Aucune photo/);
+    assert.doesNotMatch(source, /La fiche contient-elle des photos \?/);
     assert.match(source, /Aucun avis/);
     assert.match(source, /PHOTO_DEPENDENT_KEYS/);
     assert.match(source, /REVIEW_DEPENDENT_KEYS/);
   }
+  assert.match(modern, /Aucune photo/);
+  assert.match(legacyCatalog, /Aucune photo/);
   assert.match(modern, /if \(hidden\) clearCriterionAnswer\(key\)/);
   assert.match(modern, /reviewsPresence === "none" && criterion\.key === "noteMoyenne"/);
   assert.match(legacy, /if\(masquer\) effacerReponseCritere\(key\)/);
+  assert.match(legacy, /function critereEstMasque\(cr\)/);
+  assert.match(legacy, /const visibleCriteria = cat\.criteres\.filter\(cr => !critereEstMasque\(cr\)\)/);
+});
+
+test("le catalogue v4 remplace le test de recherches par le contrôle manuel du nom sans changer les 29 critères", () => {
+  const flatCriteria = GRILLE.flatMap((category) => category.criteres);
+  const information = GRILLE.find((category) => category.key === "informations");
+  const visibility = GRILLE.find((category) => category.key === "visibilite");
+  const nameCriterion = flatCriteria.find((criterion) => criterion.key === "nomConforme");
+  assert.equal(flatCriteria.length, 29);
+  assert.equal(flatCriteria.some((criterion) => criterion.key === "recherchesSpecifiques"), false);
+  assert.equal(information.pts, 24);
+  assert.equal(visibility.pts, 10);
+  assert.deepEqual(GRILLE.map((category) => [category.key, category.pts]), [
+    ["informations", 24], ["photos", 15], ["avis", 25],
+    ["contenu", 21], ["activite", 5], ["visibilite", 10],
+  ]);
+  assert.equal(nameCriterion.q, "Le nom de la fiche correspond-il au nom réel de l’entreprise, sans ajout artificiel de mots-clés ?");
+  assert.deepEqual(nameCriterion.opts.map(([label, points]) => [label, points]), [
+    ["Conforme au nom réel", 2],
+    ["Douteux / légèrement surchargé", 1],
+    ["Ajouts artificiels manifestes", 0],
+  ]);
+  assert.equal(nameCriterion.aide, "Comparer avec l’enseigne, le site officiel et les mentions légales. Ne pas pénaliser une ville, un métier ou un service lorsqu’il fait réellement partie du nom commercial utilisé par l’entreprise.");
+});
+
+test("un brouillon v3 ne recycle pas l’ancienne réponse et exige le nouveau contrôle du nom", () => {
+  const legacy = normalizeManualReview({
+    questionnaireVersion: "score-efficia-questionnaire-v3",
+    photoPresence: "present",
+    reviewsPresence: "present",
+    criteriaReview: [
+      ...completeCriteria().filter((item) => item.key !== "nomConforme"),
+      { key: "recherchesSpecifiques", category: "Visibilité locale", question: "Ancien contrôle", value: "compliant" },
+    ],
+  });
+  assert.equal(legacy.criteriaReview.some((item) => item.key === "recherchesSpecifiques"), false);
+  assert.equal(incompleteQuestionnaireFields(legacy).includes("nomConforme"), true);
+});
+
+test("les quatre dépendances serveur suppriment les sous-réponses forgées et les notent à zéro", () => {
+  const pairs = [
+    ["tauxReponseAvis", "qualiteReponsesAvis"],
+    ["descriptionRemplie", "descriptionQualite"],
+    ["servicesPresents", "servicesDecrits"],
+    ["publicationRecente", "rythmePublication"],
+  ];
+  for (const [parent, child] of pairs) {
+    const criteriaReview = completeCriteria().map((item) => item.key === parent
+      ? { ...item, value: "deficient", selectedOptionIndex: 2, points: 0 }
+      : item);
+    const manualReview = normalizeManualReview({ photoPresence: "present", reviewsPresence: "present", criteriaReview });
+    assert.equal(manualReview.criteriaReview.some((item) => item.key === child), false);
+    assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers[child], 0);
+    assert.equal(incompleteQuestionnaireFields(manualReview).includes(child), false);
+    const reactivated = normalizeManualReview({
+      ...manualReview,
+      criteriaReview: manualReview.criteriaReview.map((item) => item.key === parent
+        ? { ...item, value: "compliant", selectedOptionIndex: 0, points: undefined }
+        : item),
+    });
+    assert.equal(reactivated.criteriaReview.some((item) => item.key === child), false);
+    assert.equal(runScoreEfficia({ manualReview: reactivated }).scoreInputs.answers[child], null);
+    assert.equal(incompleteQuestionnaireFields(reactivated).includes(child), true);
+  }
+});
+
+test("le diagnostic gratuit et l’audit Premium utilisent exactement le même calcul", () => {
+  const criteriaReview = completeCriteria();
+  const shared = { photoPresence: "present", reviewsPresence: "present", criteriaReview };
+  const free = runScoreEfficia({ manualReview: normalizeManualReview({ ...shared, reportType: "free" }) });
+  const premium = runScoreEfficia({ manualReview: normalizeManualReview({ ...shared, reportType: "premium" }) });
+  assert.deepEqual(free.scoreInputs.answers, premium.scoreInputs.answers);
+  assert.deepEqual(free.reviewedScore, premium.reviewedScore);
 });
 
 test("le mode de réception pilote le critère historique adresse sans ajouter de trentième critère", () => {

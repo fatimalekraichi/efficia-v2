@@ -46,7 +46,7 @@
     "rythmePublication": 1,
     "classementLocal": 3,
     "attractiviteConcurrents": 2,
-    "recherchesSpecifiques": 1
+    "nomConforme": 1
   },
   "verification": {
     "revendiquee": "manual",
@@ -77,11 +77,11 @@
     "rythmePublication": "manual",
     "classementLocal": "observed",
     "attractiviteConcurrents": "observed",
-    "recherchesSpecifiques": "manual"
+    "nomConforme": "manual"
   },
   "expected": {
-    "globalScore": 56,
-    "rawScore": 55.83619,
+    "globalScore": 55,
+    "rawScore": 55.33619,
     "answeredCriteria": 29,
     "totalCriteria": 29,
     "evaluatedCategories": [
@@ -96,12 +96,12 @@
     "categories": [
       {
         "key": "informations",
-        "evaluated": 8,
+        "evaluated": 9,
         "unevaluated": 0,
-        "maxEvaluated": 22,
+        "maxEvaluated": 24,
         "profileWeight": 22,
-        "weightedPoints": 17,
-        "percent": 0.772727
+        "weightedPoints": 16.5,
+        "percent": 0.75
       },
       {
         "key": "photos",
@@ -141,9 +141,9 @@
       },
       {
         "key": "visibilite",
-        "evaluated": 3,
+        "evaluated": 2,
         "unevaluated": 0,
-        "maxEvaluated": 12,
+        "maxEvaluated": 10,
         "profileWeight": 10,
         "weightedPoints": 5,
         "percent": 0.5
@@ -175,7 +175,7 @@
       }
     ],
     "projectedPack": {
-      "projete": 86,
+      "projete": 85,
       "corriges": 15,
       "ameliorables": 23
     },
@@ -190,7 +190,7 @@
       }
     },
     "payloadSummary": {
-      "scoreEfficia": 56,
+      "scoreEfficia": 55,
       "visibilityScore": 58,
       "trustScore": 68,
       "conversionScore": 50,

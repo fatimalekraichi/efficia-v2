@@ -1,12 +1,11 @@
 import { GRILLE } from "./criteriaCatalog.js";
 
-export const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
+export const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 export const LEGACY_QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
 export const LOCATION_MODES = Object.freeze(["storefront", "service_area", "hybrid"]);
 export const ADDRESS_VERIFICATIONS = Object.freeze(["exact", "inaccurate", "not_verifiable"]);
 export const SERVICE_AREA_VERIFICATIONS = Object.freeze(["coherent", "partial", "incoherent", "not_verifiable"]);
 export const PHOTO_DEPENDENT_KEYS = Object.freeze([
-  "nombrePhotos",
   "photoRecente",
   "varietePhotos",
   "qualitePhotos",
@@ -40,7 +39,7 @@ export function normalizeQuestionnaireConditions(payload = {}, criteriaReview = 
   let photoPresence = cleanPresence(payload.photoPresence);
   let reviewsPresence = cleanPresence(payload.reviewsPresence);
 
-  if (photoPresence === "unknown" && PHOTO_DEPENDENT_KEYS.some((key) => criteria.has(key))) {
+  if (photoPresence === "unknown" && criteria.has("nombrePhotos")) {
     photoPresence = "present";
   }
   if (reviewsPresence === "unknown" && criteria.has("noteMoyenne")) {
@@ -112,7 +111,10 @@ export function normalizeLocationCriterion(criteriaReview = [], conditions = {})
 
 export function sanitizeConditionalCriteria(criteriaReview = [], conditions = {}) {
   const hidden = new Set();
-  if (conditions.photoPresence === "none") PHOTO_DEPENDENT_KEYS.forEach((key) => hidden.add(key));
+  if (conditions.photoPresence === "none") {
+    hidden.add("nombrePhotos");
+    PHOTO_DEPENDENT_KEYS.forEach((key) => hidden.add(key));
+  }
   if (conditions.reviewsPresence === "none") {
     hidden.add("noteMoyenne");
     REVIEW_DEPENDENT_KEYS.forEach((key) => hidden.add(key));
@@ -125,7 +127,7 @@ export function sanitizeConditionalCriteria(criteriaReview = [], conditions = {}
 }
 
 export function conditionForCriterion(key, conditions = {}, criteriaReview = []) {
-  if (conditions.photoPresence === "none" && PHOTO_DEPENDENT_KEYS.includes(key)) return "no_photos";
+  if (conditions.photoPresence === "none" && (key === "nombrePhotos" || PHOTO_DEPENDENT_KEYS.includes(key))) return "no_photos";
   if (conditions.reviewsPresence === "none" && (key === "noteMoyenne" || REVIEW_DEPENDENT_KEYS.includes(key))) {
     return "no_reviews";
   }

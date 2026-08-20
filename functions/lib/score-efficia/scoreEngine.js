@@ -57,7 +57,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
     for (const criterion of category.criteres) {
       const review = reviews.get(criterion.key) || null;
       const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
-      const explicitAbsence = absenceCondition === "no_photos" || absenceCondition === "no_reviews";
+      const explicitAbsence = Boolean(absenceCondition);
       const locationPoints = criterion.key === "adresse" && conditions.locationMode !== "unknown"
         ? (Number.isFinite(review?.points) ? Math.max(0, Math.min(2, Number(review.points))) : null)
         : undefined;
@@ -170,7 +170,7 @@ export function scoreCriteres(keys, answers = {}) {
 
 export function indicesProspect(answers = {}) {
   return {
-    visibilite: scoreCriteres(["categoriePrincipale", "categoriesSecondaires", "nap", "classementLocal", "recherchesSpecifiques", "publicationRecente", "rythmePublication", "recenceAvis"], answers),
+    visibilite: scoreCriteres(["categoriePrincipale", "categoriesSecondaires", "nap", "classementLocal", "publicationRecente", "rythmePublication", "recenceAvis"], answers),
     confiance: scoreCriteres(["noteMoyenne", "volumeAvis", "tauxReponseAvis", "qualiteReponsesAvis", "qualitePhotos", "contact", "adresse", "nap"], answers),
     conversion: scoreCriteres(["descriptionRemplie", "descriptionQualite", "servicesPresents", "servicesDecrits", "liensAction", "questionsReponses", "varietePhotos"], answers),
   };

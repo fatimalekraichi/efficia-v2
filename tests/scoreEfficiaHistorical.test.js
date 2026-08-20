@@ -16,7 +16,7 @@ test("un critère non vérifié compte au dénominateur (grille de 100) comme da
   // L'ancien Score Efficia (calc() : somme brute) donnait donc 3/100, jamais 100.
   assert.equal(reviewedScore.roundedScore, 3);
   assert.equal(reviewedScore.repondus, 1);
-  assert.equal(reviewedScore.categories.find((category) => category.key === "informations").maxEvalue, 22);
+  assert.equal(reviewedScore.categories.find((category) => category.key === "informations").maxEvalue, 24);
 });
 
 test("scoreProjetePack ne corrige que les critères historiquement livrables par le Pack", () => {
@@ -42,6 +42,6 @@ test("calculateScoreDetail conserve la pondération historique et les profils se
 
   assert.equal(Math.round(detailDefault.total), 6);
   assert.equal(Math.round(detailSante.total), 5);
-  assert.equal(detailDefault.profil.informations, 22);
+  assert.equal(detailDefault.profil.informations, 24);
   assert.equal(detailSante.profil.informations, 28);
 });

@@ -40,15 +40,15 @@
     "evaluatedCategories": [
       "informations"
     ],
-    "denominatorWeight": 22,
+    "denominatorWeight": 24,
     "categories": [
       {
         "key": "informations",
         "evaluated": 8,
-        "unevaluated": 0,
+        "unevaluated": 1,
         "maxEvaluated": 22,
-        "profileWeight": 22,
-        "weightedPoints": 19,
+        "profileWeight": 24,
+        "weightedPoints": 20.727273,
         "percent": 0.863636
       },
       {
@@ -90,9 +90,9 @@
       {
         "key": "visibilite",
         "evaluated": 0,
-        "unevaluated": 3,
+        "unevaluated": 2,
         "maxEvaluated": 0,
-        "profileWeight": 12,
+        "profileWeight": 10,
         "weightedPoints": null,
         "percent": null
       }

@@ -26,6 +26,7 @@
     "adresse": 0,
     "attributs": 0,
     "nap": 0,
+    "nomConforme": 2,
     "logoCouverture": 0,
     "nombrePhotos": 0,
     "photoRecente": 0,
@@ -45,8 +46,7 @@
     "publicationRecente": 3,
     "rythmePublication": 2,
     "classementLocal": 6,
-    "attractiviteConcurrents": 4,
-    "recherchesSpecifiques": 2
+    "attractiviteConcurrents": 4
   },
   "verification": {
     "revendiquee": "manual",
@@ -57,6 +57,7 @@
     "adresse": "manual",
     "attributs": "manual",
     "nap": "manual",
+    "nomConforme": "manual",
     "logoCouverture": "manual",
     "nombrePhotos": "observed",
     "photoRecente": "manual",
@@ -76,12 +77,11 @@
     "publicationRecente": "manual",
     "rythmePublication": "manual",
     "classementLocal": "observed",
-    "attractiviteConcurrents": "observed",
-    "recherchesSpecifiques": "manual"
+    "attractiviteConcurrents": "observed"
   },
   "expected": {
-    "globalScore": 31,
-    "rawScore": 31.2,
+    "globalScore": 33,
+    "rawScore": 33.2,
     "answeredCriteria": 29,
     "totalCriteria": 29,
     "evaluatedCategories": [
@@ -96,12 +96,12 @@
     "categories": [
       {
         "key": "informations",
-        "evaluated": 8,
+        "evaluated": 9,
         "unevaluated": 0,
-        "maxEvaluated": 22,
+        "maxEvaluated": 24,
         "profileWeight": 24,
-        "weightedPoints": 0,
-        "percent": 0
+        "weightedPoints": 2,
+        "percent": 0.083333
       },
       {
         "key": "photos",
@@ -141,16 +141,16 @@
       },
       {
         "key": "visibilite",
-        "evaluated": 3,
+        "evaluated": 2,
         "unevaluated": 0,
-        "maxEvaluated": 12,
+        "maxEvaluated": 10,
         "profileWeight": 12,
         "weightedPoints": 12,
         "percent": 1
       }
     ],
     "indices": {
-      "visibilite": 65,
+      "visibilite": 63,
       "confiance": 35,
       "conversion": 0
     },
@@ -190,8 +190,8 @@
       }
     },
     "payloadSummary": {
-      "scoreEfficia": 31,
-      "visibilityScore": 65,
+      "scoreEfficia": 33,
+      "visibilityScore": 63,
       "trustScore": 35,
       "conversionScore": 0,
       "sectorProfile": "artisan",

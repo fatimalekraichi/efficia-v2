@@ -8,6 +8,8 @@ const HOURS_STATUS = new Set(["incorrect", "uncertain", "correct", "unknown"]);
 const CONSISTENCY_STATUS = new Set(["poor", "average", "strong", "unknown"]);
 const REPORT_TYPES = new Set(["free", "premium"]);
 const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "not_verified"]);
+import { GRILLE } from "./score-efficia/criteriaCatalog.js";
+const CURRENT_CRITERIA_KEYS = new Set(GRILLE.flatMap((category) => category.criteres.map((criterion) => criterion.key)));
 
 import {
   QUESTIONNAIRE_VERSION,
@@ -71,7 +73,7 @@ function normalizeCriteriaReview(value) {
     .map((item) => {
       const key = cleanText(item?.key, 80);
       const question = cleanText(item?.question, 280);
-      if (!key || !question) return null;
+      if (!key || !question || !CURRENT_CRITERIA_KEYS.has(key)) return null;
 
       const status = pickAllowed(item?.value, CRITERIA_REVIEW_VALUES, "not_verified");
 

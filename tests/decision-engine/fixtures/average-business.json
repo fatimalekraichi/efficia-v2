@@ -46,7 +46,7 @@
     "rythmePublication": 1,
     "classementLocal": 3,
     "attractiviteConcurrents": 2,
-    "recherchesSpecifiques": 1
+    "nomConforme": 1
   },
   "verification": {
     "revendiquee": "manual",
@@ -77,7 +77,7 @@
     "rythmePublication": "manual",
     "classementLocal": "observed",
     "attractiviteConcurrents": "observed",
-    "recherchesSpecifiques": "manual"
+    "nomConforme": "manual"
   },
   "expected": {
     "globalScore": 56,
@@ -96,12 +96,12 @@
     "categories": [
       {
         "key": "informations",
-        "evaluated": 8,
+        "evaluated": 9,
         "unevaluated": 0,
-        "maxEvaluated": 22,
-        "profileWeight": 22,
-        "weightedPoints": 17,
-        "percent": 0.772727
+        "maxEvaluated": 24,
+        "profileWeight": 24,
+        "weightedPoints": 18,
+        "percent": 0.75
       },
       {
         "key": "photos",
@@ -141,11 +141,11 @@
       },
       {
         "key": "visibilite",
-        "evaluated": 3,
+        "evaluated": 2,
         "unevaluated": 0,
-        "maxEvaluated": 12,
-        "profileWeight": 12,
-        "weightedPoints": 6,
+        "maxEvaluated": 10,
+        "profileWeight": 10,
+        "weightedPoints": 5,
         "percent": 0.5
       }
     ],

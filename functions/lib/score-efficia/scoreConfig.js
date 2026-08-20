@@ -46,15 +46,15 @@ export const CONFIG = {
     },
   },
   poids: {
-    informations: { total: 22, revendiquee: 3, categoriePrincipale: 4, categoriesSecondaires: 2, horaires: 3, contact: 3, adresse: 2, attributs: 2, nap: 3 },
+    informations: { total: 24, revendiquee: 3, categoriePrincipale: 4, categoriesSecondaires: 2, horaires: 3, contact: 3, adresse: 2, attributs: 2, nap: 3, nomConforme: 2 },
     photos: { total: 15, logoCouverture: 3, nombre: 3, recente: 4, variete: 3, qualite: 2 },
     avis: { total: 25, note: 6, volume: 5, recence: 4, tauxReponse: 6, qualiteReponses: 4 },
     contenu: { total: 21, descriptionRemplie: 4, descriptionQualite: 4, servicesPresents: 3, servicesDecrits: 3, questionsReponses: 3, liensAction: 4 },
     activite: { total: 5, publicationRecente: 3, rythmePublication: 2 },
-    visibilite: { total: 12, classement: 6, attractivite: 4, recherchesSpecifiques: 2 },
+    visibilite: { total: 10, classement: 6, attractivite: 4 },
   },
   secteurs: {
-    default: { label: "Default", informations: 22, photos: 15, avis: 25, contenu: 21, activite: 5, visibilite: 12 },
+    default: { label: "Default", informations: 24, photos: 15, avis: 25, contenu: 21, activite: 5, visibilite: 10 },
     artisan: { label: "Artisan", informations: 24, photos: 12, avis: 27, contenu: 22, activite: 3, visibilite: 12 },
     restaurant: { label: "Restaurant", informations: 22, photos: 18, avis: 26, contenu: 20, activite: 4, visibilite: 10 },
     commerce: { label: "Commerce", informations: 21, photos: 17, avis: 25, contenu: 20, activite: 6, visibilite: 11 },
@@ -91,7 +91,7 @@ export const CONFIG = {
     rythmePublication: { bloc: "Animation", minutes: 30 },
     classementLocal: { bloc: "Visibilité", minutes: 25 },
     attractiviteConcurrents: { bloc: "Visibilité", minutes: 20 },
-    recherchesSpecifiques: { bloc: "Visibilité", minutes: 20 },
+    nomConforme: { bloc: "Informations", minutes: 10 },
     reponseParAvis: { bloc: "Avis", minutes: 3, plafond: 90 },
   },
 };

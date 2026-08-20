@@ -26,6 +26,7 @@
     "adresse": 2,
     "attributs": 2,
     "nap": 3,
+    "nomConforme": 1,
     "logoCouverture": 3,
     "nombrePhotos": 3,
     "photoRecente": 4,
@@ -45,8 +46,7 @@
     "publicationRecente": 3,
     "rythmePublication": 1,
     "classementLocal": 6,
-    "attractiviteConcurrents": 4,
-    "recherchesSpecifiques": 1
+    "attractiviteConcurrents": 4
   },
   "verification": {
     "revendiquee": "manual",
@@ -57,6 +57,7 @@
     "adresse": "manual",
     "attributs": "manual",
     "nap": "manual",
+    "nomConforme": "manual",
     "logoCouverture": "manual",
     "nombrePhotos": "observed",
     "photoRecente": "manual",
@@ -76,8 +77,7 @@
     "publicationRecente": "manual",
     "rythmePublication": "manual",
     "classementLocal": "observed",
-    "attractiviteConcurrents": "observed",
-    "recherchesSpecifiques": "manual"
+    "attractiviteConcurrents": "observed"
   },
   "expected": {
     "globalScore": 96,
@@ -96,12 +96,12 @@
     "categories": [
       {
         "key": "informations",
-        "evaluated": 8,
+        "evaluated": 9,
         "unevaluated": 0,
-        "maxEvaluated": 22,
-        "profileWeight": 22,
-        "weightedPoints": 22,
-        "percent": 1
+        "maxEvaluated": 24,
+        "profileWeight": 24,
+        "weightedPoints": 23,
+        "percent": 0.958333
       },
       {
         "key": "photos",
@@ -141,16 +141,16 @@
       },
       {
         "key": "visibilite",
-        "evaluated": 3,
+        "evaluated": 2,
         "unevaluated": 0,
-        "maxEvaluated": 12,
-        "profileWeight": 12,
-        "weightedPoints": 11,
-        "percent": 0.916667
+        "maxEvaluated": 10,
+        "profileWeight": 10,
+        "weightedPoints": 10,
+        "percent": 1
       }
     ],
     "indices": {
-      "visibilite": 92,
+      "visibilite": 96,
       "confiance": 100,
       "conversion": 92
     },
@@ -160,12 +160,6 @@
         "criterion": "questionsReponses",
         "lost": 2,
         "score": 9.833333
-      },
-      {
-        "family": "visibilite",
-        "criterion": "recherchesSpecifiques",
-        "lost": 1,
-        "score": 8.25
       },
       {
         "family": "activite",
@@ -191,7 +185,7 @@
     },
     "payloadSummary": {
       "scoreEfficia": 96,
-      "visibilityScore": 92,
+      "visibilityScore": 96,
       "trustScore": 100,
       "conversionScore": 92,
       "sectorProfile": "default",

@@ -690,15 +690,15 @@ const CONFIG = {
     }
   },
   poids: {
-    informations: {total:22, revendiquee:3, categoriePrincipale:4, categoriesSecondaires:2, horaires:3, contact:3, adresse:2, attributs:2, nap:3},
+    informations: {total:24, revendiquee:3, categoriePrincipale:4, categoriesSecondaires:2, horaires:3, contact:3, adresse:2, attributs:2, nap:3, nomConforme:2},
     photos: {total:15, logoCouverture:3, nombre:3, recente:4, variete:3, qualite:2},
     avis: {total:25, note:6, volume:5, recence:4, tauxReponse:6, qualiteReponses:4},
     contenu: {total:21, descriptionRemplie:4, descriptionQualite:4, servicesPresents:3, servicesDecrits:3, questionsReponses:3, liensAction:4},
     activite: {total:5, publicationRecente:3, rythmePublication:2},
-    visibilite: {total:12, classement:6, attractivite:4, recherchesSpecifiques:2}
+    visibilite: {total:10, classement:6, attractivite:4}
   },
   secteurs: {
-    default: {label:"Default", informations:22, photos:15, avis:25, contenu:21, activite:5, visibilite:12},
+    default: {label:"Default", informations:24, photos:15, avis:25, contenu:21, activite:5, visibilite:10},
     artisan: {label:"Artisan", informations:24, photos:12, avis:27, contenu:22, activite:3, visibilite:12},
     restaurant: {label:"Restaurant", informations:22, photos:18, avis:26, contenu:20, activite:4, visibilite:10},
     commerce: {label:"Commerce", informations:21, photos:17, avis:25, contenu:20, activite:6, visibilite:11},
@@ -735,7 +735,7 @@ const CONFIG = {
     rythmePublication:{bloc:"Animation", minutes:30},
     classementLocal:{bloc:"Visibilité", minutes:25},
     attractiviteConcurrents:{bloc:"Visibilité", minutes:20},
-    recherchesSpecifiques:{bloc:"Visibilité", minutes:20},
+    nomConforme:{bloc:"Informations", minutes:10},
     reponseParAvis:{bloc:"Avis", minutes:3, plafond:90}
   },
   business: {
@@ -775,7 +775,7 @@ validerConfig();
 
 /* ============ GRILLE — critères, 100 points ============ */
 </script>
-<script src="/src/decision-engine/criteria.catalog.js"></script>
+<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>
 <script>
 
 const BANDES = [
@@ -926,10 +926,10 @@ const CONTENU_DIAGNOSTIC = {
     impact:"Le client compare souvent plusieurs fiches avant de choisir.",
     premiereAction:"Renforcer les signaux visibles : avis, photos, description et services."
   },
-  recherchesSpecifiques: {
-    constat:"La fiche ressort peu sur certaines recherches de services précis.",
-    impact:"Ces recherches sont souvent plus proches d'une intention de contact.",
-    premiereAction:"Ajouter les services spécifiques dans la description et les services."
+  nomConforme: {
+    constat:"Le nom de la fiche semble comporter des ajouts qui ne font pas partie du nom réel de l’entreprise.",
+    impact:"Un nom artificiellement enrichi peut créer de la confusion et ne respecte pas les consignes de Google.",
+    premiereAction:"Comparer le nom avec l’enseigne, le site ou le nom légal, puis retirer uniquement les ajouts artificiels."
   }
 };
 
@@ -950,13 +950,6 @@ let html = "", idx = 0;
 const CRITERE_IDS = {};
 GRILLE.forEach(cat => {
   html += `<div class="carte"><div class="cat-titre"><h2>${cat.cat}</h2><span class="cat-pts">${cat.pts} points</span></div>`;
-  if(cat.key === "photos"){
-    html += `<div class="critere-prealable"><div class="q">La fiche contient-elle des photos ?</div>
-      <div class="opts">
-        <label><input type="radio" name="condition-photos" value="present" onchange="majConditionsQuestionnaire()">Oui</label>
-        <label><input type="radio" name="condition-photos" value="none" onchange="majConditionsQuestionnaire()">Aucune photo</label>
-      </div></div>`;
-  }
   cat.criteres.forEach(cr => {
     cr.id = idx;
     if(cr.key) CRITERE_IDS[cr.key] = idx;
@@ -1045,9 +1038,9 @@ function lirePoints(id){
   const coche = document.querySelector(`input[name="c${id}"]:checked`);
   return coche ? parseFloat(coche.value) : null;
 }
-const PHOTO_DEPENDENT_KEYS = ["nombrePhotos","photoRecente","varietePhotos","qualitePhotos"];
+const PHOTO_DEPENDENT_KEYS = ["photoRecente","varietePhotos","qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"];
-const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 let legacyLocationPoints = null;
 
 function modeLocalisation(){ return document.querySelector('input[name="condition-location-mode"]:checked')?.value || "unknown"; }
@@ -1086,7 +1079,10 @@ function majLocalisation(){
 }
 
 function conditionPhotos(){
-  return document.querySelector('input[name="condition-photos"]:checked')?.value || "unknown";
+  const id = CRITERE_IDS.nombrePhotos;
+  const selected = document.querySelector(`input[name="c${id}"]:checked`);
+  if(selected?.dataset.special === "no_photos") return "none";
+  return selected ? "present" : "unknown";
 }
 
 function conditionAvis(){
@@ -1114,11 +1110,20 @@ function masquerCritereConditionnel(key, masquer){
   element.setAttribute("aria-hidden", masquer ? "true" : "false");
 }
 
+function critereEstMasque(cr){
+  return document.getElementById("crit-"+cr.id)?.classList.contains("condition-hidden") === true;
+}
+
 function majConditionsQuestionnaire(){
   const sansPhotos = conditionPhotos() === "none";
   const sansAvis = conditionAvis() === "none";
   PHOTO_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansPhotos));
   REVIEW_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansAvis));
+  CRITERIA_DEPENDENCIES.forEach(({parent, child}) => {
+    const parentId = CRITERE_IDS[parent];
+    const selected = document.querySelector(`input[name="c${parentId}"]:checked`);
+    masquerCritereConditionnel(child, Boolean(selected) && Number(selected.value) === 0);
+  });
   if(sansPhotos) donneesAnalyse.nbPhotos = 0;
   if(sansAvis){
     donneesAnalyse.note = null;
@@ -1131,6 +1136,12 @@ function majConditionsQuestionnaire(){
   calc();
   programmerSauvegardeBrouillonD1();
 }
+const CRITERIA_DEPENDENCIES = [
+  {parent:"tauxReponseAvis", child:"qualiteReponsesAvis"},
+  {parent:"descriptionRemplie", child:"descriptionQualite"},
+  {parent:"servicesPresents", child:"servicesDecrits"},
+  {parent:"publicationRecente", child:"rythmePublication"}
+];
 let profilActif = "default";
 let collecteDiagnosticEnCours = false;
 let collecteDiagnosticValidee = false;
@@ -2287,6 +2298,7 @@ function calc(){
 function statsScore(){
   let ameliorables = 0, pointsPerdus = 0;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    if(critereEstMasque(cr)) return;
     const p = lirePoints(cr.id);
     if(p !== null && p < cr.max){
       ameliorables++;
@@ -2354,6 +2366,7 @@ function calculerTempsInterne(){
   const repartition = {};
   const taches = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    if(critereEstMasque(cr)) return;
     const p = lirePoints(cr.id);
     if(p === null || p >= cr.max) return;
     const configTache = CONFIG.tempsTaches[cr.key];
@@ -2577,8 +2590,8 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   preRemplirDonneesObservees();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
   const photoPresence = scorePrefill?.conditions?.photoPresence;
-  if(photoPresence === "present" || photoPresence === "none"){
-    const radio = document.querySelector(`input[name="condition-photos"][value="${photoPresence}"]`);
+  if(photoPresence === "none"){
+    const radio = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
     if(radio) radio.checked = true;
   }
   if(scorePrefill?.conditions?.reviewsPresence === "none"){
@@ -2591,8 +2604,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
 
 function neutraliserCollecteDiagnosticGratuit(){
   collecteDiagnosticValidee = false;
-  document.querySelectorAll('input[name="condition-photos"]').forEach((input) => { input.checked = false; });
-  [CRITERE_IDS.noteMoyenne, ...PHOTO_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key]), ...REVIEW_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key])]
+  [CRITERE_IDS.noteMoyenne, CRITERE_IDS.nombrePhotos, ...PHOTO_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key]), ...REVIEW_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key])]
     .filter(Boolean)
     .forEach(effacerReponseCritere);
   ["d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"].forEach((id) => {
@@ -2710,6 +2722,7 @@ function critereNonVerifie(cr){
 function collecterCriteresAudit(){
   const criteria = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    if(critereEstMasque(cr)) return;
     const points = lirePoints(cr.id);
     const evaluationStatus = statutEvaluationCritere(cr, points);
     criteria.push({
@@ -2770,6 +2783,7 @@ function collecterRecommandationsAudit(){
   const ctx = contexteRapport();
   const candidats = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    if(critereEstMasque(cr)) return;
     const points = lirePoints(cr.id);
     if(points !== null && points < cr.max) candidats.push({critere:cr, points, perdu:cr.max - points});
   }));
@@ -2963,7 +2977,9 @@ function reprendreDiagnostic(){
     auditSourceActif = data.auditSourceActif || null;
     auditFallbackLocalId = data.auditFallbackLocalId || null;
     if(data.photoPresence && data.photoPresence !== "unknown"){
-      const photoRadio = document.querySelector(`input[name="condition-photos"][value="${data.photoPresence}"]`);
+      const photoRadio = data.photoPresence === "none"
+        ? document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`)
+        : null;
       if(photoRadio) photoRadio.checked = true;
     }
     if(data.reviewsPresence === "none"){
@@ -2974,6 +2990,10 @@ function reprendreDiagnostic(){
     restaurerLocalisation(data);
     collecteDiagnosticValidee = Boolean(data.reponses && Object.keys(data.reponses).length);
     appliquerReponses(data.reponses);
+    if(data.photoPresence === "none"){
+      const noPhotos = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
+      if(noPhotos) noPhotos.checked = true;
+    }
     majConditionsQuestionnaire();
     afficherProfilUtilise();
     calc();
@@ -3113,7 +3133,9 @@ async function restaurerBrouillonD1(){
   profilActif = answers.profileKey || profilActif;
   donneesAnalyse = answers.observedData && typeof answers.observedData === "object" ? answers.observedData : donneesAnalyse;
   if(answers.photoPresence && answers.photoPresence !== "unknown"){
-    const radio = document.querySelector(`input[name="condition-photos"][value="${answers.photoPresence}"]`);
+    const radio = answers.photoPresence === "none"
+      ? document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`)
+      : null;
     if(radio) radio.checked = true;
   }
   if(answers.reviewsPresence === "none"){
@@ -3122,6 +3144,10 @@ async function restaurerBrouillonD1(){
   }
   restaurerLocalisation(answers);
   appliquerReponses(answers.responses);
+  if(answers.photoPresence === "none"){
+    const noPhotos = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
+    if(noPhotos) noPhotos.checked = true;
+  }
   collecteDiagnosticValidee = true;
   majConditionsQuestionnaire();
   afficherProfilUtilise();
@@ -3493,7 +3519,7 @@ function scoreCriteres(keys){
 
 function indicesProspect(){
   return {
-    visibilite: scoreCriteres(["categoriePrincipale","categoriesSecondaires","nap","classementLocal","recherchesSpecifiques","publicationRecente","rythmePublication","recenceAvis"]),
+    visibilite: scoreCriteres(["categoriePrincipale","categoriesSecondaires","nap","classementLocal","publicationRecente","rythmePublication","recenceAvis"]),
     confiance: scoreCriteres(["noteMoyenne","volumeAvis","tauxReponseAvis","qualiteReponsesAvis","qualitePhotos","contact","adresse","nap"]),
     conversion: scoreCriteres(["descriptionRemplie","descriptionQualite","servicesPresents","servicesDecrits","liensAction","questionsReponses","varietePhotos"])
   };
@@ -4154,21 +4180,22 @@ const LIBELLES_COURTS = {
   descriptionRemplie:"Description remplie", descriptionQualite:"Description ciblée (ville, offre)", servicesPresents:"Services présents",
   servicesDecrits:"Services détaillés", questionsReponses:"Questions / Réponses", liensAction:"Liens d'action (devis, RDV)",
   publicationRecente:"Publication récente", rythmePublication:"Rythme de publication",
-  classementLocal:"Classement local", attractiviteConcurrents:"Attractivité vs concurrents", recherchesSpecifiques:"Recherches spécifiques"
+  classementLocal:"Classement local", attractiviteConcurrents:"Attractivité vs concurrents", nomConforme:"Conformité du nom"
 };
 function checklistHtml(){
   let ok = 0, warn = 0, ko = 0, inconnus = 0;
   const rubriques = GRILLE.map(cat => {
-    const items = cat.criteres.map(cr => {
+    const visibleCriteria = cat.criteres.filter(cr => !critereEstMasque(cr));
+    const items = visibleCriteria.map(cr => {
       const p = lirePoints(cr.id);
       const statut = p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
       if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else warn++;
       const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${LIBELLES_COURTS[cr.key] || cr.q}</span></div>`;
     }).join("");
-    const evalues = cat.criteres.filter(cr => lirePoints(cr.id) !== null);
+    const evalues = visibleCriteria.filter(cr => lirePoints(cr.id) !== null);
     const conformes = evalues.filter(cr => lirePoints(cr.id) >= cr.max).length;
-    return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || cat.criteres.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
+    return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || visibleCriteria.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
   }).join("");
   const compteur = `<div class="chk-compteur">
     <span style="background:#ecfdf5;color:#059669">✓ ${ok} point${ok>1?"s":""} conforme${ok>1?"s":""}</span>
@@ -4183,7 +4210,7 @@ function checklistHtml(){
 const FAMILLES_PRIORITES = [
   {key:"offre", label:"Offre et services", criteres:["servicesPresents","servicesDecrits","descriptionRemplie","descriptionQualite","questionsReponses","liensAction"], impact:5, action:"Clarifier les services principaux, la zone desservie et les raisons de vous contacter."},
   {key:"reputation", label:"Réputation client", criteres:["volumeAvis","tauxReponseAvis","qualiteReponsesAvis","recenceAvis","noteMoyenne"], impact:5, action:"Installer un parcours de collecte d'avis et répondre aux avis visibles avec un message personnalisé."},
-  {key:"visibilite", label:"Visibilité locale", criteres:["classementLocal","recherchesSpecifiques","categoriePrincipale","categoriesSecondaires","nap"], impact:4.5, action:"Aligner catégorie, zone, services et mots-clés locaux pour renforcer la cohérence de la fiche."},
+  {key:"visibilite", label:"Visibilité locale", criteres:["classementLocal","categoriePrincipale","categoriesSecondaires","nap"], impact:4.5, action:"Aligner catégorie, zone et services pour renforcer la cohérence de la fiche."},
   {key:"photos", label:"Photos et preuves visuelles", criteres:["nombrePhotos","varietePhotos","qualitePhotos","photoRecente","logoCouverture"], impact:3.8, action:"Ajouter une série courte de photos nettes : extérieur, équipe, réalisations et détails utiles."},
   {key:"infos", label:"Informations essentielles", criteres:["revendiquee","horaires","contact","adresse","attributs"], impact:4, action:"Corriger les informations de base pour réduire les doutes avant le premier appel."},
   {key:"activite", label:"Activité visible", criteres:["publicationRecente","rythmePublication"], impact:2.8, action:"Publier une actualité simple ou une réalisation récente pour montrer que l'entreprise est active."}
@@ -4499,6 +4526,7 @@ function genererRapport(){
   detailScore.categories.forEach(({cat, pct, poidsProfil, pointsPonderes, maxEvalue}) => {
     let pts = 0;
     cat.criteres.forEach(cr => {
+      if(critereEstMasque(cr)) return;
       const p = lirePoints(cr.id);
       if(p === null) return;
       pts += p;
@@ -4771,14 +4799,13 @@ async function apercuImpression(){
 }
 
 function questionnairePretPourFinalisation(){
-  const photoPresence = document.querySelector('input[name="condition-photos"]:checked');
   const incomplete = [...document.querySelectorAll(".critere:not(.condition-hidden)")]
     .filter(element => !element.hasAttribute("data-location-criterion") && !element.querySelector('input[type="radio"]:checked'));
   const mode = modeLocalisation();
   const localisationIncomplete = mode === "unknown"
     || (["storefront","hybrid"].includes(mode) && !["exact","inaccurate"].includes(reponseAdresse()))
     || (["service_area","hybrid"].includes(mode) && !["coherent","partial","incoherent"].includes(reponseZoneDesserte()));
-  if(!collecteDiagnosticValidee || !photoPresence || localisationIncomplete || incomplete.length){
+  if(!collecteDiagnosticValidee || localisationIncomplete || incomplete.length){
     statut("Complétez toutes les questions visibles avant de finaliser le rapport.", "erreur");
     return false;
   }
@@ -5102,6 +5129,7 @@ function construireBlocsAuditPremium(){
     const pct = c.pct === null ? 0 : Math.round(100 * c.pct);
     categoriesTriees.push({nom:c.cat.cat, key:c.cat.key, pct, evalue:!!c.maxEvalue, pts:Math.round(c.pointsPonderes || 0), max:c.poidsProfil});
     c.cat.criteres.forEach(cr => {
+      if(critereEstMasque(cr)) return;
       const p = lirePoints(cr.id);
       if(p === null) return;
       if(p >= cr.max) forces.push(cr);

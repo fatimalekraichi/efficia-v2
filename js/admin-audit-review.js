@@ -33,18 +33,16 @@ const REPORT_TYPE_LABELS = {
   premium: "Audit Premium 99 €",
 };
 
-const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews"]);
-const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v3";
-const PHOTO_DEPENDENT_KEYS = ["nombrePhotos", "photoRecente", "varietePhotos", "qualitePhotos"];
+const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews", "no_photos"]);
+const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
+const PHOTO_DEPENDENT_KEYS = ["photoRecente", "varietePhotos", "qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis", "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis"];
 
 // Questions conditionnelles : une sous-question n'a de sens que si la
 // question parente a une réponse précise. Elle est retirée complètement de
 // l'affichage (pas seulement désactivée) quand la valeur du parent est dans
-// "hideWhen" — mais son input reste dans le DOM (donc sa valeur n'est ni
-// perdue ni resoumise différemment) afin qu'elle soit restaurée telle quelle
-// si l'utilisateur change à nouveau la réponse parente. Purement visuel :
-// aucun impact sur le calcul du score ni sur les 29 critères eux-mêmes.
+// "hideWhen". Toute réponse masquée est effacée : elle ne participe plus au
+// score, au brouillon ni au rapport, et ne réapparaît pas silencieusement.
 const CRITERIA_DEPENDENCIES = [
   // Avis : seul "Aucune réponse" (Rarement / jamais) rend la question sur la
   // qualité des réponses sans objet. "Réponses irrégulières" (Une partie) et
@@ -66,7 +64,7 @@ const CRITERIA_DEPENDENCIES = [
 const REVIEW_CRITERIA_GROUPS = [
   {
     category: "Informations essentielles",
-    points: 22,
+    points: 24,
     criteria: [
       {
         key: "revendiquee",
@@ -154,19 +152,22 @@ const REVIEW_CRITERIA_GROUPS = [
           ["not_verified", "Non vérifié"],
         ],
       },
+      {
+        key: "nomConforme",
+        question: "Le nom de la fiche correspond-il au nom réel de l’entreprise, sans ajout artificiel de mots-clés ?",
+        help: "Comparer avec l’enseigne, le site officiel et les mentions légales. Ne pas pénaliser une ville, un métier ou un service lorsqu’il fait réellement partie du nom commercial utilisé par l’entreprise.",
+        options: [
+          ["compliant", "Conforme au nom réel", 2],
+          ["partial", "Douteux / légèrement surchargé", 1],
+          ["deficient", "Ajouts artificiels manifestes", 0],
+          ["not_verified", "Non vérifié"],
+        ],
+      },
     ],
   },
   {
     category: "Photos et visuels",
-    points: 12,
-    precondition: {
-      key: "photoPresence",
-      question: "La fiche contient-elle des photos ?",
-      options: [
-        { value: "present", label: "Oui" },
-        { value: "none", label: "Aucune photo" },
-      ],
-    },
+    points: 15,
     criteria: [
       {
         key: "logoCouverture",
@@ -187,6 +188,7 @@ const REVIEW_CRITERIA_GROUPS = [
           ["compliant", "10 et plus"],
           ["partial", "5 à 9"],
           ["deficient", "Moins de 5"],
+          ["no_photos", "Aucune photo", 0],
           ["not_verified", "Non vérifié"],
         ],
       },
@@ -234,7 +236,7 @@ const REVIEW_CRITERIA_GROUPS = [
   },
   {
     category: "Avis clients",
-    points: 18,
+    points: 25,
     criteria: [
       {
         key: "noteMoyenne",
@@ -303,7 +305,7 @@ const REVIEW_CRITERIA_GROUPS = [
   },
   {
     category: "Contenu de la fiche",
-    points: 20,
+    points: 21,
     criteria: [
       {
         key: "descriptionRemplie",
@@ -382,7 +384,7 @@ const REVIEW_CRITERIA_GROUPS = [
   },
   {
     category: "Activité et animation",
-    points: 10,
+    points: 5,
     criteria: [
       {
         key: "publicationRecente",
@@ -410,7 +412,7 @@ const REVIEW_CRITERIA_GROUPS = [
   },
   {
     category: "Visibilité locale",
-    points: 18,
+    points: 10,
     criteria: [
       {
         key: "classementLocal",
@@ -431,17 +433,6 @@ const REVIEW_CRITERIA_GROUPS = [
           ["compliant", "Avantage"],
           ["partial", "Comparable"],
           ["deficient", "En retrait"],
-          ["not_verified", "Non vérifié"],
-        ],
-      },
-      {
-        key: "recherchesSpecifiques",
-        question: "La fiche est-elle adaptée aux recherches spécifiques du métier ?",
-        help: "Services, catégories et description doivent aider Google à comprendre quand l’afficher.",
-        options: [
-          ["compliant", "Bien adaptée"],
-          ["partial", "À renforcer"],
-          ["deficient", "Peu adaptée"],
           ["not_verified", "Non vérifié"],
         ],
       },
@@ -869,8 +860,7 @@ function buildAutoCriteriaReview(analysis) {
   add("liensAction", contactWasObserved ? (phone && website ? "compliant" : (phone || website ? "partial" : "deficient")) : "not_verified");
   add("classementLocal", measuredPositionStatus(business.localPosition));
   add("attractiviteConcurrents", measuredAttractivenessStatus(benchmark, competitors));
-  // Historique : recherches spécifiques = test visuel en navigation privée → manuelle.
-  add("recherchesSpecifiques", "not_verified");
+  add("nomConforme", "not_verified");
 
   [
     "revendiquee",
@@ -903,8 +893,10 @@ function fillCriteriaFromAnalysis(analysis, draftReview = null) {
   const photoPresence = activeReview.photoPresence || currentPrefillConditions.photoPresence || "unknown";
   const reviewsPresence = activeReview.reviewsPresence || currentPrefillConditions.reviewsPresence || "unknown";
   const locationMode = activeReview.locationMode || "unknown";
-  const photoPresenceRadio = criteriaGroupsBox?.querySelector(`input[name="condition:photoPresence"][value="${photoPresence}"]`);
-  if (photoPresenceRadio) photoPresenceRadio.checked = true;
+  if (photoPresence === "none") {
+    const noPhotosRadio = criteriaGroupsBox?.querySelector('input[name="criterion:nombrePhotos"][value="no_photos"]');
+    if (noPhotosRadio) noPhotosRadio.checked = true;
+  }
   if (reviewsPresence === "none") {
     const noReviewsRadio = criteriaGroupsBox?.querySelector('input[name="criterion:noteMoyenne"][value="no_reviews"]');
     if (noReviewsRadio) noReviewsRadio.checked = true;
@@ -961,7 +953,7 @@ function collectCriteriaReview() {
 
       if (!selected && !checklist.length) return;
 
-      if (selected?.value === "no_reviews") return;
+      if (["no_reviews", "no_photos"].includes(selected?.value)) return;
       const value = CRITERIA_VALUES.has(selected?.value) ? selected.value : "not_verified";
       const optionIndex = integerOrNull(selected?.dataset.optionIndex);
       const prefill = currentPrefillCriteria.get(criterion.key);
@@ -989,7 +981,8 @@ function collectCriteriaReview() {
 }
 
 function collectQuestionnaireConditions() {
-  const photoPresence = criteriaGroupsBox?.querySelector('input[name="condition:photoPresence"]:checked')?.value || "unknown";
+  const photoSelection = criteriaGroupsBox?.querySelector('input[name="criterion:nombrePhotos"]:checked')?.value;
+  const photoPresence = photoSelection === "no_photos" ? "none" : (photoSelection && photoSelection !== "not_verified" ? "present" : "unknown");
   const noteSelection = criteriaGroupsBox?.querySelector('input[name="criterion:noteMoyenne"]:checked')?.value;
   return {
     photoPresence,
@@ -1112,7 +1105,6 @@ function updateCriteriaSummary() {
 
 function incompleteVisibleCriteria() {
   const missing = [];
-  if (!criteriaGroupsBox?.querySelector('input[name="condition:photoPresence"]:checked')) missing.push("photoPresence");
   const location = collectQuestionnaireConditions();
   if (location.locationMode === "unknown") missing.push("locationMode");
   if (["storefront", "hybrid"].includes(location.locationMode) && ["unknown", "not_verifiable"].includes(location.addressVerification)) missing.push("addressVerification");

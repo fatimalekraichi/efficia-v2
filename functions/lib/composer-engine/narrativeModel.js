@@ -42,6 +42,7 @@ function buildCriteriaSummary(criteria) {
   const domainsByKey = new Map();
 
   for (const item of criteria) {
+    if (item?.status === "not_applicable") continue;
     const status = counts[item.status] !== undefined ? item.status : "not_verified";
     counts[status] += 1;
 
@@ -57,7 +58,7 @@ function buildCriteriaSummary(criteria) {
   }
 
   return {
-    total: criteria.length,
+    total: Object.values(counts).reduce((sum, count) => sum + count, 0),
     counts,
     byDomain: [...domainsByKey.values()],
   };

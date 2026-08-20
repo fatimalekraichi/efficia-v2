@@ -69,7 +69,7 @@ function fischerAnalysis() {
           c("rythmePublication", "activite", "Activité & animation", "deficient"),
           c("classementLocal", "visibilite", "Visibilité locale", "compliant"),
           c("attractiviteConcurrents", "visibilite", "Visibilité locale", "partial"),
-          c("recherchesSpecifiques", "visibilite", "Visibilité locale", "not_verified"),
+          c("nomConforme", "informations", "Informations essentielles", "not_verified"),
         ];
       })(),
     },

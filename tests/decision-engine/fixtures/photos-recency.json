@@ -26,6 +26,7 @@
     "adresse": 2,
     "attributs": 2,
     "nap": 3,
+    "nomConforme": 2,
     "logoCouverture": 3,
     "nombrePhotos": 3,
     "photoRecente": 0,
@@ -45,8 +46,7 @@
     "publicationRecente": 1,
     "rythmePublication": 1,
     "classementLocal": 6,
-    "attractiviteConcurrents": 4,
-    "recherchesSpecifiques": 2
+    "attractiviteConcurrents": 4
   },
   "verification": {
     "revendiquee": "manual",
@@ -57,6 +57,7 @@
     "adresse": "manual",
     "attributs": "manual",
     "nap": "manual",
+    "nomConforme": "manual",
     "logoCouverture": "manual",
     "nombrePhotos": "observed",
     "photoRecente": "manual",
@@ -76,8 +77,7 @@
     "publicationRecente": "manual",
     "rythmePublication": "manual",
     "classementLocal": "observed",
-    "attractiviteConcurrents": "observed",
-    "recherchesSpecifiques": "manual"
+    "attractiviteConcurrents": "observed"
   },
   "expected": {
     "globalScore": 93,
@@ -96,11 +96,11 @@
     "categories": [
       {
         "key": "informations",
-        "evaluated": 8,
+        "evaluated": 9,
         "unevaluated": 0,
-        "maxEvaluated": 22,
-        "profileWeight": 22,
-        "weightedPoints": 22,
+        "maxEvaluated": 24,
+        "profileWeight": 24,
+        "weightedPoints": 24,
         "percent": 1
       },
       {
@@ -141,11 +141,11 @@
       },
       {
         "key": "visibilite",
-        "evaluated": 3,
+        "evaluated": 2,
         "unevaluated": 0,
-        "maxEvaluated": 12,
-        "profileWeight": 12,
-        "weightedPoints": 12,
+        "maxEvaluated": 10,
+        "profileWeight": 10,
+        "weightedPoints": 10,
         "percent": 1
       }
     ],

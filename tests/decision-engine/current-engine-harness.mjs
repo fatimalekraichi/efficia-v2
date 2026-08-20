@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ENGINE_HTML = path.resolve(__dirname, "../../outil-score-efficia-auto-v5.html");
+const ENGINE_HTML = path.resolve(__dirname, "../../admin/free-diagnostic-production/index.html");
 const CRITERIA_CATALOG = path.resolve(__dirname, "../../src/decision-engine/criteria.catalog.js");
 
 const PACK_CRITERES = [
@@ -17,7 +17,7 @@ const PACK_CRITERES = [
 const FAMILLES_PRIORITES = [
   { key: "offre", label: "Offre et services", criteres: ["servicesPresents", "servicesDecrits", "descriptionRemplie", "descriptionQualite", "questionsReponses", "liensAction"], impact: 5 },
   { key: "reputation", label: "Réputation client", criteres: ["volumeAvis", "tauxReponseAvis", "qualiteReponsesAvis", "recenceAvis", "noteMoyenne"], impact: 5 },
-  { key: "visibilite", label: "Visibilité locale", criteres: ["classementLocal", "recherchesSpecifiques", "categoriePrincipale", "categoriesSecondaires", "nap"], impact: 4.5 },
+  { key: "visibilite", label: "Visibilité locale", criteres: ["classementLocal", "categoriePrincipale", "categoriesSecondaires", "nap"], impact: 4.5 },
   { key: "photos", label: "Photos et preuves visuelles", criteres: ["nombrePhotos", "varietePhotos", "qualitePhotos", "photoRecente", "logoCouverture"], impact: 3.8 },
   { key: "infos", label: "Informations essentielles", criteres: ["revendiquee", "horaires", "contact", "adresse", "attributs"], impact: 4 },
   { key: "activite", label: "Activité visible", criteres: ["publicationRecente", "rythmePublication"], impact: 2.8 }
@@ -224,7 +224,7 @@ export function createDecisionEngine(fixture = {}) {
 
   function indicesProspect() {
     return {
-      visibilite: scoreCriteres(["categoriePrincipale", "categoriesSecondaires", "nap", "classementLocal", "recherchesSpecifiques", "publicationRecente", "rythmePublication", "recenceAvis"]),
+      visibilite: scoreCriteres(["categoriePrincipale", "categoriesSecondaires", "nap", "classementLocal", "publicationRecente", "rythmePublication", "recenceAvis"]),
       confiance: scoreCriteres(["noteMoyenne", "volumeAvis", "tauxReponseAvis", "qualiteReponsesAvis", "qualitePhotos", "contact", "adresse", "nap"]),
       conversion: scoreCriteres(["descriptionRemplie", "descriptionQualite", "servicesPresents", "servicesDecrits", "liensAction", "questionsReponses", "varietePhotos"])
     };

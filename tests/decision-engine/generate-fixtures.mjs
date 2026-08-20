@@ -56,7 +56,7 @@ const averageCriteria = points({
   rythmePublication: 1,
   classementLocal: 3,
   attractiviteConcurrents: 2,
-  recherchesSpecifiques: 1
+  nomConforme: 1
 });
 
 const fixtures = [
@@ -96,7 +96,7 @@ const fixtures = [
       rythmePublication: 0,
       classementLocal: 0,
       attractiviteConcurrents: 0,
-      recherchesSpecifiques: 0
+      nomConforme: 0
     })
   },
   {
@@ -115,7 +115,7 @@ const fixtures = [
     activity: "Service local",
     profile: "default",
     data: { note: 4.8, nbAvis: 146, nbPhotos: 38, descriptionLongueur: 720, position: 1, moyennesConcurrents: { avis: 92, note: 4.6, photos: 31 }, requeteTestee: "service local bruxelles" },
-    criteria: { ...all("max"), rythmePublication: 1, questionsReponses: 1, recherchesSpecifiques: 1 }
+    criteria: { ...all("max"), rythmePublication: 1, questionsReponses: 1, nomConforme: 1 }
   },
   {
     id: "incomplete-data",

@@ -89,7 +89,7 @@ test("un brouillon incomplet conserve son type, ses réponses versionnées et so
   assert.equal(savedBody.draft.status, "draft");
   assert.equal(savedBody.draft.reportType, "free");
   assert.equal(savedBody.draft.currentStep, "questionnaire");
-  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v3");
+  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v4");
   assert.deepEqual(savedBody.draft.answers, answers);
 
   const restored = await getDraft(await context(db));

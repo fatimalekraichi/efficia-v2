@@ -240,7 +240,7 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
       "logoCouverture", "photoRecente", "varietePhotos", "qualitePhotos",
       "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis", "descriptionQualite",
       "servicesPresents", "servicesDecrits", "questionsReponses", "liensAction",
-      "publicationRecente", "rythmePublication", "recherchesSpecifiques",
+      "publicationRecente", "rythmePublication", "nomConforme",
     ]) {
       const criterion = body.scorePrefill.criteria.find((item) => item.key === key);
       assert.equal(criterion?.points, null, `${key} doit rester manuel quand la fixture ne le démontre pas`);
