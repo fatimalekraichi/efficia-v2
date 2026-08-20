@@ -81,9 +81,13 @@ function createLegacyHarness(response) {
 }
 
 test("les questionnaires gratuit et Premium affichent chacun un contrôle de brouillon persistant", () => {
+  const freeToolbar = sliceBetween(legacyHtml, '<div class="score-flottant">', '<div class="conteneur">');
+  const prospectCard = sliceBetween(legacyHtml, '<div class="conteneur">', '<div class="carte">\n      <h2 style="margin-bottom:6px">Données observées');
   assert.equal((legacyHtml.match(/id="btn-brouillon-d1"/g) || []).length, 1);
   assert.equal((premiumHtml.match(/data-draft-save/g) || []).length, 1);
-  assert.match(legacyHtml, /score-flottant[\s\S]*Générer le Diagnostic \(gratuit\)[\s\S]*Aperçu avant impression[\s\S]*Enregistrer le brouillon/);
+  assert.match(freeToolbar, /score-actions[\s\S]*Générer le Diagnostic \(gratuit\)[\s\S]*Aperçu avant impression[\s\S]*Enregistrer le brouillon/);
+  assert.match(freeToolbar, /id="statut-brouillon-d1"[\s\S]*role="status" aria-live="polite"/);
+  assert.doesNotMatch(prospectCard, /Enregistrer le brouillon|btn-brouillon-d1|statut-brouillon-d1/);
   assert.match(premiumHtml, /audit-draft-toolbar[\s\S]*data-draft-save>Enregistrer le brouillon/);
   assert.match(legacyHtml, /role="status" aria-live="polite"/);
   assert.match(premiumHtml, /role="status" aria-live="polite"/);
@@ -143,6 +147,7 @@ test("les sauvegardes manuelles et temporisées exécutent réellement le même 
 });
 
 test("les barres de sauvegarde restent utilisables sur petit écran", () => {
-  assert.match(legacyHtml, /@media \(max-width:640px\)[\s\S]*\.score-flottant[\s\S]*flex:1 1 100%/);
+  assert.match(legacyHtml, /@media \(max-width:640px\)[\s\S]*\.score-flottant[\s\S]*\.score-actions[\s\S]*grid-template-columns:1fr/);
+  assert.match(legacyHtml, /\.score-actions \.btn:focus-visible/);
   assert.match(premiumHtml, /@media \(max-width: 640px\)[\s\S]*\.audit-draft-toolbar \.admin-button \{ width: 100%; \}/);
 });
