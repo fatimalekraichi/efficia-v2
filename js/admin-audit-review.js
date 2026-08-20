@@ -37,6 +37,7 @@ const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verif
 const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 const PHOTO_DEPENDENT_KEYS = ["photoRecente", "varietePhotos", "qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis", "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis"];
+const NO_REVIEWS_HIDDEN_KEYS = ["volumeAvis", "recenceAvis", "qualiteReponsesAvis"];
 
 // Questions conditionnelles : une sous-question n'a de sens que si la
 // question parente a une réponse précise. Elle est retirée complètement de
@@ -274,18 +275,19 @@ const REVIEW_CRITERIA_GROUPS = [
       },
       {
         key: "tauxReponseAvis",
-        question: "Les avis reçoivent-ils des réponses régulières ?",
+        question: "L’établissement répond-il aux avis ?",
         help: "Ne confirmer que si un taux ou une observation fiable existe.",
         options: [
           ["compliant", "Réponses régulières"],
           ["partial", "Réponses irrégulières"],
           ["deficient", "Aucune réponse"],
+          ["no_reviews", "Non applicable — aucun avis", 0],
           ["not_verified", "Non vérifié"],
         ],
       },
       {
         key: "qualiteReponsesAvis",
-        question: "Les réponses aux avis sont-elles professionnelles ?",
+        question: "Les réponses sont-elles personnalisées et professionnelles ?",
         help: "Vérification utile uniquement si des réponses existent.",
         checklist: [
           "Réponse personnalisée",
@@ -1017,6 +1019,19 @@ function clearCriterionAnswer(key) {
   });
 }
 
+function updateNoReviewsResponseControl(noReviews) {
+  const inputs = [...(criteriaGroupsBox?.querySelectorAll('input[name="criterion:tauxReponseAvis"]') || [])];
+  const notApplicable = inputs.find((input) => input.value === "no_reviews");
+  inputs.forEach((input) => {
+    const isNotApplicable = input === notApplicable;
+    input.disabled = noReviews ? !isNotApplicable : isNotApplicable;
+    if (noReviews && !isNotApplicable) input.checked = false;
+    if (!noReviews && isNotApplicable) input.checked = false;
+    if (isNotApplicable) input.closest("label")?.toggleAttribute("hidden", !noReviews);
+  });
+  if (noReviews && notApplicable) notApplicable.checked = true;
+}
+
 function setCriterionHidden(key, hidden) {
   const item = criteriaGroupsBox?.querySelector(`[data-criteria-key="${key}"]`);
   if (!item) return;
@@ -1069,9 +1084,10 @@ function updateCriteriaDependencies() {
   updateLocationControls();
 
   const conditions = collectQuestionnaireConditions();
+  updateNoReviewsResponseControl(conditions.reviewsPresence === "none");
   const conditionallyHidden = new Set([
     ...(conditions.photoPresence === "none" ? PHOTO_DEPENDENT_KEYS : []),
-    ...(conditions.reviewsPresence === "none" ? REVIEW_DEPENDENT_KEYS : []),
+    ...(conditions.reviewsPresence === "none" ? NO_REVIEWS_HIDDEN_KEYS : []),
   ]);
   PHOTO_DEPENDENT_KEYS.forEach((key) => setCriterionHidden(key, conditionallyHidden.has(key)));
   REVIEW_DEPENDENT_KEYS.forEach((key) => setCriterionHidden(key, conditionallyHidden.has(key)));
@@ -1103,19 +1119,68 @@ function updateCriteriaSummary() {
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
 }
 
-function incompleteVisibleCriteria() {
-  const missing = [];
+function listerElementsRestantsPourFinalisation() {
+  const moteur = globalThis.EfficiaQuestionnaireFinalization;
+  if (!moteur) throw new Error("QUESTIONNAIRE_FINALIZATION_UNAVAILABLE");
   const location = collectQuestionnaireConditions();
-  if (location.locationMode === "unknown") missing.push("locationMode");
-  if (["storefront", "hybrid"].includes(location.locationMode) && ["unknown", "not_verifiable"].includes(location.addressVerification)) missing.push("addressVerification");
-  if (["service_area", "hybrid"].includes(location.locationMode) && ["unknown", "not_verifiable"].includes(location.serviceAreaVerification)) missing.push("serviceAreaVerification");
-  criteriaGroupsBox?.querySelectorAll("[data-criteria-key]").forEach((item) => {
-    if (item.dataset.criteriaKey === "adresse") return;
-    if (item.classList.contains("is-dependency-hidden")) return;
-    const selected = item.querySelector("[data-criteria-option]:checked");
-    if (!selected || selected.value === "not_verified") missing.push(item.dataset.criteriaKey);
+  const locationElement = criteriaGroupsBox?.querySelector("[data-location-criterion]");
+  const requiredContexts = [
+    {
+      id: "locationMode",
+      label: "Mode d’activité à confirmer",
+      complete: ["storefront", "service_area", "hybrid"].includes(location.locationMode),
+      element: locationElement,
+      focusTarget: locationElement?.querySelector('input[name="condition:locationMode"]'),
+      reason: "location_mode_missing",
+    },
+    {
+      id: "addressVerification",
+      label: "Adresse et épingle Google Maps à confirmer",
+      required: ["storefront", "hybrid"].includes(location.locationMode),
+      complete: ["exact", "inaccurate"].includes(location.addressVerification),
+      element: locationElement?.querySelector('[data-location-control="address"]') || locationElement,
+      focusTarget: locationElement?.querySelector('input[name="location:address"]'),
+      reason: "address_verification_missing",
+    },
+    {
+      id: "serviceAreaVerification",
+      label: "Zone desservie à confirmer",
+      required: ["service_area", "hybrid"].includes(location.locationMode),
+      complete: ["coherent", "partial", "incoherent"].includes(location.serviceAreaVerification),
+      element: locationElement?.querySelector('[data-location-control="service_area"]') || locationElement,
+      focusTarget: locationElement?.querySelector('input[name="location:serviceArea"]'),
+      reason: "service_area_verification_missing",
+    },
+  ];
+  const criteria = [...(criteriaGroupsBox?.querySelectorAll("[data-criteria-key]") || [])]
+    .filter((item) => item.dataset.criteriaKey !== "adresse")
+    .map((item) => {
+      const selected = item.querySelector("[data-criteria-option]:checked");
+      const question = item.querySelector(".criteria-item__question");
+      return {
+        id: item.dataset.criteriaKey,
+        label: question?.firstChild?.textContent?.trim() || item.dataset.criteriaKey,
+        applicable: !item.classList.contains("is-dependency-hidden"),
+        answered: Boolean(selected) && selected.value !== "not_verified",
+        element: item,
+        focusTarget: item.querySelector("[data-criteria-option]"),
+        reason: selected?.value === "not_verified" ? "criterion_not_verified" : "criterion_response_missing",
+      };
+    });
+  return moteur.listerElementsRestantsPourFinalisation({ criteria, requiredContexts });
+}
+
+function mettreEnEvidencePremierElementRestant(elements) {
+  criteriaGroupsBox?.querySelectorAll(".finalisation-manquante").forEach((element) => {
+    element.classList.remove("finalisation-manquante");
+    element.removeAttribute("aria-invalid");
   });
-  return missing;
+  const first = elements.find((item) => item.element && !item.element.hidden);
+  if (!first) return;
+  first.element.classList.add("finalisation-manquante");
+  first.element.setAttribute("aria-invalid", "true");
+  first.element.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  first.focusTarget?.focus?.({ preventScroll: true });
 }
 
 function markUnansweredCriteriaAsNotVerified() {
@@ -1589,9 +1654,10 @@ async function restoreDraft() {
 
 async function saveReview(event) {
   event.preventDefault();
-  const incomplete = incompleteVisibleCriteria();
+  const incomplete = listerElementsRestantsPourFinalisation();
   if (incomplete.length) {
-    setStatus("Complétez toutes les questions visibles avant de préparer l’aperçu.", "error");
+    setStatus(globalThis.EfficiaQuestionnaireFinalization.formaterResumeElementsRestants(incomplete), "error");
+    mettreEnEvidencePremierElementRestant(incomplete);
     return;
   }
   submitButton.disabled = true;

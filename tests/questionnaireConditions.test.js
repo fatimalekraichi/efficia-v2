@@ -6,12 +6,13 @@ import { buildReviewedObservation, normalizeManualReview } from "../functions/li
 import { GRILLE } from "../functions/lib/score-efficia/criteriaCatalog.js";
 import {
   QUESTIONNAIRE_VERSION,
+  NO_REVIEWS_HIDDEN_KEYS,
   PHOTO_DEPENDENT_KEYS,
   REVIEW_DEPENDENT_KEYS,
   incompleteQuestionnaireFields,
   locationScore,
 } from "../functions/lib/score-efficia/questionnaireRules.js";
-import { buildScorePrefill } from "../functions/lib/score-efficia/scoreCatalog.js";
+import { buildScoreCatalog, buildScorePrefill } from "../functions/lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../functions/lib/score-efficia/scoreEngine.js";
 
 const completeCriteria = () => GRILLE.flatMap((category) => category.criteres.map((criterion) => ({
@@ -78,7 +79,39 @@ test("Aucun avis est distinct d’une note artificielle de 0 sur 5", () => {
   ["noteMoyenne", ...REVIEW_DEPENDENT_KEYS].forEach((key) => {
     assert.equal(score.scoreInputs.answers[key], 0);
   });
+  const responseCriterion = score.scoreInputs.criteria.find((item) => item.key === "tauxReponseAvis");
+  assert.equal(responseCriterion.label, "Non applicable — aucun avis");
+  assert.equal(responseCriterion.status, "absence_confirmed");
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
+});
+
+test("Aucun avis nettoie un payload forgé et conserve l'option explicite à zéro", () => {
+  const forged = normalizeManualReview({
+    questionnaireVersion: QUESTIONNAIRE_VERSION,
+    reportType: "premium",
+    photoPresence: "present",
+    reviewsPresence: "none",
+    locationMode: "storefront",
+    addressVerification: "exact",
+    criteriaReview: completeCriteria().map((item) => item.key === "qualiteReponsesAvis"
+      ? { ...item, checklist: ["Réponse personnalisée", "Ton professionnel"] }
+      : item),
+  });
+  assert.equal(forged.criteriaReview.some((item) => item.key === "tauxReponseAvis"), false);
+  assert.equal(forged.criteriaReview.some((item) => item.key === "qualiteReponsesAvis"), false);
+  assert.deepEqual(incompleteQuestionnaireFields(forged), []);
+
+  const catalog = buildScoreCatalog();
+  const responseCriterion = catalog.categories.flatMap((category) => category.criteria)
+    .find((criterion) => criterion.key === "tauxReponseAvis");
+  assert.deepEqual(responseCriterion.options.map(({ value, label, points }) => [value, label, points]), [
+    ["compliant", "Quasi tous", 6],
+    ["partial", "Une partie", 3],
+    ["deficient", "Rarement / jamais", 0],
+    ["no_reviews", "Non applicable — aucun avis", 0],
+    ["not_verified", "Non vérifié", null],
+  ]);
+  assert.deepEqual(NO_REVIEWS_HIDDEN_KEYS, ["volumeAvis", "recenceAvis", "qualiteReponsesAvis"]);
 });
 
 test("un champ réellement visible et incomplet bloque la finalisation", () => {
@@ -115,7 +148,10 @@ test("les deux interfaces masquent et effacent les dépendances sans modifier le
     assert.match(source, /Aucun avis/);
     assert.match(source, /PHOTO_DEPENDENT_KEYS/);
     assert.match(source, /REVIEW_DEPENDENT_KEYS/);
+    assert.match(source, /NO_REVIEWS_HIDDEN_KEYS/);
   }
+  assert.match(modern, /Non applicable — aucun avis/);
+  assert.match(legacyCatalog, /Non applicable — aucun avis/);
   assert.match(modern, /Aucune photo/);
   assert.match(legacyCatalog, /Aucune photo/);
   assert.match(modern, /if \(hidden\) clearCriterionAnswer\(key\)/);
@@ -123,6 +159,7 @@ test("les deux interfaces masquent et effacent les dépendances sans modifier le
   assert.match(legacy, /if\(masquer\) effacerReponseCritere\(key\)/);
   assert.match(legacy, /function critereEstMasque\(cr\)/);
   assert.match(legacy, /const visibleCriteria = cat\.criteres\.filter\(cr => !critereEstMasque\(cr\)\)/);
+  assert.match(legacy, /critereEstNonApplicable\(cr\)/);
 });
 
 test("le catalogue v4 remplace le test de recherches par le contrôle manuel du nom sans changer les 29 critères", () => {

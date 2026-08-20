@@ -75,7 +75,7 @@ export const GRILLE = [
   reco:"Relancer la collecte d'avis : des avis anciens laissent penser que l'activité décline.",
   force:"Avis récents et réguliers."},
  {key:"tauxReponseAvis", q:"L'établissement répond-il aux avis ?", aide:"Vérifier les 10 derniers avis sur Maps.", max:CONFIG.poids.avis.tauxReponse,
-  opts:[["Quasi tous",CONFIG.poids.avis.tauxReponse],["Une partie",3],["Rarement / jamais",0]],
+  opts:[["Quasi tous",CONFIG.poids.avis.tauxReponse],["Une partie",3],["Rarement / jamais",0],["Non applicable — aucun avis",0,"no_reviews"]],
   reco:"Répondre à tous les avis, positifs comme négatifs : les réponses visibles renforcent la confiance et montrent que l'entreprise suit sa relation client.",
   force:"Réponses systématiques aux avis — signal de sérieux fort."},
  {key:"qualiteReponsesAvis", checklist:"qualiteReponsesAvis", q:"Les réponses sont-elles personnalisées et professionnelles ?", aide:"Cochez la mini check-list pour évaluer la qualité des réponses de façon reproductible.", max:CONFIG.poids.avis.qualiteReponses,

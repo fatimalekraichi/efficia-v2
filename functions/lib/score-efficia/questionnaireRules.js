@@ -16,6 +16,11 @@ export const REVIEW_DEPENDENT_KEYS = Object.freeze([
   "tauxReponseAvis",
   "qualiteReponsesAvis",
 ]);
+export const NO_REVIEWS_HIDDEN_KEYS = Object.freeze([
+  "volumeAvis",
+  "recenceAvis",
+  "qualiteReponsesAvis",
+]);
 export const CRITERIA_DEPENDENCIES = Object.freeze([
   { parent: "tauxReponseAvis", child: "qualiteReponsesAvis", hideWhen: ["deficient"] },
   { parent: "descriptionRemplie", child: "descriptionQualite", hideWhen: ["deficient"] },

@@ -55,6 +55,7 @@
   .badge-auto{font-size:.7rem;font-weight:700;color:#fff;background:var(--vert);border-radius:99px;padding:2px 8px;vertical-align:middle;margin-left:6px}
   .badge-verif{font-size:.7rem;font-weight:700;color:#fff;background:var(--ambre);border-radius:99px;padding:2px 8px;vertical-align:middle;margin-left:6px}
   .critere.a-verifier{background:#fffbeb;padding-left:10px;padding-right:10px}
+  .critere.finalisation-manquante,.controle-localisation.finalisation-manquante{outline:3px solid #dc2626;outline-offset:3px;scroll-margin-top:180px}
   .opts{display:flex;flex-wrap:wrap;gap:8px}
   .opts label{display:flex;align-items:center;gap:6px;font-weight:400;font-size:.88rem;
               border:1px solid var(--bord);border-radius:8px;padding:7px 12px;cursor:pointer;background:#fff;margin:0}
@@ -775,6 +776,7 @@ validerConfig();
 
 /* ============ GRILLE — critères, 100 points ============ */
 </script>
+<script src="/js/questionnaire-finalization.js"></script>
 <script src="/src/decision-engine/criteria.catalog.js?v=4"></script>
 <script>
 
@@ -997,7 +999,8 @@ GRILLE.forEach(cat => {
     }
     html += `<div class="opts">`;
     cr.opts.forEach(([lab, pts, special], optionIndex) => {
-      html += `<label><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}"${special ? ` data-special="${special}"` : ""} onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
+      const noReviewsResponse = cr.key === "tauxReponseAvis" && special === "no_reviews";
+      html += `<label${noReviewsResponse ? " hidden" : ""}><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}"${special ? ` data-special="${special}"` : ""}${noReviewsResponse ? " disabled" : ""} onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
     });
     html += `</div></div>`;
     idx++;
@@ -1040,6 +1043,7 @@ function lirePoints(id){
 }
 const PHOTO_DEPENDENT_KEYS = ["photoRecente","varietePhotos","qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"];
+const NO_REVIEWS_HIDDEN_KEYS = ["volumeAvis","recenceAvis","qualiteReponsesAvis"];
 const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 let legacyLocationPoints = null;
 
@@ -1110,15 +1114,34 @@ function masquerCritereConditionnel(key, masquer){
   element.setAttribute("aria-hidden", masquer ? "true" : "false");
 }
 
+function mettreAJourReponseAvisSansAvis(sansAvis){
+  const id = CRITERE_IDS.tauxReponseAvis;
+  const inputs = [...document.querySelectorAll(`input[name="c${id}"]`)];
+  const nonApplicable = inputs.find(input => input.dataset.special === "no_reviews");
+  inputs.forEach(input => {
+    const estNonApplicable = input === nonApplicable;
+    input.disabled = sansAvis ? !estNonApplicable : estNonApplicable;
+    if(sansAvis && !estNonApplicable) input.checked = false;
+    if(!sansAvis && estNonApplicable) input.checked = false;
+    if(estNonApplicable) input.closest("label")?.toggleAttribute("hidden", !sansAvis);
+  });
+  if(sansAvis && nonApplicable) nonApplicable.checked = true;
+}
+
 function critereEstMasque(cr){
   return document.getElementById("crit-"+cr.id)?.classList.contains("condition-hidden") === true;
+}
+
+function critereEstNonApplicable(cr){
+  return conditionAvis() === "none" && cr?.key === "tauxReponseAvis";
 }
 
 function majConditionsQuestionnaire(){
   const sansPhotos = conditionPhotos() === "none";
   const sansAvis = conditionAvis() === "none";
   PHOTO_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansPhotos));
-  REVIEW_DEPENDENT_KEYS.forEach(key => masquerCritereConditionnel(key, sansAvis));
+  mettreAJourReponseAvisSansAvis(sansAvis);
+  NO_REVIEWS_HIDDEN_KEYS.forEach(key => masquerCritereConditionnel(key, sansAvis));
   CRITERIA_DEPENDENCIES.forEach(({parent, child}) => {
     const parentId = CRITERE_IDS[parent];
     const selected = document.querySelector(`input[name="c${parentId}"]:checked`);
@@ -2276,9 +2299,69 @@ function calculScoreDetail(){
   return {total:Number.isFinite(scoreNormalise) ? scoreNormalise : 0, repondus, totalCrit, categories, profil};
 }
 
+function listerElementsRestantsPourFinalisation(){
+  const moteur = globalThis.EfficiaQuestionnaireFinalization;
+  if(!moteur) throw new Error("questionnaire_finalization_unavailable");
+  const mode = modeLocalisation();
+  const locationElement = document.querySelector("[data-location-criterion]");
+  const requiredContexts = [
+    {
+      id:"analysisCollection",
+      label:"Collecte du diagnostic à effectuer",
+      complete:collecteDiagnosticValidee,
+      element:document.getElementById("btn-analyser"),
+      focusTarget:document.getElementById("btn-analyser"),
+      reason:"analysis_not_collected"
+    },
+    {
+      id:"locationMode",
+      label:"Mode d’activité à confirmer",
+      complete:["storefront","service_area","hybrid"].includes(mode),
+      element:locationElement,
+      focusTarget:locationElement?.querySelector('input[name="condition-location-mode"]'),
+      reason:"location_mode_missing"
+    },
+    {
+      id:"addressVerification",
+      label:"Adresse et épingle Google Maps à confirmer",
+      required:["storefront","hybrid"].includes(mode),
+      complete:["exact","inaccurate"].includes(reponseAdresse()),
+      element:locationElement?.querySelector('[data-location-control="address"]') || locationElement,
+      focusTarget:locationElement?.querySelector('input[name="location-address"]'),
+      reason:"address_verification_missing"
+    },
+    {
+      id:"serviceAreaVerification",
+      label:"Zone desservie à confirmer",
+      required:["service_area","hybrid"].includes(mode),
+      complete:["coherent","partial","incoherent"].includes(reponseZoneDesserte()),
+      element:locationElement?.querySelector('[data-location-control="service_area"]') || locationElement,
+      focusTarget:locationElement?.querySelector('input[name="location-service-area"]'),
+      reason:"service_area_verification_missing"
+    }
+  ];
+  const criteria = GRILLE.flatMap(cat => cat.criteres)
+    .filter(cr => cr.key !== "adresse")
+    .map(cr => {
+      const element = document.getElementById("crit-"+cr.id);
+      const selected = document.querySelector(`input[name="c${cr.id}"]:checked`);
+      return {
+        id:cr.key || `criterion-${cr.id}`,
+        label:cr.q,
+        applicable:!critereEstMasque(cr) && !critereEstNonApplicable(cr),
+        answered:Boolean(selected),
+        element,
+        focusTarget:element?.querySelector(`input[name="c${cr.id}"]`),
+        reason:"criterion_response_missing"
+      };
+    });
+  return moteur.listerElementsRestantsPourFinalisation({criteria, requiredContexts});
+}
+
 function calc(){
   const detail = calculScoreDetail();
   const {total, repondus, totalCrit} = detail;
+  const elementsRestants = listerElementsRestantsPourFinalisation();
   if(!collecteDiagnosticValidee){
     document.getElementById("score-live").textContent = "—";
     document.getElementById("compteur-restant").textContent = "analyse non lancée";
@@ -2287,9 +2370,9 @@ function calc(){
     return total;
   }
   document.getElementById("score-live").textContent = Math.round(total);
-  const restant = totalCrit - repondus;
+  const restant = elementsRestants.length;
   document.getElementById("compteur-restant").textContent =
-    restant === 0 ? "✓ tous les critères renseignés" : restant + " critère(s) restant à vérifier";
+    restant === 0 ? "✓ Tous les éléments sont renseignés" : restant + " élément(s) restant à vérifier";
   mettreAJourIndicateursInternes(total, repondus, totalCrit);
   sauvegarderDiagnostic();
   return total;
@@ -2298,7 +2381,7 @@ function calc(){
 function statsScore(){
   let ameliorables = 0, pointsPerdus = 0;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
     const p = lirePoints(cr.id);
     if(p !== null && p < cr.max){
       ameliorables++;
@@ -2366,7 +2449,7 @@ function calculerTempsInterne(){
   const repartition = {};
   const taches = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
     const p = lirePoints(cr.id);
     if(p === null || p >= cr.max) return;
     const configTache = CONFIG.tempsTaches[cr.key];
@@ -2724,7 +2807,8 @@ function collecterCriteresAudit(){
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(critereEstMasque(cr)) return;
     const points = lirePoints(cr.id);
-    const evaluationStatus = statutEvaluationCritere(cr, points);
+    const nonApplicable = critereEstNonApplicable(cr);
+    const evaluationStatus = nonApplicable ? "not_applicable" : statutEvaluationCritere(cr, points);
     criteria.push({
       key: cr.key,
       label: libelleQuestionLocalisation(cr),
@@ -2733,7 +2817,7 @@ function collecterCriteresAudit(){
       pointsAwarded: evaluationStatus === "not_evaluated" ? null : Number(points),
       maxPoints: Number(cr.max),
       evaluationStatus,
-      verificationStatus: statutVerificationCritere(cr)
+      verificationStatus: nonApplicable ? "not_applicable" : statutVerificationCritere(cr)
     });
   }));
   return criteria;
@@ -2783,7 +2867,7 @@ function collecterRecommandationsAudit(){
   const ctx = contexteRapport();
   const candidats = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(critereEstMasque(cr)) return;
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
     const points = lirePoints(cr.id);
     if(points !== null && points < cr.max) candidats.push({critere:cr, points, perdu:cr.max - points});
   }));
@@ -4188,12 +4272,14 @@ function checklistHtml(){
     const visibleCriteria = cat.criteres.filter(cr => !critereEstMasque(cr));
     const items = visibleCriteria.map(cr => {
       const p = lirePoints(cr.id);
-      const statut = p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
-      if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else warn++;
-      const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
-      return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${LIBELLES_COURTS[cr.key] || cr.q}</span></div>`;
+      const nonApplicable = critereEstNonApplicable(cr);
+      const statut = nonApplicable ? "not_applicable" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
+      if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else if(statut !== "not_applicable") warn++;
+      const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" || statut === "not_applicable" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
+      const label = nonApplicable ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)` : (LIBELLES_COURTS[cr.key] || cr.q);
+      return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
     }).join("");
-    const evalues = visibleCriteria.filter(cr => lirePoints(cr.id) !== null);
+    const evalues = visibleCriteria.filter(cr => !critereEstNonApplicable(cr) && lirePoints(cr.id) !== null);
     const conformes = evalues.filter(cr => lirePoints(cr.id) >= cr.max).length;
     return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || visibleCriteria.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
   }).join("");
@@ -4526,7 +4612,7 @@ function genererRapport(){
   detailScore.categories.forEach(({cat, pct, poidsProfil, pointsPonderes, maxEvalue}) => {
     let pts = 0;
     cat.criteres.forEach(cr => {
-      if(critereEstMasque(cr)) return;
+      if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
       const p = lirePoints(cr.id);
       if(p === null) return;
       pts += p;
@@ -4799,14 +4885,21 @@ async function apercuImpression(){
 }
 
 function questionnairePretPourFinalisation(){
-  const incomplete = [...document.querySelectorAll(".critere:not(.condition-hidden)")]
-    .filter(element => !element.hasAttribute("data-location-criterion") && !element.querySelector('input[type="radio"]:checked'));
-  const mode = modeLocalisation();
-  const localisationIncomplete = mode === "unknown"
-    || (["storefront","hybrid"].includes(mode) && !["exact","inaccurate"].includes(reponseAdresse()))
-    || (["service_area","hybrid"].includes(mode) && !["coherent","partial","incoherent"].includes(reponseZoneDesserte()));
-  if(!collecteDiagnosticValidee || localisationIncomplete || incomplete.length){
-    statut("Complétez toutes les questions visibles avant de finaliser le rapport.", "erreur");
+  const elementsRestants = listerElementsRestantsPourFinalisation();
+  document.querySelectorAll(".finalisation-manquante").forEach(element => {
+    element.classList.remove("finalisation-manquante");
+    element.removeAttribute("aria-invalid");
+  });
+  if(elementsRestants.length){
+    const moteur = globalThis.EfficiaQuestionnaireFinalization;
+    statut(moteur.formaterResumeElementsRestants(elementsRestants), "erreur");
+    const premier = elementsRestants.find(item => item.element && !item.element.hidden);
+    if(premier){
+      premier.element.classList?.add("finalisation-manquante");
+      premier.element.setAttribute?.("aria-invalid", "true");
+      premier.element.scrollIntoView?.({behavior:"smooth", block:"center"});
+      premier.focusTarget?.focus?.({preventScroll:true});
+    }
     return false;
   }
   return true;
@@ -5129,7 +5222,7 @@ function construireBlocsAuditPremium(){
     const pct = c.pct === null ? 0 : Math.round(100 * c.pct);
     categoriesTriees.push({nom:c.cat.cat, key:c.cat.key, pct, evalue:!!c.maxEvalue, pts:Math.round(c.pointsPonderes || 0), max:c.poidsProfil});
     c.cat.criteres.forEach(cr => {
-      if(critereEstMasque(cr)) return;
+      if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
       const p = lirePoints(cr.id);
       if(p === null) return;
       if(p >= cr.max) forces.push(cr);

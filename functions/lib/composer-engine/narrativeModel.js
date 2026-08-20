@@ -15,6 +15,7 @@ const CRITERIA_STATUS_LABELS = {
   partial: "à améliorer",
   deficient: "prioritaire",
   not_verified: "à confirmer",
+  not_applicable: "non applicable — aucun avis",
 };
 
 // Passthrough des 6 domaines historiques (scoreEngine.calculateScoreDetail) —
@@ -43,7 +44,11 @@ function buildCriteriaSummary(criteria) {
 
   for (const item of criteria) {
     if (item?.status === "not_applicable") continue;
-    const status = counts[item.status] !== undefined ? item.status : "not_verified";
+    if (item?.status === "absence_confirmed" && item?.key !== "tauxReponseAvis") continue;
+    const status = item?.status === "absence_confirmed"
+      ? "not_applicable"
+      : (counts[item.status] !== undefined ? item.status : "not_verified");
+    if (status === "not_applicable" && counts.not_applicable === undefined) counts.not_applicable = 0;
     counts[status] += 1;
 
     if (!domainsByKey.has(item.category)) {

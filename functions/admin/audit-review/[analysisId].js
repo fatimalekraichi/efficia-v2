@@ -47,6 +47,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     [data-location-control] { margin-top: 18px; padding: 16px; border: 1px solid #dbe4f0; border-radius: 16px; background: #f8fbff; }
     [data-location-control][hidden] { display: none !important; }
     .criteria-item.is-not-verified { background: #fef6f6; box-shadow: inset 0 0 0 1px #fecaca; border-radius: 12px; }
+    .criteria-item.finalisation-manquante, [data-location-control].finalisation-manquante { outline: 3px solid #dc2626; outline-offset: 3px; scroll-margin-top: 150px; }
     .criteria-item.is-dependency-hidden { padding-top: 0; padding-bottom: 0; border-bottom-color: transparent; }
     .criteria-item__collapse { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .2s ease, opacity .2s ease; }
     .criteria-item.is-dependency-hidden .criteria-item__collapse { grid-template-rows: 0fr; opacity: 0; }
@@ -171,6 +172,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     </div>
   </main>
 
+  <script src="/js/questionnaire-finalization.js"></script>
   <script src="/js/admin-audit-review.js"></script>
 </body>
 </html>`;

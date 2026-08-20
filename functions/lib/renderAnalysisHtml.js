@@ -1524,6 +1524,7 @@ const CRITERION_ICON_BY_STATUS = {
   partial: ["chk-warn", "!"],
   deficient: ["chk-ko", "✕"],
   not_verified: ["chk-unknown", "○"],
+  not_applicable: ["chk-unknown", "○"],
 };
 
 function criterionIcon(status) {
@@ -1687,6 +1688,7 @@ function freeCriteriaSection(model) {
         <span class="count-tag status-partial">${safeNumber(counts.partial)} à améliorer</span>
         <span class="count-tag status-deficient">${safeNumber(counts.deficient)} prioritaires</span>
         <span class="count-tag status-not_verified">${safeNumber(counts.not_verified)} à confirmer</span>
+        ${counts.not_applicable ? `<span class="count-tag status-not_verified">${safeNumber(counts.not_applicable)} non applicable</span>` : ""}
       </div>
       <div class="chk-grid">
         ${(summary.byDomain || []).map(freeCriteriaDomainCard).join("") || `<p class="empty">Détail des critères non disponible.</p>`}

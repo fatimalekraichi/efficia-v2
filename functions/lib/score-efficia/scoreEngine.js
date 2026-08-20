@@ -62,6 +62,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
         ? (Number.isFinite(review?.points) ? Math.max(0, Math.min(2, Number(review.points))) : null)
         : undefined;
       const points = explicitAbsence ? 0 : (locationPoints !== undefined ? locationPoints : pointsFromManualStatus(criterion, review));
+      const noReviewsResponse = absenceCondition === "no_reviews" && criterion.key === "tauxReponseAvis";
       answers[criterion.key] = points;
       criteria.push({
         key: criterion.key,
@@ -69,7 +70,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
         categoryLabel: category.cat,
         question: review?.question || criterion.q,
         status: explicitAbsence ? "absence_confirmed" : (absenceCondition ? "not_applicable" : (review?.value || "not_verified")),
-        label: absenceCondition === "no_photos" ? "Aucune photo" : (absenceCondition === "no_reviews" ? "Aucun avis" : (absenceCondition ? "Sans objet" : (review?.label || null))),
+        label: noReviewsResponse ? "Non applicable — aucun avis" : (absenceCondition === "no_photos" ? "Aucune photo" : (absenceCondition === "no_reviews" ? "Aucun avis" : (absenceCondition ? "Sans objet" : (review?.label || null)))),
         checklist: absenceCondition ? [] : (Array.isArray(review?.checklist) ? review.checklist : []),
         selectedOptionIndex: absenceCondition ? null : (review?.selectedOptionIndex ?? null),
         source: explicitAbsence ? "conditional_absence" : (absenceCondition ? "conditional_dependency" : (review?.source || null)),
