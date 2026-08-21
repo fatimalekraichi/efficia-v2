@@ -15,6 +15,8 @@ const orderContextInfo = document.querySelector("[data-order-context-info]");
 const popupFallback = document.querySelector("[data-admin-audit-popup-fallback]");
 const popupFallbackLink = document.querySelector("[data-admin-audit-popup-link]");
 const readyIndicator = document.querySelector("[data-admin-audit-ready]");
+const auditTypeFields = document.querySelectorAll("input[name='reportType']");
+const auditTypeWarning = document.querySelector("[data-admin-audit-warning]");
 
 // Mission "rendre l'identification de l'entreprise suffisamment robuste pour
 // le lancement de la bêta" — Objectif 2 : sélecteur de candidats ambigus.
@@ -39,6 +41,7 @@ let pendingAmbiguousPayload = null;
 // confirmation, plutôt que son seul place_id — évite tout nouvel appel amont
 // côté serveur, donc tout risque de SELECTED_CANDIDATE_NOT_FOUND.
 let pendingCandidates = [];
+let creationIdempotencyKey = "";
 
 // Seules Observation et Benchmark s'exécutent réellement lors de la génération d'un nouvel audit.
 // Knowledge/Reasoning/Composer ne tournent qu'après validation humaine, sur la page de génération
@@ -151,9 +154,9 @@ function collectPayload() {
   return {
     orderId: linkedOrder?.order_id || new URLSearchParams(window.location.search).get("orderId") || "",
     taskId: linkedTask?.task_id || "",
-    // Cette page ne sert plus qu'à lancer des Audits Premium : la valeur est
-    // fixée en arrière-plan, il n'existe plus aucun contrôle pour la changer.
-    reportType: "premium",
+    operation: linkedOrder ? "create_commercial_audit" : "create_manual_audit",
+    reportType: form?.querySelector("input[name='reportType']:checked")?.value || "",
+    idempotencyKey: creationIdempotencyKey || (creationIdempotencyKey = crypto.randomUUID()),
     googleBusinessUrl: String(data.get("googleBusinessUrl") || "").trim(),
     companyName: String(data.get("companyName") || "").trim(),
     city: String(data.get("city") || "").trim(),
@@ -195,6 +198,13 @@ function renderOrderContext({ order, task }) {
     </div>
   `).join("");
   orderContext.hidden = false;
+
+  const reportType = inferReportTypeFromOrder(order);
+  auditTypeFields.forEach((field) => {
+    field.checked = field.value === reportType;
+    field.disabled = true;
+  });
+  updateAuditTypeUi();
 
   if (task?.notes) fillIfEmpty("internalNotes", task.notes);
 }
@@ -243,6 +253,7 @@ function hasIdentification(payload) {
 }
 
 function validatePayload(payload) {
+  if (!REPORT_TYPE_LABELS[payload.reportType]) return "Choisissez le type d’audit à créer.";
   if (!hasIdentification(payload)) {
     return "Veuillez renseigner soit l’URL Google Business, soit le nom de l’entreprise et sa ville.";
   }
@@ -251,6 +262,18 @@ function validatePayload(payload) {
   }
   if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return "L’adresse e-mail n’est pas valide.";
   return "";
+}
+
+function submitLabel(reportType = "") {
+  if (reportType === "free") return "Créer le diagnostic gratuit";
+  if (reportType === "premium") return linkedOrder ? "Générer l’audit Premium payé" : "Créer l’audit Premium";
+  return "Choisir un type d’audit";
+}
+
+function updateAuditTypeUi() {
+  const reportType = form?.querySelector("input[name='reportType']:checked")?.value || "";
+  if (auditTypeWarning) auditTypeWarning.hidden = reportType !== "premium" || Boolean(linkedOrder);
+  if (!isSubmitting && submitButton) submitButton.textContent = submitLabel(reportType);
 }
 
 // Garde les attributs `required`/`aria-required` cohérents avec la validation
@@ -386,7 +409,7 @@ async function runAudit(payload) {
   } finally {
     isSubmitting = false;
     submitButton.disabled = false;
-    submitButton.textContent = "Générer l’audit";
+    updateAuditTypeUi();
   }
 }
 
@@ -410,7 +433,9 @@ async function submitAudit(event) {
 });
 
 form?.addEventListener("submit", submitAudit);
+auditTypeFields.forEach((field) => field.addEventListener("change", updateAuditTypeUi));
 updateRequiredState();
+updateAuditTypeUi();
 loadOrderFromQuery().then(updateRequiredState);
 
 resetButton?.addEventListener("click", () => {
@@ -418,6 +443,7 @@ resetButton?.addEventListener("click", () => {
   progressCard.hidden = true;
   if (candidatesCard) candidatesCard.hidden = true;
   pendingAmbiguousPayload = null;
+  creationIdempotencyKey = "";
   resetProgress();
   setError("");
   form?.querySelector("input[name='googleBusinessUrl']")?.focus();

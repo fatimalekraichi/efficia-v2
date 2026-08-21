@@ -124,6 +124,19 @@ export const requireAdminSession = async (context) => {
   return { ok: true };
 };
 
+export const requireSameOriginMutation = (request) => {
+  const requestUrl = new URL(request.url);
+  const origin = normalizeText(request.headers.get("Origin"));
+  const fetchSite = normalizeText(request.headers.get("Sec-Fetch-Site")).toLowerCase();
+  if (!origin || origin !== requestUrl.origin) {
+    return { ok: false, response: jsonResponse({ success: false, error: "CROSS_ORIGIN_REQUEST" }, 403) };
+  }
+  if (fetchSite && !["same-origin", "none"].includes(fetchSite)) {
+    return { ok: false, response: jsonResponse({ success: false, error: "CROSS_ORIGIN_REQUEST" }, 403) };
+  }
+  return { ok: true };
+};
+
 export const compareAdminPassword = async ({ receivedPassword, expectedPassword }) => {
   const receivedDigest = await crypto.subtle.digest("SHA-256", encoder.encode(receivedPassword));
   const expectedDigest = await crypto.subtle.digest("SHA-256", encoder.encode(expectedPassword));
@@ -147,4 +160,3 @@ export const onOptions = () => new Response(null, {
   status: 204,
   headers: getCorsHeaders(),
 });
-

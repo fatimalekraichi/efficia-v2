@@ -26,6 +26,7 @@ class LocalD1 {
     this.sqlite = new DatabaseSync(":memory:");
     this.sqlite.exec("PRAGMA foreign_keys = ON");
     for (const name of [
+      "0001_orders_tasks.sql",
       "0003_analyses.sql",
       "0004_analysis_competitors.sql",
       "0005_analysis_benchmark.sql",
@@ -41,6 +42,7 @@ class LocalD1 {
       "0011_score_efficia_historical.sql",
       "0014_audit_drafts.sql",
       "0015_audit_questionnaire_snapshots.sql",
+      "0016_admin_manual_audits.sql",
     ]) {
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
     }
@@ -167,6 +169,14 @@ test("aperçu et PDF conservent le brouillon puis figent un snapshot idempotent"
 test("la duplication crée une nouvelle analyse et un nouveau brouillon sans muter l’original", async () => {
   const db = new LocalD1();
   seedAnalysis(db, PREMIUM_ID, "premium");
+  db.sqlite.prepare(`
+    INSERT INTO orders (
+      order_id, stripe_session_id, email, offer_code, offer_name, amount_total,
+      currency, status, paid_at, created_at, updated_at
+    ) VALUES ('paid-order', 'stripe-session', 'client@example.com', 'audit',
+      'Audit Premium', 9900, 'eur', 'paid', ?, ?, ?)
+  `).run("2026-08-20T09:00:00.000Z", "2026-08-20T09:00:00.000Z", "2026-08-20T09:00:00.000Z");
+  db.sqlite.prepare("UPDATE analyses SET order_id = 'paid-order' WHERE analysis_id = ?").run(PREMIUM_ID);
   const answers = {
     questionnaireVersion: "score-efficia-questionnaire-v4",
     reportType: "premium",
@@ -188,18 +198,23 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
   const duplicatedAnalysis = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(duplicate.analysisId);
   assert.equal(duplicatedAnalysis.status, "awaiting_review");
   assert.equal(duplicatedAnalysis.report_type, "premium");
+  assert.equal(duplicatedAnalysis.order_id, null);
   assert.equal(duplicatedAnalysis.pdf_generated_at, null);
   const duplicatedDraft = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(duplicate.analysisId);
   assert.deepEqual(JSON.parse(duplicatedDraft.answers_json), answers);
   assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(PREMIUM_ID), originalBefore);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID).count, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(duplicate.analysisId).count, 0);
+  const duplicatedMetadata = db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(duplicate.analysisId);
+  assert.equal(duplicatedMetadata.creation_source, "duplicate_manual");
+  assert.equal(duplicatedMetadata.billing_status, "manual_unpaid");
 
   const retry = await duplicateQuestionnaireSnapshot(db, PREMIUM_ID, DUPLICATION_KEY);
   assert.equal(retry.created, false);
   assert.equal(retry.analysisId, duplicate.analysisId);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM analyses").get().count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_drafts").get().count, 2);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 1);
 });
 
 test("la duplication est atomique si la création du brouillon échoue", async () => {

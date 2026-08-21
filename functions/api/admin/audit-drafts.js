@@ -1,4 +1,5 @@
 import { jsonResponse, requireAdminSession, requireOrdersDb } from "../../admin/_shared.js";
+import { formatAuditCommercialLabel } from "../../lib/auditCreationMetadata.js";
 
 const MAX_DRAFTS = 100;
 
@@ -18,9 +19,19 @@ export async function onRequestGet(context) {
       d.created_at,
       d.updated_at,
       a.nom,
-      a.ville
+      a.ville,
+      m.creation_source,
+      m.billing_status,
+      CASE WHEN o.status = 'paid' AND (
+        o.offer_code IN ('audit', 'visibility', 'performance') OR EXISTS (
+          SELECT 1 FROM order_items oi WHERE oi.order_id = o.order_id
+            AND oi.offer_code IN ('audit', 'visibility', 'performance')
+        )
+      ) THEN 1 ELSE 0 END AS paid_order
     FROM audit_drafts d
     JOIN analyses a ON a.analysis_id = d.analysis_id
+    LEFT JOIN audit_creation_metadata m ON m.analysis_id = d.analysis_id AND m.request_status = 'completed'
+    LEFT JOIN orders o ON o.order_id = a.order_id
     LEFT JOIN audit_questionnaire_snapshots s ON s.analysis_id = d.analysis_id
     WHERE d.status = 'draft'
       AND s.analysis_id IS NULL
@@ -35,6 +46,9 @@ export async function onRequestGet(context) {
       analysisId: row.analysis_id,
       status: row.status,
       reportType: row.report_type,
+      auditLabel: formatAuditCommercialLabel(row),
+      creationSource: row.creation_source || null,
+      billingStatus: row.billing_status || null,
       answersVersion: row.answers_version,
       currentStep: row.current_step,
       company: row.nom || null,

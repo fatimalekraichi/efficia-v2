@@ -21,6 +21,7 @@ const migrations = [
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",
   "0010_analysis_report_type.sql", "0011_score_efficia_historical.sql", "0012_order_cgv_acceptance.sql",
   "0013_diagnostic_requests.sql",
+  "0016_admin_manual_audits.sql",
 ];
 
 class LocalD1 {

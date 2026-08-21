@@ -169,7 +169,7 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
       rating_gap, reviews_gap, photos_gap, rating_percentile,
       reviews_percentile, photos_percentile, top_competitor_name,
       top_competitor_rating, top_competitor_reviews, benchmark_completed_at,
-      NULL, NULL, NULL, NULL, NULL, NULL, order_id, NULL, NULL, NULL, NULL,
+      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
       NULL, NULL, report_type, NULL, NULL, NULL
     FROM analyses
     WHERE analysis_id = ?
@@ -197,8 +197,22 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
     ) VALUES (?, ?, ?, ?)
   `).bind(analysisId, idempotencyKey, newAnalysisId, now);
 
+  const recordManualOrigin = db.prepare(`
+    INSERT INTO audit_creation_metadata (
+      idempotency_key, analysis_id, creation_source, audit_type,
+      billing_status, request_status, created_at, updated_at
+    ) VALUES (?, ?, 'duplicate_manual', ?, ?, 'completed', ?, ?)
+  `).bind(
+    `duplicate_${analysisId}_${idempotencyKey}`,
+    newAnalysisId,
+    snapshot.reportType,
+    snapshot.reportType === "premium" ? "manual_unpaid" : "not_applicable",
+    now,
+    now,
+  );
+
   try {
-    const results = await db.batch([copyAnalysis, copyDraft, recordDuplication]);
+    const results = await db.batch([copyAnalysis, copyDraft, recordDuplication, recordManualOrigin]);
     if (!Number(results?.[0]?.meta?.changes || 0)) {
       return { ok: false, error: "ANALYSIS_NOT_FOUND" };
     }

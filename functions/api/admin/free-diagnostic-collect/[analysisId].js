@@ -3,6 +3,7 @@ import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrd
 import { collectFiche } from "../../../lib/collectFiche.js";
 import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
+import { loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
 
@@ -114,7 +115,10 @@ export async function onRequestPost(context) {
     WHERE analysis_id = ?
     LIMIT 1
   `).bind(analysisId).first();
-  if (!diagnosticRequest) {
+  const manualMetadata = diagnosticRequest ? null : await loadManualAuditMetadata(db, analysisId);
+  const isManualFree = manualMetadata?.creation_source === "admin_manual"
+    && manualMetadata?.audit_type === "free";
+  if (!diagnosticRequest && !isManualFree) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_REQUEST_REQUIRED" }, 403);
   }
 
@@ -125,11 +129,11 @@ export async function onRequestPost(context) {
     return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
   }
   const manualActivity = normalizeText(payload?.activity).slice(0, 160);
-  const googleBusinessUrl = normalizeText(diagnosticRequest.google_business_url);
-  const requestedCompany = usableText(diagnosticRequest.company_name)
+  const googleBusinessUrl = normalizeText(diagnosticRequest?.google_business_url);
+  const requestedCompany = usableText(diagnosticRequest?.company_name)
     || usableText(analysis.business?.name)
     || usableText(analysis.business?.nom);
-  const requestedCity = usableText(diagnosticRequest.city)
+  const requestedCity = usableText(diagnosticRequest?.city)
     || usableText(analysis.business?.ville);
 
   const ficheResult = await collectFiche({

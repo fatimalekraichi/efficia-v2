@@ -6,7 +6,7 @@ import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
 import { executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
-import { loadPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
+import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 
 async function readPayload(request) {
   try {
@@ -123,7 +123,7 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     }, 409);
   }
   if (manualReview.reportType === "premium") {
-    const authorization = await loadPremiumAuthorization(db, analysisId);
+    const authorization = await loadAdminPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
       return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
     }
@@ -207,7 +207,7 @@ async function approveAnalysis(db, analysisId) {
   const row = await loadRawAnalysis(db, analysisId);
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
   if (row.report_type !== "free") {
-    const authorization = await loadPremiumAuthorization(db, analysisId);
+    const authorization = await loadAdminPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
       return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
     }

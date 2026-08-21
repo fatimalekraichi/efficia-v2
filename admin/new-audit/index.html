@@ -32,7 +32,7 @@
         <div>
           <span class="admin-kicker">Audit interne</span>
           <h1>Générer un audit Efficia</h1>
-          <p>Lancez le pipeline complet depuis une URL Google Business. L’analyse, le benchmark, la connaissance métier et le rapport premium sont produits côté serveur.</p>
+          <p>Créez un diagnostic gratuit ou un audit Premium manuel depuis une URL Google Business, ou avec le nom et la ville.</p>
         </div>
       </section>
 
@@ -46,6 +46,20 @@
         </div>
 
         <form class="admin-form admin-audit-form" data-admin-audit-form novalidate>
+          <fieldset class="admin-audit-type" data-admin-audit-type>
+            <legend>Type d’audit <span aria-hidden="true">*</span></legend>
+            <label class="admin-audit-type__choice">
+              <input type="radio" name="reportType" value="free" required>
+              <span><strong>Diagnostic gratuit</strong><small>Créer un diagnostic gratuit directement depuis le back-office.</small></span>
+            </label>
+            <label class="admin-audit-type__choice">
+              <input type="radio" name="reportType" value="premium" required>
+              <span><strong>Audit Premium manuel</strong><small>Créer un audit Premium sans commande payée associée.</small></span>
+            </label>
+          </fieldset>
+          <p class="admin-audit-warning" data-admin-audit-warning hidden role="status">
+            Audit créé manuellement — aucune commande payée associée.
+          </p>
           <!-- Deux façons équivalentes d'identifier l'entreprise : l'URL seule
                (Mode 1) ou Nom + Ville (Mode 2). Aucun `required` statique ici :
                js/admin-new-audit.js les recalcule dynamiquement (updateRequiredState)
@@ -80,7 +94,7 @@
             <textarea name="internalNotes" placeholder="Contexte, demande spécifique, source du prospect..."></textarea>
           </label>
 
-          <button class="admin-button admin-audit-submit" type="submit" data-admin-audit-submit>Générer l’audit</button>
+          <button class="admin-button admin-audit-submit" type="submit" data-admin-audit-submit>Choisir un type d’audit</button>
           <p class="admin-error" data-admin-audit-error role="alert"></p>
         </form>
       </section>

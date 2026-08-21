@@ -1,10 +1,19 @@
 import { loadAnalysisById } from "../analysis/_shared.js";
-import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../admin/_shared.js";
+import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb, requireSameOriginMutation } from "../../admin/_shared.js";
 import { loadPaidPremiumOrder } from "../../lib/premiumAuthorization.js";
+import {
+  completeManualAuditCreation,
+  failManualAuditCreation,
+  reserveManualAuditCreation,
+} from "../../lib/auditCreationMetadata.js";
 
 const GOOGLE_HOST_PATTERN = /(^|\.)google\.[a-z.]+$/i;
 const GOOGLE_MAPS_HOST_PATTERN = /(^|\.)googleapis\.com$|(^|\.)goo\.gl$|(^|\.)maps\.app\.goo\.gl$/i;
 const REPORT_TYPES = new Set(["free", "premium"]);
+const AUDIT_OPERATIONS = Object.freeze({
+  manual: "create_manual_audit",
+  commercial: "create_commercial_audit",
+});
 
 function isValidGoogleBusinessUrl(value) {
   const raw = normalizeText(value);
@@ -377,6 +386,8 @@ export async function onRequestOptions() {
 export async function onRequestPost(context) {
   const auth = await requireAdminSession(context);
   if (!auth.ok) return auth.response;
+  const sameOrigin = requireSameOriginMutation(context.request);
+  if (!sameOrigin.ok) return sameOrigin.response;
 
   let payload;
   try {
@@ -393,10 +404,34 @@ export async function onRequestPost(context) {
 
   const db = requireOrdersDb(context.env);
   const orderId = cleanInput(payload?.orderId || payload?.order_id, 120);
+  const operation = cleanInput(payload?.operation, 80);
+  if (operation && !Object.values(AUDIT_OPERATIONS).includes(operation)) {
+    return jsonResponse({ success: false, error: "INVALID_AUDIT_OPERATION" }, 400);
+  }
+  const isManualCreation = operation === AUDIT_OPERATIONS.manual;
+  const requestedReportType = cleanInput(payload?.reportType || payload?.report_type, 40).toLowerCase();
+
+  // Une création manuelle est une opération administrative explicite. Elle
+  // n'est jamais déduite de l'absence, de la vacuité ou de la perte d'un
+  // orderId commercial. Les anciens appels liés à une commande restent
+  // compatibles sans champ `operation`.
+  if (isManualCreation && orderId) {
+    return jsonResponse({ success: false, error: "MANUAL_AUDIT_ORDER_FORBIDDEN" }, 400);
+  }
+  if (!isManualCreation && !orderId) {
+    if (!requestedReportType || requestedReportType === "premium") {
+      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+    }
+    return jsonResponse({ success: false, error: "MANUAL_INTENT_REQUIRED" }, 400);
+  }
+
   let orderContext = null;
   if (orderId) {
     orderContext = await loadOrderContext(db, orderId);
     if (!orderContext) {
+      if (requestedReportType === "premium" || requestedReportType === "") {
+        return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+      }
       return jsonResponse({ success: false, error: "ORDER_NOT_FOUND" }, 404);
     }
   }
@@ -410,7 +445,55 @@ export async function onRequestPost(context) {
     }, prepared.status);
   }
 
-  if (prepared.requestMetadata.reportType === "premium") {
+  if (isManualCreation && !REPORT_TYPES.has(cleanInput(payload?.reportType || payload?.report_type, 40).toLowerCase())) {
+    return jsonResponse({ success: false, error: "AUDIT_TYPE_REQUIRED" }, 400);
+  }
+
+  const idempotencyKey = cleanInput(payload?.idempotencyKey, 100);
+  if (isManualCreation && !/^[a-zA-Z0-9_-]{16,100}$/.test(idempotencyKey)) {
+    return jsonResponse({ success: false, error: "INVALID_IDEMPOTENCY_KEY" }, 400);
+  }
+
+  if (isManualCreation) {
+    let reservation;
+    try {
+      reservation = await reserveManualAuditCreation(db, {
+        idempotencyKey,
+        auditType: prepared.requestMetadata.reportType,
+      });
+    } catch (error) {
+      const missingMigration = String(error?.message || error).includes("audit_creation_metadata");
+      return jsonResponse({
+        success: false,
+        error: missingMigration ? "MISSING_D1_MIGRATION" : "D1_UPDATE_FAILED",
+        message: missingMigration
+          ? "La base locale n’est pas à jour. Appliquez la migration 0016_admin_manual_audits.sql, puis relancez."
+          : "La création manuelle n’a pas pu être réservée.",
+      }, 500);
+    }
+    if (reservation.completed) {
+      const existing = await loadAnalysisById(db, reservation.analysisId);
+      if (!existing) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
+      const review = prepared.requestMetadata.reportType === "free"
+        ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(reservation.analysisId)}`
+        : `/admin/audit-review/${encodeURIComponent(reservation.analysisId)}`;
+      return jsonResponse({
+        success: true,
+        created: false,
+        analysisId: reservation.analysisId,
+        status: existing.status,
+        reportType: prepared.requestMetadata.reportType,
+        stages: {},
+        analysis: summarizeAnalysis(existing),
+        links: { review, report: `/api/render/${encodeURIComponent(reservation.analysisId)}`, data: `/api/analysis/${encodeURIComponent(reservation.analysisId)}`, order: null },
+        order: null,
+      });
+    }
+    if (reservation.pending) return jsonResponse({ success: false, error: "CREATION_IN_PROGRESS" }, 409);
+    if (!reservation.acquired) return jsonResponse({ success: false, error: "IDEMPOTENCY_CONFLICT" }, 409);
+  }
+
+  if (!isManualCreation && prepared.requestMetadata.reportType === "premium") {
     const paidOrder = await loadPaidPremiumOrder(db, prepared.requestMetadata.orderId);
     if (!paidOrder) {
       return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
@@ -435,6 +518,7 @@ export async function onRequestPost(context) {
   );
 
   if (result.status === "failed") {
+    if (isManualCreation) await failManualAuditCreation(db, idempotencyKey);
     // Objectif 2 (mission "rendre l'identification suffisamment robuste") —
     // ces deux cas ne sont PAS des échecs du pipeline : ce sont des demandes
     // de décision humaine (candidats ambigus) ou une resoumission dont le
@@ -481,6 +565,10 @@ export async function onRequestPost(context) {
 
   try {
     await markAwaitingReview(db, result.analysisId, prepared.requestMetadata.reportType);
+    if (isManualCreation) {
+      const completed = await completeManualAuditCreation(db, { idempotencyKey, analysisId: result.analysisId });
+      if (!completed) throw new Error("manual_creation_metadata_not_completed");
+    }
   } catch (error) {
     console.error("admin-audits:mark-awaiting-review-failed", {
       analysis_id: result.analysisId,
@@ -544,8 +632,13 @@ export async function onRequestPost(context) {
     notes: prepared.requestMetadata.internalNotes,
   });
 
+  const reviewLink = prepared.requestMetadata.reportType === "free"
+    ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(result.analysisId)}`
+    : `/admin/audit-review/${encodeURIComponent(result.analysisId)}`;
+
   return jsonResponse({
     success: true,
+    created: true,
     analysisId: result.analysisId,
     status: result.status,
     reportType: prepared.requestMetadata.reportType,
@@ -553,7 +646,7 @@ export async function onRequestPost(context) {
     identification: result.identification || null,
     analysis: summarizeAnalysis(analysis),
     links: {
-      review: `/admin/audit-review/${encodeURIComponent(result.analysisId)}`,
+      review: reviewLink,
       report: `/api/render/${encodeURIComponent(result.analysisId)}`,
       data: `/api/analysis/${encodeURIComponent(result.analysisId)}`,
       order: prepared.requestMetadata.orderId
@@ -574,6 +667,7 @@ export function onRequest(context) {
 }
 
 export const __test__ = {
+  AUDIT_OPERATIONS,
   buildPipelineInput,
   loadOrderContext,
   extractBusinessNameFromGoogleUrl,

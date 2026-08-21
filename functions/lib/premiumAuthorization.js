@@ -1,4 +1,5 @@
 import { isAdminSessionValid } from "../admin/_shared.js";
+import { loadManualAuditMetadata } from "./auditCreationMetadata.js";
 
 export const PREMIUM_AUDIT_OFFERS = new Set(["audit", "visibility", "performance"]);
 
@@ -86,6 +87,17 @@ export async function loadPremiumAuthorization(db, analysisId) {
   return { allowed: false, order: null };
 }
 
+export async function loadAdminPremiumAuthorization(db, analysisId) {
+  const paid = await loadPremiumAuthorization(db, analysisId);
+  if (paid.allowed) return { ...paid, authorizationType: "paid" };
+  const metadata = await loadManualAuditMetadata(db, analysisId);
+  const manualAllowed = metadata?.audit_type === "premium"
+    && metadata?.billing_status === "manual_unpaid";
+  return manualAllowed
+    ? { allowed: true, order: null, authorizationType: "admin_manual" }
+    : { allowed: false, order: null, authorizationType: null };
+}
+
 export async function loadPaidPremiumOrder(db, orderId) {
   if (!orderId) return null;
   const row = await db.prepare(`
@@ -112,7 +124,7 @@ export async function requirePremiumAnalysisAuthorization(context, db, analysis)
     return { ok: false, status: 401, error: "UNAUTHORIZED" };
   }
 
-  const authorization = await loadPremiumAuthorization(
+  const authorization = await loadAdminPremiumAuthorization(
     db,
     analysis?.analysisId || analysis?.analysis_id || "",
   );

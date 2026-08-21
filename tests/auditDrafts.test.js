@@ -15,7 +15,7 @@ import {
 const SECRET = "local-admin-secret";
 const FREE_ID = "analysis-free-draft";
 const PREMIUM_ID = "analysis-premium-draft";
-const migrations = ["0003_analyses.sql", "0010_analysis_report_type.sql", "0014_audit_drafts.sql", "0015_audit_questionnaire_snapshots.sql"];
+const migrations = ["0001_orders_tasks.sql", "0003_analyses.sql", "0008_order_analysis_link.sql", "0010_analysis_report_type.sql", "0014_audit_drafts.sql", "0015_audit_questionnaire_snapshots.sql", "0016_admin_manual_audits.sql"];
 
 class LocalD1 {
   constructor() {

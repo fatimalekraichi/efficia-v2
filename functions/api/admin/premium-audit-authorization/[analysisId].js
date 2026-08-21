@@ -1,6 +1,6 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
-import { loadPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
+import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 
 export const onRequestOptions = () => onOptions();
 
@@ -17,7 +17,7 @@ export async function onRequestPost(context) {
   const analysis = await loadAnalysisById(db, analysisId);
   if (!analysis) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
 
-  const authorization = await loadPremiumAuthorization(db, analysisId);
+  const authorization = await loadAdminPremiumAuthorization(db, analysisId);
   if (!authorization.allowed) {
     return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403, {
       "Cache-Control": "no-store",

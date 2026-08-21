@@ -126,6 +126,7 @@ async function makeContext(body, { cookie, db = makeDb() } = {}) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Origin: "http://local.test",
         ...(cookie ? { Cookie: cookie } : {}),
       },
       body: JSON.stringify(body),
@@ -148,12 +149,13 @@ test("admin audit launcher refuse une requête sans session admin", async () => 
 
 test("admin audit launcher refuse une URL Google absente ou invalide, sauf si Nom + Ville sont renseignés", async () => {
   const cookie = await makeAdminCookie();
-  const missing = await onRequestPost(await makeContext({ googleBusinessUrl: "" }, { cookie }));
-  const invalid = await onRequestPost(await makeContext({ googleBusinessUrl: "https://example.com" }, { cookie }));
+  const manualFree = { operation: "create_manual_audit", reportType: "free", idempotencyKey: "invalid-identification-test" };
+  const missing = await onRequestPost(await makeContext({ ...manualFree, googleBusinessUrl: "" }, { cookie }));
+  const invalid = await onRequestPost(await makeContext({ ...manualFree, googleBusinessUrl: "https://example.com" }, { cookie }));
   // Mission "améliorer la validation du formulaire" — Nom seul (sans ville) ne
   // suffit pas à remplacer l'URL : les deux modes restent des voies
   // distinctes et complètes (URL seule, ou Nom ET Ville ensemble).
-  const nameOnly = await onRequestPost(await makeContext({ googleBusinessUrl: "", companyName: "Garage Central" }, { cookie }));
+  const nameOnly = await onRequestPost(await makeContext({ ...manualFree, googleBusinessUrl: "", companyName: "Garage Central" }, { cookie }));
 
   assert.equal(missing.status, 400);
   assert.equal(invalid.status, 400);
@@ -185,6 +187,8 @@ test("admin audit launcher accepte Nom + Ville sans aucune URL Google (Mode 2)",
       companyName: "Garage Central",
       city: "Arlon",
       reportType: "free",
+      operation: "create_manual_audit",
+      idempotencyKey: "manual-free-mode2-0001",
     }, { cookie }));
     const json = await response.json();
 
@@ -219,6 +223,8 @@ test("admin audit launcher collecte observation et benchmark puis retourne la va
       city: "Dinant",
       email: "fatima@example.com",
       reportType: "free",
+      operation: "create_manual_audit",
+      idempotencyKey: "manual-free-pipeline-0001",
     }, { cookie }));
     const json = await response.json();
 
@@ -230,7 +236,7 @@ test("admin audit launcher collecte observation et benchmark puis retourne la va
     assert.equal(json.analysis.score, 88);
     assert.equal(json.analysis.reportType, "premium");
     assert.equal(json.analysis.hasDocumentModel, false);
-    assert.equal(json.links.review, "/admin/audit-review/analysis-123");
+    assert.equal(json.links.review, "/admin/free-diagnostic-production?analysisId=analysis-123");
     assert.equal(json.links.report, "/api/render/analysis-123");
     assert.equal(json.links.data, "/api/analysis/analysis-123");
     assert.deepEqual(calls.map((call) => call.pathname), [
@@ -307,7 +313,7 @@ test("admin audit launcher charge une commande, préremplit le pipeline et assoc
   }
 });
 
-test("admin audit launcher retourne 404 si orderId est inconnu", async () => {
+test("admin audit launcher refuse un Premium commercial si orderId est inconnu", async () => {
   const cookie = await makeAdminCookie();
   const response = await onRequestPost(await makeContext({
     orderId: "missing-order",
@@ -315,8 +321,8 @@ test("admin audit launcher retourne 404 si orderId est inconnu", async () => {
   }, { cookie, db: makeOrderDb({ order: null }) }));
   const json = await response.json();
 
-  assert.equal(response.status, 404);
-  assert.deepEqual(json, { success: false, error: "ORDER_NOT_FOUND" });
+  assert.equal(response.status, 403);
+  assert.deepEqual(json, { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
 });
 
 test("admin audit launcher indique la migration manquante si la relecture D1 échoue", async () => {
@@ -336,6 +342,8 @@ test("admin audit launcher indique la migration manquante si la relecture D1 éc
       companyName: "La Planche des Saveurs",
       city: "Dinant",
       reportType: "free",
+      operation: "create_manual_audit",
+      idempotencyKey: "manual-free-migration-0001",
     }, {
       cookie,
       db: makeDbWithFailingAnalysisRead(new Error("D1_ERROR: no such column: score_inputs_json")),
@@ -352,22 +360,31 @@ test("admin audit launcher indique la migration manquante si la relecture D1 éc
   }
 });
 
-test("admin audit launcher refuse un Premium sans commande payée admissible avant le pipeline", async () => {
+test("admin audit launcher autorise un Premium manuel authentifié sans commande ni paiement", async () => {
   const cookie = await makeAdminCookie();
   const originalFetch = globalThis.fetch;
-  let called = false;
-  globalThis.fetch = async () => {
-    called = true;
-    return Response.json({ success: true });
+  let calls = 0;
+  const db = makeOrderDb({ analysis: analysisRow });
+  globalThis.fetch = async (url) => {
+    calls += 1;
+    return new URL(url).pathname === "/api/analyze"
+      ? Response.json({ analysisId: "analysis-123", status: "collected" })
+      : Response.json({ success: true, status: "completed" });
   };
   try {
     const response = await onRequestPost(await makeContext({
       googleBusinessUrl: "https://www.google.com/maps/place/Garage+Central/",
       reportType: "premium",
-    }, { cookie }));
-    assert.equal(response.status, 403);
-    assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
-    assert.equal(called, false);
+      operation: "create_manual_audit",
+      idempotencyKey: "manual-premium-pipeline-0001",
+    }, { cookie, db }));
+    const json = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(json.reportType, "premium");
+    assert.equal(json.links.review, "/admin/audit-review/analysis-123");
+    assert.equal(calls, 2);
+    assert.ok(db.writes.some((write) => write.sql.includes("audit_creation_metadata")));
+    assert.ok(!db.writes.some((write) => write.sql.includes("INSERT INTO orders")));
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -413,6 +430,7 @@ test("la nouvelle interface bloque les doubles soumissions et n'expose aucun sec
   assert.match(combined, /Diagnostic gratuit/);
   assert.match(combined, /Audit Premium 99 €/);
   assert.match(script, /reportType/);
+  assert.match(script, /operation: linkedOrder \? "create_commercial_audit" : "create_manual_audit"/);
   assert.match(html, /data-order-context/);
   assert.match(script, /\/admin\/orders\/\$\{encodeURIComponent\(orderId\)\}/);
   assert.match(script, /\/admin-order\?id=/);

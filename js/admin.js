@@ -244,7 +244,7 @@ const renderDrafts = (drafts) => {
     <tr>
       <td><strong>${escapeHtml(draft.company || "—")}</strong></td>
       <td>${escapeHtml(draft.city || "—")}</td>
-      <td>${escapeHtml(reportTypeLabels[draft.reportType] || draft.reportType)}</td>
+      <td><span class="admin-badge is-audit-kind">${escapeHtml(draft.auditLabel || reportTypeLabels[draft.reportType] || draft.reportType)}</span></td>
       <td>${escapeHtml(draft.currentStep || "questionnaire")}</td>
       <td>${formatDate(draft.updatedAt)}</td>
       <td><div class="admin-row-actions">
@@ -280,7 +280,7 @@ const renderCompletedAudits = (audits) => {
     <tr>
       <td><strong>${escapeHtml(audit.company || "—")}</strong></td>
       <td>${escapeHtml(audit.city || "—")}</td>
-      <td>${escapeHtml(reportTypeLabels[audit.reportType] || audit.reportType)}</td>
+      <td><span class="admin-badge is-audit-kind">${escapeHtml(audit.auditLabel || reportTypeLabels[audit.reportType] || audit.reportType)}</span></td>
       <td>${formatDate(audit.finalizedAt)}</td>
       <td><div class="admin-row-actions">
         <a class="admin-button" href="${completedAuditUrl(audit)}">Consulter</a>
