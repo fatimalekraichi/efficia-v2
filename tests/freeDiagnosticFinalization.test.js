@@ -254,3 +254,102 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
   await context.run();
   assert.equal(composed, 0);
 });
+
+test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {
+  const helperCode = sliceBetween(html, "function rapportSansAvis()", "function faiblesseChiffree(");
+  const selectionCode = sliceBetween(html, "const FAMILLES_PRIORITES =", "function contexteRapport()");
+  const narrativeCode = sliceBetween(html, "function recommandationPriorite", "function niveauImpactPriorite");
+  const state = {
+    reviewsPresence: "none",
+    position: 2,
+    categoryPoints: 4,
+    categoryMax: 4,
+    publiclyUnverifiable: true,
+  };
+  const criteriaForCount = [{ id: 7, key: "adresse", max: 2 }];
+  const context = {
+    conditionAvis: () => state.reviewsPresence,
+    donneesAnalyse: { nbAvis: 0, note: null, position: 2, moyennesConcurrents: {}, concurrence: null },
+    estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
+    CRITERE_IDS: { categoriePrincipale: 1 },
+    trouverCritere: (id) => id === 1 ? { id: 1, key: "categoriePrincipale", max: state.categoryMax } : null,
+    lirePoints: (id) => id === 1 ? state.categoryPoints : 0,
+    modeLocalisation: () => "service_area",
+    reponseZoneDesserte: () => state.publiclyUnverifiable ? "not_verifiable" : "coherent",
+    critereEstNonVerifiablePubliquement: (criterion) => state.publiclyUnverifiable && criterion?.key === "adresse",
+    critereEstMasque: () => false,
+    critereEstNonApplicable: () => false,
+    GRILLE: [{ criteres: criteriaForCount }],
+    CONFIG: { tempsTaches: {} },
+    detailsPriorite: (item) => ({ constat: item.critere.key, pourquoi: "Pourquoi", action: "Action", reassurance: "" }),
+    actionPhotosPriorite: () => "Ajouter des photos récentes.",
+    localisationNonVerifiablePubliquement: () => state.publiclyUnverifiable,
+    secteurActiviteNaturel: () => "une intervention",
+    fmtNote: (value) => String(value),
+    nEntier: (value) => String(Math.round(Number(value))),
+    prioritePhotosPorteSurActualite: () => false,
+    personaSecteur: () => "un client",
+    majusculeInitiale: (value) => value.charAt(0).toUpperCase() + value.slice(1),
+    globalThis: null,
+  };
+  context.globalThis = context;
+  vm.runInNewContext(`${helperCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
+    FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite,
+    recommandationPriorite, beneficePriorite, constatObservePriorite,
+    consequenceBusinessPriorite, resultatAttenduPriorite,
+    compterElementsAConfirmerRapport, phraseElementsAConfirmer
+  };`, context);
+
+  const candidate = (key, max, perdu) => ({ critere: { key, max, q: key }, points: max - perdu, perdu });
+  const candidates = [
+    candidate("noteMoyenne", 6, 6),
+    candidate("volumeAvis", 5, 5),
+    candidate("classementLocal", 6, 6),
+    candidate("descriptionRemplie", 4, 4),
+    candidate("nombrePhotos", 3, 3),
+    candidate("horaires", 3, 3),
+  ];
+  const selected = context.api.selectionnerPrioritesDynamiques(candidates);
+  assert.equal(selected.length, 3);
+  assert.equal(new Set(selected.map((item) => item.famille)).size, 3);
+  assert.equal(selected.every((item) => ["reputation","offre","photos","infos","activite"].includes(item.famille)), true);
+  assert.equal(selected.some((item) => item.famille === "visibilite"), false);
+  assert.equal(selected.find((item) => item.famille === "reputation")?.critere.key, "noteMoyenne");
+
+  const reputation = selected.find((item) => item.famille === "reputation");
+  const reportContext = { activite: "Électricien", data: context.donneesAnalyse, recherche: "Électricien Audun-le-Tiche" };
+  const texts = [
+    reputation.action,
+    context.api.recommandationPriorite(reputation, reportContext),
+    context.api.beneficePriorite(reputation, reportContext),
+    context.api.constatObservePriorite(reputation, reportContext),
+    context.api.consequenceBusinessPriorite(reputation, reportContext),
+    context.api.resultatAttenduPriorite(reputation, reportContext),
+  ].join(" ");
+  assert.match(texts, /premiers avis authentiques/i);
+  assert.doesNotMatch(texts, /note moyenne|notes faibles|avis visibles|ne semblent pas recevoir de réponse/i);
+
+  const visibilityFamily = context.api.FAMILLES_PRIORITES.find((item) => item.key === "visibilite");
+  const safeVisibilityAction = context.api.actionFamillePriorite(visibilityFamily);
+  assert.doesNotMatch(safeVisibilityAction, /catégorie principale|zone desservie/i);
+  assert.match(safeVisibilityAction, /services et le contenu local/i);
+  const offerPriority = selected.find((item) => item.famille === "offre");
+  assert.doesNotMatch(context.api.resultatAttenduPriorite(offerPriority, reportContext), /où vous intervenez|zone/i);
+
+  assert.equal(context.api.compterElementsAConfirmerRapport(), 1);
+  assert.equal(context.api.phraseElementsAConfirmer(1), "1 élément reste à confirmer.");
+  assert.equal(context.api.phraseElementsAConfirmer(3), "3 éléments restent à confirmer.");
+
+  state.position = 5;
+  context.donneesAnalyse.position = 5;
+  assert.equal(context.api.selectionnerPrioritesDynamiques(candidates).some((item) => item.famille === "visibilite"), true);
+
+  state.reviewsPresence = "present";
+  context.donneesAnalyse.nbAvis = 12;
+  context.donneesAnalyse.note = 4.1;
+  const withReviews = context.api.recommandationPriorite(reputation, reportContext);
+  assert.match(withReviews, /répondre aux avis visibles/i);
+
+  assert.match(html, /actionFamillePriorite\(r\.fam, r\)/);
+  assert.match(html, /rapportSansAvis\(\).*noteMoyenne.*recenceAvis.*tauxReponseAvis.*qualiteReponsesAvis/s);
+});

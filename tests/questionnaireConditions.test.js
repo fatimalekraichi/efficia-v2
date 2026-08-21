@@ -159,7 +159,7 @@ test("les deux interfaces masquent et effacent les dépendances sans modifier le
   assert.match(modern, /reviewsPresence === "none" && criterion\.key === "noteMoyenne"/);
   assert.match(legacy, /if\(masquer\) effacerReponseCritere\(key\)/);
   assert.match(legacy, /function critereEstMasque\(cr\)/);
-  assert.match(legacy, /const visibleCriteria = cat\.criteres\.filter\(cr => !critereEstMasque\(cr\)\)/);
+  assert.match(legacy, /const visibleCriteria = cat\.criteres\.filter\(cr => \{[\s\S]*if\(critereEstMasque\(cr\)\) return false;[\s\S]*REVIEW_DEPENDENT_KEYS\.includes\(cr\.key\)/);
   assert.match(legacy, /critereEstNonApplicable\(cr\)/);
 });
 

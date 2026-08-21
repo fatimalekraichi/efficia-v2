@@ -122,7 +122,8 @@ export const KNOWLEDGE_RULES = [
     base_weight: 4,
     min_confidence: "indicative",
     message_group: "FORCE_RESPONSE",
-    when: (input) => n(input.business?.owner_response_rate) >= KNOWLEDGE_THRESHOLDS.response.strongRate,
+    when: (input) => n(input.business?.reviews) > 0
+      && n(input.business?.owner_response_rate) >= KNOWLEDGE_THRESHOLDS.response.strongRate,
     magnitude: () => 1,
   },
   {
@@ -176,7 +177,8 @@ export const KNOWLEDGE_RULES = [
     base_weight: 6,
     min_confidence: "indicative",
     message_group: "WEAK_RECENCY",
-    when: (input) => n(input.business?.last_review_age_days) > KNOWLEDGE_THRESHOLDS.recency.maxDaysWithoutRecentReview,
+    when: (input) => n(input.business?.reviews) > 0
+      && n(input.business?.last_review_age_days) > KNOWLEDGE_THRESHOLDS.recency.maxDaysWithoutRecentReview,
     magnitude: (input) => simpleMagnitude(n(input.business?.last_review_age_days) / 180),
   },
   {
@@ -248,7 +250,8 @@ export const KNOWLEDGE_RULES = [
     base_weight: 4,
     min_confidence: "indicative",
     message_group: "OPP_RESPONSE",
-    when: (input) => n(input.business?.owner_response_rate) < KNOWLEDGE_THRESHOLDS.response.weakRate,
+    when: (input) => n(input.business?.reviews) > 0
+      && n(input.business?.owner_response_rate) < KNOWLEDGE_THRESHOLDS.response.weakRate,
     magnitude: (input) => simpleMagnitude(1 - n(input.business?.owner_response_rate)),
   },
 ];

@@ -1562,7 +1562,9 @@ function freeIndicesRow(indices = {}) {
 function freeNotVerifiedNote(criteriaSummary) {
   const count = criteriaSummary?.counts?.not_verified || 0;
   if (!count) return null;
-  return `${count > 1 ? `${count} points ne sont` : "1 point n'est"} pas vérifiables de l'extérieur — plutôt que de les deviner, nous les avons marqués « à confirmer ».`;
+  return count === 1
+    ? "1 élément reste à confirmer. Plutôt que de le deviner, nous l'avons marqué « à confirmer »."
+    : `${count} éléments restent à confirmer. Plutôt que de les deviner, nous les avons marqués « à confirmer ».`;
 }
 
 function freeMeaningBox(model) {
@@ -1698,7 +1700,7 @@ function freeCriteriaSection(model) {
         ${(summary.byDomain || []).map(freeCriteriaDomainCard).join("") || `<p class="empty">Détail des critères non disponible.</p>`}
       </div>
       <div class="chk-legend">Légende — <span class="chk-ok">✓</span> conforme&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-warn">!</span> à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-ko">✕</span> prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-unknown">○</span> à confirmer manuellement.</div>
-      <p class="rapport-note">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.${notVerifiedCount ? ` Les ${notVerifiedCount} point${notVerifiedCount > 1 ? "s" : ""} « à confirmer » ne sont vérifiables que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
+      <p class="rapport-note">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.${notVerifiedCount ? ` ${notVerifiedCount === 1 ? "1 élément reste" : `${notVerifiedCount} éléments restent`} à confirmer. ${notVerifiedCount === 1 ? "Il n'est vérifiable" : "Ils ne sont vérifiables"} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
       <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
       ${footer(model, "Page 3/6")}
     </section>

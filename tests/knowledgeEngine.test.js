@@ -119,6 +119,51 @@ test("cas fiche très forte : plusieurs forces et peu de priorités", async () =
   assert.ok(output.strengths.some((finding) => finding.id === "FORCE_SCORE"));
 });
 
+test("aucun avis ne déclenche ni note, ni récence, ni recommandation de réponse", () => {
+  const base = {
+    analysisId: "zero-reviews",
+    business: {
+      name: "Entreprise sans avis",
+      rating: null,
+      reviews: 0,
+      owner_response_rate: 0,
+      last_review_age_days: 999,
+      position: 2,
+      photos_count: 1,
+      description_length: 0,
+      has_description: false,
+      secondary_categories: 1,
+    },
+    benchmark: {
+      confidence: "estimated",
+      benchmark_score: 17,
+      percentiles: { reviews: 0, rating: null, photos: 20 },
+      gaps: { reviews: -2, rating: null, photos: 0 },
+      competitor_median: { reviews: 2, rating: null, photos: 1 },
+    },
+  };
+  const output = runKnowledgeEngine(base);
+  const ids = new Set(allFindings(output).map((item) => item.id));
+
+  assert.equal(ids.has("WEAK_RATING"), false);
+  assert.equal(ids.has("WEAK_RECENCY"), false);
+  assert.equal(ids.has("OPP_RESPONSE"), false);
+  assert.equal(ids.has("FORCE_RESPONSE"), false);
+  assert.equal(output.strengths.some((item) => item.id === "FORCE_POSITION"), true);
+  assert.equal(output.top_priorities.some((item) => item.signal === "position"), false);
+  assert.equal(output.weaknesses.some((item) => item.id === "WEAK_REVIEWS"), true);
+});
+
+test("les recommandations de récence ou de réponse restent possibles avec des avis existants", () => {
+  const output = runKnowledgeEngine({
+    analysisId: "reviews-present",
+    business: { reviews: 12, owner_response_rate: 0, last_review_age_days: 365 },
+    benchmark: { confidence: "indicative" },
+  });
+  const ids = new Set(allFindings(output).map((item) => item.id));
+  assert.equal(ids.has("WEAK_RECENCY") || ids.has("OPP_RESPONSE"), true);
+});
+
 test("chaque constat porte impact métier et severity", async () => {
   const input = await fixture("knowledge-weak-profile");
   const output = runKnowledgeEngine(input);

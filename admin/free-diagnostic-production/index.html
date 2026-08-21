@@ -4202,8 +4202,58 @@ function forceChiffree(cr){
   };
   return versions[cr.key] || forceRapport(cr);
 }
+
+function rapportSansAvis(){
+  return conditionAvis() === "none"
+    || (estNombre(donneesAnalyse?.nbAvis) && Number(donneesAnalyse.nbAvis) === 0);
+}
+
+function rapportPositionTop3(){
+  return estNombre(donneesAnalyse?.position)
+    && Number(donneesAnalyse.position) >= 1
+    && Number(donneesAnalyse.position) <= 3;
+}
+
+function categoriePrincipaleValideePourRapport(){
+  const id = CRITERE_IDS.categoriePrincipale;
+  const critere = trouverCritere(id);
+  const points = lirePoints(id);
+  return Boolean(critere) && points !== null && Number(points) >= Number(critere.max);
+}
+
+function zoneDesserteDoitEtreCorrigee(){
+  return ["service_area","hybrid"].includes(modeLocalisation())
+    && ["partial","incoherent"].includes(reponseZoneDesserte());
+}
+
+function critereEligiblePourNarration(cr, famille = null){
+  if(!cr || critereEstNonVerifiablePubliquement(cr)) return false;
+  if(rapportSansAvis() && ["noteMoyenne","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"].includes(cr.key)){
+    return cr.key === "noteMoyenne" && famille === "reputation";
+  }
+  if(rapportPositionTop3() && famille === "visibilite") return false;
+  return true;
+}
+
+function compterElementsAConfirmerRapport(){
+  return GRILLE.flatMap(cat => cat.criteres).filter(cr => {
+    if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return false;
+    return critereEstNonVerifiablePubliquement(cr) || lirePoints(cr.id) === null;
+  }).length;
+}
+
+function phraseElementsAConfirmer(nombre, { courte = false } = {}){
+  const n = Number(nombre) || 0;
+  if(!n) return "";
+  if(courte) return `${n} élément${n > 1 ? "s" : ""} à confirmer`;
+  return n === 1 ? "1 élément reste à confirmer." : `${n} éléments restent à confirmer.`;
+}
+
 function faiblesseChiffree(cr){
   const d = donneesAnalyse, c = d.concurrence;
+  if(rapportSansAvis() && ["noteMoyenne","volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"].includes(cr.key)){
+    return "Votre fiche ne présente actuellement aucun avis client.";
+  }
   const versions = {
     volumeAvis: c && estNombre(c.volC) && estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis, contre ${nEntier(c.volC)} en moyenne pour les fiches concurrentes observées.` : (estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis — un volume encore modeste pour un prospect qui compare.` : null),
     servicesPresents: estNombre(d.nbServices) ? `${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""} listé${d.nbServices > 1 ? "s" : ""} — l'étendue réelle de vos prestations n'est pas visible.` : null,
@@ -4218,9 +4268,9 @@ function significationV2(forcesDetail, prioritesDetail){
   const lignes = [];
   const emphasis = texte => `<strong>${texte}</strong>`;
   forcesDetail.slice(0,2).forEach(f => lignes.push(`<li class="summary-line"><span class="summary-icon summary-icon--ok">✓</span><span>${emphasis(forceChiffree(f.cr))}</span></li>`));
-  prioritesDetail.slice(0,2).forEach(p => lignes.push(`<li class="summary-line"><span class="summary-icon summary-icon--warning">!</span><span>${emphasis(faiblesseChiffree(p.critere))}</span></li>`));
-  const inconnus = GRILLE.flatMap(cat => cat.criteres).filter(cr => lirePoints(cr.id) === null).length;
-  if(inconnus) lignes.push(`<li class="summary-line"><span class="summary-icon summary-icon--unknown">○</span><span>${inconnus} point${inconnus > 1 ? "s" : ""} ne sont pas vérifiables de l'extérieur — plutôt que de les deviner, nous les avons marqués « à confirmer ».</span></li>`);
+  prioritesDetail.filter(p => critereEligiblePourNarration(p.critere)).slice(0,2).forEach(p => lignes.push(`<li class="summary-line"><span class="summary-icon summary-icon--warning">!</span><span>${emphasis(faiblesseChiffree(p.critere))}</span></li>`));
+  const inconnus = compterElementsAConfirmerRapport();
+  if(inconnus) lignes.push(`<li class="summary-line"><span class="summary-icon summary-icon--unknown">○</span><span>${phraseElementsAConfirmer(inconnus)} Plutôt que de deviner, ${inconnus > 1 ? "nous les avons marqués" : "nous l'avons marqué"} « à confirmer ».</span></li>`);
   if(!lignes.length) return "";
   return `<div class="meaning-box"><h3>Ce qu'il faut en retenir</h3><ul>${lignes.join("")}</ul></div>`;
 }
@@ -4300,7 +4350,11 @@ const LIBELLES_COURTS = {
 function checklistHtml(){
   let ok = 0, warn = 0, ko = 0, inconnus = 0;
   const rubriques = GRILLE.map(cat => {
-    const visibleCriteria = cat.criteres.filter(cr => !critereEstMasque(cr));
+    const visibleCriteria = cat.criteres.filter(cr => {
+      if(critereEstMasque(cr)) return false;
+      if(rapportSansAvis() && REVIEW_DEPENDENT_KEYS.includes(cr.key)) return false;
+      return true;
+    });
     const items = visibleCriteria.map(cr => {
       const p = lirePoints(cr.id);
       const nonApplicable = critereEstNonApplicable(cr);
@@ -4308,7 +4362,9 @@ function checklistHtml(){
       const statut = nonApplicable ? "not_applicable" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
       if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else if(statut !== "not_applicable") warn++;
       const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" || statut === "not_applicable" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
-      const label = nonApplicable
+      const label = rapportSansAvis() && cr.key === "noteMoyenne"
+        ? "Aucun avis client"
+        : nonApplicable
         ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)`
         : (publiclyUnverifiable ? "Zone desservie : à confirmer — information non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
@@ -4317,11 +4373,12 @@ function checklistHtml(){
     const conformes = evalues.filter(cr => lirePoints(cr.id) >= cr.max).length;
     return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || visibleCriteria.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
   }).join("");
+  inconnus = compterElementsAConfirmerRapport();
   const compteur = `<div class="chk-compteur">
     <span style="background:#ecfdf5;color:#059669">✓ ${ok} point${ok>1?"s":""} conforme${ok>1?"s":""}</span>
     <span style="background:#fffbeb;color:#d97706">! ${warn} à améliorer</span>
     <span style="background:#fef2f2;color:#dc2626">✕ ${ko} prioritaire${ko>1?"s":""}</span>
-    ${inconnus ? `<span style="background:#f1f5f9;color:#64748b">○ ${inconnus} à confirmer</span>` : ""}
+    ${inconnus ? `<span style="background:#f1f5f9;color:#64748b">○ ${phraseElementsAConfirmer(inconnus, {courte:true})}</span>` : ""}
   </div>`;
   const legende = `<div class="chk-legend"><strong>Légende</strong> — <span class="chk-ok">✓</span> conforme&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-warn">!</span> à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-ko">✕</span> prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-unknown">○</span> à confirmer manuellement.</div>`;
   return {html:compteur + `<div class="chk-grid">${rubriques}</div>${legende}`, ok, warn, ko, inconnus};
@@ -4336,11 +4393,29 @@ const FAMILLES_PRIORITES = [
   {key:"activite", label:"Activité visible", criteres:["publicationRecente","rythmePublication"], impact:2.8, action:"Publier une actualité simple ou une réalisation récente pour montrer que l'entreprise est active."}
 ];
 
+function actionFamillePriorite(famille, item = null){
+  if(famille.key === "reputation" && rapportSansAvis()){
+    return "Mettre en place un parcours simple pour obtenir les premiers avis authentiques.";
+  }
+  if(famille.key === "offre" && localisationNonVerifiablePubliquement()){
+    return "Clarifier les services principaux et les raisons de vous contacter.";
+  }
+  if(famille.key === "visibilite"){
+    const leviers = [];
+    if(!categoriePrincipaleValideePourRapport()) leviers.push("la catégorie principale");
+    if(zoneDesserteDoitEtreCorrigee()) leviers.push("la zone desservie");
+    leviers.push("les services et le contenu local");
+    return `Renforcer ${leviers.join(", ")} pour améliorer la cohérence de la fiche.`;
+  }
+  if(famille.key === "photos") return actionPhotosPriorite({...item, famille:"photos"});
+  return famille.action;
+}
+
 function selectionnerPrioritesDynamiques(candidats){
   const parFamille = new Map();
   candidats.forEach(item => {
     const famille = FAMILLES_PRIORITES.find(f => f.criteres.includes(item.critere.key));
-    if(!famille) return;
+    if(!famille || !critereEligiblePourNarration(item.critere, famille.key)) return;
     const ratioPerdu = item.perdu / Math.max(item.critere.max, 1);
     const reparable = CONFIG.tempsTaches[item.critere.key] ? 1 : 0.55;
     const score = ratioPerdu * 5 + famille.impact + reparable + item.perdu * 0.25;
@@ -4360,7 +4435,7 @@ function selectionnerPrioritesDynamiques(candidats){
         critere:{...item.critere, q:item.famille.label},
         constat: base.constat,
         pourquoi: base.pourquoi,
-        action: item.famille.key === "photos" ? actionPhotosPriorite({...item, famille:"photos"}) : (item.famille.action || base.action),
+        action: actionFamillePriorite(item.famille, item) || base.action,
         reassurance: base.reassurance
       };
     });
@@ -4416,13 +4491,17 @@ function recommandationPriorite(item, ctx){
   const d = ctx.data;
   const service = secteurActiviteNaturel(ctx.activite);
   const reco = {
-    reputation: estNombre(d.note) && estNombre(d.nbAvis)
+    reputation: rapportSansAvis()
+      ? "Mettre en place un parcours simple pour obtenir les premiers avis authentiques. Dès la réception des premiers avis, y répondre de manière professionnelle et personnalisée."
+      : estNombre(d.note) && estNombre(d.nbAvis)
       ? `Votre note de ${fmtNote(d.note)}/5 est un bon signal. Le prochain levier est d'obtenir davantage d'avis et de répondre aux avis visibles.`
       : "Faciliter la collecte de nouveaux avis et répondre aux avis déjà visibles.",
-    offre: `Expliquer clairement ce que vous faites, où vous intervenez et pourquoi un client devrait vous contacter pour ${service}.`,
+    offre: localisationNonVerifiablePubliquement()
+      ? `Expliquer clairement ce que vous faites et pourquoi un client devrait vous contacter pour ${service}.`
+      : `Expliquer clairement ce que vous faites, où vous intervenez et pourquoi un client devrait vous contacter pour ${service}.`,
     visibilite: ctx.recherche
-      ? `Rendre votre fiche cohérente avec la recherche « ${ctx.recherche} » et avec les recherches plus précises liées à votre activité.`
-      : "Aligner la catégorie, les services et les mots-clés locaux pour renforcer la cohérence de la fiche.",
+      ? `${actionFamillePriorite(FAMILLES_PRIORITES.find(f => f.key === "visibilite"), item)} La recherche observée est « ${ctx.recherche} ».`
+      : actionFamillePriorite(FAMILLES_PRIORITES.find(f => f.key === "visibilite"), item),
     photos: prioritePhotosPorteSurActualite(item)
       ? "Actualiser la galerie avec quelques photos récentes et utiles pour montrer que l'activité est suivie aujourd'hui."
       : estNombre(d.nbPhotos)
@@ -4437,7 +4516,9 @@ function recommandationPriorite(item, ctx){
 function beneficePriorite(item, ctx){
   const d = ctx.data;
   const textes = {
-    reputation: estNombre(d.nbAvis)
+    reputation: rapportSansAvis()
+      ? "Votre fiche ne présente actuellement aucun avis client. Un prospect ne dispose donc d'aucune preuve client pour se rassurer avant de vous contacter."
+      : estNombre(d.nbAvis)
       ? `Les avis font partie des premiers éléments consultés lorsqu'un prospect compare plusieurs entreprises. Avec ${nEntier(d.nbAvis)} avis, votre fiche peut encore paraître fragile face à des concurrents plus fournis.`
       : "Les avis font partie des premiers éléments consultés lorsqu'un prospect compare plusieurs entreprises. Une fiche qui en affiche davantage, et qui y répond, inspire généralement plus confiance.",
     offre: "Un client ne doit pas deviner. Une description courte, précise et locale lui permet de comprendre vos services avant même de vous appeler.",
@@ -4454,6 +4535,7 @@ function constatObservePriorite(item, ctx){
   const volC = m.avis ?? d.concurrence?.volC;
   const rq = ctx.recherche;
   if(item.famille === "reputation"){
+    if(rapportSansAvis()) return "Votre fiche ne présente actuellement aucun avis client.";
     const noteC = m.note ?? d.concurrence?.noteC;
     if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.note) < 4.2 && estNombre(noteC))
       return `Votre fiche dispose déjà de ${nEntier(d.nbAvis)} avis, ce qui constitue une base solide. En revanche, votre note de ${fmtNote(d.note)}/5 reste nettement inférieure à la moyenne concurrentielle observée de ${fmtNote(noteC)}/5.`;
@@ -4506,7 +4588,9 @@ function constatObservePriorite(item, ctx){
 function consequenceBusinessPriorite(item, ctx){
   const persona = personaSecteur(ctx.activite);
   const textes = {
-    reputation: `Les avis font partie des premiers éléments consultés lorsqu'un prospect compare plusieurs entreprises. L'enjeu est de répondre aux avis, comprendre les motifs d'insatisfaction, améliorer l'expérience qui génère les notes faibles et obtenir progressivement de nouveaux avis authentiques.`,
+    reputation: rapportSansAvis()
+      ? "Un prospect ne dispose donc d'aucune preuve client pour se rassurer avant de vous contacter. Le premier objectif est d'obtenir des avis authentiques ; les réponses deviendront pertinentes seulement après leur réception."
+      : `Les avis font partie des premiers éléments consultés lorsqu'un prospect compare plusieurs entreprises. L'enjeu est de répondre aux avis, comprendre les motifs d'insatisfaction, améliorer l'expérience qui génère les notes faibles et obtenir progressivement de nouveaux avis authentiques.`,
     offre: `${majusculeInitiale(persona)} reste quelques secondes sur une fiche. S'il ne peut pas vérifier que vous faites exactement ce qu'il cherche, il n'appelle pas pour demander — il passe à la fiche suivante.`,
     visibilite: `Google n'affiche que trois fiches par recherche locale — le reste n'apparaît qu'après un clic supplémentaire que peu de gens font. ${majusculeInitiale(persona)} qui ne vous voit pas contacte un concurrent sans savoir que vous existiez.`,
     photos: `Entre deux fiches comparables, celle qui montre clairement son activité peut davantage rassurer au moment du choix.`,
@@ -4519,9 +4603,13 @@ function consequenceBusinessPriorite(item, ctx){
 function resultatAttenduPriorite(item, ctx){
   const rq = ctx.recherche;
   const textes = {
-    reputation: "des avis plus récents, des réponses visibles, une fiche qui rassure dès le premier regard.",
+    reputation: rapportSansAvis()
+      ? "les premiers avis authentiques apportent une preuve client visible et rassurante."
+      : "des avis plus récents, des réponses visibles, une fiche qui rassure dès le premier regard.",
     visibilite: `votre fiche redevient candidate au trio de tête que Google affiche${rq ? " sur « " + rq + " »" : ""} — là où partent l'essentiel des appels.`,
-    offre: "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
+    offre: localisationNonVerifiablePubliquement()
+      ? "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler."
+      : "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
     photos: prioritePhotosPorteSurActualite(item) ? "votre galerie montre une entreprise active aujourd'hui." : "votre travail devient visible avant même le premier contact.",
     infos: "plus aucun doute pratique entre le prospect et son appel.",
     activite: "une fiche visiblement suivie et active."
@@ -4550,6 +4638,7 @@ function tempsPriorite(item){
 
 function rendrePriorite(item, index, variante){
   if(!item) return "";
+  if(!critereEligiblePourNarration(item.critere, item.famille)) return "";
   const ctx = contexteRapport();
   const d = detailsPriorite(item);
   const impact = niveauImpactPriorite(item, index);
@@ -4581,7 +4670,7 @@ function beneficesPrioritesHtml(priorites){
     : ctxB.recherche;
   const items = [
     ["⌾", "Plus de visibilité", familles.has("visibilite") && rqB ? `Sur les recherches comme « ${rqB} »${ctxB.ville ? " autour de " + ctxB.ville : ""}.` : (familles.has("visibilite") ? "Votre fiche devient plus lisible sur les recherches qui comptent." : "Les éléments clés soutiennent mieux votre présence locale.")],
-    ["★", "Plus de confiance", familles.has("reputation") ? "Vos avis et vos réponses deviennent visibles au premier regard." : "Une fiche plus complète rassure plus vite un prospect."],
+    ["★", "Plus de confiance", familles.has("reputation") ? (rapportSansAvis() ? "Vos premiers avis authentiques apportent une preuve client visible." : "Vos avis et vos réponses deviennent visibles au premier regard.") : "Une fiche plus complète rassure plus vite un prospect."],
     ["□", "Une fiche plus claire", "Un prospect comprend plus vite ce que vous proposez et comment vous contacter."]
   ];
   return `<div class="benefit-grid">${items.map(([icon, titre, texte]) => `
@@ -4592,9 +4681,11 @@ function beneficesPrioritesHtml(priorites){
 function planAction7Jours(priorites){
   const familles = new Set(priorites.map(p => p.famille));
   const actions = [];
-  if(familles.has("reputation")) actions.push(["Répondre aux avis existants", "et préparer un lien ou QR code pour demander un avis après chaque intervention."]);
-  if(familles.has("offre")) actions.push(["Ajouter une description claire", "avec vos services, votre zone et les cas où l'on doit vous appeler."]);
-  if(familles.has("visibilite")) actions.push(["Vérifier catégories et services", "pour les aligner avec les recherches locales importantes."]);
+  if(familles.has("reputation")) actions.push(rapportSansAvis()
+    ? ["Préparer la collecte des premiers avis", "avec un lien ou QR code simple après chaque intervention."]
+    : ["Répondre aux avis existants", "et préparer un lien ou QR code pour demander un avis après chaque intervention."]);
+  if(familles.has("offre")) actions.push(["Ajouter une description claire", localisationNonVerifiablePubliquement() ? "avec vos services et les cas où l'on doit vous appeler." : "avec vos services, votre zone et les cas où l'on doit vous appeler."]);
+  if(familles.has("visibilite")) actions.push([categoriePrincipaleValideePourRapport() ? "Renforcer les services et le contenu local" : "Vérifier la catégorie et les services", "pour les aligner avec les recherches locales importantes."]);
   if(familles.has("photos")) actions.push(["Ajouter plusieurs photos récentes", "nettes, lumineuses et utiles pour un client qui compare."]);
   if(familles.has("infos")) actions.push(["Contrôler les informations de base", "horaires, téléphone, adresse, site et attributs visibles."]);
   if(familles.has("activite")) actions.push(["Publier une actualité simple", "réalisation récente, conseil pratique ou service à mettre en avant."]);
@@ -4614,8 +4705,12 @@ function planAction7Jours(priorites){
 function detailPosteFaible(label){
   const l = String(label || "").toLowerCase();
   if(/contenu/.test(l)) return "votre fiche est aujourd'hui muette : elle prouve que vous existez, mais n'explique nulle part ce que vous vendez";
-  if(/visibilit/.test(l)) return "Google ne met en avant que trois fiches par recherche — la vôtre doit redevenir candidate à ce trio";
-  if(/avis/.test(l)) return "c'est la première chose qu'un prospect compare avant d'appeler";
+  if(/visibilit/.test(l)) return rapportPositionTop3()
+    ? "votre classement est déjà dans le top 3 ; les autres signaux de visibilité restent à consolider sans remettre ce classement en cause"
+    : "Google ne met en avant que trois fiches par recherche — la vôtre doit devenir candidate à ce trio";
+  if(/avis/.test(l)) return rapportSansAvis()
+    ? "votre fiche ne présente aucun avis client et doit d'abord obtenir ses premières preuves sociales"
+    : "c'est la première chose qu'un prospect compare avant d'appeler";
   if(/photo/.test(l)) return "c'est la première chose qu'un prospect regarde en ouvrant une fiche";
   if(/information/.test(l)) return "ce sont les repères qui évitent les doutes pratiques avant l'appel";
   if(/activit/.test(l)) return "une fiche sans signe d'activité récent paraît moins fiable";
@@ -4788,7 +4883,7 @@ function genererRapport(){
     <h1 class="rapport-title">Ce que nous avons analysé</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${entreprise} au crible de ${nbControles} vérifications — les mêmes que fait ${personaSecteur(activite)}, sans s'en rendre compte, avant de choisir qui appeler pour ${secteurActiviteNaturel(activite)}${ville ? ", autour de " + ville : ""}.</p>
     ${checklist.html}
-    <p style="color:#5b6b81;font-size:.76rem;line-height:1.5;margin-top:12px">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${checklist.inconnus ? ` Les ${checklist.inconnus} points « à confirmer » ne sont vérifiables que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
+    <p style="color:#5b6b81;font-size:.76rem;line-height:1.5;margin-top:12px">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
     <p style="color:#5b6b81;font-size:.76rem;line-height:1.5;margin-top:8px">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.</p>
     <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
     ${pied(3)}
@@ -5262,6 +5357,7 @@ function construireBlocsAuditPremium(){
       const p = lirePoints(cr.id);
       if(p === null) return;
       if(critereEstNonVerifiablePubliquement(cr)) return;
+      if(rapportSansAvis() && ["recenceAvis","tauxReponseAvis","qualiteReponsesAvis"].includes(cr.key)) return;
       if(p >= cr.max) forces.push(cr);
       else faiblesses.push({critere:cr, categoryKey:c.cat.key, perdu:cr.max - p});
     });
@@ -5276,7 +5372,7 @@ function construireBlocsAuditPremium(){
   const parFamille = new Map();
   faiblesses.forEach(f => {
     const fam = FAMILLES_PRIORITES.find(x => x.criteres.includes(f.critere.key));
-    if(!fam) return;
+    if(!fam || !critereEligiblePourNarration(f.critere, fam.key)) return;
     const cur = parFamille.get(fam.key) || {fam, perdu:0};
     cur.perdu += f.perdu;
     parFamille.set(fam.key, cur);
@@ -5332,10 +5428,12 @@ function construireBlocsAuditPremium(){
       <p class="aud-p" style="margin:0">${txt}</p></section>`;
   };
   const txtVis = indices.visibilite === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
+    : rapportPositionTop3() ? `Votre fiche figure déjà dans le top 3 sur la recherche observée (position ${d.position === 1 ? "1re" : d.position + "e"}) : ce classement est un point fort à préserver.`
     : indices.visibilite >= 75 ? `Votre fiche ressort bien sur les recherches locales pertinentes${estNombre(d.position) && d.position > 0 ? ` (position observée : ${d.position === 1 ? "1re" : d.position + "e"})` : ""}.`
     : indices.visibilite >= 50 ? "Votre présence locale est correcte mais perfectible : catégories, mots-clés locaux et classement peuvent être renforcés."
     : `Premier chantier : la fiche n'apparaît pas assez sur les recherches de ${activite || "votre activité"}${ville ? " à " + ville : ""}.`;
   const txtConf = indices.confiance === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
+    : rapportSansAvis() ? "Votre fiche ne présente actuellement aucun avis client. Le premier levier de confiance consiste à obtenir des avis authentiques."
     : indices.confiance >= 75 ? `Vos avis et signaux de réputation inspirent confiance${estNombre(d.note) && estNombre(d.nbAvis) ? ` (${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis)` : ""}.`
     : indices.confiance >= 50 ? "Votre réputation est correcte mais peut être consolidée : volume, récence et réponses aux avis."
     : "Vos signaux de confiance sont à renforcer en priorité : volume d'avis, réponses et note visible.";
@@ -5395,7 +5493,9 @@ function construireBlocsAuditPremium(){
     if(key === "reputation"){
       const avg = compAvg("avis");
       let constat, illustration = "";
-      if(estNombre(d.nbAvis) && estNombre(avg)){
+      if(rapportSansAvis()){
+        constat = "Votre fiche ne présente actuellement aucun avis client.";
+      } else if(estNombre(d.nbAvis) && estNombre(avg)){
         const a = Math.round(avg);
         constat = `Votre fiche affiche ${nEntier(d.nbAvis)} avis${estNombre(d.note) ? ` pour une note de ${fmtNote(d.note)}/5` : ""}, contre ${a} avis en moyenne chez les concurrents analysés.`;
         illustration = barreComparative(nEntier(d.nbAvis), a, "");
@@ -5405,7 +5505,10 @@ function construireBlocsAuditPremium(){
         constat = "Le signal de réputation (nombre d'avis, réponses, récence) est faible ou incomplet sur votre fiche.";
       }
       const enAvanceAvis = estNombre(d.nbAvis) && estNombre(avg) && Number(d.nbAvis) >= Math.round(avg);
-      return {constat, explication: enAvanceAvis ? "Les avis sont le premier élément qu'un prospect compare. Votre volume est un atout : l'enjeu n'est pas de rattraper un retard mais de préserver cette avance en maintenant un flux régulier d'avis récents et de réponses visibles." : "Les avis sont le premier élément qu'un prospect compare entre deux fiches. Un volume ou une fraîcheur inférieurs à la concurrence le poussent souvent à contacter l'autre entreprise avant même de vous appeler.", illustration};
+      const explication = rapportSansAvis()
+        ? "Un prospect ne dispose d'aucune preuve client pour se rassurer avant de vous contacter. Le premier objectif est d'obtenir des avis authentiques ; les réponses deviendront pertinentes seulement après leur réception."
+        : enAvanceAvis ? "Les avis sont le premier élément qu'un prospect compare. Votre volume est un atout : l'enjeu n'est pas de rattraper un retard mais de préserver cette avance en maintenant un flux régulier d'avis récents et de réponses visibles." : "Les avis sont le premier élément qu'un prospect compare entre deux fiches. Un volume ou une fraîcheur inférieurs à la concurrence le poussent souvent à contacter l'autre entreprise avant même de vous appeler.";
+      return {constat, explication, illustration};
     }
     if(key === "photos"){
       const avg = compAvg("photos");
@@ -5428,7 +5531,11 @@ function construireBlocsAuditPremium(){
       } else if(estNombre(d.position) && d.position === 0){
         constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
       } else {
-        constat = "La cohérence de votre fiche (catégorie, mots-clés locaux, zone desservie) limite sa visibilité sur les recherches qui comptent.";
+        const leviers = [];
+        if(!categoriePrincipaleValideePourRapport()) leviers.push("catégorie principale");
+        if(zoneDesserteDoitEtreCorrigee()) leviers.push("zone desservie");
+        leviers.push("services et contenu local");
+        constat = `La cohérence de votre fiche sur les ${leviers.join(", ")} limite sa visibilité sur les recherches qui comptent.`;
       }
       return {constat, explication:"La grande majorité des clics se concentre sur les trois premières fiches locales. Être plus bas — ou absent — signifie que des prospects choisissent un concurrent sans même voir votre fiche.", illustration:""};
     }
@@ -5440,7 +5547,9 @@ function construireBlocsAuditPremium(){
       return {constat, explication:"Un prospect décide en quelques secondes. Si votre spécialité et vos services ne sont pas clairs immédiatement, il ne fait pas l'effort de comprendre : il passe à la fiche suivante.", illustration:""};
     }
     if(key === "infos"){
-      return {constat:"Certaines informations essentielles de la fiche (revendication, horaires, contact, adresse) sont incomplètes ou à confirmer.", explication:"Une information manquante ou incohérente crée un doute. Sur une décision aussi rapide, le doute se traduit presque toujours par un appel au concurrent.", illustration:""};
+      const champs = ["revendication", "horaires", "contact"];
+      if(!localisationNonVerifiablePubliquement()) champs.push("adresse");
+      return {constat:`Certaines informations essentielles de la fiche (${champs.join(", ")}) sont incomplètes ou à confirmer.`, explication:"Une information manquante ou incohérente crée un doute. Sur une décision aussi rapide, le doute se traduit presque toujours par un appel au concurrent.", illustration:""};
     }
     if(key === "activite"){
       return {constat:"Votre fiche montre peu de signes d'activité récente (publications, actualités).", explication:"Une fiche sans activité récente peut sembler à l'abandon. À l'inverse, une fiche vivante rassure et signale, à Google comme aux clients, que l'entreprise est bien en activité.", illustration:""};
@@ -5472,7 +5581,7 @@ function construireBlocsAuditPremium(){
           <p class="aud-prob-lead">Constat — ${c.constat}</p>
           <p>Pourquoi c'est un frein — ${c.explication}</p>
           ${c.illustration}
-          <div class="aud-reco"><b>Recommandation :</b> ${r.fam.action}</div>
+          <div class="aud-reco"><b>Recommandation :</b> ${actionFamillePriorite(r.fam, r)}</div>
           <p class="gain">≈ ${Math.round(r.perdu)} points de score à regagner</p></section>`);
       });
     });
@@ -5488,7 +5597,7 @@ function construireBlocsAuditPremium(){
   push(`<section class="aud-block"><h2 class="aud-h2">Conclusion</h2><p class="aud-lead">${conclusionText}</p></section>`);
   /* ---- Vos points à récupérer : le chemin concret, action par action ---- */
   if(famList.length){
-    const actionsCourtes = {infos:"Compléter les informations essentielles", reputation:"Renforcer la réputation (avis, réponses)", photos:"Renforcer les photos stratégiques", offre:"Optimiser la description et les services", visibilite:"Optimiser catégories et mots-clés locaux", activite:"Publier régulièrement"};
+    const actionsCourtes = {infos:"Compléter les informations essentielles", reputation:rapportSansAvis() ? "Obtenir les premiers avis authentiques" : "Renforcer la réputation (avis, réponses)", photos:"Renforcer les photos stratégiques", offre:"Optimiser la description et les services", visibilite:categoriePrincipaleValideePourRapport() ? "Renforcer les services et le contenu local" : "Optimiser la catégorie et le contenu local", activite:"Publier régulièrement"};
     const potentiel = Math.max(1, proj.projete - score);
     const famTop = famList.slice(0, Math.max(1, Math.min(5, potentiel)));
     const sommePerdu = famTop.reduce((x,r) => x + r.perdu, 0) || 1;

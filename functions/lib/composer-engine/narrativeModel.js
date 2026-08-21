@@ -69,8 +69,11 @@ function buildCriteriaSummary(criteria) {
   };
 }
 
-function buildFreePriorityCard(item) {
+function buildFreePriorityCard(item, scoreContext = {}) {
   const logic = item.logic || {};
+  const firstAction = item.signal === "description" && scoreContext.locationConfirmation
+    ? "Rédiger une description claire de vos services et de vos différenciants."
+    : buildFirstAction(item.signal);
   return {
     rank: item.rank,
     id: item.id,
@@ -78,7 +81,7 @@ function buildFreePriorityCard(item) {
     title: item.title,
     observed: logic.cause || null,
     prospectView: [logic.businessImpact, logic.competitiveAngle].filter(Boolean).join(" ") || null,
-    firstAction: buildFirstAction(item.signal),
+    firstAction,
     expectedResult: buildExpectedResult(item.signal),
     estimatedTime: item.actionability?.estimatedTime || null,
     impact: item.severity || null,
@@ -100,7 +103,7 @@ function buildFreeDiagnostic(bundle, scoreContext = {}) {
     provisional: scoreContext.provisional === true,
     locationConfirmation: scoreContext.locationConfirmation || null,
     projectedScore: scoreContext.projectedPackScore?.projete ?? null,
-    priorities: freeSelections.priorities.map(buildFreePriorityCard),
+    priorities: freeSelections.priorities.map((item) => buildFreePriorityCard(item, scoreContext)),
   };
 }
 

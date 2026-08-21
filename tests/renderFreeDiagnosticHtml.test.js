@@ -272,5 +272,7 @@ test("les rapports gratuit et Premium présentent la zone non vérifiable sans a
     assert.doesNotMatch(html, /Zone desservie : absente ou incohérente/i);
     assert.doesNotMatch(html, /corriger la zone desservie/i);
   }
+  assert.match(freeHtml, /1 élément reste à confirmer\./);
+  assert.doesNotMatch(freeHtml, /1 point n'est|Les 1 points|1 points/i);
   assert.match(premiumHtml, /Score Efficia™ provisoire/);
 });
