@@ -2,6 +2,7 @@ const ordersBody = document.querySelector("[data-admin-orders]");
 const diagnosticsBody = document.querySelector("[data-admin-diagnostics]");
 const diagnosticCount = document.querySelector("[data-admin-diagnostic-count]");
 const draftsBody = document.querySelector("[data-admin-drafts]");
+const completedAuditsBody = document.querySelector("[data-admin-completed-audits]");
 const filtersForm = document.querySelector("[data-admin-filters]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const statElements = document.querySelectorAll("[data-stat]");
@@ -229,6 +230,10 @@ const draftResumeUrl = (draft) => draft.reportType === "free"
   ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(draft.analysisId)}`
   : `/admin/audit-review/${encodeURIComponent(draft.analysisId)}`;
 
+const completedAuditUrl = (audit) => audit.reportType === "free"
+  ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(audit.analysisId)}&readonly=1`
+  : `/admin/audit-review/${encodeURIComponent(audit.analysisId)}?readonly=1`;
+
 const renderDrafts = (drafts) => {
   if (!draftsBody) return;
   if (!drafts.length) {
@@ -264,6 +269,61 @@ const loadDrafts = async () => {
   }
   renderDrafts(data.drafts || []);
 };
+
+const renderCompletedAudits = (audits) => {
+  if (!completedAuditsBody) return;
+  if (!audits.length) {
+    completedAuditsBody.innerHTML = `<tr><td colspan="5" class="admin-empty">Aucun audit terminé.</td></tr>`;
+    return;
+  }
+  completedAuditsBody.innerHTML = audits.map((audit) => `
+    <tr>
+      <td><strong>${escapeHtml(audit.company || "—")}</strong></td>
+      <td>${escapeHtml(audit.city || "—")}</td>
+      <td>${escapeHtml(reportTypeLabels[audit.reportType] || audit.reportType)}</td>
+      <td>${formatDate(audit.finalizedAt)}</td>
+      <td><div class="admin-row-actions">
+        <a class="admin-button" href="${completedAuditUrl(audit)}">Consulter</a>
+        <button class="admin-button is-secondary" type="button" data-duplicate-audit="${escapeHtml(audit.analysisId)}">Dupliquer pour nouvelle version</button>
+      </div></td>
+    </tr>
+  `).join("");
+};
+
+const loadCompletedAudits = async () => {
+  if (!completedAuditsBody) return;
+  const response = await fetch("/api/admin/audit-snapshots", {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 401) return redirectToLogin();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    completedAuditsBody.innerHTML = `<tr><td colspan="5" class="admin-empty">Impossible de charger les audits terminés.</td></tr>`;
+    return;
+  }
+  renderCompletedAudits(data.audits || []);
+};
+
+completedAuditsBody?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-duplicate-audit]");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.dataset.idempotencyKey ||= crypto.randomUUID();
+  const response = await fetch(`/api/admin/audit-snapshots/${encodeURIComponent(button.dataset.duplicateAudit)}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ action: "duplicate", idempotencyKey: button.dataset.idempotencyKey }),
+  });
+  if (response.status === 401) return redirectToLogin();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    button.disabled = false;
+    return;
+  }
+  window.location.href = draftResumeUrl(data.duplicate);
+});
 
 draftsBody?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-draft]");
@@ -408,3 +468,4 @@ ordersBody?.addEventListener("click", (event) => {
 loadOrders();
 loadDiagnostics();
 loadDrafts();
+loadCompletedAudits();

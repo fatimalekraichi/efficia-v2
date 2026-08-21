@@ -28,6 +28,7 @@ function createPremiumHarness(response) {
   let fetchCalls = 0;
   const context = {
     currentAnalysis: { reportType: "premium", manualReview: {} },
+    readOnlyMode: false,
     draftSaveInFlight: false,
     draftManualSaveQueued: false,
     draftSaveTimer: null,
@@ -61,6 +62,7 @@ function createLegacyHarness(response) {
     sauvegardeBrouillonD1EnCours: false,
     sauvegardeBrouillonD1Relancee: false,
     auditPublicIdActif: "analysis-test-123",
+    modeLectureSeule: () => false,
     analysisIdDepuisUrl: () => "analysis-test-123",
     payloadBrouillonD1: () => ({ responses: {} }),
     fetch: async () => { fetchCalls += 1; return response; },

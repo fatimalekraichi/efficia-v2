@@ -191,7 +191,8 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   let composed = 0;
   let canvasCalls = 0;
   let savedFilename = "";
-  let deletedDraft = 0;
+  let savedDraft = 0;
+  let finalizedSnapshot = 0;
   const pages = Array.from({ length: 6 }, () => ({}));
   class FakePdf {
     constructor() {
@@ -216,6 +217,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     },
     questionnairePretPourFinalisation: () => true,
     assurerVersionAnalyseRapport: async () => true,
+    enregistrerBrouillonD1: async () => { savedDraft += 1; return true; },
     chargerLogoRapportDataUrl: async () => {},
     genererRapport: () => { composed += 1; return true; },
     nomFichierDiagnosticPDF: () => "diagnostic-six-pages.pdf",
@@ -227,7 +229,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     validerMiseEnPageRapport: () => ({ ok: true }),
     waitForReportImages: async () => {},
     ajouterLiensPdfPourPage: () => {},
-    supprimerBrouillonD1ApresFinalisation: async () => { deletedDraft += 1; },
+    finaliserBrouillonD1ApresPDF: async () => { finalizedSnapshot += 1; return true; },
     enregistrerPdfGenereBackOffice: async () => {},
     alert: () => assert.fail("aucune alerte attendue"),
     console,
@@ -237,7 +239,8 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   assert.equal(composed, 1);
   assert.equal(canvasCalls, 6);
   assert.equal(savedFilename, "diagnostic-six-pages.pdf");
-  assert.equal(deletedDraft, 1);
+  assert.equal(savedDraft, 1);
+  assert.equal(finalizedSnapshot, 1);
   assert.equal(buttons[0].disabled, false);
 });
 

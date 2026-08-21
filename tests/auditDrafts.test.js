@@ -15,7 +15,7 @@ import {
 const SECRET = "local-admin-secret";
 const FREE_ID = "analysis-free-draft";
 const PREMIUM_ID = "analysis-premium-draft";
-const migrations = ["0003_analyses.sql", "0010_analysis_report_type.sql", "0014_audit_drafts.sql"];
+const migrations = ["0003_analyses.sql", "0010_analysis_report_type.sql", "0014_audit_drafts.sql", "0015_audit_questionnaire_snapshots.sql"];
 
 class LocalD1 {
   constructor() {
@@ -89,11 +89,12 @@ test("un brouillon incomplet conserve son type, ses réponses versionnées et so
   assert.equal(savedBody.draft.status, "draft");
   assert.equal(savedBody.draft.reportType, "free");
   assert.equal(savedBody.draft.currentStep, "questionnaire");
-  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v4");
-  assert.deepEqual(savedBody.draft.answers, answers);
+  assert.equal(savedBody.draft.answersVersion, "score-efficia-questionnaire-v3");
+  assert.equal(savedBody.draft.answers.questionnaireVersion, "score-efficia-questionnaire-v3");
+  assert.deepEqual(savedBody.draft.answers.criteriaReview, answers.criteriaReview);
 
   const restored = await getDraft(await context(db));
-  assert.deepEqual((await restored.json()).draft.answers, answers);
+  assert.equal((await restored.json()).draft.answers.questionnaireVersion, "score-efficia-questionnaire-v3");
 });
 
 test("les brouillons sont authentifiés, listés séparément et supprimables avec un identifiant opaque", async () => {

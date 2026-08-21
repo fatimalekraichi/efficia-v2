@@ -1,6 +1,9 @@
 import { isValidAnalysisId } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
-import { QUESTIONNAIRE_VERSION } from "../../../lib/score-efficia/questionnaireRules.js";
+import {
+  normalizeQuestionnaireAnswers,
+  resolveQuestionnaireVersion,
+} from "../../../lib/auditQuestionnaireSnapshots.js";
 
 const MAX_ANSWERS_BYTES = 120_000;
 const REPORT_TYPES = new Set(["free", "premium"]);
@@ -16,7 +19,7 @@ async function readPayload(request) {
 function formatDraft(row) {
   if (!row) return null;
   let answers = null;
-  try { answers = JSON.parse(row.answers_json); } catch { answers = null; }
+  try { answers = normalizeQuestionnaireAnswers(JSON.parse(row.answers_json), row.answers_version); } catch { answers = null; }
   return {
     draftId: row.draft_id,
     analysisId: row.analysis_id,
@@ -65,7 +68,9 @@ export async function onRequestPut(context) {
   if (!currentStep || !payload.answers || typeof payload.answers !== "object" || Array.isArray(payload.answers)) {
     return jsonResponse({ success: false, error: "INVALID_DRAFT" }, 400);
   }
-  const answersJson = JSON.stringify(payload.answers);
+  const normalizedAnswers = normalizeQuestionnaireAnswers(payload.answers);
+  const answersVersion = resolveQuestionnaireVersion(normalizedAnswers);
+  const answersJson = JSON.stringify(normalizedAnswers);
   if (new TextEncoder().encode(answersJson).length > MAX_ANSWERS_BYTES) {
     return jsonResponse({ success: false, error: "DRAFT_TOO_LARGE" }, 413);
   }
@@ -92,7 +97,7 @@ export async function onRequestPut(context) {
     draftId,
     draftId,
     reportType,
-    QUESTIONNAIRE_VERSION,
+    answersVersion,
     answersJson,
     currentStep,
     now,
@@ -109,6 +114,15 @@ export async function onRequestDelete(context) {
   const draftId = normalizeText(context.params.draftId);
   if (!isValidAnalysisId(draftId)) return jsonResponse({ success: false, error: "INVALID_DRAFT_ID" }, 400);
   const db = requireOrdersDb(context.env);
+  const finalized = await db.prepare(`
+    SELECT 1
+    FROM audit_questionnaire_snapshots
+    WHERE source_draft_id = ?
+    LIMIT 1
+  `).bind(draftId).first();
+  if (finalized) {
+    return jsonResponse({ success: false, error: "FINALIZED_DRAFT_IMMUTABLE" }, 409);
+  }
   const result = await db.prepare(`DELETE FROM audit_drafts WHERE draft_id = ?`).bind(draftId).run();
   if (!Number(result?.meta?.changes || 0)) return jsonResponse({ success: false, error: "DRAFT_NOT_FOUND" }, 404);
   return jsonResponse({ success: true, draftId });

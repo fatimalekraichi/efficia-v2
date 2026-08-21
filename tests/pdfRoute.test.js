@@ -33,24 +33,55 @@ const analysisRow = {
   report_type: "premium",
 };
 
-function makeContext({ row = analysisRow, token = TOKEN, env = {} } = {}) {
+function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undefined } = {}) {
+  let storedSnapshot = null;
+  const storedDraft = draft === undefined && row ? {
+    draft_id: "analysis-1",
+    analysis_id: "analysis-1",
+    report_type: "premium",
+    answers_version: "score-efficia-questionnaire-v4",
+    answers_json: JSON.stringify({
+      questionnaireVersion: "score-efficia-questionnaire-v4",
+      reportType: "premium",
+      criteriaReview: [{ key: "horaires", value: "compliant", checklist: ["Horaires vérifiés"] }],
+    }),
+    current_step: "questionnaire",
+  } : draft;
   const db = {
     prepare(sql) {
-      return {
-        bind() {
-          return {
+      const bound = (params = []) => ({
+        bind(...next) { return bound(next); },
             async first() {
               if (sql.includes("JOIN orders")) {
                 return { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 };
               }
+              if (sql.includes("FROM audit_questionnaire_snapshots")) return storedSnapshot;
+              if (sql.includes("FROM audit_drafts")) return storedDraft;
               return row;
             },
             async run() {
-              return { success: true };
+              if (sql.includes("INSERT OR IGNORE INTO audit_questionnaire_snapshots") && !storedSnapshot) {
+                storedSnapshot = {
+                  snapshot_id: params[0],
+                  analysis_id: params[1],
+                  source_draft_id: params[2],
+                  report_type: params[3],
+                  answers_version: params[4],
+                  answers_json: params[5],
+                  current_step: params[6],
+                  pdf_filename: params[7],
+                  finalized_at: params[8],
+                };
+              }
+              return { success: true, meta: { changes: 1 } };
             },
-          };
-        },
-      };
+      });
+      return bound();
+    },
+    async batch(statements) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
     },
   };
 
@@ -139,6 +170,20 @@ test("renderPdfById refuse un appel direct Premium sans paiement lié", async ()
   const response = await renderPdfById(context, "analysis-1");
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
+});
+
+test("renderPdfById conserve le PDF non finalisé si aucun questionnaire sauvegardé n’existe", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(PDF_BYTES, { status: 200, headers: { "Content-Type": "application/pdf" } });
+  try {
+    const response = await renderPdfById(makeContext({ draft: null }), "analysis-1");
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.error, "QUESTIONNAIRE_SNAPSHOT_UNAVAILABLE");
+    assert.match(body.message, /Aucune sauvegarde du questionnaire/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("buildAuditPdfFilename nettoie les caractères spéciaux", () => {

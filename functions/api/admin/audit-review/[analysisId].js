@@ -188,8 +188,6 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     }, 502);
   }
 
-  await db.prepare(`DELETE FROM audit_drafts WHERE analysis_id = ?`).bind(analysisId).run();
-
   const refreshed = await loadAnalysisById(db, analysisId);
   return jsonResponse({
     success: true,

@@ -1,4 +1,5 @@
 const analysisId = document.body.dataset.analysisId;
+const readOnlyMode = document.body.dataset.readOnly === "true";
 const observationBox = document.querySelector("[data-review-observation]");
 const competitorsBox = document.querySelector("[data-review-competitors]");
 const competitorsSummaryBox = document.querySelector("[data-competitors-summary]");
@@ -1544,9 +1545,11 @@ async function loadAnalysis() {
   renderCompetitors(currentAnalysis);
   renderExecutionPlan(currentAnalysis);
   fillCriteriaFromAnalysis(currentAnalysis);
-  await restoreDraft();
   updateLinks(currentAnalysis);
-  setStatus(currentAnalysis.status === "approved" ? "Rapport approuvé." : "Analyse prête à être validée.");
+  await restoreDraft();
+  if (!readOnlyMode) {
+    setStatus(currentAnalysis.status === "approved" ? "Rapport approuvé." : "Analyse prête à être validée.");
+  }
 }
 
 // Ces champs (type de rapport, statuts "corrections et confirmations") ne
@@ -1600,11 +1603,11 @@ function setDraftState(state, updatedAt = null) {
 }
 
 async function saveDraft({ manual = false } = {}) {
-  if (!currentAnalysis) return;
+  if (readOnlyMode || !currentAnalysis) return false;
   if (manual) window.clearTimeout(draftSaveTimer);
   if (draftSaveInFlight) {
     if (manual) draftManualSaveQueued = true;
-    return;
+    return false;
   }
   draftSaveInFlight = true;
   if (draftSaveButton) draftSaveButton.disabled = true;
@@ -1626,8 +1629,10 @@ async function saveDraft({ manual = false } = {}) {
     if (response.status === 401) return redirectToLogin();
     if (!response.ok || !data.success) throw new Error("DRAFT_SAVE_FAILED");
     setDraftState("saved", data.draft.updatedAt);
+    return true;
   } catch {
     setDraftState("error");
+    return false;
   } finally {
     draftSaveInFlight = false;
     if (draftSaveButton) draftSaveButton.disabled = false;
@@ -1639,31 +1644,52 @@ async function saveDraft({ manual = false } = {}) {
 }
 
 function scheduleDraftSave() {
-  if (!currentAnalysis) return;
+  if (readOnlyMode || !currentAnalysis) return;
   setDraftState("dirty");
   window.clearTimeout(draftSaveTimer);
   draftSaveTimer = window.setTimeout(() => saveDraft(), 1200);
 }
 
 async function restoreDraft() {
-  const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+  const endpoint = readOnlyMode
+    ? `/api/admin/audit-snapshots/${encodeURIComponent(analysisId)}`
+    : `/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`;
+  const response = await fetch(endpoint, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
   });
   if (response.status === 401) return redirectToLogin();
-  if (response.status === 404) return;
+  if (response.status === 404) {
+    setStatus(readOnlyMode
+      ? "Aucune sauvegarde finale du questionnaire n’existe pour cet audit."
+      : "Aucune sauvegarde du questionnaire n’existe pour cet audit.", "error");
+    return;
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.success || data.draft?.currentStep !== "questionnaire") return;
-  const answers = data.draft.answers;
-  if (!answers || answers.reportType !== (currentAnalysis.reportType || "premium")) return;
+  const stored = readOnlyMode ? data.snapshot : data.draft;
+  if (!response.ok || !data.success || stored?.currentStep !== "questionnaire") return;
+  const answers = stored.answers;
+  const currentReportType = currentAnalysis.reportType || "premium";
+  if (!answers || stored.reportType !== currentReportType || (answers.reportType && answers.reportType !== currentReportType)) return;
   fillCriteriaFromAnalysis(currentAnalysis, answers);
   restoreCompetitorSelection(answers);
   restoreExecutionPlan(answers.executionPlan);
-  setDraftState("saved", data.draft.updatedAt);
+  setDraftState("saved", stored.updatedAt || stored.finalizedAt);
+  if (readOnlyMode) {
+    document.querySelectorAll("input, select, textarea, button").forEach((element) => { element.disabled = true; });
+    document.querySelectorAll("[data-preview-link], [data-pdf-link], [data-legacy-generator-link]").forEach((link) => {
+      link.classList.add("is-disabled-link");
+      link.setAttribute("aria-disabled", "true");
+      link.removeAttribute("href");
+    });
+    if (draftSaveButton) draftSaveButton.hidden = true;
+    setStatus("Audit terminé — consultation en lecture seule.", "ok");
+  }
 }
 
 async function saveReview(event) {
   event.preventDefault();
+  if (readOnlyMode) return;
   const incomplete = listerElementsRestantsPourFinalisation();
   if (incomplete.length) {
     setStatus(globalThis.EfficiaQuestionnaireFinalization.formaterResumeElementsRestants(incomplete), "error");
@@ -1675,6 +1701,9 @@ async function saveReview(event) {
   setStatus("Validation enregistrée. Préparation de l’aperçu...");
 
   try {
+    if (!await saveDraft({ manual: true })) {
+      throw new Error("Le questionnaire n’a pas pu être sauvegardé avant la préparation de l’aperçu.");
+    }
     const response = await fetch(`/api/admin/audit-review/${encodeURIComponent(analysisId)}`, {
       method: "PATCH",
       credentials: "same-origin",
@@ -1735,9 +1764,11 @@ async function approveReport() {
 
 renderCriteriaReview();
 loadAnalysis();
-form?.addEventListener("submit", saveReview);
-draftSaveButton?.addEventListener("click", () => saveDraft({ manual: true }));
-approveButton?.addEventListener("click", approveReport);
+if (!readOnlyMode) {
+  form?.addEventListener("submit", saveReview);
+  draftSaveButton?.addEventListener("click", () => saveDraft({ manual: true }));
+  approveButton?.addEventListener("click", approveReport);
+}
 fillUnknownButton?.addEventListener("click", markUnansweredCriteriaAsNotVerified);
 
 logoutButtons.forEach((button) => {

@@ -2799,9 +2799,12 @@ function collecterReponses(){
       const el = document.getElementById("crit-"+cr.id);
       const badge = el?.querySelector(".badges")?.textContent || "";
       const statut = badge.includes("AUTO") ? "automatique" : badge.includes("PRÉ-REMPLI") ? "pre-remplie" : "manuelle";
+      const checklist = [...document.querySelectorAll(`input[data-check-crit="${cr.id}"]:checked`)]
+        .map(input => Number(input.dataset.checkIndex))
+        .filter(Number.isInteger);
       reponses[cr.key] = cr.key === "adresse"
-        ? {points:p, statut:"manuelle"}
-        : {points:p, statut, selectedOptionIndex:Number(selected?.dataset.optionIndex)};
+        ? {points:p, statut:"manuelle", checklist}
+        : {points:p, statut, selectedOptionIndex:Number(selected?.dataset.optionIndex), checklist};
     }
   }));
   return reponses;
@@ -3023,6 +3026,12 @@ function appliquerReponses(reponses){
       ? document.querySelector(`input[name="c${cr.id}"][data-option-index="${optionIndex}"]`)
       : [...document.querySelectorAll(`input[name="c${cr.id}"]`)].find(r => parseFloat(r.value) === parseFloat(valeur) && !r.dataset.special);
     if(radio) radio.checked = true;
+    const checklist = typeof reponses[cr.key] === "object" && Array.isArray(reponses[cr.key].checklist)
+      ? new Set(reponses[cr.key].checklist.map(Number))
+      : new Set();
+    document.querySelectorAll(`input[data-check-crit="${cr.id}"]`).forEach(input => {
+      input.checked = checklist.has(Number(input.dataset.checkIndex));
+    });
   }));
 }
 
@@ -3060,6 +3069,7 @@ function sauvegarderDiagnostic(){
       serviceAreaVerification:reponseZoneDesserte(),
       currentStep:"questionnaire",
       reponses:collecterReponses(),
+      observedData:donneesAnalyse,
       score:Math.round(calculScoreDetail().total),
       date:new Date().toISOString(),
       indicateurs:donneesIndicateursInternes()
@@ -3077,6 +3087,15 @@ function reprendreDiagnostic(){
   if(!brut){ statut("Aucun diagnostic enregistré sur cet appareil.", "erreur"); return; }
   try{
     const data = JSON.parse(brut);
+    const currentAnalysisId = analysisIdDepuisUrl();
+    if(currentAnalysisId && data.auditPublicIdActif !== currentAnalysisId){
+      statut("Le diagnostic enregistré appartient à une autre analyse et n’a pas été chargé.", "erreur");
+      return;
+    }
+    if(!data.reponses || !Object.keys(data.reponses).length){
+      statut("Aucune sauvegarde du questionnaire n’existe sur cet appareil.", "erreur");
+      return;
+    }
     document.getElementById("p-entreprise").value = data.entreprise || "";
     document.getElementById("p-ville").value = data.ville || "";
     document.getElementById("p-activite").value = data.activite || "";
@@ -3087,6 +3106,7 @@ function reprendreDiagnostic(){
     analysisVersionActif = estNombre(data.analysisVersionActif) ? Math.max(1, nEntier(data.analysisVersionActif)) : null;
     auditSourceActif = data.auditSourceActif || null;
     auditFallbackLocalId = data.auditFallbackLocalId || null;
+    donneesAnalyse = data.observedData && typeof data.observedData === "object" ? data.observedData : donneesAnalyse;
     if(data.photoPresence && data.photoPresence !== "unknown"){
       const photoRadio = data.photoPresence === "none"
         ? document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`)
@@ -3182,11 +3202,11 @@ function payloadBrouillonD1(){
 
 async function enregistrerBrouillonD1(manuel = false){
   const analysisId = analysisIdDepuisUrl();
-  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
+  if(modeLectureSeule() || !/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
   if(manuel) window.clearTimeout(timerBrouillonD1);
   if(sauvegardeBrouillonD1EnCours){
     if(manuel) sauvegardeBrouillonD1Relancee = true;
-    return;
+    return false;
   }
   sauvegardeBrouillonD1EnCours = true;
   const button = document.getElementById("btn-brouillon-d1");
@@ -3208,8 +3228,10 @@ async function enregistrerBrouillonD1(manuel = false){
     const data = await response.json().catch(() => ({}));
     if(!response.ok || !data.success) throw new Error("draft_save_failed");
     majEtatBrouillonD1("saved", data.draft.updatedAt);
+    return true;
   }catch{
     majEtatBrouillonD1("error");
+    return false;
   }finally{
     sauvegardeBrouillonD1EnCours = false;
     if(button) button.disabled = false;
@@ -3221,7 +3243,7 @@ async function enregistrerBrouillonD1(manuel = false){
 }
 
 function programmerSauvegardeBrouillonD1(){
-  if(!auditPublicIdActif) return;
+  if(modeLectureSeule() || !auditPublicIdActif) return;
   majEtatBrouillonD1("dirty");
   window.clearTimeout(timerBrouillonD1);
   timerBrouillonD1 = window.setTimeout(() => enregistrerBrouillonD1(false), 1200);
@@ -3230,14 +3252,23 @@ function programmerSauvegardeBrouillonD1(){
 async function restaurerBrouillonD1(){
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
-  const response = await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
+  const readonly = modeLectureSeule();
+  const endpoint = readonly
+    ? `/api/admin/audit-snapshots/${encodeURIComponent(analysisId)}`
+    : `/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`;
+  const response = await fetch(endpoint, {
     credentials:"same-origin",
     headers:{"Accept":"application/json"}
   });
   if(response.status === 401){ window.location.href = "/admin-login"; return; }
-  if(response.status === 404) return;
+  if(response.status === 404){
+    statut(readonly
+      ? "Aucune sauvegarde finale du questionnaire n’existe pour cet audit."
+      : "Aucune sauvegarde du questionnaire n’existe pour cet audit.", "erreur");
+    return;
+  }
   const data = await response.json().catch(() => ({}));
-  const draft = data.draft;
+  const draft = readonly ? data.snapshot : data.draft;
   if(!response.ok || !data.success || draft?.reportType !== "free" || draft?.currentStep !== "questionnaire") return;
   const answers = draft.answers || {};
   appliquerChampsBrouillonD1(answers.fields);
@@ -3254,7 +3285,7 @@ async function restaurerBrouillonD1(){
     if(noReviews) noReviews.checked = true;
   }
   restaurerLocalisation(answers);
-  appliquerReponses(answers.responses);
+  appliquerReponses(answers.responses || answers.reponses);
   if(answers.photoPresence === "none"){
     const noPhotos = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
     if(noPhotos) noPhotos.checked = true;
@@ -3262,22 +3293,43 @@ async function restaurerBrouillonD1(){
   collecteDiagnosticValidee = true;
   majConditionsQuestionnaire();
   afficherProfilUtilise();
-  majEtatBrouillonD1("saved", draft.updatedAt);
+  majEtatBrouillonD1("saved", draft.updatedAt || draft.finalizedAt);
+  if(readonly) verrouillerQuestionnaireLectureSeule(draft);
 }
 
-async function supprimerBrouillonD1ApresFinalisation(){
+async function finaliserBrouillonD1ApresPDF(pdfFilename){
   const analysisId = analysisIdDepuisUrl();
-  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
-  await fetch(`/api/admin/audit-drafts/${encodeURIComponent(analysisId)}`, {
-    method:"DELETE",
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
+  const response = await fetch(`/api/admin/audit-snapshots/${encodeURIComponent(analysisId)}`, {
+    method:"POST",
     credentials:"same-origin",
-    headers:{"Accept":"application/json"}
-  }).catch(() => {});
+    headers:{"Content-Type":"application/json","Accept":"application/json"},
+    body:JSON.stringify({action:"finalize", pdfFilename})
+  }).catch(() => null);
+  if(!response?.ok){
+    statut("PDF téléchargé, mais le snapshot final n’a pas pu être confirmé. Le brouillon est conservé.", "erreur");
+    return false;
+  }
+  return true;
+}
+
+function modeLectureSeule(){
+  return new URLSearchParams(window.location.search).get("readonly") === "1";
+}
+
+function verrouillerQuestionnaireLectureSeule(snapshot){
+  document.body.dataset.readOnly = "true";
+  document.querySelectorAll("#formulaire input, #formulaire select, #formulaire textarea, #formulaire button, .score-actions button, [data-premium-action]")
+    .forEach(element => { element.disabled = true; });
+  const saveButton = document.getElementById("btn-brouillon-d1");
+  if(saveButton) saveButton.hidden = true;
+  majEtatBrouillonD1("saved", snapshot.finalizedAt);
+  statut("Audit terminé — consultation en lecture seule.", "info");
 }
 
 afficherProfilUtilise();
 initialiserContexteCommandeAdmin();
-document.getElementById("formulaire")?.addEventListener("input", programmerSauvegardeBrouillonD1);
+if(!modeLectureSeule()) document.getElementById("formulaire")?.addEventListener("input", programmerSauvegardeBrouillonD1);
 
 function champVide(id){
   const champ = document.getElementById(id);
@@ -5058,6 +5110,10 @@ function validerMiseEnPageRapport(){
 async function apercuImpression(){
   if(!questionnairePretPourFinalisation()) return;
   if(!await assurerVersionAnalyseRapport()) return;
+  if(!await enregistrerBrouillonD1(true)){
+    statut("Le questionnaire n’a pas pu être sauvegardé. L’aperçu n’a pas été ouvert.", "erreur");
+    return;
+  }
   if(genererRapport()) window.print();
 }
 
@@ -5747,6 +5803,11 @@ async function telechargerAuditPremium(){
     return;
   }
   if(!await assurerVersionAnalyseRapport()) return;
+  if(!await enregistrerBrouillonD1(true)){
+    statut("Le questionnaire n’a pas pu être sauvegardé. L’audit n’a pas été généré.", "erreur");
+    btns.forEach(b => { b.disabled = false; });
+    return;
+  }
   await chargerLogoRapportDataUrl();
   if(!genererEtPaginerAuditPremium()){ statut("Impossible de générer l'audit premium (données insuffisantes).", "erreur"); return; }
   const filename = nomFichierAuditPremium();
@@ -5777,7 +5838,7 @@ async function telechargerAuditPremium(){
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
     }
     pdf.save(filename);
-    await supprimerBrouillonD1ApresFinalisation();
+    await finaliserBrouillonD1ApresPDF(filename);
     await enregistrerPdfGenereBackOffice(filename);
     statut(`Audit Premium généré (${pages.length} pages).`, "info");
   }catch(e){
@@ -5792,6 +5853,10 @@ async function telechargerPDF(){
   const btns = [document.getElementById("btn-pdf"), document.getElementById("btn-pdf-rapport")].filter(Boolean);
   if(!questionnairePretPourFinalisation()) return;
   if(!await assurerVersionAnalyseRapport()) return;
+  if(!await enregistrerBrouillonD1(true)){
+    statut("Le questionnaire n’a pas pu être sauvegardé. Le PDF n’a pas été généré.", "erreur");
+    return;
+  }
   await chargerLogoRapportDataUrl();
   if(!genererRapport()) return;
   const filename = nomFichierDiagnosticPDF();
@@ -5839,7 +5904,7 @@ async function telechargerPDF(){
       return;
     }
     pdf.save(filename);
-    await supprimerBrouillonD1ApresFinalisation();
+    await finaliserBrouillonD1ApresPDF(filename);
     await enregistrerPdfGenereBackOffice(filename);
   }catch(e){
     console.error("Génération PDF échouée", e);

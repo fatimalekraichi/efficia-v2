@@ -14,6 +14,7 @@ import {
   renderFreeDiagnosticPdf,
 } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
+import { finalizeQuestionnaireSnapshot } from "../../lib/auditQuestionnaireSnapshots.js";
 
 const PDF_HEADERS = {
   "Content-Type": "application/pdf",
@@ -67,6 +68,16 @@ async function markPdfGenerated(db, analysisId) {
   `).bind(now, now, analysisId).run();
 }
 
+async function preserveQuestionnaireBeforeCompletion(db, analysisId, filename) {
+  const result = await finalizeQuestionnaireSnapshot(db, analysisId, { pdfFilename: filename });
+  if (result.ok) return null;
+  return jsonResponse({
+    success: false,
+    error: result.error,
+    message: "Aucune sauvegarde du questionnaire n’existe : le PDF n’a pas finalisé l’audit.",
+  }, 409);
+}
+
 async function renderAnalysisPdf(context, db, analysis) {
   if (!canGeneratePdf(analysis)) {
     return jsonResponse({
@@ -88,8 +99,9 @@ async function renderAnalysisPdf(context, db, analysis) {
     : await renderPdfWithCloudflareBrowserRun({ html, env: context.env });
   if (!result.ok) return pdfErrorResponse(result);
 
-  await markPdfGenerated(db, analysis.analysisId);
   const filename = buildAuditPdfFilename(analysis);
+  const preservationError = await preserveQuestionnaireBeforeCompletion(db, analysis.analysisId, filename);
+  if (preservationError) return preservationError;
   return pdfResponse(result.pdf, filename);
 }
 
@@ -160,8 +172,9 @@ export async function renderFreeDiagnosticPdfById(context, analysisId) {
   const result = await renderFreeDiagnosticPdf({ html, env: context.env });
   if (!result.ok) return pdfErrorResponse(result);
 
-  await markPdfGenerated(verified.db, analysis.analysisId);
   const filename = buildAuditPdfFilename(analysis);
+  const preservationError = await preserveQuestionnaireBeforeCompletion(verified.db, analysis.analysisId, filename);
+  if (preservationError) return preservationError;
   return pdfResponse(result.pdf, filename);
 }
 
@@ -169,4 +182,5 @@ export { CORS_HEADERS };
 export const __test__ = {
   canGeneratePdf,
   markPdfGenerated,
+  preserveQuestionnaireBeforeCompletion,
 };

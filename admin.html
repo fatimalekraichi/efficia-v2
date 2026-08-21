@@ -69,6 +69,26 @@
       <section class="admin-card">
         <div class="admin-section-heading admin-section-heading-row">
           <div>
+            <span class="admin-kicker">Snapshots finaux</span>
+            <h2>Audits terminés</h2>
+            <p>Questionnaires figés lors de la génération du rapport.</p>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Entreprise</th><th>Ville</th><th>Type</th><th>Terminé le</th><th>Actions</th></tr>
+            </thead>
+            <tbody data-admin-completed-audits>
+              <tr><td colspan="5" class="admin-empty">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-section-heading admin-section-heading-row">
+          <div>
             <span class="admin-kicker">Score Efficia</span>
             <h2>Diagnostics gratuits à traiter</h2>
             <p>Demandes reçues depuis le diagnostic public, indépendamment des commandes Stripe.</p>

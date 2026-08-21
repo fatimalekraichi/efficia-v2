@@ -1,7 +1,7 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../api/analysis/_shared.js";
 import { normalizeText, requireAdminSession, requireOrdersDb } from "../_shared.js";
 
-const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!DOCTYPE html>
+const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = false } = {}) => `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -86,7 +86,7 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false } = {}) => `<!D
     @media (max-width: 640px) { .audit-draft-toolbar { top: 84px; align-items: stretch; } .audit-draft-toolbar .admin-button { width: 100%; } .audit-draft-toolbar__status { flex-basis: 100%; } .review-actions { flex-direction: column; align-items: stretch; } .review-actions__primary { width: 100%; } .review-actions__secondary { flex-direction: column; width: 100%; } .review-actions__secondary .admin-button { width: 100%; text-align: center; } }
   </style>
 </head>
-<body class="admin-page" data-analysis-id="${analysisId}">
+<body class="admin-page" data-analysis-id="${analysisId}" data-read-only="${readOnly ? "true" : "false"}">
   <header class="admin-header">
     <div class="admin-header__inner">
       <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
@@ -201,7 +201,8 @@ export async function onRequestGet(context) {
     console.error("audit-review: lecture reportType impossible", error);
   }
 
-  return new Response(html(analysisId, { showLegacyFreeDiagnosticLink }), {
+  const readOnly = new URL(context.request.url).searchParams.get("readonly") === "1";
+  return new Response(html(analysisId, { showLegacyFreeDiagnosticLink, readOnly }), {
     status: 200,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });

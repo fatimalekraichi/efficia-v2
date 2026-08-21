@@ -21,7 +21,9 @@ export async function onRequestGet(context) {
       a.ville
     FROM audit_drafts d
     JOIN analyses a ON a.analysis_id = d.analysis_id
+    LEFT JOIN audit_questionnaire_snapshots s ON s.analysis_id = d.analysis_id
     WHERE d.status = 'draft'
+      AND s.analysis_id IS NULL
     ORDER BY d.updated_at DESC
     LIMIT ?
   `).bind(MAX_DRAFTS).all();
