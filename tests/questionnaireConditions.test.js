@@ -410,3 +410,12 @@ test("les brouillons des deux questionnaires sauvegardent et restaurent exacteme
   assert.match(legacy, /restaurerLocalisation\(answers\)/);
   assert.match(legacy, /restaurerLocalisation\(data\)/);
 });
+
+test("le rapport historique distingue le rang organique et l'absence de description", () => {
+  const legacy = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  assert.match(legacy, /résultat organique/);
+  assert.match(legacy, /hors annonces sponsorisées/);
+  assert.match(legacy, /sponsoredResultsExcluded/);
+  assert.match(legacy, /Aucune description n’est visible sur votre fiche Google/);
+  assert.match(legacy, /La description est présente, mais reste trop courte/);
+});

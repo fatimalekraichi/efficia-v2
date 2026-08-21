@@ -460,6 +460,26 @@ function findPositionSignalValue(model) {
   return null;
 }
 
+function organicOrdinal(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  const rounded = Math.round(number);
+  return rounded === 1 ? "1er" : `${rounded}e`;
+}
+
+function positionSummary({ position, testedQuery, positionKind, sponsoredResultsExcluded } = {}) {
+  const numericPosition = Number(position);
+  if (!Number.isFinite(numericPosition) || numericPosition <= 0) return "";
+  const query = present(testedQuery) ? ` sur « ${String(testedQuery)} »` : "";
+  if (positionKind === "organic") {
+    const advertisingContext = Number(sponsoredResultsExcluded) > 0
+      ? " Une annonce sponsorisée apparaît au-dessus des résultats organiques."
+      : "";
+    return `Position observée : ${organicOrdinal(numericPosition)} résultat organique${query} — hors annonces sponsorisées.${advertisingContext}`;
+  }
+  return `Position observée : ${formatOrdinal(numericPosition)} position${query}.`;
+}
+
 // Ne remplace la phrase existante (hero.rank.text, déjà écrite par Composer)
 // que lorsque la position de recherche est aussi disponible : dans ce cas
 // précis, une seule phrase mélangeait deux notions différentes. Sans cette
@@ -484,7 +504,11 @@ function buildPedagogicalRankNote(model) {
   const aheadPlural = rank.aheadCount > 1 ? "s" : "";
   const wereWord = rank.aheadCount > 1 ? "étaient" : "était";
 
-  return `Lors de notre recherche, votre fiche apparaissait en ${formatOrdinal(positionValue)} position. `
+  const organic = model?.searchContext?.positionKind === "organic";
+  const positionLabel = organic
+    ? `${organicOrdinal(positionValue)} résultat organique — hors annonces sponsorisées`
+    : `${formatOrdinal(positionValue)} position`;
+  return `Lors de notre recherche, votre fiche apparaissait en ${positionLabel}. `
     + `Parmi les ${rank.totalCompetitors} concurrent${totalPlural} analysé${totalPlural} dans ce rapport, `
     + `${rank.aheadCount} ${wereWord} mieux classé${aheadPlural} que vous.`;
 }
@@ -499,13 +523,15 @@ function comparisonSection(model) {
   const hero = model.hero || {};
   const card = hero.comparison;
   if (!card) {
+    const rankNote = positionSummary(model.searchContext);
     return `
       <div class="comparison-card comparison-fallback">
         <p>Certaines données publiques ne sont actuellement pas disponibles pour établir une comparaison directe. Les recommandations ci-dessous restent fondées sur l'analyse complète de votre fiche.</p>
       </div>
+      ${rankNote ? `<p class="comparison-rank"><span class="comparison-note-line">${safeText(rankNote)}</span></p>` : ""}
     `;
   }
-  const rankNote = buildPedagogicalRankNote(model);
+  const rankNote = buildPedagogicalRankNote(model) || positionSummary(model.searchContext);
   const panelPhotos = card.best?.photosIsEstimate && present(card.best?.photos)
     ? `Repère du panel : ${safeText(formatApproximateSignalValue("photos", card.best.photos))} en moyenne.` : "";
   const comparisonNotes = [panelPhotos, rankNote ? safeText(rankNote) : ""].filter(Boolean);
@@ -1617,6 +1643,7 @@ function freeSituationSection(model) {
       </div>
       ${free.provisional ? `<p class="methode-note">${PROVISIONAL_SCORE_NOTE} ${safeText(free.locationConfirmation, "")}</p>` : ""}
       ${freeIndicesRow(free.indices)}
+      ${positionSummary(free) ? `<p class="methode-note">${safeText(positionSummary(free))}</p>` : ""}
       ${freeMeaningBox(model)}
       <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} critères passés en revue selon la méthode Efficia™.</p>
       <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>

@@ -166,9 +166,15 @@ export function normalizeManualReview(payload = {}) {
 export function buildReviewedObservation(row = {}, manualReview = {}) {
   const normalized = parseJson(row.normalized_json, {});
   const descriptionLength = cleanOptionalNumber(row.description_length);
+  const descriptionObserved = Array.isArray(normalized.observed_fields)
+    && normalized.observed_fields.some((field) => field === "description" || field === "description_length");
   const confirmedDescriptionStatus = manualReview.descriptionStatus === "unknown"
-    ? (descriptionLength === 0 ? "absent" : "unknown")
+    ? (descriptionObserved && descriptionLength === 0 ? "absent" : "unknown")
     : manualReview.descriptionStatus;
+  const effectiveDescriptionLength = descriptionObserved || confirmedDescriptionStatus !== "unknown"
+    ? descriptionLength
+    : null;
+  const searchResultContext = normalized.search_result_context || {};
 
   return {
     analysisId: row.analysis_id,
@@ -179,13 +185,15 @@ export function buildReviewedObservation(row = {}, manualReview = {}) {
     rating: manualReview.reviewsPresence === "none" ? null : cleanOptionalNumber(row.rating),
     reviews: manualReview.reviewsPresence === "none" ? 0 : cleanOptionalNumber(row.reviews),
     photosCount: manualReview.photoPresence === "none" ? 0 : cleanOptionalNumber(row.photos_count),
-    descriptionLength,
+    descriptionLength: effectiveDescriptionLength,
     descriptionStatus: confirmedDescriptionStatus,
-    hasDescription: confirmedDescriptionStatus === "absent" ? false : descriptionLength === null ? null : descriptionLength > 0,
+    hasDescription: confirmedDescriptionStatus === "absent" ? false : effectiveDescriptionLength === null ? null : effectiveDescriptionLength > 0,
     workingHours: normalized.working_hours || null,
     website: normalized.site || normalized.website || null,
     phone: normalized.phone || normalized.phone_number || null,
     localPosition: manualReview.confirmedPosition ?? cleanOptionalNumber(row.local_position),
+    positionKind: searchResultContext.position_kind === "organic" ? "organic" : "observed",
+    sponsoredResultsExcluded: cleanOptionalNumber(searchResultContext.sponsored_results_excluded) ?? 0,
     searchQuery: manualReview.confirmedQuery || row.search_query || null,
     photoQuality: manualReview.photoQuality,
     photoRelevance: manualReview.photoRelevance,

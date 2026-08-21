@@ -71,6 +71,7 @@ function buildCriteriaSummary(criteria) {
 
 function buildFreePriorityCard(item, scoreContext = {}) {
   const logic = item.logic || {};
+  const descriptionAbsent = item.signal === "description" && Number(item.evidence?.value) === 0;
   const firstAction = item.signal === "description" && scoreContext.locationConfirmation
     ? "Rédiger une description claire de vos services et de vos différenciants."
     : buildFirstAction(item.signal);
@@ -79,7 +80,9 @@ function buildFreePriorityCard(item, scoreContext = {}) {
     id: item.id,
     signal: item.signal,
     title: item.title,
-    observed: logic.cause || null,
+    observed: descriptionAbsent
+      ? "Aucune description n’est visible sur votre fiche Google."
+      : (logic.cause || null),
     prospectView: [logic.businessImpact, logic.competitiveAngle].filter(Boolean).join(" ") || null,
     firstAction,
     expectedResult: buildExpectedResult(item.signal),
@@ -94,6 +97,7 @@ function buildFreePriorityCard(item, scoreContext = {}) {
 // résolu pour ce document — ce sous-objet ne change jamais de profondeur.
 function buildFreeDiagnostic(bundle, scoreContext = {}) {
   const freeSelections = selectComposerItems(bundle, REPORT_DEPTH_PROFILES.free.caps);
+  const business = bundle.observation || bundle.context?.business || {};
 
   return {
     band: scoreContext.band || null,
@@ -103,6 +107,10 @@ function buildFreeDiagnostic(bundle, scoreContext = {}) {
     provisional: scoreContext.provisional === true,
     locationConfirmation: scoreContext.locationConfirmation || null,
     projectedScore: scoreContext.projectedPackScore?.projete ?? null,
+    position: n(business.position),
+    testedQuery: firstDefined(business.search_query, business.searchQuery),
+    positionKind: business.position_kind === "organic" ? "organic" : "observed",
+    sponsoredResultsExcluded: n(business.sponsored_results_excluded) ?? 0,
     priorities: freeSelections.priorities.map((item) => buildFreePriorityCard(item, scoreContext)),
   };
 }
@@ -209,6 +217,12 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
     freeDiagnostic: buildFreeDiagnostic(bundle, bundle.scoreContext),
     scoreProvisional: bundle.scoreContext?.provisional === true,
     locationConfirmation: bundle.scoreContext?.locationConfirmation || null,
+    searchContext: {
+      position: n(business.position),
+      testedQuery: firstDefined(business.search_query, business.searchQuery),
+      positionKind: business.position_kind === "organic" ? "organic" : "observed",
+      sponsoredResultsExcluded: n(business.sponsored_results_excluded) ?? 0,
+    },
     // Point 3 du plan : score par domaine, déjà calculé par le Score Efficia
     // (scoreEngine.js) et déjà mis en forme par buildDomains() ci-dessus —
     // simplement exposé au modèle premium en plus de freeDiagnostic.domains.

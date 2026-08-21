@@ -22,8 +22,11 @@ export function buildBusinessContext(analysis = {}) {
     rating: reviewed.rating ?? business.rating ?? null,
     reviews: reviewed.reviews ?? business.reviews ?? null,
     photos_count: reviewed.photosCount ?? business.photosCount ?? null,
-    description_length: reviewed.descriptionLength ?? business.descriptionLength ?? null,
+    description_length: reviewed.descriptionStatus === "unknown"
+      ? null
+      : (reviewed.descriptionLength ?? business.descriptionLength ?? null),
     description_status: reviewed.descriptionStatus || null,
+    has_description: reviewed.hasDescription ?? (reviewed.descriptionStatus === "absent" ? false : null),
     review_response_status: reviewed.reviewResponseStatus || null,
     photo_quality: reviewed.photoQuality || null,
     photo_relevance: reviewed.photoRelevance || null,
@@ -37,6 +40,8 @@ export function buildBusinessContext(analysis = {}) {
       arrayLength(normalized.categories),
     ),
     position: reviewed.localPosition ?? business.localPosition ?? null,
+    position_kind: reviewed.positionKind || business.positionKind || "observed",
+    sponsored_results_excluded: reviewed.sponsoredResultsExcluded ?? business.sponsoredResultsExcluded ?? 0,
   };
 }
 

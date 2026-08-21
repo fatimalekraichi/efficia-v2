@@ -245,8 +245,28 @@ test("renderAnalysisHtml ne contredit jamais une description absente", () => {
     actionability: { difficulty: "easy", estimatedTime: "15 min" },
   };
   const html = renderAnalysisHtml(makeDocumentModel({ priorities: [priority] }));
-  assert.match(html, /ne comporte actuellement aucune description/);
+  assert.match(html, /Aucune description n’est visible sur votre fiche Google/);
   assert.doesNotMatch(html, /description existe/);
+  assert.doesNotMatch(html, /0 caractères?|sur 750 possibles/);
+});
+
+test("renderAnalysisHtml présente explicitement une position organique confirmée", () => {
+  const model = makeDocumentModel({
+    searchContext: {
+      position: 2,
+      testedQuery: "Électricien Audun-le-Tiche",
+      positionKind: "organic",
+      sponsoredResultsExcluded: 1,
+    },
+    weaknesses: [{ signal: "position", evidence: { value: 2 } }],
+    hero: {
+      ...makeDocumentModel().hero,
+      rank: { aheadCount: 1, totalCompetitors: 3, text: "Ancien texte ambigu." },
+    },
+  });
+  const html = renderAnalysisHtml(model);
+  assert.match(html, /2e résultat organique(?: sur « Électricien Audun-le-Tiche »)? — hors annonces sponsorisées/);
+  assert.doesNotMatch(html, /en 3e position/);
 });
 
 test("renderAnalysisHtml : sans signal \"position\" disponible, conserve la phrase de comparaison d'origine (aucune régression)", () => {

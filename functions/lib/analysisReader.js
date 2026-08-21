@@ -31,6 +31,7 @@ export function formatAnalysisRow(row) {
   const reviewedBenchmark = parseJson(row.reviewed_benchmark_json);
   const scoreInputs = parseJson(row.score_inputs_json);
   const reviewedScore = parseJson(row.reviewed_score_json);
+  const searchResultContext = normalized?.search_result_context || {};
 
   const formatted = {
     analysisId: row.analysis_id,
@@ -49,6 +50,8 @@ export function formatAnalysisRow(row) {
       photosCount: toNumber(row.photos_count),
       descriptionLength: toNumber(row.description_length),
       localPosition: toNumber(row.local_position),
+      positionKind: searchResultContext.position_kind === "organic" ? "organic" : "observed",
+      sponsoredResultsExcluded: toNumber(searchResultContext.sponsored_results_excluded) ?? 0,
       fiche,
       normalized,
       competitors,

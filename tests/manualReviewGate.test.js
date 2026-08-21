@@ -22,6 +22,7 @@ const baseAnalysisRow = {
     name: "Cabinet Test",
     phone: "+32 00 00 00",
     website: "https://example.com",
+    observed_fields: ["description"],
   }),
 };
 
@@ -31,6 +32,17 @@ test("description 0 caractère devient une description absente", () => {
   assert.equal(reviewedObservation.descriptionLength, 0);
   assert.equal(reviewedObservation.descriptionStatus, "absent");
   assert.equal(reviewedObservation.hasDescription, false);
+});
+
+test("une description non récupérée ne devient pas artificiellement absente", () => {
+  const row = {
+    ...baseAnalysisRow,
+    normalized_json: JSON.stringify({ name: "Cabinet Test", observed_fields: [] }),
+  };
+  const { reviewedObservation } = buildReviewedData(row, {});
+  assert.equal(reviewedObservation.descriptionLength, null);
+  assert.equal(reviewedObservation.descriptionStatus, "unknown");
+  assert.equal(reviewedObservation.hasDescription, null);
 });
 
 test("0 concurrent garde un benchmark indisponible sans prétendre comparer à 3 concurrents", () => {

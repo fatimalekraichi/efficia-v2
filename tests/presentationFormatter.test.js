@@ -98,6 +98,7 @@ test("formatSignalValue : un format par signal connu (unité + pluriel + ordinal
   assert.equal(formatSignalValue("reviews", 58.333), "58 avis");
   assert.equal(formatSignalValue("photos", 1), "1 photo");
   assert.equal(formatSignalValue("photos", 2), "2 photos");
+  assert.equal(formatSignalValue("description", 0), "aucune description visible");
   assert.equal(formatSignalValue("description", 1), "1 caractère");
   assert.equal(formatSignalValue("categories", 2), "2 catégories secondaires");
   assert.equal(formatSignalValue("position", 9), "9e position");
@@ -107,7 +108,7 @@ test("formatSignalValue : un format par signal connu (unité + pluriel + ordinal
 
 test("formatDescriptionReasoning : distingue description absente, courte et suffisante", () => {
   const source = "Votre description existe, mais elle peut encore mieux expliquer votre activité.";
-  assert.match(formatDescriptionReasoning(source, 0), /ne comporte actuellement aucune description/);
+  assert.match(formatDescriptionReasoning(source, 0), /Aucune description n’est visible sur votre fiche Google/);
   assert.doesNotMatch(formatDescriptionReasoning(source, 0), /description existe/);
   assert.match(formatDescriptionReasoning(source, 120), /description existe, mais elle peut être enrichie/);
   assert.equal(formatDescriptionReasoning(source, 750), source);

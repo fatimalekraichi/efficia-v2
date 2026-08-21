@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectCompetitors } from "../functions/lib/collectCompetitors.js";
+import { addSearchResultContext, collectCompetitors } from "../functions/lib/collectCompetitors.js";
 
 // Bug corrigé — "l'entreprise est présente dans ses propres concurrents" :
 // avant ce correctif, seul le place_id était comparé, et uniquement quand
@@ -202,4 +202,102 @@ test("le benchmark contient bien des concurrents lorsqu'ils existent réellement
   } finally {
     restore();
   }
+});
+
+test("une annonce sponsorisée est exclue avant le calcul de la position et du top 3 organiques", async () => {
+  const restore = mockFetchOnce({
+    data: [[
+      { name: "Mr Fixer Renovations Repairs", place_id: "ad-1", sponsored: true, reviews: 999 },
+      { name: "Marce Emmanuel", place_id: "organic-1", sponsored: false, reviews: 30 },
+      { name: "Haïm Rousselle Électricité", place_id: "target", sponsored: false, reviews: 0 },
+      { name: "Ousteland Vincent Cornil", place_id: "organic-3", sponsored: false, reviews: 18 },
+      { name: "Concurrent organique 4", place_id: "organic-4", sponsored: false, reviews: 12 },
+    ]],
+  });
+  try {
+    const result = await collectCompetitors({
+      activite: "Électricien",
+      ville: "Audun-le-Tiche",
+      placeIdCible: "target",
+      apiKey: "key",
+      suppressSensitiveLogs: true,
+    });
+    assert.equal(result.position, 2);
+    assert.equal(result.positionKind, "organic");
+    assert.equal(result.sponsoredResultsExcluded, 1);
+    assert.deepEqual(result.concurrents.map((item) => item.name), [
+      "Marce Emmanuel",
+      "Ousteland Vincent Cornil",
+      "Concurrent organique 4",
+    ]);
+    assert.equal(result.concurrents.some((item) => item.name === "Mr Fixer Renovations Repairs"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("plusieurs annonces sponsorisées sont toutes exclues du classement et des concurrents", async () => {
+  const restore = mockFetchOnce({
+    data: [[
+      { name: "Annonce A", place_id: "ad-a", isAd: true },
+      { name: "Annonce B", place_id: "ad-b", result_type: "Sponsored" },
+      { name: "Cible", place_id: "target", isAd: false },
+      { name: "Concurrent A", place_id: "organic-a", isAd: false },
+    ]],
+  });
+  try {
+    const result = await collectCompetitors({ activite: "Garage", ville: "Arlon", placeIdCible: "target", apiKey: "key", suppressSensitiveLogs: true });
+    assert.equal(result.position, 1);
+    assert.equal(result.sponsoredResultsExcluded, 2);
+    assert.deepEqual(result.concurrents.map((item) => item.name), ["Concurrent A"]);
+  } finally {
+    restore();
+  }
+});
+
+test("sans donnée publicitaire disponible, la position historique est conservée sans déduction arbitraire", async () => {
+  const restore = mockFetchOnce({
+    data: [[
+      { name: "Résultat A", place_id: "a" },
+      { name: "Cible", place_id: "target" },
+      { name: "Résultat B", place_id: "b" },
+    ]],
+  });
+  try {
+    const result = await collectCompetitors({ activite: "Garage", ville: "Arlon", placeIdCible: "target", apiKey: "key", suppressSensitiveLogs: true });
+    assert.equal(result.position, 2);
+    assert.equal(result.positionKind, "observed");
+    assert.equal(result.sponsoredResultsExcluded, 0);
+    assert.deepEqual(result.concurrents.map((item) => item.name), ["Résultat A", "Résultat B"]);
+  } finally {
+    restore();
+  }
+});
+
+test("le nom d'une entreprise ne suffit jamais à la classer comme annonce", async () => {
+  const restore = mockFetchOnce({ data: [[
+    { name: "Sponsorisé Électricité", place_id: "target" },
+    { name: "Concurrent", place_id: "c" },
+  ]] });
+  try {
+    const result = await collectCompetitors({ activite: "Électricien", ville: "Metz", placeIdCible: "target", apiKey: "key", suppressSensitiveLogs: true });
+    assert.equal(result.position, 1);
+    assert.equal(result.positionKind, "observed");
+  } finally {
+    restore();
+  }
+});
+
+test("la métadonnée organique n'est persistée que lorsque la classification publicitaire est disponible", () => {
+  assert.deepEqual(addSearchResultContext({ name: "Cible" }, {
+    positionKind: "organic",
+    sponsoredResultsExcluded: 1,
+  }), {
+    name: "Cible",
+    search_result_context: { position_kind: "organic", sponsored_results_excluded: 1 },
+  });
+  assert.deepEqual(addSearchResultContext({ name: "Cible" }, {
+    positionKind: "observed",
+    sponsoredResultsExcluded: 0,
+  }), { name: "Cible" });
 });

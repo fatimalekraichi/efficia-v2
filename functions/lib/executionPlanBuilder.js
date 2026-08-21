@@ -66,7 +66,7 @@ function factualObservation(priority, context) {
     return `Votre galerie compte ${Math.round(value)} photos et constitue déjà une base solide. L’enjeu est surtout de la maintenir récente, variée et fidèle à l’activité réelle.`;
   }
   if (priority.signal === "description") {
-    if (!context.descriptionLength) return "Votre fiche ne comporte actuellement aucune description. Une structure claire aiderait les internautes à comprendre l’activité, la localisation et les informations utiles avant de vous contacter.";
+    if (!context.descriptionLength) return "Aucune description n’est visible sur votre fiche Google. Un prospect ne peut donc pas comprendre immédiatement vos services, votre zone d’intervention et ce qui distingue votre entreprise.";
     return `Votre description existe, mais ses ${Math.round(context.descriptionLength)} caractères ne permettent pas encore de présenter clairement toutes les informations utiles et vérifiées.`;
   }
   if (priority.signal === "reviews" && Number.isFinite(value)) {

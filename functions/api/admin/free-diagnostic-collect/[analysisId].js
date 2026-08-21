@@ -1,7 +1,7 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
-import { collectCompetitors } from "../../../lib/collectCompetitors.js";
+import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
@@ -212,6 +212,8 @@ export async function onRequestPost(context) {
         requete: competitorResult.requete,
         position: competitorResult.position,
         concurrents: competitorResult.concurrents,
+        positionKind: competitorResult.positionKind,
+        sponsoredResultsExcluded: competitorResult.sponsoredResultsExcluded,
       };
     }
   }
@@ -239,7 +241,7 @@ export async function onRequestPost(context) {
       competitorData.position,
       JSON.stringify(competitorData.concurrents),
       JSON.stringify(fiche),
-      JSON.stringify(normalized),
+      JSON.stringify(addSearchResultContext(normalized, competitorData)),
       updatedAt,
       analysisId,
     ).run();

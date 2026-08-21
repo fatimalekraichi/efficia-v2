@@ -52,6 +52,11 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function wasObserved(normalized, ...fields) {
+  return Array.isArray(normalized?.observed_fields)
+    && normalized.observed_fields.some((field) => fields.includes(field));
+}
+
 function analysisWithCollectedBenchmark(analysis) {
   const competitors = Array.isArray(analysis?.business?.competitors) ? analysis.business.competitors : [];
   if (!competitors.length) return analysis;
@@ -109,8 +114,12 @@ export function buildFreeDiagnosticCollectionState(analysis) {
       rating: numberOrNull(business.rating),
       reviews: numberOrNull(business.reviews),
       photosCount: numberOrNull(business.photosCount),
-      descriptionLength: numberOrNull(business.descriptionLength),
+      descriptionLength: wasObserved(normalized, "description", "description_length")
+        ? numberOrNull(business.descriptionLength)
+        : null,
       localPosition: numberOrNull(business.localPosition),
+      positionKind: business.positionKind === "organic" ? "organic" : "observed",
+      sponsoredResultsExcluded: numberOrNull(business.sponsoredResultsExcluded) ?? 0,
       searchQuery: firstNonEmpty(business.searchQuery),
       competitors: (Array.isArray(business.competitors) ? business.competitors : []).map((competitor) => ({
         name: firstNonEmpty(competitor?.name),

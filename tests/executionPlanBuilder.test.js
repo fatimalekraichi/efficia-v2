@@ -297,7 +297,7 @@ test("les observations factuelles ne contredisent jamais les valeurs brutes", ()
   const description = zero.actions.find((item) => item.signal === "description").observed;
   assert.match(photo, /aucune photo visible/);
   assert.doesNotMatch(photo, /base utile|galerie solide/i);
-  assert.match(description, /aucune description/);
+  assert.match(description, /aucune description/i);
   assert.doesNotMatch(description, /description existe/i);
 });
 

@@ -152,6 +152,22 @@ test("aucun avis ne déclenche ni note, ni récence, ni recommandation de répon
   assert.equal(output.strengths.some((item) => item.id === "FORCE_POSITION"), true);
   assert.equal(output.top_priorities.some((item) => item.signal === "position"), false);
   assert.equal(output.weaknesses.some((item) => item.id === "WEAK_REVIEWS"), true);
+  const description = allFindings(output).find((item) => item.id === "OPP_DESCRIPTION");
+  assert.ok(description);
+  assert.match(description.message, /Aucune description n’est visible sur votre fiche Google/);
+  assert.doesNotMatch(description.message, /0 caractères?|sur 750/);
+});
+
+test("une description courte reste distincte d'une description absente", () => {
+  const output = runKnowledgeEngine({
+    analysisId: "short-description",
+    business: { description_length: 120, has_description: true },
+    benchmark: { confidence: "estimated" },
+  });
+  const description = allFindings(output).find((item) => item.id === "OPP_DESCRIPTION");
+  assert.ok(description);
+  assert.match(description.message, /présente, mais reste trop courte/);
+  assert.doesNotMatch(description.message, /Aucune description/);
 });
 
 test("les recommandations de récence ou de réponse restent possibles avec des avis existants", () => {

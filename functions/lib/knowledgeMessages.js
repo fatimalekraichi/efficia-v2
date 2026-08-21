@@ -96,6 +96,17 @@ export function stableHash(value) {
 }
 
 export function renderKnowledgeMessage(input, messageGroup) {
+  if (messageGroup === "OPP_DESCRIPTION") {
+    const rawLength = input?.business?.description_length;
+    const length = rawLength === null || rawLength === undefined || rawLength === "" ? null : Number(rawLength);
+    if (input?.business?.has_description === false || length === 0) {
+      return "Aucune description n’est visible sur votre fiche Google. Un prospect ne peut donc pas comprendre immédiatement vos services, votre zone d’intervention et ce qui distingue votre entreprise.";
+    }
+    if (Number.isFinite(length) && length > 0) {
+      return "La description est présente, mais reste trop courte pour présenter clairement l’activité.";
+    }
+    return "La description n’a pas pu être vérifiée à partir des données publiques disponibles.";
+  }
   const formulations = KNOWLEDGE_MESSAGES[messageGroup] || KNOWLEDGE_MESSAGES.FORCE_SCORE_NEUTRAL;
   const seed = `${input?.analysisId || ""}${messageGroup}`;
   const template = formulations[stableHash(seed) % formulations.length];

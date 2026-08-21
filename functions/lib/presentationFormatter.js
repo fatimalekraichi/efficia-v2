@@ -195,7 +195,7 @@ const SIGNAL_VALUE_FORMATTERS = {
   },
   reviews: (value) => formatCount(value, "avis", "avis"),
   photos: (value) => formatCount(value, "photo", "photos"),
-  description: (value) => formatCount(value, "caractère", "caractères"),
+  description: (value) => value === 0 ? "aucune description visible" : formatCount(value, "caractère", "caractères"),
   categories: (value) => formatCount(value, "catégorie secondaire", "catégories secondaires"),
   position: (value) => {
     const ordinal = formatOrdinal(value);
@@ -571,7 +571,7 @@ const EVIDENCE_YOU_INTRO = {
     : "Votre galerie ne contient actuellement aucune photo."),
   description: (value, rawValue) => (rawValue > 0
     ? `Votre description compte actuellement ${value}.`
-    : "Votre fiche ne comporte actuellement aucune description."),
+    : "Aucune description n’est visible sur votre fiche Google."),
   categories: (value, rawValue) => (rawValue > 0
     ? `Votre fiche référence actuellement ${value}.`
     : "Votre fiche ne référence actuellement aucune catégorie secondaire."),
@@ -596,7 +596,7 @@ const EVIDENCE_BEST_INTRO = {
   position: (value, name) => `La fiche de référence observée apparaît en ${value}${name}.`,
 };
 
-const DESCRIPTION_ABSENT_REASONING = "Votre fiche ne comporte actuellement aucune description. Ajouter un texte clair permettrait de présenter vos spécialités, votre zone d'intervention et votre valeur ajoutée.";
+const DESCRIPTION_ABSENT_REASONING = "Aucune description n’est visible sur votre fiche Google. Ajouter un texte clair permettrait de présenter vos spécialités, votre zone d'intervention et votre valeur ajoutée.";
 const DESCRIPTION_SHORT_REASONING = "Votre description existe, mais elle peut être enrichie pour mieux présenter vos spécialités, votre zone d'intervention et votre valeur ajoutée.";
 
 export function formatDescriptionReasoning(text, descriptionLength) {

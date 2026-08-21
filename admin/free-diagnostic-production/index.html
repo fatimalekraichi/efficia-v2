@@ -2414,7 +2414,7 @@ function statsScore(){
   return {ameliorables, pointsPerdus};
 }
 
-let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
 
 /* ====== COUCHE DONNÉES SÛRES ======
    Règle absolue du rapport client : une donnée absente ne s'affiche pas.
@@ -2601,7 +2601,7 @@ function reinitialiserAnalyse(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
   auditPublicIdActif = null;
   auditSourceActif = null;
   auditFallbackLocalId = null;
@@ -2668,6 +2668,8 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     nbPhotos: estNombre(business.photosCount) ? Number(business.photosCount) : null,
     note: estNombre(business.rating) ? Number(business.rating) : null,
     position: estNombre(business.localPosition) ? Number(business.localPosition) : null,
+    positionKind: business.positionKind === "organic" ? "organic" : "observed",
+    sponsoredResultsExcluded: estNombre(business.sponsoredResultsExcluded) ? Number(business.sponsoredResultsExcluded) : 0,
     requeteTestee: business.searchQuery || null,
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
     concurrents: concurrents.map((item) => ({
@@ -2732,7 +2734,7 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
   majConditionsQuestionnaire();
   calc();
 }
@@ -3645,7 +3647,7 @@ function indicesProspectHtml(){
   const rqObs = estTexte(dObs.requeteTestee) ? libelleRechercheRapport(dObs.requeteTestee) : "";
   const EXPLICATIONS = {
     visibilite: estNombre(dObs.position) && dObs.position > 0
-      ? `Position observée : ${dObs.position === 1 ? "1re" : dObs.position + "e"}${rqObs ? " sur « " + rqObs + " »" : " sur la recherche testée"}.`
+      ? `Position observée : ${libellePositionRapport(dObs)}.`
       : (estNombre(dObs.position) && dObs.position === 0
         ? `Votre fiche n'apparaît pas dans les premiers résultats${rqObs ? " sur « " + rqObs + " »" : " observés"}.`
         : "Votre présence sur les recherches locales qui comptent pour votre activité."),
@@ -3713,11 +3715,11 @@ function faitsObservesHtml(){
   if(estNombre(d.nbAvis)) facts.push(["Avis", nEntier(d.nbAvis)]);
   if(estNombre(d.nbPhotos)) facts.push(["Photos", nEntier(d.nbPhotos)]);
   if(estNombre(d.nbServices)) facts.push(["Services listés", nEntier(d.nbServices)]);
-  if(estNombre(d.position)) facts.push(["Position observée", d.position === 0 ? "Non visible" : d.position + "e"]);
+  if(estNombre(d.position)) facts.push(["Position observée", d.position === 0 ? "Non visible" : libellePositionRapport(d, {avecRecherche:false})]);
   if(estTexte(d.requeteTestee)) facts.push(["Recherche testée", "« " + libelleRechercheRapport(d.requeteTestee) + " »"]);
   if(estNombre(d.concurrence?.volC)) facts.push(["Avis concurrents", nEntier(d.concurrence.volC) + " en moyenne"]);
   if(estTexte(d.dernierAvis)) facts.push(["Dernier avis", new Date(d.dernierAvis).toLocaleDateString("fr-FR")]);
-  if(estNombre(d.descriptionLongueur)) facts.push(["Description", nEntier(d.descriptionLongueur) + " caractères"]);
+  if(estNombre(d.descriptionLongueur)) facts.push(["Description", descriptionConfirmeeVide(d) ? "Aucune description visible" : nEntier(d.descriptionLongueur) + " caractères"]);
   if(!facts.length) return "";
   return `<div class="facts-grid">${facts.slice(0,6).map(([k,v]) => `<div class="fact">${k}<b>${v}</b></div>`).join("")}</div>`;
 }
@@ -3782,11 +3784,11 @@ function enrichirConstatAvecDonnees(cr, points){
   if((cr.key === "volumeAvis" || cr.key === "noteMoyenne") && estNombre(d.nbAvis)) morceaux.push(`Nombre d'avis : ${nEntier(d.nbAvis)}.`);
   if(cr.key === "volumeAvis" && concurrence && estNombre(concurrence.volC)) morceaux.push(`Moyenne des concurrents observés : ${nEntier(concurrence.volC)} avis.`);
   if(cr.key === "attractiviteConcurrents" && concurrence && estNombre(concurrence.noteC) && estNombre(concurrence.volC)) morceaux.push(`Concurrents observés : ${fmtNote(concurrence.noteC)}/5 et ${nEntier(concurrence.volC)} avis en moyenne.`);
-  if(cr.key === "classementLocal" && estNombre(d.position)) morceaux.push(`Position observée : ${d.position === 0 ? "hors des premiers résultats" : d.position}${d.position > 0 ? "e" : ""}${estTexte(d.requeteTestee) ? " sur « " + libelleRechercheRapport(d.requeteTestee) + " »" : ""}.`);
+  if(cr.key === "classementLocal" && estNombre(d.position)) morceaux.push(`Position observée : ${d.position === 0 ? "hors des premiers résultats" : libellePositionRapport(d)}.${contexteAnnonceSponsorisee(d)}`);
   if(cr.key === "nombrePhotos" && estNombre(d.nbPhotos)) morceaux.push(`Photos observées : ${nEntier(d.nbPhotos)}.`);
   if((cr.key === "servicesPresents" || cr.key === "servicesDecrits") && estNombre(d.nbServices)) morceaux.push(`Services listés : ${nEntier(d.nbServices)}.`);
   if((cr.key === "publicationRecente" || cr.key === "rythmePublication") && estNombre(d.nbPublications)) morceaux.push(`Publications visibles : ${nEntier(d.nbPublications)}.`);
-  if((cr.key === "descriptionRemplie" || cr.key === "descriptionQualite") && estNombre(d.descriptionLongueur)) morceaux.push(`Longueur de description : ${nEntier(d.descriptionLongueur)} caractères (750 possibles).`);
+  if((cr.key === "descriptionRemplie" || cr.key === "descriptionQualite") && estNombre(d.descriptionLongueur)) morceaux.push(observationDescriptionRapport(d));
   return morceaux.join(" ");
 }
 
@@ -3800,8 +3802,10 @@ function observationPersonnalisee(cr){
     volumeAvis: estNombre(d.nbAvis) && estNombre(volC)
       ? `En parcourant les fiches qui apparaissent à côté de la vôtre, une différence saute aux yeux : ${nEntier(d.nbAvis)} avis chez vous, ${nEntier(volC)} en moyenne chez elles. Votre travail n'est pas en cause — votre fiche recueille simplement moins la parole de vos clients satisfaits.`
       : estNombre(d.nbAvis) ? `Votre fiche compte ${nEntier(d.nbAvis)} avis. Pour un client qui compare deux entreprises qu'il ne connaît pas, ce chiffre pèse plus lourd qu'on ne l'imagine.` : null,
-    descriptionRemplie: estNombre(d.descriptionLongueur)
-      ? `Nous avons lu votre présentation comme le ferait un client : ${nEntier(d.descriptionLongueur)} caractères, là où Google vous en offre 750. C'est l'espace où vous pourriez expliquer qui vous êtes et pourquoi vous choisir — et il est presque vide.`
+    descriptionRemplie: descriptionConfirmeeVide(d)
+      ? `Aucune description n’est visible sur votre fiche Google. Un prospect ne peut donc pas comprendre immédiatement vos services, votre zone d’intervention et ce qui distingue votre entreprise.`
+      : estNombre(d.descriptionLongueur)
+        ? `La description est présente, mais reste trop courte pour présenter clairement l’activité. C'est l'espace où vous pourriez expliquer qui vous êtes et pourquoi vous choisir.`
       : `Votre fiche n'a pas de présentation. C'est l'espace où vous pourriez expliquer, avec vos mots, qui vous êtes et pourquoi vous choisir.`,
     descriptionQualite: `En lisant votre présentation, un client ne trouve ni votre zone d'intervention, ni vos spécialités, ni ce qui vous distingue de la fiche suivante. Elle décrit une entreprise — pas la vôtre.`,
     servicesPresents: estNombre(d.nbServices)
@@ -3818,7 +3822,7 @@ function observationPersonnalisee(cr){
     recenceAvis: estTexte(d.dernierAvis) ? `Votre dernier avis date du ${new Date(d.dernierAvis).toLocaleDateString("fr-FR")}. Une fiche dont les avis s'arrêtent laisse penser que l'activité s'est arrêtée avec eux.` : null,
     classementLocal: estNombre(d.position) && estTexte(d.requeteTestee)
       ? (d.position === 0 ? `Nous avons cherché « ${libelleRechercheRapport(d.requeteTestee)} » comme le ferait un client : votre fiche existe, mais elle ne ressort pas encore dans les premiers résultats.`
-                          : `Sur « ${libelleRechercheRapport(d.requeteTestee)} », votre fiche apparaît en position ${d.position}. La plupart des clients s'arrêtent aux trois premières.`) : null,
+                          : `Sur « ${libelleRechercheRapport(d.requeteTestee)} », votre fiche apparaît comme ${libellePositionRapport(d, {avecRecherche:false})}. La plupart des clients s'arrêtent aux trois premiers résultats organiques.`) : null,
     attractiviteConcurrents: estNombre(volC) ? `Nous avons mis votre fiche côte à côte avec celles qui l'entourent dans les résultats, comme le fait chaque client avant d'appeler. Sur ce qui se voit en premier — avis, photos, détail de l'offre — la comparaison ne tourne pas encore en votre faveur.` : null,
     horaires: `Vos horaires sont incomplets. « Peut-être fermé » est l'une des mentions les plus dissuasives qu'une fiche puisse afficher.`,
     revendiquee: `Votre fiche affiche encore « Vous êtes le propriétaire ? » : elle vit sa vie sans vous, et vous ne pouvez ni la corriger ni y répondre.`,
@@ -3915,7 +3919,7 @@ function felicitationsBloc(forces){
     else if(k === "classementLocal" && estNombre(d.position) && d.position > 0 && d.position <= 3)
       lignes.push(d.position === 1 && estTexte(d.requeteTestee)
         ? `Votre fiche apparaît en première position sur la recherche testée « ${libelleRechercheRapport(d.requeteTestee)} ». C'est un excellent point de départ.`
-        : `Votre fiche apparaît en position ${d.position}${estTexte(d.requeteTestee) ? " sur « " + libelleRechercheRapport(d.requeteTestee) + " »" : ""}. C'est un point d'appui utile.`);
+        : `Votre fiche apparaît comme ${libellePositionRapport(d)}. C'est un point d'appui utile.`);
     else if(k === "tauxReponseAvis")
       lignes.push(`Vous répondez à vos avis. C'est plus rare qu'on ne le croit dans votre secteur, et les clients qui hésitent le remarquent.`);
     else if(k === "volumeAvis" && d.concurrence && estNombre(d.nbAvis) && d.nbAvis > d.concurrence.volC)
@@ -4178,11 +4182,11 @@ function resumePersonnalise(score, axeInfo){
     let p = d.note >= 4.3
       ? `${ouverture} Première impression plutôt bonne : votre note de ${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis inspire confiance au premier regard`
       : `${ouverture} Premier constat : ${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis — c'est la première chose qu'un prospect voit`;
-    if(estNombre(d.position) && d.position === 1 && estTexte(d.requeteTestee)) p += `. Votre fiche apparaît en première position sur la recherche testée « ${libelleRechercheRapport(d.requeteTestee)} ». C'est un excellent point de départ`;
-    else if(estNombre(d.position) && d.position > 1 && d.position <= 3 && estTexte(d.requeteTestee)) p += `, et vous apparaissez en position ${d.position} sur « ${libelleRechercheRapport(d.requeteTestee)} »`;
+    if(estNombre(d.position) && d.position === 1 && estTexte(d.requeteTestee)) p += `. Votre fiche apparaît comme ${libellePositionRapport(d)}. C'est un excellent point de départ`;
+    else if(estNombre(d.position) && d.position > 1 && d.position <= 3 && estTexte(d.requeteTestee)) p += `, et votre fiche apparaît comme ${libellePositionRapport(d)}`;
     phrases.push(p + ".");
   } else if(estNombre(d.position) && d.position > 0 && estTexte(d.requeteTestee)){
-    phrases.push(`${ouverture} Elle apparaît en position ${d.position} quand on cherche « ${libelleRechercheRapport(d.requeteTestee)} ».`);
+    phrases.push(`${ouverture} Elle apparaît comme ${libellePositionRapport(d)}.`);
   } else {
     phrases.push(ouverture.replace(" qui vous découvre.", " qui vous découvre pour la première fois."));
   }
@@ -4195,7 +4199,7 @@ function forceChiffree(cr){
   const d = donneesAnalyse;
   const versions = {
     noteMoyenne: estNombre(d.note) ? `Note de ${fmtNote(d.note)}/5${estNombre(d.nbAvis) ? " sur " + nEntier(d.nbAvis) + " avis" : ""} — un capital de confiance réel.` : null,
-    classementLocal: estNombre(d.position) && d.position > 0 && d.position <= 3 ? `Position ${d.position}${estTexte(d.requeteTestee) ? " sur « " + libelleRechercheRapport(d.requeteTestee) + " »" : ""} — votre fiche est bien placée localement.` : null,
+    classementLocal: estNombre(d.position) && d.position > 0 && d.position <= 3 ? `${positionOrganiqueConfirmee(d) ? "Position " + d.position + " sur « " + libelleRechercheRapport(d.requeteTestee) + " » — votre fiche figure dans le top 3 organique, hors annonces sponsorisées." : "Position " + d.position + (estTexte(d.requeteTestee) ? " sur « " + libelleRechercheRapport(d.requeteTestee) + " »" : "") + " — votre fiche est bien placée localement."}` : null,
     nombrePhotos: estNombre(d.nbPhotos) && d.nbPhotos >= 10 ? `${nEntier(d.nbPhotos)} photos publiées — votre activité est visible en images.` : null,
     volumeAvis: estNombre(d.nbAvis) && d.concurrence && d.nbAvis > d.concurrence.volC ? `${nEntier(d.nbAvis)} avis, davantage que la moyenne des concurrents observés — un avantage à entretenir.` : null,
     tauxReponseAvis: "Vous répondez à vos avis — un signe d'attention que les prospects remarquent."
@@ -4212,6 +4216,48 @@ function rapportPositionTop3(){
   return estNombre(donneesAnalyse?.position)
     && Number(donneesAnalyse.position) >= 1
     && Number(donneesAnalyse.position) <= 3;
+}
+
+function positionOrganiqueConfirmee(d = donneesAnalyse){
+  return d?.positionKind === "organic";
+}
+
+function ordinalOrganique(position){
+  const n = Number(position);
+  if(!Number.isFinite(n) || n <= 0) return "";
+  return Math.round(n) === 1 ? "1er" : `${Math.round(n)}e`;
+}
+
+function libellePositionRapport(d = donneesAnalyse, {avecRecherche = true} = {}){
+  if(!estNombre(d?.position) || Number(d.position) <= 0) return "";
+  const recherche = avecRecherche && estTexte(d.requeteTestee)
+    ? ` sur « ${libelleRechercheRapport(d.requeteTestee)} »`
+    : "";
+  return positionOrganiqueConfirmee(d)
+    ? `${ordinalOrganique(d.position)} résultat organique${recherche} — hors annonces sponsorisées`
+    : `${d.position === 1 ? "1re" : d.position + "e"} position${recherche}`;
+}
+
+function contexteAnnonceSponsorisee(d = donneesAnalyse){
+  return positionOrganiqueConfirmee(d) && Number(d.sponsoredResultsExcluded) > 0
+    ? " Une annonce sponsorisée apparaît au-dessus des résultats organiques."
+    : "";
+}
+
+function descriptionConfirmeeVide(d = donneesAnalyse){
+  return estNombre(d?.descriptionLongueur) && Number(d.descriptionLongueur) === 0;
+}
+
+function observationDescriptionRapport(d = donneesAnalyse, {courte = false} = {}){
+  if(descriptionConfirmeeVide(d)) return courte
+    ? "Aucune description visible."
+    : "Aucune description n’est visible sur votre fiche Google.";
+  if(estNombre(d?.descriptionLongueur) && Number(d.descriptionLongueur) > 0){
+    return Number(d.descriptionLongueur) < 400
+      ? "La description est présente, mais reste trop courte pour présenter clairement l’activité."
+      : `La description compte ${nEntier(d.descriptionLongueur)} caractères.`;
+  }
+  return "La description n’a pas pu être vérifiée à partir des données publiques disponibles.";
 }
 
 function categoriePrincipaleValideePourRapport(){
@@ -4258,7 +4304,7 @@ function faiblesseChiffree(cr){
     volumeAvis: c && estNombre(c.volC) && estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis, contre ${nEntier(c.volC)} en moyenne pour les fiches concurrentes observées.` : (estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis — un volume encore modeste pour un prospect qui compare.` : null),
     servicesPresents: estNombre(d.nbServices) ? `${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""} listé${d.nbServices > 1 ? "s" : ""} — l'étendue réelle de vos prestations n'est pas visible.` : null,
     servicesDecrits: estNombre(d.nbServices) ? `Les services présents ne suffisent pas à comprendre l'étendue de vos prestations.` : null,
-    descriptionRemplie: estNombre(d.descriptionLongueur) ? `Description de ${nEntier(d.descriptionLongueur)} caractères, sur 750 possibles.` : null,
+    descriptionRemplie: estNombre(d.descriptionLongueur) ? observationDescriptionRapport(d, {courte:true}) : null,
     publicationRecente: estNombre(d.nbPublications) && d.nbPublications === 0 ? `Aucune publication visible — la fiche paraît peu active.` : null,
     classementLocal: estNombre(d.position) && (d.position === 0 || d.position > 3) ? `${d.position === 0 ? "Fiche absente des premiers résultats" : "Position " + d.position}${estTexte(d.requeteTestee) ? " sur « " + libelleRechercheRapport(d.requeteTestee) + " »" : ""}.` : null
   };
@@ -4558,8 +4604,8 @@ function constatObservePriorite(item, ctx){
     const servicesTxt = estNombre(d.nbServices) ? (d.nbServices === 0 ? "aucun service n'est détaillé" : `seulement ${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""} listé${d.nbServices > 1 ? "s" : ""}`) : "";
     if(descVide || descCourte || servicesTxt){
       const morceaux = [];
-      if(descVide) morceaux.push("votre description est vide (0 caractère, sur 750 possibles)");
-      else if(descCourte) morceaux.push(`votre description ne compte que ${nEntier(d.descriptionLongueur)} caractères sur 750 possibles`);
+      if(descVide) morceaux.push("aucune description n’est visible sur votre fiche Google");
+      else if(descCourte) morceaux.push("la description est présente, mais reste trop courte pour présenter clairement l’activité");
       if(servicesTxt) morceaux.push(servicesTxt);
       const nomEcho = rq && ctx.entreprise && rq.split(" ").some(w => w.length >= 4 && ctx.entreprise.toLowerCase().includes(w.toLowerCase()));
       return `Sur votre fiche, ${morceaux.join(" et ")}. Un prospect qui cherche${rq ? " « " + rq + " »" : " vos services"} ne peut pas vérifier que vous réalisez exactement cette prestation${nomEcho ? " — alors que c'est écrit jusque dans votre nom" : ""}.`;
@@ -5272,7 +5318,7 @@ function observationsDeclic(){
     }
   }
   if(estNombre(d.position) && d.position > 1 && estNombre(d.nbAvis) && estNombre(m.avis) && Number(d.nbAvis) >= Number(m.avis)){
-    obs.push("Vous apparaissez en " + d.position + "e position alors que vous avez plus d'avis que la moyenne de vos concurrents (" + nEntier(d.nbAvis) + " contre " + nEntier(m.avis) + "). Ce n'est donc pas votre r\u00e9putation qui vous fait passer derri\u00e8re \u2014 le levier est ailleurs : cat\u00e9gories, description ou coh\u00e9rence locale.");
+    obs.push("Vous apparaissez comme " + libellePositionRapport(d, {avecRecherche:false}) + " alors que vous avez plus d'avis que la moyenne de vos concurrents (" + nEntier(d.nbAvis) + " contre " + nEntier(m.avis) + "). Ce n'est donc pas votre r\u00e9putation qui vous fait passer derri\u00e8re \u2014 le levier est ailleurs : cat\u00e9gories, description ou coh\u00e9rence locale.");
   }
   if(estNombre(d.nbPhotos) && estNombre(m.photos) && Number(m.photos) > Number(d.nbPhotos) * 1.3){
     obs.push("Vos concurrents publient en moyenne " + nEntier(m.photos) + " photos, contre " + nEntier(d.nbPhotos) + " sur votre fiche. Sur une d\u00e9cision qui se joue au premier coup d'\u0153il, celui qui montre le plus rassure le plus.");
@@ -5308,7 +5354,7 @@ function captureRechercheHtml(){
   const d = donneesAnalyse || {};
   if(!estUrlImage(d.captureRecherche)) return "";
   const rq = estTexte(d.requeteTestee) ? libelleRechercheRapport(d.requeteTestee) : "";
-  const pos = estNombre(d.position) && d.position > 0 ? "Votre fiche appara\u00eet en " + (d.position === 1 ? "1re" : d.position + "e") + " position" + (rq ? " sur \u00ab\u00a0" + rq + "\u00a0\u00bb" : "") + "." : "";
+  const pos = estNombre(d.position) && d.position > 0 ? "Votre fiche appara\u00eet comme " + libellePositionRapport(d) + "." + contexteAnnonceSponsorisee(d) : "";
   return `<section class="aud-block"><h2 class="aud-h2">Ce que voit un client qui vous cherche</h2>${pos ? `<p class="aud-p">${pos}</p>` : ""}<img src="${d.captureRecherche}" alt="Résultat de recherche Google" style="width:100%;max-width:520px;border-radius:10px;border:1px solid #e2e8f0;margin-top:8px" loading="lazy"></section>`;
 }
 
@@ -5389,7 +5435,7 @@ function construireBlocsAuditPremium(){
   if(estNombre(d.note)) chips.push(`<span class="aud-chip">Note <b>${fmtNote(d.note)} ★</b></span>`);
   if(estNombre(d.nbAvis)) chips.push(`<span class="aud-chip">Avis <b>${nEntier(d.nbAvis)}</b></span>`);
   if(estNombre(d.nbPhotos)) chips.push(`<span class="aud-chip">Photos <b>${nEntier(d.nbPhotos)}</b></span>`);
-  if(estNombre(d.position)) chips.push(`<span class="aud-chip">Position <b>${d.position === 0 ? "non visible" : d.position + "e"}</b></span>`);
+  if(estNombre(d.position)) chips.push(`<span class="aud-chip">Position <b>${d.position === 0 ? "non visible" : libellePositionRapport(d, {avecRecherche:false})}</b></span>`);
   push(`<section class="aud-block aud-cover">
     <div class="aud-cover-badge">Audit Efficia™</div>
     <h1 class="aud-cover-title">${entreprise}</h1>
@@ -5428,8 +5474,8 @@ function construireBlocsAuditPremium(){
       <p class="aud-p" style="margin:0">${txt}</p></section>`;
   };
   const txtVis = indices.visibilite === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
-    : rapportPositionTop3() ? `Votre fiche figure déjà dans le top 3 sur la recherche observée (position ${d.position === 1 ? "1re" : d.position + "e"}) : ce classement est un point fort à préserver.`
-    : indices.visibilite >= 75 ? `Votre fiche ressort bien sur les recherches locales pertinentes${estNombre(d.position) && d.position > 0 ? ` (position observée : ${d.position === 1 ? "1re" : d.position + "e"})` : ""}.`
+    : rapportPositionTop3() ? `Votre fiche figure déjà dans le top 3${positionOrganiqueConfirmee(d) ? " organique, hors annonces sponsorisées" : ""} sur la recherche observée (${libellePositionRapport(d, {avecRecherche:false})}) : ce classement est un point fort à préserver.`
+    : indices.visibilite >= 75 ? `Votre fiche ressort bien sur les recherches locales pertinentes${estNombre(d.position) && d.position > 0 ? ` (${libellePositionRapport(d, {avecRecherche:false})})` : ""}.`
     : indices.visibilite >= 50 ? "Votre présence locale est correcte mais perfectible : catégories, mots-clés locaux et classement peuvent être renforcés."
     : `Premier chantier : la fiche n'apparaît pas assez sur les recherches de ${activite || "votre activité"}${ville ? " à " + ville : ""}.`;
   const txtConf = indices.confiance === null ? "Ce pilier est affiné lors de l'optimisation de votre fiche."
@@ -5527,7 +5573,7 @@ function construireBlocsAuditPremium(){
     if(key === "visibilite"){
       let constat;
       if(estNombre(d.position) && d.position > 0){
-        constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche apparaît en position ${d.position === 1 ? "1re" : d.position + "e"}.`;
+        constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche apparaît comme ${libellePositionRapport(d, {avecRecherche:false})}.`;
       } else if(estNombre(d.position) && d.position === 0){
         constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
       } else {
@@ -5541,7 +5587,8 @@ function construireBlocsAuditPremium(){
     }
     if(key === "offre"){
       const bits = [];
-      if(estNombre(d.descriptionLongueur)) bits.push(d.descriptionLongueur < 200 ? `une description très courte (${nEntier(d.descriptionLongueur)} caractères)` : `une description de ${nEntier(d.descriptionLongueur)} caractères`);
+      if(descriptionConfirmeeVide(d)) bits.push("aucune description visible");
+      else if(estNombre(d.descriptionLongueur)) bits.push(d.descriptionLongueur < 200 ? "une description présente, mais trop courte" : `une description de ${nEntier(d.descriptionLongueur)} caractères`);
       if(estNombre(d.nbServices)) bits.push(`${nEntier(d.nbServices)} service(s) listé(s)`);
       const constat = bits.length ? `Votre fiche présente ${bits.join(" et ")}.` : "Votre offre (description, services, raisons de vous contacter) n'est pas assez explicite sur la fiche.";
       return {constat, explication:"Un prospect décide en quelques secondes. Si votre spécialité et vos services ne sont pas clairs immédiatement, il ne fait pas l'effort de comprendre : il passe à la fiche suivante.", illustration:""};

@@ -53,6 +53,59 @@ function extractPlaces(payload) {
   return firstQuery && typeof firstQuery === "object" ? [firstQuery] : [];
 }
 
+function normalizeAdLabel(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+const SPONSORED_LABELS = new Set([
+  "sponsorise",
+  "sponsored",
+  "ad",
+  "advertisement",
+  "paid",
+  "paid result",
+  "paid_result",
+]);
+
+const SPONSORED_BOOLEAN_FIELDS = ["sponsored", "is_sponsored", "isSponsored", "is_ad", "isAd"];
+const SPONSORED_VALUE_FIELDS = ["ad", "result_type", "resultType", "type", "label", "badge"];
+const CLASSIFICATION_FIELDS = [...SPONSORED_BOOLEAN_FIELDS, "ad", "result_type", "resultType"];
+
+function isExplicitTrue(value) {
+  return value === true || value === 1 || normalizeAdLabel(value) === "true";
+}
+
+// Une fiche n'est publicitaire que lorsqu'un champ fournisseur explicite le
+// confirme. Le nom commercial n'est jamais inspecté et aucune position n'est
+// corrigée arbitrairement en l'absence de marqueur fiable.
+export function isSponsoredResult(place) {
+  if (!place || typeof place !== "object") return false;
+  if (SPONSORED_BOOLEAN_FIELDS.some((field) => isExplicitTrue(place[field]))) return true;
+  return SPONSORED_VALUE_FIELDS.some((field) => SPONSORED_LABELS.has(normalizeAdLabel(place[field])));
+}
+
+function hasSponsorshipClassification(place) {
+  if (!place || typeof place !== "object") return false;
+  return isSponsoredResult(place) || CLASSIFICATION_FIELDS
+    .some((field) => Object.prototype.hasOwnProperty.call(place, field));
+}
+
+export function addSearchResultContext(normalized, competitorResult) {
+  const base = normalized && typeof normalized === "object" ? normalized : {};
+  if (competitorResult?.positionKind !== "organic") return base;
+  return {
+    ...base,
+    search_result_context: {
+      position_kind: "organic",
+      sponsored_results_excluded: Number(competitorResult.sponsoredResultsExcluded) || 0,
+    },
+  };
+}
+
 // Normalisation légère pour comparer deux URL Google (espaces superflus, casse) sans dépendre
 // d'une éventuelle différence de tracking/paramètres mineurs entre deux appels Outscraper distincts.
 function normalizeUrlForComparison(value) {
@@ -143,8 +196,12 @@ export async function collectCompetitors({
   }
 
   const places = extractPlaces(payload);
+  const sponsoredResults = places.filter(isSponsoredResult);
+  const sponsorshipClassificationAvailable = places.some(hasSponsorshipClassification);
+  const organicPlaces = places.filter((place) => !isSponsoredResult(place));
   const targetPlaceId = (placeIdCible || "").trim();
-  const targetIndex = targetPlaceId ? places.findIndex(place => place.place_id === targetPlaceId) : -1;
+  const rankedPlaces = sponsorshipClassificationAvailable ? organicPlaces : places;
+  const targetIndex = targetPlaceId ? rankedPlaces.findIndex(place => place.place_id === targetPlaceId) : -1;
   const position = targetIndex >= 0 ? targetIndex + 1 : 0;
 
   // Objectif 5 (mission "corriger les deux problèmes critiques", logs de
@@ -160,8 +217,8 @@ export async function collectCompetitors({
   }
 
   const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
-  const excluded = places.filter((place) => isSameBusiness(place));
-  const afterExclusion = places.filter((place) => !isSameBusiness(place));
+  const excluded = rankedPlaces.filter((place) => isSameBusiness(place));
+  const afterExclusion = rankedPlaces.filter((place) => !isSameBusiness(place));
 
   if (!suppressSensitiveLogs) {
     console.log("collectCompetitors:after-self-exclusion", {
@@ -180,5 +237,12 @@ export async function collectCompetitors({
     });
   }
 
-  return { ok: true, requete, position, concurrents };
+  return {
+    ok: true,
+    requete,
+    position,
+    concurrents,
+    positionKind: sponsorshipClassificationAvailable ? "organic" : "observed",
+    sponsoredResultsExcluded: sponsoredResults.length,
+  };
 }

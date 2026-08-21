@@ -11,7 +11,7 @@
 // D1      : binding ORDERS_DB, table `analyses` (migration 0003_analyses.sql)
 
 import { collectFiche } from "../lib/collectFiche.js";
-import { collectCompetitors } from "../lib/collectCompetitors.js";
+import { addSearchResultContext, collectCompetitors } from "../lib/collectCompetitors.js";
 import {
   loadDiagnosticRequestByIdempotency,
   normalizeInternalDiagnosticRequest,
@@ -86,6 +86,10 @@ function normaliserFiche(fiche) {
     address: fiche.address || "",
     city: fiche.city || "",
     borough: fiche.borough || "",
+    observed_fields: Array.isArray(fiche.observed_fields) ? fiche.observed_fields : [],
+    ...(Array.isArray(fiche.observed_fields) && fiche.observed_fields.includes("services")
+      ? { services: Array.isArray(fiche.services) ? fiche.services : [] }
+      : {}),
   };
 }
 
@@ -285,6 +289,8 @@ export async function onRequestPost(context) {
         requete: competitorsResult.requete,
         position: competitorsResult.position,
         concurrents: competitorsResult.concurrents,
+        positionKind: competitorsResult.positionKind,
+        sponsoredResultsExcluded: competitorsResult.sponsoredResultsExcluded,
       };
     } else {
       console.error("analyze: collecte concurrents échouée", competitorsResult.code, competitorsResult.error);
@@ -297,6 +303,7 @@ export async function onRequestPost(context) {
   const storedNom = nom || normalized.name || googleBusinessUrl;
   const storedVille = resolvedVille || VILLE_PLACEHOLDER;
   const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
+  const normalizedForStorage = addSearchResultContext(normalized, competitorData);
 
   if (![storedNom, storedVille, query].every((value) => typeof value === "string" && value.trim())) {
     return jsonError("INSUFFICIENT_BUSINESS_DATA", "Insufficient business data for storage.", 422);
@@ -328,7 +335,7 @@ export async function onRequestPost(context) {
       JSON.stringify(competitorData.concurrents || []),
       diagnosticRequest ? "awaiting_review" : "collected",
       JSON.stringify(fiche),
-      JSON.stringify(normalized),
+      JSON.stringify(normalizedForStorage),
       now,
       now,
       diagnosticRequest ? "free" : null,

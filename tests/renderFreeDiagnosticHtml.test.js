@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { runKnowledgeEngine } from "../functions/lib/knowledgeEngine.js";
 import { runReasoningEngine } from "../functions/lib/reasoning-engine/reasoningEngine.js";
 import { runComposer } from "../functions/lib/composer-engine/composerEngine.js";
+import { buildNarrativeModel } from "../functions/lib/composer-engine/narrativeModel.js";
 import { buildScoreContext } from "../functions/lib/auditComposition.js";
 import {
   renderAnalysisHtml,
@@ -202,6 +203,34 @@ test("Diagnostic gratuit : exactement trois priorités affichées", async () => 
   assert.equal(documentModel.freeDiagnostic.priorities.length, 3);
 });
 
+test("Diagnostic gratuit : une description vide confirmée n’est jamais présentée comme existante", async () => {
+  const descriptionReasoning = {
+    rank: 1,
+    id: "DESCRIPTION_ABSENTE",
+    type: "weakness",
+    signal: "description",
+    title: "Description à ajouter",
+    evidence: { value: 0 },
+    logic: { cause: "Votre description existe, mais elle peut encore mieux présenter votre activité." },
+    actionability: {},
+  };
+  const documentModel = buildNarrativeModel({
+    reportType: "free",
+    observation: {},
+    scoreContext: {},
+    knowledge: { top_priorities: [{ id: descriptionReasoning.id }] },
+    reasoning: { reasonings: [descriptionReasoning] },
+  }, {
+    priorities: [descriptionReasoning],
+    strengths: [],
+    weaknesses: [],
+    opportunities: [],
+  });
+  const descriptionPriority = documentModel.freeDiagnostic.priorities[0];
+
+  assert.equal(descriptionPriority.observed, "Aucune description n’est visible sur votre fiche Google.");
+});
+
 test("Diagnostic gratuit : projection de score 55 → 88", async () => {
   const documentModel = await buildDocumentModel("free");
   const html = renderFreeDiagnosticHtml(documentModel);
@@ -218,6 +247,19 @@ test("Diagnostic gratuit : les deux offres (Audit 99 € et Pack 349 €) sont p
   assert.match(html, /99 €/);
   assert.match(html, /Pack Visibilité Google/);
   assert.match(html, /349 €/);
+});
+
+test("Diagnostic gratuit : affiche le rang organique confirmé", async () => {
+  const documentModel = await buildDocumentModel("free");
+  documentModel.freeDiagnostic.position = 2;
+  documentModel.freeDiagnostic.testedQuery = "Électricien Audun-le-Tiche";
+  documentModel.freeDiagnostic.positionKind = "organic";
+  documentModel.freeDiagnostic.sponsoredResultsExcluded = 1;
+  const html = renderFreeDiagnosticHtml(documentModel);
+
+  assert.match(html, /2e résultat organique sur « Électricien Audun-le-Tiche » — hors annonces sponsorisées/);
+  assert.match(html, /Une annonce sponsorisée apparaît au-dessus des résultats organiques/);
+  assert.doesNotMatch(html, /Position observée : 3e/);
 });
 
 test("Diagnostic gratuit : aucun plan d'action premium complet, aucun mot collé, tout en français", async () => {
