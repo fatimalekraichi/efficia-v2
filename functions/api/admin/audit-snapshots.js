@@ -17,7 +17,11 @@ export async function onRequestGet(context) {
       s.pdf_filename,
       s.finalized_at,
       a.nom,
-      a.ville,
+      COALESCE(
+        NULLIF(json_extract(s.answers_json, '$.confirmedCity'), ''),
+        NULLIF(json_extract(s.answers_json, '$.fields.p-ville'), ''),
+        a.ville
+      ) AS ville,
       a.status,
       m.creation_source,
       m.billing_status,

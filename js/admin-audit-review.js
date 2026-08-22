@@ -19,6 +19,8 @@ const executionEditor = document.querySelector("[data-execution-editor]");
 const executionPending = document.querySelector("[data-execution-pending]");
 const draftSaveButton = document.querySelector("[data-draft-save]");
 const draftStatus = document.querySelector("[data-draft-status]");
+const cityEditor = document.querySelector("[data-city-editor]");
+const confirmedCityInput = document.querySelector("[data-confirmed-city]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 
 let currentAnalysis = null;
@@ -35,11 +37,17 @@ const REPORT_TYPE_LABELS = {
   premium: "Audit Premium 99 €",
 };
 
-const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews", "no_photos"]);
+const CRITERIA_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_reviews", "no_photos", "no_website"]);
 const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 const PHOTO_DEPENDENT_KEYS = ["photoRecente", "varietePhotos", "qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis", "recenceAvis", "tauxReponseAvis", "qualiteReponsesAvis"];
 const NO_REVIEWS_HIDDEN_KEYS = ["volumeAvis", "recenceAvis", "qualiteReponsesAvis"];
+const EMPTY_CITY_VALUES = new Set(["", "non renseignée", "non renseignee", "inconnue", "unknown"]);
+
+function cleanAdministrativeCity(value) {
+  const city = String(value || "").trim();
+  return EMPTY_CITY_VALUES.has(city.toLocaleLowerCase("fr")) ? "" : city;
+}
 
 // Questions conditionnelles : une sous-question n'a de sens que si la
 // question parente a une réponse précise. Elle est retirée complètement de
@@ -152,6 +160,7 @@ const REVIEW_CRITERIA_GROUPS = [
           ["compliant", "Cohérents"],
           ["partial", "À contrôler"],
           ["deficient", "Incohérents"],
+          ["no_website", "Aucun site web disponible", 0],
           ["not_verified", "Non vérifié"],
         ],
       },
@@ -1352,12 +1361,20 @@ function renderObservation(analysis) {
   const mainCategory = storedActivity && storedActivity.toLowerCase() !== businessNameForCategoryGuard
     ? storedActivity
     : (normalized.category || normalized.type || "");
+  const reportType = analysis.manualReview?.reportType || analysis.reportType || "premium";
+  const effectiveCity = cleanAdministrativeCity(
+    analysis.manualReview?.confirmedCity || business.reviewed?.city || business.ville,
+  );
+  if (cityEditor) cityEditor.hidden = reportType !== "premium";
+  if (confirmedCityInput && document.activeElement !== confirmedCityInput && !confirmedCityInput.value) {
+    confirmedCityInput.value = effectiveCity;
+  }
 
   const rows = [
     ["Nom", business.name || business.nom],
     ["Type de rapport", reportTypeLabel(analysis.manualReview?.reportType || analysis.reportType)],
     ["URL Google", { render: renderGoogleUrlValue(googleUrl) }],
-    ["Ville", business.ville],
+    ["Ville détectée (donnée brute)", business.ville],
     ["Catégorie principale", mainCategory],
     ["Catégories secondaires", secondaryCategoriesList ? secondaryCategoriesList.join(", ") : normalized.secondary_categories],
     ["Note", business.rating],
@@ -1369,7 +1386,6 @@ function renderObservation(analysis) {
     ["Téléphone", normalized.phone || normalized.phone_number],
     ["Position", business.localPosition],
     ["Requête", business.searchQuery || benchmark.searchQuery],
-    ["Localisation", business.ville],
     ["Concurrents valides", competitors.length],
     ["Confiance benchmark", { render: renderConfidenceBadge(benchmarkConfidence) }],
     ...(capitalizationAlert ? [["Alerte nom commercial", capitalizationAlert]] : []),
@@ -1576,7 +1592,7 @@ function collectPayload() {
     hoursAccuracy: previousReview.hoursAccuracy,
     visualConsistency: previousReview.visualConsistency,
     manualNotes: previousReview.manualNotes,
-    confirmedCity: previousReview.confirmedCity,
+    confirmedCity: cleanAdministrativeCity(confirmedCityInput?.value || previousReview.confirmedCity),
     confirmedCategory: previousReview.confirmedCategory,
     confirmedPosition: previousReview.confirmedPosition,
     confirmedQuery: previousReview.confirmedQuery,
@@ -1672,6 +1688,16 @@ async function restoreDraft() {
   const currentReportType = currentAnalysis.reportType || "premium";
   if (!answers || stored.reportType !== currentReportType || (answers.reportType && answers.reportType !== currentReportType)) return;
   fillCriteriaFromAnalysis(currentAnalysis, answers);
+  if (confirmedCityInput) {
+    confirmedCityInput.value = cleanAdministrativeCity(
+      answers.confirmedCity
+      || answers.fields?.["p-ville"]
+      || currentAnalysis.manualReview?.confirmedCity
+      || currentAnalysis.business?.reviewed?.city
+      || currentAnalysis.business?.ville
+      || "",
+    );
+  }
   restoreCompetitorSelection(answers);
   restoreExecutionPlan(answers.executionPlan);
   setDraftState("saved", stored.updatedAt || stored.finalizedAt);
@@ -1768,6 +1794,7 @@ if (!readOnlyMode) {
   form?.addEventListener("submit", saveReview);
   draftSaveButton?.addEventListener("click", () => saveDraft({ manual: true }));
   approveButton?.addEventListener("click", approveReport);
+  confirmedCityInput?.addEventListener("input", scheduleDraftSave);
 }
 fillUnknownButton?.addEventListener("click", markUnansweredCriteriaAsNotVerified);
 

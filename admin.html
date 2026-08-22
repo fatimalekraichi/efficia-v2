@@ -191,6 +191,25 @@
     </div>
   </main>
 
+  <dialog class="admin-transfer-dialog" data-transfer-dialog aria-labelledby="transfer-dialog-title">
+    <form method="dialog" class="admin-transfer-dialog__card">
+      <span class="admin-kicker">Premium manuel</span>
+      <h2 id="transfer-dialog-title">Créer un audit Premium à partir de ce diagnostic</h2>
+      <dl class="admin-transfer-dialog__details">
+        <div><dt>Entreprise</dt><dd data-transfer-company>—</dd></div>
+        <div><dt>Ville</dt><dd data-transfer-city>Ville à renseigner</dd></div>
+      </dl>
+      <p>Un nouvel audit Premium éditable sera créé et reprendra les réponses communes.</p>
+      <p><strong>Le diagnostic gratuit original restera strictement inchangé.</strong></p>
+      <p class="admin-muted">Ce Premium manuel ne crée aucune commande et aucun paiement.</p>
+      <p class="admin-transfer-dialog__error" data-transfer-error role="alert" hidden></p>
+      <div class="admin-transfer-dialog__actions">
+        <button class="admin-button is-secondary" value="cancel" type="submit">Annuler</button>
+        <button class="admin-button" value="default" type="button" data-transfer-confirm>Créer le Premium et reprendre les réponses</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/js/admin.js"></script>
 </body>
 </html>

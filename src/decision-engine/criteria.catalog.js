@@ -30,7 +30,7 @@ const GRILLE = [
   reco:"Remplir les attributs (accessibilité, moyens de paiement, services) : ils répondent aux questions avant l'appel.",
   force:"Attributs bien renseignés."},
  {key:"nap", q:"Nom, adresse et téléphone sont-ils identiques sur le site web ?", aide:"Comparer fiche et site (pied de page, page contact).", max:CONFIG.poids.informations.nap,
-  opts:[["Cohérents",CONFIG.poids.informations.nap],["Différences",0]],
+  opts:[["Cohérents",CONFIG.poids.informations.nap],["Différences",0],["Aucun site web disponible",0,"no_website"]],
   reco:"Harmoniser nom, adresse et téléphone entre la fiche et le site : les incohérences dégradent le référencement local.",
   force:"Coordonnées cohérentes entre fiche et site."},
  {key:"nomConforme", q:"Le nom de la fiche correspond-il au nom réel de l’entreprise, sans ajout artificiel de mots-clés ?", aide:"Comparer avec l’enseigne, le site officiel et les mentions légales. Ne pas pénaliser une ville, un métier ou un service lorsqu’il fait réellement partie du nom commercial utilisé par l’entreprise.", max:CONFIG.poids.informations.nomConforme,

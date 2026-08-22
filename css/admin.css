@@ -17,7 +17,7 @@
 }
 
 .admin-header__inner {
-  width: min(100% - 40px, 1180px);
+  width: min(calc(100% - 40px), 1180px);
   height: 76px;
   margin: 0 auto;
   display: flex;
@@ -47,13 +47,13 @@
 }
 
 .admin-main {
-  width: min(100% - 40px, 1180px);
+  width: min(calc(100% - 40px), 1180px);
   margin: 0 auto;
   padding: 46px 0 80px;
 }
 
 .admin-login {
-  width: min(100% - 40px, 520px);
+  width: min(calc(100% - 40px), 520px);
   min-height: 100vh;
   margin: 0 auto;
   display: grid;
@@ -211,6 +211,7 @@
 
 .admin-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
 }
 
@@ -626,6 +627,36 @@
   font-size: 12px;
 }
 
+.admin-transfer-dialog {
+  width: min(92vw, 620px);
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, .28);
+}
+
+.admin-transfer-dialog::backdrop {
+  background: rgba(15, 23, 42, .56);
+  backdrop-filter: blur(3px);
+}
+
+.admin-transfer-dialog__card { padding: 28px; }
+.admin-transfer-dialog__card h2 { margin: 8px 0 16px; color: var(--navy); line-height: 1.2; }
+.admin-transfer-dialog__card p { margin: 10px 0 0; line-height: 1.55; }
+.admin-transfer-dialog__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.admin-transfer-dialog__details div { padding: 12px 14px; border: 1px solid #dbe4f0; border-radius: 14px; background: #f8fbff; }
+.admin-transfer-dialog__details dt { color: #64748b; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+.admin-transfer-dialog__details dd { margin: 4px 0 0; color: var(--navy); font-weight: 900; overflow-wrap: anywhere; }
+.admin-transfer-dialog__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.admin-transfer-dialog__error { color: #b91c1c; font-weight: 800; }
+
+@media (max-width: 520px) {
+  .admin-transfer-dialog__card { padding: 22px 18px; }
+  .admin-transfer-dialog__details { grid-template-columns: 1fr; }
+  .admin-transfer-dialog__actions { flex-direction: column-reverse; }
+  .admin-transfer-dialog__actions .admin-button { width: 100%; }
+}
+
 .admin-icon-button {
   width: 36px;
   height: 36px;
@@ -923,7 +954,7 @@
   }
 
   .admin-main {
-    width: min(100% - 28px, 1180px);
+    width: min(calc(100% - 28px), 1180px);
     padding-top: 28px;
   }
 }

@@ -10,6 +10,7 @@ import {
 function optionValueForIndex(index, total, explicitValue = null) {
   if (explicitValue === "no_reviews") return "no_reviews";
   if (explicitValue === "no_photos") return "no_photos";
+  if (explicitValue === "no_website") return "no_website";
   if (index === 0) return "compliant";
   if (index === total - 1) return "deficient";
   return "partial";
@@ -80,7 +81,7 @@ function findCriterion(key) {
 }
 
 function criteriaOptions(criterion) {
-  const scoredOptionCount = criterion.opts.filter(([, , explicitValue]) => !["no_reviews", "no_photos"].includes(explicitValue)).length;
+  const scoredOptionCount = criterion.opts.filter(([, , explicitValue]) => !["no_reviews", "no_photos", "no_website"].includes(explicitValue)).length;
   return [
     ...criterion.opts.map(([label, points, explicitValue], index) => ({
       index,

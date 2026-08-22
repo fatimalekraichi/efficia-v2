@@ -16,6 +16,7 @@ const CRITERIA_STATUS_LABELS = {
   deficient: "prioritaire",
   not_verified: "à confirmer",
   not_applicable: "non applicable — aucun avis",
+  no_website: "Aucun site web officiel disponible",
 };
 
 // Passthrough des 6 domaines historiques (scoreEngine.calculateScoreDetail) —
@@ -47,8 +48,9 @@ function buildCriteriaSummary(criteria) {
     if (item?.status === "absence_confirmed" && item?.key !== "tauxReponseAvis") continue;
     const status = item?.status === "absence_confirmed"
       ? "not_applicable"
-      : (counts[item.status] !== undefined ? item.status : "not_verified");
+      : (item?.status === "no_website" ? "no_website" : (counts[item.status] !== undefined ? item.status : "not_verified"));
     if (status === "not_applicable" && counts.not_applicable === undefined) counts.not_applicable = 0;
+    if (status === "no_website" && counts.no_website === undefined) counts.no_website = 0;
     counts[status] += 1;
 
     if (!domainsByKey.has(item.category)) {
@@ -67,6 +69,12 @@ function buildCriteriaSummary(criteria) {
     counts,
     byDomain: [...domainsByKey.values()],
   };
+}
+
+function websiteAvailabilityNote(scoreContext = {}) {
+  return scoreContext.criteria?.some((item) => item?.key === "nap" && item?.status === "no_website")
+    ? "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google."
+    : null;
 }
 
 function buildFreePriorityCard(item, scoreContext = {}) {
@@ -215,6 +223,7 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
     reportType: depth.reportType,
     vocabulary: depth.vocabulary,
     freeDiagnostic: buildFreeDiagnostic(bundle, bundle.scoreContext),
+    websiteAvailabilityNote: websiteAvailabilityNote(bundle.scoreContext),
     scoreProvisional: bundle.scoreContext?.provisional === true,
     locationConfirmation: bundle.scoreContext?.locationConfirmation || null,
     searchContext: {

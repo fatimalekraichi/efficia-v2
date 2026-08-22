@@ -7,7 +7,7 @@ const CATEGORY_STATUS = new Set(["poor", "acceptable", "strong", "unknown"]);
 const HOURS_STATUS = new Set(["incorrect", "uncertain", "correct", "unknown"]);
 const CONSISTENCY_STATUS = new Set(["poor", "average", "strong", "unknown"]);
 const REPORT_TYPES = new Set(["free", "premium"]);
-const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "not_verified"]);
+const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_website"]);
 import { GRILLE } from "./score-efficia/criteriaCatalog.js";
 const CURRENT_CRITERIA_KEYS = new Set(GRILLE.flatMap((category) => category.criteres.map((criterion) => criterion.key)));
 

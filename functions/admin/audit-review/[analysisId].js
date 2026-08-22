@@ -20,6 +20,10 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = fal
     .review-kv div, .review-competitor { padding: 9px 13px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
     .review-kv span, .review-competitor span { display: block; color: #64748b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     .review-kv strong, .review-competitor strong { display: block; margin-top: 3px; color: #0f172a; font-size: 13.5px; line-height: 1.35; overflow-wrap: anywhere; }
+    .review-city-editor { margin-top: 14px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 16px; background: #f8fbff; }
+    .review-city-editor label { display: block; color: #0f172a; font-size: 14px; font-weight: 900; }
+    .review-city-editor input { width: min(100%, 420px); margin-top: 8px; }
+    .review-city-editor p { margin: 8px 0 0; color: #64748b; font-size: 12px; font-weight: 700; line-height: 1.5; }
     .observation-link { display: inline-flex; align-items: center; gap: 5px; color: #2563eb; text-decoration: none; }
     .observation-link:hover, .observation-link:focus-visible { text-decoration: underline; }
     .confidence-badge { display: inline-flex; align-items: center; gap: 5px; }
@@ -120,6 +124,11 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = fal
           <h2>Observation et benchmark</h2>
         </div>
         <div class="review-kv" data-review-observation></div>
+        <div class="review-city-editor" data-city-editor hidden>
+          <label for="confirmed-city">Ville confirmée ou corrigée par l’administratrice</label>
+          <input id="confirmed-city" type="text" maxlength="120" autocomplete="address-level2" placeholder="Ville à renseigner" data-confirmed-city>
+          <p>Cette correction est enregistrée dans le brouillon et le rapport. Les données brutes du fournisseur restent inchangées.</p>
+        </div>
         <div class="admin-section-heading" style="margin-top: 16px;">
           <span class="admin-kicker">Concurrents</span>
           <h2>Fiches observées</h2>

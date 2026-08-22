@@ -34,6 +34,7 @@ function selectedOptionIndex(value, max) {
 
 export function pointsFromManualStatus(criterion, review) {
   if (!criterion || !review || review.value === "not_verified") return null;
+  if (review.value === "no_website") return 0;
 
   const exactIndex = selectedOptionIndex(review.selectedOptionIndex, criterion.opts.length);
   if (exactIndex !== null) return criterion.opts[exactIndex]?.[1] ?? null;

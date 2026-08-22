@@ -6,6 +6,12 @@ const completedAuditsBody = document.querySelector("[data-admin-completed-audits
 const filtersForm = document.querySelector("[data-admin-filters]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const statElements = document.querySelectorAll("[data-stat]");
+const transferDialog = document.querySelector("[data-transfer-dialog]");
+const transferCompany = document.querySelector("[data-transfer-company]");
+const transferCity = document.querySelector("[data-transfer-city]");
+const transferConfirm = document.querySelector("[data-transfer-confirm]");
+const transferError = document.querySelector("[data-transfer-error]");
+let pendingTransfer = null;
 
 const statusLabels = {
   todo: "🟡 À faire",
@@ -89,6 +95,11 @@ const formatCustomerName = (value) => {
     return `${parts[1]} ${parts[0]}`;
   }
   return parts.join(" ");
+};
+
+const cleanAdministrativeCity = (value) => {
+  const city = String(value || "").trim();
+  return ["", "non renseignée", "non renseignee", "inconnue", "unknown"].includes(city.toLocaleLowerCase("fr")) ? "" : city;
 };
 
 const redirectToLogin = () => {
@@ -285,6 +296,13 @@ const renderCompletedAudits = (audits) => {
       <td><div class="admin-row-actions">
         <a class="admin-button" href="${completedAuditUrl(audit)}">Consulter</a>
         <button class="admin-button is-secondary" type="button" data-duplicate-audit="${escapeHtml(audit.analysisId)}">Dupliquer pour nouvelle version</button>
+        ${audit.reportType === "free" && audit.answersVersion === "score-efficia-questionnaire-v4" ? `
+          <button class="admin-button is-secondary" type="button"
+            data-transfer-premium="${escapeHtml(audit.analysisId)}"
+            data-transfer-company="${escapeHtml(audit.company || "—")}"
+            data-transfer-city="${escapeHtml(cleanAdministrativeCity(audit.city))}">
+            Créer un audit Premium à partir de ce diagnostic
+          </button>` : ""}
       </div></td>
     </tr>
   `).join("");
@@ -306,6 +324,25 @@ const loadCompletedAudits = async () => {
 };
 
 completedAuditsBody?.addEventListener("click", async (event) => {
+  const transferButton = event.target.closest("[data-transfer-premium]");
+  if (transferButton) {
+    transferButton.dataset.idempotencyKey ||= crypto.randomUUID();
+    pendingTransfer = {
+      analysisId: transferButton.dataset.transferPremium,
+      company: transferButton.dataset.transferCompany || "—",
+      city: transferButton.dataset.transferCity || "",
+      idempotencyKey: transferButton.dataset.idempotencyKey,
+    };
+    if (transferCompany) transferCompany.textContent = pendingTransfer.company;
+    if (transferCity) transferCity.textContent = pendingTransfer.city || "Ville à renseigner";
+    if (transferError) {
+      transferError.hidden = true;
+      transferError.textContent = "";
+    }
+    transferConfirm.disabled = false;
+    transferDialog?.showModal();
+    return;
+  }
   const button = event.target.closest("[data-duplicate-audit]");
   if (!button || button.disabled) return;
   button.disabled = true;
@@ -323,6 +360,40 @@ completedAuditsBody?.addEventListener("click", async (event) => {
     return;
   }
   window.location.href = draftResumeUrl(data.duplicate);
+});
+
+transferConfirm?.addEventListener("click", async () => {
+  if (!pendingTransfer || transferConfirm.disabled) return;
+  transferConfirm.disabled = true;
+  const originalLabel = transferConfirm.textContent;
+  transferConfirm.textContent = "Création en cours…";
+  try {
+    const response = await fetch("/api/admin/audit-premium-transfers", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        operation: "create_premium_from_free",
+        sourceAnalysisId: pendingTransfer.analysisId,
+        idempotencyKey: pendingTransfer.idempotencyKey,
+        referenceCity: pendingTransfer.city,
+      }),
+    });
+    if (response.status === 401) return redirectToLogin();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success || !data.transfer?.analysisId) {
+      const reference = data.reference ? ` Référence : ${data.reference}.` : "";
+      throw new Error(`Le transfert n’a pas pu être créé.${reference}`);
+    }
+    window.location.href = data.links?.review || `/admin/audit-review/${encodeURIComponent(data.transfer.analysisId)}`;
+  } catch (error) {
+    if (transferError) {
+      transferError.textContent = error.message || "Le transfert n’a pas pu être créé.";
+      transferError.hidden = false;
+    }
+    transferConfirm.disabled = false;
+    transferConfirm.textContent = originalLabel;
+  }
 });
 
 draftsBody?.addEventListener("click", async (event) => {

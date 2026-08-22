@@ -590,6 +590,7 @@ function heroSection(model, sector) {
         </div>
       </div>
       ${comparisonSection(model)}
+      ${model.websiteAvailabilityNote ? `<p class="methode-note">${safeText(model.websiteAvailabilityNote)}</p>` : ""}
       <div class="cover-bottom">
         <article class="hero-card executive-card">
           <div>
@@ -1554,6 +1555,7 @@ const CRITERION_ICON_BY_STATUS = {
   deficient: ["chk-ko", "✕"],
   not_verified: ["chk-unknown", "○"],
   not_applicable: ["chk-unknown", "○"],
+  no_website: ["chk-unknown", "○"],
 };
 
 function criterionIcon(status) {
@@ -1644,6 +1646,7 @@ function freeSituationSection(model) {
       ${free.provisional ? `<p class="methode-note">${PROVISIONAL_SCORE_NOTE} ${safeText(free.locationConfirmation, "")}</p>` : ""}
       ${freeIndicesRow(free.indices)}
       ${positionSummary(free) ? `<p class="methode-note">${safeText(positionSummary(free))}</p>` : ""}
+      ${model.websiteAvailabilityNote ? `<p class="methode-note">${safeText(model.websiteAvailabilityNote)}</p>` : ""}
       ${freeMeaningBox(model)}
       <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} critères passés en revue selon la méthode Efficia™.</p>
       <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>
@@ -1721,6 +1724,7 @@ function freeCriteriaSection(model) {
         <span class="count-tag status-partial">${safeNumber(counts.partial)} à améliorer</span>
         <span class="count-tag status-deficient">${safeNumber(counts.deficient)} prioritaires</span>
         <span class="count-tag status-not_verified">${safeNumber(counts.not_verified)} à confirmer</span>
+        ${counts.no_website ? `<span class="count-tag status-not_verified">${safeNumber(counts.no_website)} sans site web</span>` : ""}
         ${counts.not_applicable ? `<span class="count-tag status-not_verified">${safeNumber(counts.not_applicable)} non applicable</span>` : ""}
       </div>
       <div class="chk-grid">

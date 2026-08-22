@@ -19,7 +19,11 @@ export async function onRequestGet(context) {
       d.created_at,
       d.updated_at,
       a.nom,
-      a.ville,
+      COALESCE(
+        NULLIF(json_extract(d.answers_json, '$.confirmedCity'), ''),
+        NULLIF(json_extract(d.answers_json, '$.fields.p-ville'), ''),
+        a.ville
+      ) AS ville,
       m.creation_source,
       m.billing_status,
       CASE WHEN o.status = 'paid' AND (
