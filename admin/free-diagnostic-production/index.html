@@ -82,6 +82,7 @@
   .brouillon-etat[data-state="error"]{color:#fecaca}
   .btn{background:var(--bleu);color:#fff;font-weight:700;border:none;border-radius:10px;padding:14px 26px;
        font-size:1rem;cursor:pointer;text-decoration:none;display:inline-block}
+  #btn-analyser[hidden]{display:none!important}
   [data-premium-action][hidden]{display:none!important}
   .btn:hover{background:var(--bleu-fonce)}
   .btn-blanc{background:#fff;color:var(--bleu)}
@@ -2695,6 +2696,11 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   });
 
   collecteDiagnosticValidee = true;
+  const collectionButton = document.getElementById("btn-analyser");
+  if(collectionButton){
+    collectionButton.hidden = true;
+    collectionButton.disabled = true;
+  }
   preRemplirDonneesObservees();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
   const photoPresence = scorePrefill?.conditions?.photoPresence;
@@ -2712,6 +2718,11 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
 
 function neutraliserCollecteDiagnosticGratuit(){
   collecteDiagnosticValidee = false;
+  const collectionButton = document.getElementById("btn-analyser");
+  if(collectionButton){
+    collectionButton.hidden = false;
+    collectionButton.disabled = false;
+  }
   [CRITERE_IDS.noteMoyenne, CRITERE_IDS.nombrePhotos, ...PHOTO_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key]), ...REVIEW_DEPENDENT_KEYS.map((key) => CRITERE_IDS[key])]
     .filter(Boolean)
     .forEach(effacerReponseCritere);
@@ -2771,14 +2782,17 @@ async function lancerCollecteDiagnosticGratuit(){
         neutraliserCollecteDiagnosticGratuit();
         statut("Fiche Google introuvable. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville.", "erreur");
       }else{
-        statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+        const message = String(data.message || "La collecte n’a pas pu être terminée. Réessayez dans quelques instants.");
+        const trackingId = /^[a-f0-9-]{36}$/i.test(String(data.trackingId || "")) ? String(data.trackingId) : "";
+        statut(`${escapeHtml(message)}${trackingId ? `<br><small>Référence : ${escapeHtml(trackingId)}</small>` : ""}`, "erreur");
       }
       return;
     }
     appliquerCollecteDiagnosticGratuit(data.business || {}, data.scorePrefill);
     statut("Collecte terminée. Vérifiez les informations détectées avant de poursuivre.", "info");
   }catch{
-    statut("La collecte n’a pas pu être terminée. Réessayez dans quelques instants.", "erreur");
+    const trackingId = globalThis.crypto?.randomUUID?.() || "";
+    statut(`Erreur réseau pendant la collecte. Réessayez dans quelques instants.${trackingId ? `<br><small>Référence locale : ${escapeHtml(trackingId)}</small>` : ""}`, "erreur");
   }finally{
     collecteDiagnosticEnCours = false;
     if(button){ button.disabled = false; button.textContent = buttonLabel; }

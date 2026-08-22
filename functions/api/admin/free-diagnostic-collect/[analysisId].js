@@ -48,12 +48,24 @@ function normalizeFiche(fiche = {}) {
   };
 }
 
-function safeFailure(errorCode, status = 502) {
+function safeFailure(errorCode, status = 502, trackingId = crypto.randomUUID()) {
   return jsonResponse({
     success: false,
     error: errorCode,
     message: "La collecte n’a pas pu être terminée. Réessayez dans quelques instants.",
+    trackingId,
   }, status, { "Cache-Control": "no-store" });
+}
+
+function technicalFailure({ errorCode, phase, status = 502, error = null }) {
+  const trackingId = crypto.randomUUID();
+  console.error("free-diagnostic-collect: failed", {
+    tracking_id: trackingId,
+    phase,
+    error_code: errorCode,
+    ...(error ? { name: typeof error?.name === "string" ? error.name : "Error" } : {}),
+  });
+  return safeFailure(errorCode, status, trackingId);
 }
 
 function businessNotFoundFailure() {
@@ -122,6 +134,22 @@ export async function onRequestPost(context) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_REQUEST_REQUIRED" }, 403);
   }
 
+  // La création administrative passe déjà par /api/analyze puis /api/benchmark.
+  // Si ces données sont exploitables, le bouton de l'ancien questionnaire ne
+  // doit ni rappeler le fournisseur, ni réécrire l'analyse. Ce court-circuit
+  // rend aussi les retries et doubles clics séquentiels idempotents.
+  const existingCollectionState = buildFreeDiagnosticCollectionState(analysis);
+  if (existingCollectionState) {
+    return jsonResponse({
+      success: true,
+      analysisId,
+      status: analysis.status,
+      reportType: "free",
+      alreadyCollected: true,
+      ...existingCollectionState,
+    }, 200, { "Cache-Control": "no-store" });
+  }
+
   let payload = {};
   try {
     payload = await context.request.json();
@@ -145,11 +173,11 @@ export async function onRequestPost(context) {
   });
   if (!ficheResult.ok) {
     const notFound = ficheResult.code === 404;
-    console.error("free-diagnostic-collect: failed", {
-      phase: "business_collection",
-      error_code: notFound ? "GOOGLE_BUSINESS_NOT_FOUND" : "BUSINESS_COLLECTION_FAILED",
-    });
     if (notFound) {
+      console.error("free-diagnostic-collect: failed", {
+        phase: "business_collection",
+        error_code: "GOOGLE_BUSINESS_NOT_FOUND",
+      });
       try {
         await clearFailedCollection(db, analysisId, {
           company: requestedCompany,
@@ -157,16 +185,20 @@ export async function onRequestPost(context) {
           activity: manualActivity,
         });
       } catch (error) {
-        console.error("free-diagnostic-collect: failed", {
+        return technicalFailure({
           phase: "analysis_cleanup",
-          error_code: "ANALYSIS_UPDATE_FAILED",
-          name: typeof error?.name === "string" ? error.name : "Error",
+          errorCode: "ANALYSIS_UPDATE_FAILED",
+          status: 500,
+          error,
         });
-        return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
       }
       return businessNotFoundFailure();
     }
-    return safeFailure("BUSINESS_COLLECTION_FAILED", 502);
+    return technicalFailure({
+      phase: "business_collection",
+      errorCode: "BUSINESS_COLLECTION_FAILED",
+      status: 502,
+    });
   }
 
   const fiche = ficheResult.fiche || {};
@@ -183,12 +215,12 @@ export async function onRequestPost(context) {
         activity: manualActivity,
       });
     } catch (error) {
-      console.error("free-diagnostic-collect: failed", {
+      return technicalFailure({
         phase: "analysis_cleanup",
-        error_code: "ANALYSIS_UPDATE_FAILED",
-        name: typeof error?.name === "string" ? error.name : "Error",
+        errorCode: "ANALYSIS_UPDATE_FAILED",
+        status: 500,
+        error,
       });
-      return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
     }
     return businessNotFoundFailure();
   }
@@ -250,27 +282,33 @@ export async function onRequestPost(context) {
       analysisId,
     ).run();
   } catch (error) {
-    console.error("free-diagnostic-collect: failed", {
+    return technicalFailure({
       phase: "analysis_update",
-      error_code: "ANALYSIS_UPDATE_FAILED",
-      name: typeof error?.name === "string" ? error.name : "Error",
+      errorCode: "ANALYSIS_UPDATE_FAILED",
+      status: 500,
+      error,
     });
-    return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
   }
 
   let updatedAnalysis = null;
   try {
     updatedAnalysis = await loadAnalysisById(db, analysisId);
   } catch (error) {
-    console.error("free-diagnostic-collect: failed", {
+    return technicalFailure({
       phase: "analysis_reload",
-      error_code: "ANALYSIS_READ_FAILED",
-      name: typeof error?.name === "string" ? error.name : "Error",
+      errorCode: "ANALYSIS_READ_FAILED",
+      status: 500,
+      error,
     });
-    return safeFailure("ANALYSIS_READ_FAILED", 500);
   }
   const collectionState = buildFreeDiagnosticCollectionState(updatedAnalysis);
-  if (!collectionState) return safeFailure("ANALYSIS_UPDATE_FAILED", 500);
+  if (!collectionState) {
+    return technicalFailure({
+      phase: "analysis_validation",
+      errorCode: "ANALYSIS_UPDATE_FAILED",
+      status: 500,
+    });
+  }
 
   return jsonResponse({
     success: true,

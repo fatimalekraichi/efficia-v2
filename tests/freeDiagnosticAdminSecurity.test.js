@@ -20,7 +20,7 @@ const migrations = [
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",
   "0010_analysis_report_type.sql", "0011_score_efficia_historical.sql", "0012_order_cgv_acceptance.sql",
-  "0013_diagnostic_requests.sql",
+  "0013_diagnostic_requests.sql", "0014_audit_drafts.sql",
   "0016_admin_manual_audits.sql",
 ];
 
@@ -100,6 +100,36 @@ function seedOrder(db, {
   if (link) {
     db.sqlite.prepare("UPDATE analyses SET order_id = ? WHERE analysis_id = ?").run(orderId, analysisId);
   }
+}
+
+function seedManualMetadataAndDraft(db, analysisId = ANALYSIS_ID) {
+  const now = "2026-08-22T07:36:23.123Z";
+  db.sqlite.prepare(`
+    INSERT INTO audit_creation_metadata (
+      idempotency_key, analysis_id, creation_source, audit_type,
+      billing_status, request_status, created_at, updated_at
+    ) VALUES ('manual-free-collection-test', ?, 'admin_manual', 'free',
+      'not_applicable', 'completed', ?, ?)
+  `).run(analysisId, now, now);
+  db.sqlite.prepare(`
+    INSERT INTO audit_drafts (
+      draft_id, analysis_id, status, report_type, answers_version,
+      answers_json, current_step, created_at, updated_at
+    ) VALUES ('manual-free-draft-test', ?, 'draft', 'free',
+      'score-efficia-questionnaire-v4', '{"preserved":true}', 'questionnaire', ?, ?)
+  `).run(analysisId, now, now);
+}
+
+function markAnalysisCollected(db, analysisId = ANALYSIS_ID) {
+  db.sqlite.prepare(`
+    UPDATE analyses
+    SET nom = 'Maison Test', ville = 'Bruxelles', place_id = 'place-target', name = 'Maison Test',
+        rating = 4.7, reviews = 82, photos_count = 31, description_length = 20,
+        activity = 'Pâtisserie', competitors_json = '[]',
+        fiche_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie"}',
+        normalized_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie","observed_fields":[]}'
+    WHERE analysis_id = ?
+  `).run(analysisId);
 }
 
 async function cookie() {
@@ -287,6 +317,67 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
   }
 });
 
+test("un Diagnostic gratuit manuel déjà collecté réutilise son état sans fournisseur ni seconde analyse", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, { withRequest: false, companyName: "Maison Test", city: "Bruxelles", googleUrl: "" });
+  seedManualMetadataAndDraft(db);
+  markAnalysisCollected(db);
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls += 1;
+    throw new Error("provider_must_not_be_called");
+  };
+  try {
+    const beforeDraft = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID);
+    const beforeMetadata = db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(ANALYSIS_ID);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await collectDiagnostic(await context(db));
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.analysisId, ANALYSIS_ID);
+      assert.equal(body.alreadyCollected, true);
+    }
+    assert.equal(providerCalls, 0);
+    assert.equal(db.count("analyses"), 1);
+    assert.equal(db.count("orders"), 0);
+    assert.equal(db.count("order_items"), 0);
+    assert.equal(db.count("order_tasks"), 0);
+    assert.equal(db.count("diagnostic_requests"), 0);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID), beforeDraft);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(ANALYSIS_ID), beforeMetadata);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("un échec fournisseur manuel conserve le brouillon et les métadonnées avec une référence sûre", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, { withRequest: false, companyName: "Maison Test", city: "Bruxelles", googleUrl: "" });
+  seedManualMetadataAndDraft(db);
+  const restoreFetch = installProviderFixture({ fail: true });
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...values) => logs.push(values);
+  try {
+    const beforeDraft = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID);
+    const beforeMetadata = db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(ANALYSIS_ID);
+    const response = await collectDiagnostic(await context(db));
+    const body = await response.json();
+    assert.equal(response.status, 502);
+    assert.equal(body.error, "BUSINESS_COLLECTION_FAILED");
+    assert.match(body.trackingId, /^[a-f0-9-]{36}$/i);
+    assert.equal(db.count("analyses"), 1);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID), beforeDraft);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(ANALYSIS_ID), beforeMetadata);
+    assert.ok(logs.some(([, details]) => details?.tracking_id === body.trackingId));
+    assert.doesNotMatch(JSON.stringify(logs), /secret-provider-payload|simulated-provider-key/i);
+  } finally {
+    console.error = originalError;
+    restoreFetch();
+  }
+});
+
 test("une fiche introuvable reste awaiting_review, efface les sentinelles et ne crée aucune donnée métier annexe", async () => {
   const db = new LocalD1();
   seedAnalysis(db);
@@ -369,11 +460,10 @@ test("un échec fournisseur reste générique et ne journalise aucune réponse b
     const response = await collectDiagnostic(await context(db));
     const body = await response.json();
     assert.equal(response.status, 502);
-    assert.deepEqual(body, {
-      success: false,
-      error: "BUSINESS_COLLECTION_FAILED",
-      message: "La collecte n’a pas pu être terminée. Réessayez dans quelques instants.",
-    });
+    assert.equal(body.success, false);
+    assert.equal(body.error, "BUSINESS_COLLECTION_FAILED");
+    assert.equal(body.message, "La collecte n’a pas pu être terminée. Réessayez dans quelques instants.");
+    assert.match(body.trackingId, /^[a-f0-9-]{36}$/i);
     assert.doesNotMatch(logs.join("\n"), /fatima@example\.com|secret-provider-payload|simulated-provider-key/i);
   } finally {
     console.error = originalError;
@@ -505,6 +595,10 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.match(html, /method:"POST"/);
   assert.match(html, /if\(collecteDiagnosticEnCours\) return/);
   assert.match(html, /button\.textContent = "Collecte en cours…"/);
+  assert.match(html, /collectionButton\.hidden = true/);
+  assert.match(html, /#btn-analyser\[hidden\]\{display:none!important\}/);
+  assert.match(html, /Référence :/);
+  assert.match(html, /Référence locale :/);
   assert.match(html, /Fiche Google introuvable\. Vérifiez le lien transmis ou recherchez l’entreprise par son nom et sa ville\./);
   assert.doesNotMatch(html, /placeholder="Concurrent [123]"|placeholder="4,9"|placeholder="315"|placeholder="40"|placeholder="9"|placeholder="6"/);
   assert.doesNotMatch(html, /contexte\.googleBusinessUrl/);
