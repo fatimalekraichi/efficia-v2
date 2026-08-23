@@ -84,7 +84,7 @@ const analysisRow = {
   knowledge_completed_at: "2026-07-24T07:01:00.000Z",
 };
 
-function makeContext(row, analysisId = "analysis-1") {
+function makeContext(row, analysisId = "analysis-1", { paid = true, manual = false } = {}) {
   const db = {
     prepare(sql) {
       return {
@@ -92,7 +92,16 @@ function makeContext(row, analysisId = "analysis-1") {
           return {
             async first() {
               if (sql.includes("JOIN orders")) {
-                return { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 };
+                return paid ? { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 } : null;
+              }
+              if (sql.includes("audit_creation_metadata")) {
+                return manual ? {
+                  analysis_id: analysisId,
+                  creation_source: "admin_manual",
+                  audit_type: "premium",
+                  billing_status: "manual_unpaid",
+                  request_status: "completed",
+                } : null;
               }
               return row;
             },
@@ -208,4 +217,17 @@ test("renderAnalysisById ajoute un bouton de téléchargement masqué à l'impre
   assert.match(html, /class="efficia-preview-toolbar no-print"/);
   assert.match(html, /@page/);
   assert.match(html, /print-color-adjust: exact/);
+});
+
+test("aperçu Premium manuel : identité Premium et aucune déduction de 99 €", async () => {
+  const response = await renderAnalysisById(makeContext({
+    ...analysisRow,
+    status: "preview_ready",
+  }, "analysis-1", { paid: false, manual: true }), "analysis-1");
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(html, /Audit Efficia Premium/);
+  assert.doesNotMatch(html, /99 € déjà investis/);
+  assert.doesNotMatch(html, /intégralement déduits/);
 });

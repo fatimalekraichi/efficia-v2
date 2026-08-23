@@ -152,7 +152,7 @@ test("le serveur refuse de finaliser un questionnaire réellement incomplet pour
     const response = await patchAuditReview({
       request: new Request(`https://local.test/api/admin/audit-review/${analysisId}`, {
         method: "PATCH",
-        headers: { Cookie: cookie, "Content-Type": "application/json" },
+        headers: { Cookie: cookie, "Content-Type": "application/json", Origin: "https://local.test" },
         body: JSON.stringify({
           action: "complete_review",
           reportType,

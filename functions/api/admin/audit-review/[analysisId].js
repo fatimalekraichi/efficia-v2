@@ -1,5 +1,5 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
-import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
+import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb, requireSameOriginMutation } from "../../../admin/_shared.js";
 import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
@@ -42,10 +42,10 @@ function withScoreReviewData(analysis) {
   };
 }
 
-function technicalFailureResponse({ analysisId, stage, code, status = 500 }) {
+function technicalFailureResponse({ analysisId, stage, code, status = 500, publicError = "AUDIT_PREVIEW_PREPARATION_FAILED" }) {
   const reference = crypto.randomUUID();
   console.error(JSON.stringify({
-    message: "audit preview preparation failed",
+    message: "audit review mutation failed",
     reference,
     analysis_id: analysisId,
     stage,
@@ -53,7 +53,7 @@ function technicalFailureResponse({ analysisId, stage, code, status = 500 }) {
   }));
   return jsonResponse({
     success: false,
-    error: "AUDIT_PREVIEW_PREPARATION_FAILED",
+    error: publicError,
     reference,
   }, status);
 }
@@ -227,6 +227,15 @@ async function approveAnalysis(db, analysisId) {
       return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
     }
   }
+  if (["approved", "pdf_generated"].includes(row.status)) {
+    return jsonResponse({
+      success: true,
+      status: row.status,
+      analysisId,
+      approvedAt: row.approved_at || null,
+      idempotent: true,
+    });
+  }
   let manualReview = null;
   try { manualReview = JSON.parse(row?.manual_review_json || "null"); } catch { manualReview = null; }
   const incompleteFields = incompleteQuestionnaireFields(manualReview || {});
@@ -286,6 +295,9 @@ export async function onRequestPatch(context) {
   const auth = await requireAdminSession(context);
   if (!auth.ok) return auth.response;
 
+  const sameOrigin = requireSameOriginMutation(context.request);
+  if (!sameOrigin.ok) return sameOrigin.response;
+
   const analysisId = normalizeText(context.params.analysisId);
   if (!isValidAnalysisId(analysisId)) {
     return jsonResponse({ success: false, error: "INVALID_ANALYSIS_ID" }, 400);
@@ -313,7 +325,16 @@ export async function onRequestPatch(context) {
     }
   }
   if (action === "approve") {
-    return approveAnalysis(db, analysisId);
+    try {
+      return await approveAnalysis(db, analysisId);
+    } catch (error) {
+      return technicalFailureResponse({
+        analysisId,
+        stage: "approve",
+        code: error?.name || "UNEXPECTED_ERROR",
+        publicError: "AUDIT_APPROVAL_FAILED",
+      });
+    }
   }
 
   return jsonResponse({ success: false, error: "INVALID_ACTION" }, 400);

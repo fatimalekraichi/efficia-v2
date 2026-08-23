@@ -1539,6 +1539,12 @@ competitorsBox?.addEventListener("change", (event) => {
 });
 
 function updateLinks(analysis) {
+  if (!analysis?.analysisId || analysis.analysisId !== analysisId) {
+    previewLink.removeAttribute("href");
+    pdfLink?.removeAttribute("href");
+    legacyGeneratorLink?.removeAttribute("href");
+    throw new Error("L’analyse chargée ne correspond pas à l’identifiant demandé.");
+  }
   const id = encodeURIComponent(analysis.analysisId || analysisId);
   previewLink.href = `/api/render/${id}`;
 
@@ -1568,7 +1574,7 @@ function updateLinks(analysis) {
       // Le système gratuit utilise exclusivement l'ancien générateur exact de
       // main, servi statiquement depuis /admin/free-diagnostic-production/.
       // Jamais /api/pdf/{analysisId}, jamais /admin/legacy-free-diagnostic/{id}.
-      legacyGeneratorLink.href = `${window.location.origin}/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysis.analysisId || analysisId)}`;
+      legacyGeneratorLink.href = `${window.location.origin}/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysis.analysisId)}`;
     }
   }
 }
@@ -1591,6 +1597,10 @@ async function loadAnalysis() {
   }
 
   currentAnalysis = data.analysis;
+  if (currentAnalysis?.analysisId !== analysisId) {
+    setStatus("L’analyse reçue ne correspond pas à l’identifiant demandé.", "error");
+    return;
+  }
   setCriteriaCatalog(currentAnalysis);
   renderCriteriaReview();
   renderObservation(currentAnalysis);

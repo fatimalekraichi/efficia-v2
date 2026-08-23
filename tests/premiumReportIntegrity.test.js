@@ -50,7 +50,7 @@ function visibleText(html) {
 }
 
 function assertNoForbiddenArtifacts(html, label) {
-  const text = visibleText(html);
+  const text = visibleText(html.replace(/<!--[\s\S]*?-->/g, ""));
   for (const pattern of FORBIDDEN_PATTERNS) {
     assert.doesNotMatch(text, pattern, `${label} : artefact interdit détecté (${pattern})`);
   }
@@ -387,6 +387,24 @@ test("page finale de conversion : sans priorité disponible, repli générique s
   assertNoForbiddenArtifacts(html, "page de conversion sans priorité");
   assert.match(html, /Ce que nous corrigeons, identifié dans ce rapport/);
   assert.match(html, /Visibilité/);
+});
+
+test("Premium manuel : ne prétend jamais que 99 € ont été payés ou investis", () => {
+  const html = renderAnalysisHtml(baseModel({
+    commercialPolicy: {
+      reportKind: "premium",
+      billingKind: "manual_unpaid",
+      canMentionPaidAuditDeduction: false,
+    },
+  }));
+  const text = visibleText(html);
+
+  assert.match(text, /Audit Efficia Premium/);
+  assert.doesNotMatch(text, /99 € déjà (?:payés|investis)/);
+  assert.doesNotMatch(text, /intégralement déduits/);
+  assert.doesNotMatch(text, /Diagnostic Efficia/);
+  assert.doesNotMatch(text, /Diagnostic Google Business/);
+  assert.match(text, /cet audit reste votre feuille de route pour améliorer progressivement votre visibilité sur Google/);
 });
 
 test("page finale de conversion : jamais les mots interdits (réduction/promotion/remise/offre exceptionnelle), toujours \"déduit\"", () => {

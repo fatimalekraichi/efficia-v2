@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPdfById } from "../functions/api/pdf/_shared.js";
-import { buildAuditPdfFilename } from "../functions/lib/pdfRenderer.js";
+import { renderFreeDiagnosticPdfById, renderPdfById } from "../functions/api/pdf/_shared.js";
+import { addPreviewToolbar, buildAuditPdfFilename } from "../functions/lib/pdfRenderer.js";
 import { createSessionCookie } from "../functions/admin/_shared.js";
 
 const TOKEN = "test-token";
@@ -33,7 +33,7 @@ const analysisRow = {
   report_type: "premium",
 };
 
-function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undefined } = {}) {
+function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undefined, paid = true, manual = false } = {}) {
   let storedSnapshot = null;
   const storedDraft = draft === undefined && row ? {
     draft_id: "analysis-1",
@@ -53,7 +53,17 @@ function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undef
         bind(...next) { return bound(next); },
             async first() {
               if (sql.includes("JOIN orders")) {
-                return { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 };
+                return paid ? { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 } : null;
+              }
+              if (sql.includes("FROM order_tasks")) return null;
+              if (sql.includes("audit_creation_metadata")) {
+                return manual ? {
+                  analysis_id: row.analysis_id,
+                  creation_source: "admin_manual",
+                  audit_type: "premium",
+                  billing_status: "manual_unpaid",
+                  request_status: "completed",
+                } : null;
               }
               if (sql.includes("FROM audit_questionnaire_snapshots")) return storedSnapshot;
               if (sql.includes("FROM audit_drafts")) return storedDraft;
@@ -159,6 +169,25 @@ test("renderPdfById retourne un PDF et un nom de fichier nettoyé", async () => 
   }
 });
 
+test("PDF Premium manuel : même identité que l’aperçu et aucune déduction inventée", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    assert.match(init.body, /Audit Efficia Premium/);
+    assert.match(init.body, /Audit Google Business/);
+    assert.doesNotMatch(init.body, /99 € déjà investis/);
+    assert.doesNotMatch(init.body, /intégralement déduits/);
+    assert.doesNotMatch(init.body, /Diagnostic Efficia™/);
+    return new Response(PDF_BYTES, { status: 200, headers: { "Content-Type": "application/pdf" } });
+  };
+
+  try {
+    const response = await renderPdfById(makeContext({ paid: false, manual: true }), "analysis-1");
+    assert.equal(response.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("renderPdfById refuse un appel direct Premium sans paiement lié", async () => {
   const context = makeContext();
   context.env.ORDERS_DB.prepare = (sql) => ({
@@ -170,6 +199,23 @@ test("renderPdfById refuse un appel direct Premium sans paiement lié", async ()
   const response = await renderPdfById(context, "analysis-1");
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
+});
+
+test("le générateur Diagnostic gratuit refuse une analyse Premium côté serveur", async () => {
+  const response = await renderFreeDiagnosticPdfById(makeContext(), "analysis-1");
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: "FREE_DIAGNOSTIC_REQUIRED",
+  });
+});
+
+test("la barre d’aperçu restitue l’erreur structurée dans la page", () => {
+  const html = addPreviewToolbar("<!doctype html><html><body></body></html>", "analysis-1", "preview_ready");
+  assert.match(html, /data-efficia-approval-status/);
+  assert.match(html, /await response\.json\(\)/);
+  assert.match(html, /Référence/);
+  assert.doesNotMatch(html, /alert\(/);
 });
 
 test("renderPdfById conserve le PDF non finalisé si aucun questionnaire sauvegardé n’existe", async () => {

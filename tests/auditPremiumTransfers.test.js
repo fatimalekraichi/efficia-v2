@@ -429,6 +429,7 @@ test("un Premium manuel transféré complet prépare son aperçu sans commande p
         headers: {
           Cookie: await sessionCookie(),
           "Content-Type": "application/json",
+          Origin: "https://preview.example",
         },
         body: JSON.stringify({ ...answers, action: "complete_review" }),
       }),
@@ -477,6 +478,7 @@ test("un échec technique conserve le brouillon, ne crée aucun snapshot et reto
         headers: {
           Cookie: await sessionCookie(),
           "Content-Type": "application/json",
+          Origin: "https://preview.example",
         },
         body: JSON.stringify({ ...answers, action: "complete_review" }),
       }),

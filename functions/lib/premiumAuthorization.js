@@ -117,7 +117,7 @@ export async function loadPaidPremiumOrder(db, orderId) {
 
 export async function requirePremiumAnalysisAuthorization(context, db, analysis) {
   if (analysis?.reportType === "free" || analysis?.report_type === "free") {
-    return { ok: true, premium: false, order: null };
+    return { ok: true, premium: false, order: null, authorizationType: null };
   }
 
   if (!await isAdminSessionValid(context.request, context.env)) {
@@ -132,5 +132,10 @@ export async function requirePremiumAnalysisAuthorization(context, db, analysis)
     return { ok: false, status: 403, error: "PREMIUM_NOT_AUTHORIZED" };
   }
 
-  return { ok: true, premium: true, order: authorization.order };
+  return {
+    ok: true,
+    premium: true,
+    order: authorization.order,
+    authorizationType: authorization.authorizationType,
+  };
 }

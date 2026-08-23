@@ -15,6 +15,7 @@ import {
 } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 import { finalizeQuestionnaireSnapshot } from "../../lib/auditQuestionnaireSnapshots.js";
+import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
 
 const PDF_HEADERS = {
   "Content-Type": "application/pdf",
@@ -78,7 +79,7 @@ async function preserveQuestionnaireBeforeCompletion(db, analysisId, filename) {
   }, 409);
 }
 
-async function renderAnalysisPdf(context, db, analysis) {
+async function renderAnalysisPdf(context, db, analysis, authorizationType = null) {
   if (!canGeneratePdf(analysis)) {
     return jsonResponse({
       success: false,
@@ -87,7 +88,10 @@ async function renderAnalysisPdf(context, db, analysis) {
     }, 409);
   }
 
-  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const documentModel = applyReportCommercialPolicy(
+    buildDocumentModelFromAnalysis(analysis),
+    resolveReportCommercialPolicy(analysis.reportType, authorizationType),
+  );
   const html = renderAnalysisHtml(documentModel);
 
   // Routage : le Diagnostic gratuit utilise le chemin dédié capture page par
@@ -123,7 +127,7 @@ export async function renderPdfById(context, analysisId) {
     return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
   }
 
-  return renderAnalysisPdf(context, verified.db, analysis);
+  return renderAnalysisPdf(context, verified.db, analysis, premiumAuthorization.authorizationType);
 }
 
 export async function renderLatestPdf(context) {
@@ -140,7 +144,7 @@ export async function renderLatestPdf(context) {
     return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
   }
 
-  return renderAnalysisPdf(context, verified.db, analysis);
+  return renderAnalysisPdf(context, verified.db, analysis, premiumAuthorization.authorizationType);
 }
 
 // Route dédiée /api/pdf/free-diagnostic/:analysisId — force le chemin de
@@ -157,6 +161,10 @@ export async function renderFreeDiagnosticPdfById(context, analysisId) {
   const analysis = await loadAnalysisById(verified.db, analysisId);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
+  }
+
+  if (analysis.reportType !== "free") {
+    return jsonResponse({ success: false, error: "FREE_DIAGNOSTIC_REQUIRED" }, 409);
   }
 
   if (!canGeneratePdf(analysis)) {

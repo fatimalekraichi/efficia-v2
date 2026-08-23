@@ -3,6 +3,7 @@
 // roadmapSection() (point 10) ci-dessous — une seule fonction de regroupement,
 // jamais dupliquée, pour garder les deux pages synchronisées.
 import { groupActionPlan } from "./composer-engine/actionPlanGrouping.js";
+import { applyReportCommercialPolicy } from "./reportCommercialPolicy.js";
 // Sprint 5 (finition éditoriale) — module unique de présentation (objectif
 // 11) : formats français, typographie, vocabulaire sectoriel, preuve
 // enrichie, et les trois helpers de rédaction de Sprint 3 (angle, Constat,
@@ -1364,6 +1365,17 @@ function finalConversionSection(model) {
   // reprend ce qui a été identifié dans CE rapport précis.
   const findings = reportFindingLabels(model);
 
+  const paidDeduction = model.commercialPolicy?.canMentionPaidAuditDeduction !== false;
+  const deductionBlock = paidDeduction ? `
+        <article class="score-card deductible-callout">
+          <p class="score-band">Votre Audit Premium n'est pas une dépense perdue.</p>
+          <p class="score-interpretation">Si vous choisissez un accompagnement dans les 30 jours, les 99 € déjà investis seront intégralement déduits.</p>
+        </article>
+  ` : "";
+  const closing = paidDeduction
+    ? "Quelle que soit votre décision, cet audit reste votre feuille de route. Vous pouvez vous y référer à tout moment pour améliorer progressivement votre visibilité sur Google. Si vous préférez nous confier cette mission dans les 30 prochains jours, les 99 € déjà investis seront intégralement déduits."
+    : "Quelle que soit votre décision, cet audit reste votre feuille de route pour améliorer progressivement votre visibilité sur Google.";
+
   return `
     <section class="page final-page conversion-page">
       ${header("Et maintenant ?")}
@@ -1427,16 +1439,13 @@ function finalConversionSection(model) {
            le montant, mais le fait qu'il n'est pas perdu : très visible,
            jamais "réduction". -->
       <div class="conversion-tail">
-        <article class="score-card deductible-callout">
-          <p class="score-band">Votre Audit Premium n'est pas une dépense perdue.</p>
-          <p class="score-interpretation">Si vous choisissez un accompagnement dans les 30 jours, les 99 € déjà investis seront intégralement déduits.</p>
-        </article>
+        ${deductionBlock}
 
       <!-- Mission "la page doit parler du client" — une conclusion plus
            humaine : le rapport reste la propriété du lecteur, la déduction
            n'est rappelée qu'en second, et la page se referme sur une
            signature plutôt qu'un argumentaire. -->
-        <div><p class="summary-closing-statement">Quelle que soit votre décision, cet audit reste votre feuille de route. Vous pouvez vous y référer à tout moment pour améliorer progressivement votre visibilité sur Google. Si vous préférez nous confier cette mission dans les 30 prochains jours, les 99 € déjà investis seront intégralement déduits.</p>
+        <div><p class="summary-closing-statement">${closing}</p>
         <p class="conversion-signature">Merci de votre confiance.<br>L'équipe Efficia Digital</p></div>
       </div>
 
@@ -1944,9 +1953,10 @@ export function renderFreeDiagnosticHtml(documentModel = {}) {
 /* ------------------------------------------------------------------------ */
 
 export function renderAnalysisHtml(documentModel = {}) {
-  return documentModel?.reportType === "free"
-    ? renderFreeDiagnosticHtml(documentModel)
-    : renderPremiumAuditHtml(documentModel);
+  const model = applyReportCommercialPolicy(documentModel, documentModel.commercialPolicy);
+  return model?.reportType === "free"
+    ? renderFreeDiagnosticHtml(model)
+    : renderPremiumAuditHtml(model);
 }
 
 function styles() {
@@ -4625,6 +4635,10 @@ function styles() {
         .report-shell:not(.free-diagnostic) .cover-page {
           page-break-after: auto;
           break-after: auto;
+        }
+        .report-shell:not(.free-diagnostic) .page + .page {
+          page-break-before: always;
+          break-before: page;
         }
         .report-shell:not(.free-diagnostic) .axes-page .section-intro { padding-top: 16px; padding-bottom: 8px; }
         .report-shell:not(.free-diagnostic) .axes-page .domain-row { padding: 5px 0; }

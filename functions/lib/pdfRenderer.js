@@ -72,13 +72,16 @@ export function addPreviewToolbar(html, analysisId, status = "") {
       <a href="/admin/audit-review/${safeAnalysisId}">Retourner à la validation</a>
       <button type="button" data-efficia-approve-report="${safeAnalysisId}" ${approved ? "disabled" : ""}>Approuver le rapport</button>
       <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur" class="${approved ? "" : "is-disabled"}" aria-disabled="${approved ? "false" : "true"}">Générer le PDF</a>
+      <p data-efficia-approval-status role="status" aria-live="polite"></p>
     </div>
     <script>
       document.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-efficia-approve-report]");
         if (!button || button.disabled) return;
+        const status = document.querySelector("[data-efficia-approval-status]");
         button.disabled = true;
         button.textContent = "Approbation...";
+        if (status) status.textContent = "Approbation du rapport...";
         try {
           const response = await fetch("/api/admin/audit-review/" + button.dataset.efficiaApproveReport, {
             method: "PATCH",
@@ -86,12 +89,18 @@ export function addPreviewToolbar(html, analysisId, status = "") {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "approve" })
           });
-          if (!response.ok) throw new Error("approval_failed");
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.success) {
+            const message = data.message || (data.reference
+              ? "Le rapport n’a pas pu être approuvé. Référence : " + data.reference.slice(0, 8).toUpperCase() + "."
+              : "Le rapport n’a pas pu être approuvé.");
+            throw new Error(message);
+          }
           window.location.reload();
-        } catch {
+        } catch (error) {
           button.disabled = false;
           button.textContent = "Approuver le rapport";
-          alert("Impossible d’approuver le rapport pour le moment.");
+          if (status) status.textContent = error.message || "Le rapport n’a pas pu être approuvé.";
         }
       });
     </script>
@@ -140,6 +149,14 @@ export function addPreviewToolbar(html, analysisId, status = "") {
       .efficia-preview-toolbar button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
+      }
+
+      [data-efficia-approval-status] {
+        flex-basis: 100%;
+        margin: 0;
+        color: #b91c1c;
+        text-align: center;
+        font: 800 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
       }
     </style>
   `;

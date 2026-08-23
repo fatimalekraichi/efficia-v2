@@ -10,6 +10,7 @@ import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
 import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
 import { addPdfPrintStyles, addPreviewToolbar } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
+import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
 
 const HTML_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -78,7 +79,10 @@ export async function renderAnalysisById(context, analysisId) {
     return generationInProgressResponse();
   }
 
-  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const documentModel = applyReportCommercialPolicy(
+    buildDocumentModelFromAnalysis(analysis),
+    resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
+  );
   const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
   return htmlResponse(html);
 }
@@ -107,7 +111,10 @@ export async function renderLatestAnalysis(context) {
     return generationInProgressResponse();
   }
 
-  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const documentModel = applyReportCommercialPolicy(
+    buildDocumentModelFromAnalysis(analysis),
+    resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
+  );
   const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
   return htmlResponse(html);
 }
