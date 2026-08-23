@@ -1,3 +1,5 @@
+import { resolveReportCity } from "./auditComposition.js";
+
 export function sanitizeFilenamePart(value) {
   const cleaned = String(value || "")
     .normalize("NFD")
@@ -20,14 +22,18 @@ export function formatDateForFilename(date = new Date()) {
 export function buildAuditPdfFilename(analysis, date = new Date()) {
   const business = analysis?.business || {};
   const name = sanitizeFilenamePart(business.name || business.nom || analysis?.analysisId);
+  const city = sanitizeFilenamePart(resolveReportCity(analysis) || "Non-renseignee");
   const fileDate = formatDateForFilename(date);
+  if (analysis?.reportType === "premium") {
+    return `Audit-Efficia-Premium_${name}_${city}_${fileDate}.pdf`;
+  }
   return `Audit-Efficia-${name}-${fileDate}.pdf`;
 }
 
 export function buildControlPdfTitle(analysis, date = new Date()) {
   const business = analysis?.business || {};
   const name = sanitizeFilenamePart(business.name || business.nom || analysis?.analysisId);
-  const city = sanitizeFilenamePart(business.city || business.ville || "Ville");
+  const city = sanitizeFilenamePart(resolveReportCity(analysis) || "Non-renseignee");
   const fileDate = formatDateForFilename(date);
   return `CONTROLE-NON-APPROUVE_Audit-Efficia_${name}_${city}_${fileDate}.pdf`;
 }
@@ -78,11 +84,15 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
     && options.reportType === "premium"
     && options.requestedAnalysisId === analysisId;
   const controlPdfTitle = options.controlPdfTitle || buildControlPdfTitle({ analysisId });
+  const finalPdfTitle = options.finalPdfTitle || buildAuditPdfFilename({ analysisId, reportType: options.reportType });
   const controlPdfButton = controlPdfAvailable ? `
       <button type="button" data-efficia-control-pdf data-efficia-control-title="${controlPdfTitle}">Exporter le PDF de contrôle</button>
   ` : "";
-  const controlPdfMarker = controlPdfAvailable ? `
-    <div class="efficia-control-print-watermark" aria-hidden="true">DOCUMENT DE CONTRÔLE — NON APPROUVÉ</div>
+  const controlPdfMarker = controlPdfAvailable
+    ? `<div class="efficia-control-print-watermark" aria-hidden="true">DOCUMENT DE CONTRÔLE — NON APPROUVÉ</div>`
+    : "";
+  const controlPdfNotice = controlPdfAvailable ? `
+    <p class="efficia-control-print-notice">Version de contrôle destinée à la vérification interne. Ne pas transmettre au client.</p>
   ` : "";
   const controlPdfScript = controlPdfAvailable ? `
       document.addEventListener("click", (event) => {
@@ -98,12 +108,11 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
       });
   ` : "";
   const controlPdfCss = controlPdfAvailable ? `
-      .efficia-control-print-watermark {
-        display: none;
+      .report-shell .page {
+        position: relative;
       }
 
-      .efficia-control-print-watermark ~ .report-shell .page::after {
-        content: "DOCUMENT DE CONTRÔLE — NON APPROUVÉ";
+      .efficia-control-print-watermark {
         position: absolute;
         top: 6px;
         right: 18px;
@@ -118,33 +127,37 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
         white-space: nowrap;
       }
 
-      .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
-        content: "Version de contrôle destinée à la vérification interne. Ne pas transmettre au client.";
-        position: absolute;
-        top: 7px;
-        left: 18px;
-        z-index: 20;
-        max-width: 430px;
+      .efficia-control-print-notice {
+        position: relative;
+        z-index: 10;
+        margin: 30px 0 18px;
+        padding: 8px 12px;
+        border-left: 3px solid #b91c1c;
+        background: #fff7f7;
         color: #7f1d1d;
         font: 800 9px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
       }
 
       @media screen and (max-width: 600px) {
-        .efficia-control-print-watermark ~ .report-shell .page:first-child {
-          padding-top: 78px;
+        .efficia-control-print-watermark {
+          left: 8px;
+          right: 8px;
+          max-width: calc(100% - 16px);
+          font-size: 7px;
+          text-align: center;
+          white-space: normal;
         }
 
-        .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
-          top: 34px;
-          right: 18px;
-          max-width: none;
+        .efficia-control-print-notice {
+          margin-top: 42px;
           text-align: center;
+          overflow-wrap: anywhere;
         }
       }
 
       @media print {
         .efficia-control-print-watermark {
-          position: fixed;
+          position: absolute;
           top: 2mm;
           right: 12mm;
           z-index: 1000;
@@ -159,28 +172,57 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
           white-space: nowrap;
         }
 
-        .efficia-control-print-watermark ~ .report-shell .page::after {
-          content: none;
+        .report-shell .page:first-child > .efficia-control-print-watermark {
+          position: relative;
+          top: auto;
+          right: auto;
+          width: max-content;
+          margin: 0 0 7mm auto;
         }
 
-        .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
-          top: 2mm;
-          left: 12mm;
-          max-width: 105mm;
+        .efficia-control-print-notice {
+          margin: 0 0 5mm;
+          padding: 2mm 3mm;
+          break-inside: avoid;
+          page-break-inside: avoid;
           font-size: 7pt;
         }
       }
   ` : "";
   const toolbar = `
     <div class="efficia-preview-toolbar no-print">
-      <a href="/admin/audit-review/${safeAnalysisId}">Retourner aux modifications</a>
+      ${approved ? "" : `<a href="/admin/audit-review/${safeAnalysisId}" data-efficia-return-modifications>Retourner aux modifications</a>`}
       ${controlPdfButton}
-      <button type="button" data-efficia-approve-and-download="${safeAnalysisId}" data-efficia-approval-complete="${approved ? "true" : "false"}">${approved ? "Télécharger à nouveau le PDF final" : "Approuver et télécharger le PDF final"}</button>
+      <button type="button" data-efficia-approve-and-download="${safeAnalysisId}" data-efficia-approval-complete="${approved ? "true" : "false"}" data-efficia-final-print-fallback="false" data-efficia-final-title="${finalPdfTitle}">${approved ? "Télécharger à nouveau le PDF final" : "Approuver et télécharger le PDF final"}</button>
       <p data-efficia-approval-status role="status" aria-live="polite"></p>
     </div>
-    ${controlPdfMarker}
     <script>
       ${controlPdfScript}
+
+      const setEfficiaPrintMode = (mode) => {
+        document.documentElement.dataset.efficiaPrintMode = mode;
+      };
+      const activateEfficiaFinalPrintMode = () => {
+        setEfficiaPrintMode("final-print");
+        document.querySelector("[data-efficia-control-pdf]")?.remove();
+        document.querySelector("[data-efficia-return-modifications]")?.remove();
+        document.querySelectorAll(".efficia-control-print-watermark, .efficia-control-print-notice")
+          .forEach((element) => element.remove());
+      };
+      const printEfficiaFinalPdf = (button, status) => {
+        activateEfficiaFinalPrintMode();
+        const originalTitle = document.title;
+        document.title = button.dataset.efficiaFinalTitle;
+        try {
+          window.print();
+          if (status) status.textContent = "";
+        } catch {
+          if (status) status.textContent = "Le téléchargement automatique n’est pas disponible sur cet environnement. Cliquez sur « Enregistrer le PDF final » pour ouvrir l’enregistrement via Chrome.";
+        } finally {
+          document.title = originalTitle;
+        }
+      };
+      setEfficiaPrintMode(${controlPdfAvailable ? '"control-print"' : approved ? '"final-print"' : '"preview"'});
 
       document.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-efficia-approve-and-download]");
@@ -188,6 +230,10 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
         const status = document.querySelector("[data-efficia-approval-status]");
         const analysisId = button.dataset.efficiaApproveAndDownload;
         let approvalComplete = button.dataset.efficiaApprovalComplete === "true";
+        if (button.dataset.efficiaFinalPrintFallback === "true") {
+          printEfficiaFinalPdf(button, status);
+          return;
+        }
         button.disabled = true;
         try {
           if (!approvalComplete) {
@@ -206,14 +252,21 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
             }
             approvalComplete = true;
             button.dataset.efficiaApprovalComplete = "true";
+            activateEfficiaFinalPrintMode();
           }
 
           button.textContent = "Préparation du PDF final...";
           if (status) status.textContent = "Génération du PDF final...";
           const pdfResponse = await fetch("/api/pdf/" + analysisId, { credentials: "same-origin" });
           if (!pdfResponse.ok) {
-            const pdfError = await pdfResponse.json().catch(() => ({}));
-            throw new Error(pdfError.message || "Le PDF final n’a pas pu être téléchargé.");
+            const pdfError = await pdfResponse.json().catch(() => null);
+            if (pdfResponse.status === 501 && pdfError?.error === "PDF_RENDERER_NOT_CONFIGURED") {
+              button.dataset.efficiaFinalPrintFallback = "true";
+              button.textContent = "Enregistrer le PDF final";
+              printEfficiaFinalPdf(button, status);
+              return;
+            }
+            throw new Error(pdfError?.message || "Le PDF final n’a pas pu être téléchargé.");
           }
           const pdf = await pdfResponse.blob();
           const disposition = pdfResponse.headers.get("Content-Disposition") || "";
@@ -232,9 +285,11 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
           if (status) status.textContent = error.message || "L’opération n’a pas pu aboutir.";
         } finally {
           button.disabled = false;
-          button.textContent = approvalComplete
-            ? "Télécharger à nouveau le PDF final"
-            : "Approuver et télécharger le PDF final";
+          button.textContent = button.dataset.efficiaFinalPrintFallback === "true"
+            ? "Enregistrer le PDF final"
+            : approvalComplete
+              ? "Télécharger à nouveau le PDF final"
+              : "Approuver et télécharger le PDF final";
         }
       });
     </script>
@@ -289,19 +344,31 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
       @media screen and (max-width: 600px) {
         .efficia-preview-toolbar {
           position: static;
+          width: 100vw;
+          max-width: 100vw;
           gap: 6px;
           padding: 8px;
         }
 
         .efficia-preview-toolbar button,
         .efficia-preview-toolbar a {
-          flex: 1 1 calc(50% - 6px);
+          flex: 1 1 100%;
           min-width: 0;
           min-height: 44px;
           padding: 7px 9px;
           font-size: 12px;
           line-height: 1.15;
           text-align: center;
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
+
+        .report-shell,
+        .report-shell .page {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding-right: 16px !important;
+          padding-left: 16px !important;
         }
       }
 
@@ -317,10 +384,21 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
     </style>
   `;
 
-  if (/<body(?:\s[^>]*)?>/i.test(html)) {
-    return html.replace(/<body(?:\s[^>]*)?>/i, (openingTag) => `${openingTag}${toolbar}`);
+  let firstPage = true;
+  const reportHtml = controlPdfAvailable
+    ? html.replace(
+      /(<(?:section|div)\b[^>]*\bclass=["'][^"']*\bpage\b[^"']*["'][^>]*>)/gi,
+      (openingTag) => {
+        const pageHeader = `${controlPdfMarker}${firstPage ? controlPdfNotice : ""}`;
+        firstPage = false;
+        return `${openingTag}${pageHeader}`;
+      },
+    )
+    : html;
+  if (/<body(?:\s[^>]*)?>/i.test(reportHtml)) {
+    return reportHtml.replace(/<body(?:\s[^>]*)?>/i, (openingTag) => `${openingTag}${toolbar}`);
   }
-  return `${toolbar}${html}`;
+  return `${toolbar}${reportHtml}`;
 }
 
 function getBrowserRenderingConfig(env = {}) {
@@ -333,10 +411,21 @@ function getBrowserRenderingConfig(env = {}) {
 export function assertBrowserRenderingConfig(env = {}) {
   const { accountId, apiToken } = getBrowserRenderingConfig(env);
   if (!accountId || !apiToken) {
+    const reference = crypto.randomUUID();
+    console.error(JSON.stringify({
+      message: "pdf renderer not configured",
+      error: "PDF_RENDERER_NOT_CONFIGURED",
+      reference,
+      missing: [
+        ...(!accountId ? ["CLOUDFLARE_ACCOUNT_ID"] : []),
+        ...(!apiToken ? ["BROWSER_RENDERING_API_TOKEN"] : []),
+      ],
+    }));
     return {
       ok: false,
       error: "PDF_RENDERER_NOT_CONFIGURED",
-      message: "Configurez CLOUDFLARE_ACCOUNT_ID et BROWSER_RENDERING_API_TOKEN pour activer le PDF serveur.",
+      message: "Le téléchargement automatique du PDF n’est pas disponible sur cet environnement.",
+      reference,
     };
   }
   return { ok: true, accountId, apiToken };

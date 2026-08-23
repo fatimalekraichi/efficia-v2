@@ -10,6 +10,11 @@ function arrayLength(value) {
   return Array.isArray(value) ? value.length : null;
 }
 
+export function resolveReportCity(analysis = {}) {
+  const business = analysis.business || {};
+  return firstDefined(business.reviewed?.city, business.ville) || null;
+}
+
 export function buildBusinessContext(analysis = {}) {
   const business = analysis.business || {};
   const reviewed = business.reviewed || {};
@@ -18,7 +23,7 @@ export function buildBusinessContext(analysis = {}) {
   return {
     name: firstDefined(reviewed.name, business.name, business.nom, normalized.name),
     category: firstDefined(reviewed.category, business.activity, normalized.category, normalized.type),
-    city: reviewed.city || business.ville || null,
+    city: resolveReportCity(analysis),
     rating: reviewed.rating ?? business.rating ?? null,
     reviews: reviewed.reviews ?? business.reviews ?? null,
     photos_count: reviewed.photosCount ?? business.photosCount ?? null,

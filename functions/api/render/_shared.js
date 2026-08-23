@@ -8,7 +8,7 @@ import {
 } from "../analysis/_shared.js";
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
 import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
-import { addPdfPrintStyles, addPreviewToolbar, buildControlPdfTitle } from "../../lib/pdfRenderer.js";
+import { addPdfPrintStyles, addPreviewToolbar, buildAuditPdfFilename, buildControlPdfTitle } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
 
@@ -94,6 +94,7 @@ export async function renderAnalysisById(context, analysisId) {
       reportType: analysis.reportType,
       requestedAnalysisId: analysisId,
       controlPdfTitle: buildControlPdfTitle(analysis),
+      finalPdfTitle: buildAuditPdfFilename(analysis),
     },
   );
   return htmlResponse(html);
@@ -131,7 +132,7 @@ export async function renderLatestAnalysis(context) {
     addPdfPrintStyles(renderAnalysisHtml(documentModel)),
     analysis.analysisId,
     analysis.status,
-    { reportType: analysis.reportType },
+    { reportType: analysis.reportType, finalPdfTitle: buildAuditPdfFilename(analysis) },
   );
   return htmlResponse(html);
 }

@@ -53,6 +53,7 @@ function pdfErrorResponse(result) {
     success: false,
     error: result.error,
     message: result.message,
+    ...(result.reference ? { reference: result.reference } : {}),
   }, status);
 }
 
@@ -120,6 +121,9 @@ export async function renderPdfById(context, analysisId) {
   const analysis = await loadAnalysisById(verified.db, analysisId);
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
+  }
+  if (analysis.analysisId !== analysisId) {
+    return jsonResponse({ success: false, error: "ANALYSIS_ID_MISMATCH" }, 409);
   }
 
   const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
