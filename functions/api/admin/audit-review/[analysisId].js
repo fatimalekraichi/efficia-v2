@@ -250,22 +250,10 @@ async function approveAnalysis(db, analysisId) {
     }
   }
   if (["approved", "pdf_generated"].includes(row.status)) {
+    let completed = !isPremium;
     if (isPremium) {
       const existingSnapshot = await loadQuestionnaireSnapshot(db, analysisId);
-      if (!existingSnapshot) {
-        const finalization = await finalizeQuestionnaireSnapshot(db, analysisId, {
-          completion: "approved",
-          approvedAt: row.approved_at || "",
-        });
-        if (!finalization.ok) {
-          return jsonResponse({
-            success: false,
-            error: finalization.error,
-            message: "Le questionnaire sauvegardé est requis pour terminer cet audit.",
-          }, 409);
-        }
-        snapshotCreated = finalization.created;
-      }
+      completed = Boolean(existingSnapshot);
     }
     return jsonResponse({
       success: true,
@@ -273,7 +261,7 @@ async function approveAnalysis(db, analysisId) {
       analysisId,
       approvedAt: row.approved_at || null,
       idempotent: true,
-      completed: isPremium,
+      completed,
       snapshotCreated,
     });
   }

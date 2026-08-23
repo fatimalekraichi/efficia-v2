@@ -180,17 +180,17 @@ test("un second clic d’approbation est idempotent", async () => {
   assert.equal(db.snapshotInsertCount, 0);
 });
 
-test("un ancien Premium approuvé sans snapshot est récupéré une seule fois depuis son brouillon", async () => {
+test("une nouvelle approbation ne récupère pas un ancien Premium approuvé sans snapshot", async () => {
   const db = dbForManualPremium(row({ status: "approved", approved_at: "2026-08-23T10:00:00.000Z" }));
-  const first = await __test__.approveAnalysis(db, ANALYSIS_ID);
-  const second = await __test__.approveAnalysis(db, ANALYSIS_ID);
+  const response = await __test__.approveAnalysis(db, ANALYSIS_ID);
+  const body = await response.json();
 
-  assert.equal(first.status, 200);
-  assert.equal((await first.json()).snapshotCreated, true);
-  assert.equal(second.status, 200);
-  assert.equal((await second.json()).snapshotCreated, false);
-  assert.equal(db.snapshotCount, 1);
-  assert.equal(db.snapshotInsertCount, 1);
+  assert.equal(response.status, 200);
+  assert.equal(body.idempotent, true);
+  assert.equal(body.completed, false);
+  assert.equal(body.snapshotCreated, false);
+  assert.equal(db.snapshotCount, 0);
+  assert.equal(db.snapshotInsertCount, 0);
 });
 
 test("l’approbation Premium échoue sans brouillon au lieu de créer un état terminé incomplet", async () => {
