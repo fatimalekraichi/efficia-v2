@@ -19,6 +19,7 @@ function completeManualReview() {
     addressVerification: "exact",
     criteriaReview: GRILLE.flatMap((category) => category.criteres.map((criterion) => ({
       key: criterion.key,
+      question: criterion.q,
       value: "compliant",
     }))),
     executionPlan: {
@@ -120,4 +121,94 @@ test("l’approbation administrative refuse une mutation sans Same-Origin", asyn
 
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), { success: false, error: "CROSS_ORIGIN_REQUEST" });
+});
+
+test("la confirmation globale refuse un analysisId différent avant toute écriture", async () => {
+  const response = await onRequestPatch({
+    request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`, {
+      method: "PATCH",
+      headers: { Cookie: ADMIN_COOKIE, "Content-Type": "application/json", Origin: "https://local.test" },
+      body: JSON.stringify({
+        ...completeManualReview(),
+        action: "complete_review",
+        confirmAll: true,
+        analysisId: "analysis-forged",
+      }),
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET },
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { success: false, error: "ANALYSIS_ID_MISMATCH" });
+});
+
+test("la confirmation globale bloque un contenu obligatoire vide sans lancer le pipeline", async () => {
+  const db = dbForManualPremium();
+  let pipelineCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    pipelineCalls += 1;
+    return Response.json({ success: true });
+  };
+  try {
+    const response = await __test__.saveManualReview({
+      context: {
+        request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`),
+        env: { CONNECTOR_TOKEN: "test-token" },
+      },
+      db,
+      analysisId: ANALYSIS_ID,
+      payload: {
+        ...completeManualReview(),
+        confirmAll: true,
+        executionPlan: {
+          ...completeManualReview().executionPlan,
+          description: { text: "", status: "needs_confirmation" },
+        },
+      },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.error, "EXECUTION_PLAN_CONFIRMATION_REQUIRED");
+    assert.deepEqual(body.missing, ["Description proposée"]);
+    assert.equal(pipelineCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("la confirmation globale prépare l’aperçu après avoir approuvé les contenus prêts", async () => {
+  const db = dbForManualPremium();
+  let pipelineCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    pipelineCalls += 1;
+    return Response.json({ success: true });
+  };
+  try {
+    const response = await __test__.saveManualReview({
+      context: {
+        request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`),
+        env: { CONNECTOR_TOKEN: "test-token" },
+      },
+      db,
+      analysisId: ANALYSIS_ID,
+      payload: {
+        ...completeManualReview(),
+        confirmAll: true,
+        executionPlan: {
+          ...completeManualReview().executionPlan,
+          description: { text: "Description complète", status: "needs_confirmation" },
+        },
+      },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.confirmedContentCount, 1);
+    assert.equal(body.links.preview, `/api/render/${ANALYSIS_ID}`);
+    assert.equal(pipelineCalls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

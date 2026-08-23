@@ -4,7 +4,7 @@ import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
-import { executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
+import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 
@@ -129,7 +129,23 @@ async function saveManualReview({ context, db, analysisId, payload }) {
   const row = await loadRawAnalysis(db, analysisId);
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
 
-  const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, payload || {});
+  let effectivePayload = payload || {};
+  let confirmedContentCount = 0;
+  if (payload?.confirmAll === true) {
+    const confirmation = confirmReadyExecutionPlanReview(payload.executionPlan, { analysisId });
+    if (confirmation.blocking.length) {
+      return jsonResponse({
+        success: false,
+        error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED",
+        message: "Certains contenus nécessitent encore une intervention avant de préparer l’aperçu.",
+        missing: confirmation.blocking,
+      }, 409);
+    }
+    confirmedContentCount = confirmation.confirmedCount;
+    effectivePayload = { ...payload, executionPlan: confirmation.review };
+  }
+
+  const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, effectivePayload);
   const incompleteFields = incompleteQuestionnaireFields(manualReview);
   if (incompleteFields.length) {
     return jsonResponse({
@@ -209,6 +225,7 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     status: "preview_ready",
     analysisId,
     stages: pipeline.stages,
+    confirmedContentCount,
     analysis: withScoreReviewData(refreshed),
     links: {
       preview: `/api/render/${encodeURIComponent(analysisId)}`,
@@ -224,7 +241,9 @@ async function approveAnalysis(db, analysisId) {
   if (row.report_type !== "free") {
     const authorization = await loadAdminPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
-      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
+      const reference = crypto.randomUUID();
+      console.error(JSON.stringify({ message: "audit approval refused", reference, analysis_id: analysisId, error: "PREMIUM_NOT_AUTHORIZED" }));
+      return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED", reference }, 403);
     }
   }
   if (["approved", "pdf_generated"].includes(row.status)) {
@@ -240,17 +259,22 @@ async function approveAnalysis(db, analysisId) {
   try { manualReview = JSON.parse(row?.manual_review_json || "null"); } catch { manualReview = null; }
   const incompleteFields = incompleteQuestionnaireFields(manualReview || {});
   if (incompleteFields.length) {
-    return jsonResponse({ success: false, error: "INCOMPLETE_QUESTIONNAIRE" }, 409);
+    const reference = crypto.randomUUID();
+    console.error(JSON.stringify({ message: "audit approval refused", reference, analysis_id: analysisId, error: "INCOMPLETE_QUESTIONNAIRE" }));
+    return jsonResponse({ success: false, error: "INCOMPLETE_QUESTIONNAIRE", reference }, 409);
   }
   const fullAnalysis = row?.report_type === "premium" ? await loadAnalysisById(db, analysisId) : null;
   const executionPlan = fullAnalysis ? buildDocumentModelFromAnalysis(fullAnalysis).executionPlan : null;
   const executionIssues = row?.report_type === "premium" ? executionPlanApprovalIssues(executionPlan, manualReview?.executionPlan) : [];
   if (executionIssues.length) {
+    const reference = crypto.randomUUID();
+    console.error(JSON.stringify({ message: "audit approval refused", reference, analysis_id: analysisId, error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED" }));
     return jsonResponse({
       success: false,
       error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED",
       message: "Validez, corrigez ou marquez non applicables tous les éléments du plan d’exécution et ses livrables avant d’approuver le rapport.",
       missing: executionIssues,
+      reference,
     }, 409);
   }
   const now = new Date().toISOString();
@@ -305,6 +329,12 @@ export async function onRequestPatch(context) {
 
   const payload = await readPayload(context.request);
   if (!payload) return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
+
+  const payloadAnalysisId = normalizeText(payload.analysisId);
+  if ((payload.confirmAll === true && payloadAnalysisId !== analysisId)
+    || (payloadAnalysisId && payloadAnalysisId !== analysisId)) {
+    return jsonResponse({ success: false, error: "ANALYSIS_ID_MISMATCH" }, 409);
+  }
 
   const db = requireOrdersDb(context.env);
   const existing = await loadRawAnalysis(db, analysisId);

@@ -460,10 +460,88 @@ export function normalizeExecutionPlanReview(value = {}) {
     actions: (Array.isArray(input.actions) ? input.actions : []).slice(0, 3).map((item) => ({
       id: text(item?.id, 160), objective30Days: text(item?.objective30Days, 600), steps: list(item?.steps, 10),
       status: status(item?.status),
+      analysisId: text(item?.analysisId || item?.analysis_id, 160),
+      blocking: item?.blocking === true, blocked: item?.blocked === true,
+      refused: item?.refused === true, rejected: item?.rejected === true,
+      error: text(item?.error, 500), conflict: text(item?.conflict, 500),
       deliverable: text(item?.deliverable, 1600), deliverableStatus: status(item?.deliverableStatus),
       owner: OWNERS.has(item?.owner) ? item.owner : "dirigeant", estimatedTime: text(item?.estimatedTime, 120),
       doneWhen: text(item?.doneWhen, 600), metric: text(item?.metric, 120),
     })),
+  };
+}
+
+function hasExecutionBlockingSignal(item) {
+  return Boolean(
+    item?.blocking === true
+    || item?.blocked === true
+    || item?.refused === true
+    || item?.rejected === true
+    || text(item?.error, 500)
+    || text(item?.conflict, 500)
+  );
+}
+
+function hasHttpUrl(value) {
+  try {
+    const url = new URL(text(value, 1200));
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function confirmExecutionItem(item, label, confirmed, blocking, validator = null, expectedAnalysisId = "") {
+  if (!item || item.status !== "needs_confirmation") return item;
+  const itemAnalysisId = text(item.analysisId || item.analysis_id, 160);
+  const hasContent = validator
+    ? validator(item)
+    : Boolean(text(item.text || item.label || item.subject || item.title || item.objective30Days, 5000));
+  if (!hasContent || hasExecutionBlockingSignal(item) || (itemAnalysisId && itemAnalysisId !== expectedAnalysisId)) {
+    blocking.push(label);
+    return item;
+  }
+  confirmed.push(label);
+  return { ...item, status: "approved" };
+}
+
+export function confirmReadyExecutionPlanReview(value = {}, { analysisId = "" } = {}) {
+  const review = normalizeExecutionPlanReview(value);
+  const confirmed = [];
+  const blocking = [];
+  const mapItems = (items, groupLabel, validator = null) => items.map((item, index) =>
+    confirmExecutionItem(item, `${groupLabel} ${index + 1}`, confirmed, blocking, validator, analysisId));
+
+  review.description = confirmExecutionItem(review.description, "Description proposée", confirmed, blocking, null, analysisId);
+  review.categoryItems = mapItems(review.categoryItems, "Catégorie");
+  review.serviceItems = mapItems(review.serviceItems, "Service");
+  review.photos = mapItems(review.photos, "Photo", (item) => Boolean(
+    text(item.subject, 500)
+    && text(item.text, 5000)
+    && text(item.objective, 1000)
+  ));
+  review.reviewMessages = Object.fromEntries(Object.entries(review.reviewMessages).map(([key, item]) => [
+    key,
+    confirmExecutionItem(item, `Message d’avis ${key}`, confirmed, blocking, null, analysisId),
+  ]));
+  review.reviewResponses = mapItems(review.reviewResponses, "Réponse aux avis");
+  review.posts = mapItems(review.posts, "Publication Google");
+  review.actions = mapItems(review.actions, "Objectif à 30 jours", (item) => Boolean(text(item.objective30Days, 600)));
+
+  if (review.reviewLinkStatus === "needs_confirmation") {
+    if (hasHttpUrl(review.reviewLink)) {
+      review.reviewLinkStatus = "approved";
+      confirmed.push("Lien direct d’avis");
+    } else {
+      blocking.push("Lien direct d’avis");
+    }
+  }
+
+  return {
+    review,
+    confirmedCount: confirmed.length,
+    confirmed,
+    blocking: [...new Set(blocking)],
   };
 }
 

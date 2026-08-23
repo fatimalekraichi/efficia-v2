@@ -214,7 +214,7 @@ test("le générateur Diagnostic gratuit refuse une analyse Premium côté serve
 test("la barre d’aperçu restitue l’erreur structurée dans la page", () => {
   const html = addPreviewToolbar("<!doctype html><html><body></body></html>", "analysis-1", "preview_ready");
   assert.match(html, /data-efficia-approval-status/);
-  assert.match(html, /await response\.json\(\)/);
+  assert.match(html, /await approvalResponse\.json\(\)/);
   assert.match(html, /Référence/);
   assert.doesNotMatch(html, /alert\(/);
 });
@@ -237,7 +237,10 @@ test("la barre d’aperçu permet un PDF de contrôle uniquement sur le Premium 
 
   assert.match(html, /<button[^>]+data-efficia-control-pdf[^>]*>Exporter le PDF de contrôle<\/button>/);
   assert.doesNotMatch(html, /data-efficia-control-pdf[^>]+disabled/);
-  assert.match(html, /href="\/api\/pdf\/analysis-1"[^>]+class="is-disabled"[^>]+aria-disabled="true"[^>]*>PDF final après approbation<\/a>/);
+  assert.match(html, /data-efficia-approve-and-download="analysis-1"[^>]*>Approuver et télécharger le PDF final<\/button>/);
+  assert.match(html, /Retourner aux modifications/);
+  assert.doesNotMatch(html, />Approuver le rapport<\/button>/);
+  assert.doesNotMatch(html, />Générer le PDF<\/a>/);
   assert.match(html, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
   assert.match(html, /Version de contrôle destinée à la vérification interne\. Ne pas transmettre au client\./);
 
@@ -297,7 +300,105 @@ test("le marquage de contrôle est répété à l’impression et disparaît tot
   assert.match(controlHtml, /class="efficia-preview-toolbar no-print"/);
   assert.doesNotMatch(approvedHtml, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
   assert.doesNotMatch(approvedHtml, /Version de contrôle destinée/);
-  assert.match(approvedHtml, /href="\/api\/pdf\/analysis-1"[^>]+class=""[^>]+aria-disabled="false"[^>]*>Générer le PDF<\/a>/);
+  assert.match(approvedHtml, /data-efficia-approval-complete="true"[^>]*>Télécharger à nouveau le PDF final<\/button>/);
+});
+
+function combinedApprovalHarness({ approvalOk = true, pdfAttempts = [true] } = {}) {
+  const html = premiumControlToolbar();
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const listeners = [];
+  const status = { textContent: "" };
+  const downloads = [];
+  const calls = [];
+  let pdfIndex = 0;
+  const button = {
+    disabled: false,
+    textContent: "Approuver et télécharger le PDF final",
+    dataset: { efficiaApproveAndDownload: "analysis-1", efficiaApprovalComplete: "false" },
+  };
+  const document = {
+    title: "Titre initial",
+    body: { appendChild() {} },
+    addEventListener(_type, listener) { listeners.push(listener); },
+    querySelector(selector) { return selector === "[data-efficia-approval-status]" ? status : null; },
+    createElement() {
+      return {
+        click() { downloads.push(this.download); },
+        remove() {},
+      };
+    },
+  };
+  const event = {
+    target: {
+      closest(selector) {
+        return selector === "[data-efficia-approve-and-download]" ? button : null;
+      },
+    },
+  };
+  const fetch = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.startsWith("/api/admin/")) {
+      return new Response(JSON.stringify(approvalOk
+        ? { success: true, status: "approved" }
+        : { success: false, error: "AUDIT_APPROVAL_FAILED", reference: "11111111-1111-4111-8111-111111111111" }), {
+        status: approvalOk ? 200 : 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const ok = pdfAttempts[Math.min(pdfIndex++, pdfAttempts.length - 1)];
+    return ok
+      ? new Response(new Uint8Array([37, 80, 68, 70]), { status: 200, headers: { "Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=Audit-Efficia-Test.pdf" } })
+      : new Response(JSON.stringify({ success: false, message: "PDF indisponible" }), { status: 502, headers: { "Content-Type": "application/json" } });
+  };
+  const sandboxUrl = { createObjectURL: () => "blob:pdf", revokeObjectURL() {} };
+  vm.runInNewContext(script, {
+    document,
+    window: { print() {}, setTimeout(callback) { callback(); } },
+    fetch,
+    URL: sandboxUrl,
+  });
+  return { listener: listeners.at(-1), event, button, status, downloads, calls };
+}
+
+test("un clic approuve puis télécharge le PDF final", async () => {
+  const harness = combinedApprovalHarness();
+  await harness.listener(harness.event);
+
+  assert.deepEqual(harness.calls.map((call) => call.url), [
+    "/api/admin/audit-review/analysis-1",
+    "/api/pdf/analysis-1",
+  ]);
+  assert.equal(JSON.parse(harness.calls[0].options.body).analysisId, "analysis-1");
+  assert.deepEqual(harness.downloads, ["Audit-Efficia-Test.pdf"]);
+  assert.equal(harness.button.textContent, "Télécharger à nouveau le PDF final");
+});
+
+test("aucun PDF final n’est demandé si l’approbation échoue", async () => {
+  const harness = combinedApprovalHarness({ approvalOk: false });
+  await harness.listener(harness.event);
+
+  assert.equal(harness.calls.length, 1);
+  assert.equal(harness.downloads.length, 0);
+  assert.match(harness.status.textContent, /11111111-1111-4111-8111-111111111111/);
+  assert.equal(harness.button.textContent, "Approuver et télécharger le PDF final");
+});
+
+test("un téléchargement échoué est réessayable sans nouvelle approbation", async () => {
+  const harness = combinedApprovalHarness({ pdfAttempts: [false, true] });
+  await harness.listener(harness.event);
+  await harness.listener(harness.event);
+
+  assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/admin/")).length, 1);
+  assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/pdf/")).length, 2);
+  assert.deepEqual(harness.downloads, ["Audit-Efficia-Test.pdf"]);
+});
+
+test("un double clic ne duplique ni l’approbation ni la génération", async () => {
+  const harness = combinedApprovalHarness();
+  await Promise.all([harness.listener(harness.event), harness.listener(harness.event)]);
+
+  assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/admin/")).length, 1);
+  assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/pdf/")).length, 1);
 });
 
 test("renderPdfById conserve le PDF non finalisé si aucun questionnaire sauvegardé n’existe", async () => {

@@ -1,7 +1,7 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../api/analysis/_shared.js";
 import { normalizeText, requireAdminSession, requireOrdersDb } from "../_shared.js";
 
-const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = false } = {}) => `<!DOCTYPE html>
+const html = (analysisId, { reportType = "premium", readOnly = false } = {}) => `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -79,18 +79,26 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = fal
     .execution-editor { display: grid; gap: 18px; }
     .execution-editor__group { padding: 18px; border: 1px solid #e2e8f0; border-radius: 18px; background: #f8fafc; }
     .execution-editor__group h3 { margin: 0 0 12px; color: #0f172a; }
-    .execution-editor__item { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 10px; margin-top: 10px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; }
+    .execution-editor__item { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; }
     .execution-editor__item textarea, .execution-editor__item input, .execution-editor__item select { width: 100%; }
     .execution-editor__item textarea { min-height: 86px; resize: vertical; }
     .execution-editor__item label { color: #475569; font-size: 12px; font-weight: 900; }
-    .execution-editor__item.is-pending { border-color: #f59e0b; background: #fffbeb; }
+    .execution-editor__item.is-blocking { border-color: #dc2626; background: #fef2f2; box-shadow: 0 0 0 2px rgba(220, 38, 38, .12); scroll-margin-top: 150px; }
+    .execution-editor__blocker { display: inline-flex; width: fit-content; padding: 4px 9px; border-radius: 999px; background: #fee2e2; color: #b91c1c; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+    .execution-editor__blocker[hidden] { display: none; }
+    .execution-editor__advanced { padding-top: 4px; border-top: 1px solid #e2e8f0; }
+    .execution-editor__advanced summary { width: fit-content; color: #475569; font-size: 12px; font-weight: 900; cursor: pointer; }
+    .execution-editor__advanced label { display: grid; gap: 6px; max-width: 300px; margin-top: 10px; }
     .execution-editor__notice { color: #92400e; font-weight: 800; }
+    .execution-summary { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 12px 0 18px; padding: 13px 16px; border: 1px solid #bfdbfe; border-radius: 16px; background: #eff6ff; color: #1e3a8a; font-size: 14px; }
+    .execution-summary strong { font-weight: 900; }
+    .execution-summary.has-blockers { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
     @media (max-width: 980px) { .review-kv { grid-template-columns: 1fr; } }
     @media (max-width: 720px) { .criteria-checklist { grid-template-columns: 1fr; } .criteria-category__head { display: block; } .criteria-category__head span { display: block; margin-top: 6px; } }
     @media (max-width: 640px) { .audit-draft-toolbar { top: 84px; align-items: stretch; } .audit-draft-toolbar .admin-button { width: 100%; } .audit-draft-toolbar__status { flex-basis: 100%; } .review-actions { flex-direction: column; align-items: stretch; } .review-actions__primary { width: 100%; } .review-actions__secondary { flex-direction: column; width: 100%; } .review-actions__secondary .admin-button { width: 100%; text-align: center; } }
   </style>
 </head>
-<body class="admin-page" data-analysis-id="${analysisId}" data-read-only="${readOnly ? "true" : "false"}">
+<body class="admin-page" data-analysis-id="${analysisId}" data-report-type="${reportType}" data-read-only="${readOnly ? "true" : "false"}">
   <header class="admin-header">
     <div class="admin-header__inner">
       <a class="admin-brand" href="/admin" aria-label="Efficia Digital admin">
@@ -156,9 +164,13 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = fal
         <div class="admin-section-heading">
           <span class="admin-kicker">Plan d’exécution</span>
           <h2>Livrables à valider avant publication</h2>
-          <p class="admin-muted">Éditez les propositions, puis choisissez « Approuvé », « À confirmer » ou « Non applicable ». Le PDF utilise uniquement les éléments approuvés.</p>
+          <p class="admin-muted">Éditez les propositions. Les contenus complets seront confirmés ensemble ; les statuts individuels restent disponibles dans les options avancées.</p>
         </div>
-        <p class="execution-editor__notice" data-execution-pending></p>
+        <div class="execution-summary" data-execution-summary role="status" aria-live="polite">
+          <strong><span data-execution-ready-count>0</span> contenus prêts à être confirmés</strong>
+          <strong><span data-execution-blocking-count>0</span> éléments nécessitent une intervention</strong>
+        </div>
+        <p class="execution-editor__notice" data-execution-pending hidden></p>
         <div class="execution-editor" data-execution-editor></div>
       </section>
 
@@ -169,13 +181,12 @@ const html = (analysisId, { showLegacyFreeDiagnosticLink = false, readOnly = fal
         </div>
         <form class="review-actions-form" data-review-form>
           <div class="review-actions">
-            <button class="admin-button review-actions__primary" type="submit" data-review-submit>Valider et préparer l’aperçu</button>
-            <div class="review-actions__secondary">
+            <button class="admin-button review-actions__primary" type="submit" data-review-submit>Tout confirmer et ouvrir l’aperçu</button>
+            ${reportType === "free" ? `<div class="review-actions__secondary">
               <a class="admin-button is-secondary" href="#" target="_blank" rel="noopener" data-preview-link>Aperçu HTML</a>
               <button class="admin-button is-secondary" type="button" data-approve-button>Approuver le rapport</button>
-              <a class="admin-button is-secondary is-disabled-link" href="#" target="_blank" rel="noopener" data-pdf-link${showLegacyFreeDiagnosticLink ? " hidden" : ""}>Générer le PDF</a>
-              <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysisId)}" data-free-diagnostic-analysis-id="${analysisId}" target="_blank" rel="noopener" data-legacy-generator-link${showLegacyFreeDiagnosticLink ? "" : " hidden"}>Ouvrir l'ancien générateur gratuit</a>
-            </div>
+              <a class="admin-button is-secondary" href="/admin/free-diagnostic-production/?analysisId=${encodeURIComponent(analysisId)}" data-free-diagnostic-analysis-id="${analysisId}" target="_blank" rel="noopener" data-legacy-generator-link>Ouvrir l'ancien générateur gratuit</a>
+            </div>` : ""}
           </div>
           <p class="review-status" data-review-status></p>
         </form>
@@ -201,17 +212,17 @@ export async function onRequestGet(context) {
   // les analyses au format gratuit (reportType === "free"). Une erreur de
   // lecture ici ne doit pas empêcher l'affichage de la page de validation
   // elle-même : le lien est simplement masqué par défaut.
-  let showLegacyFreeDiagnosticLink = false;
+  let reportType = "premium";
   try {
     const db = requireOrdersDb(context.env);
     const analysis = await loadAnalysisById(db, analysisId);
-    showLegacyFreeDiagnosticLink = analysis?.reportType === "free";
+    reportType = analysis?.reportType === "free" ? "free" : "premium";
   } catch (error) {
     console.error("audit-review: lecture reportType impossible", error);
   }
 
   const readOnly = new URL(context.request.url).searchParams.get("readonly") === "1";
-  return new Response(html(analysisId, { showLegacyFreeDiagnosticLink, readOnly }), {
+  return new Response(html(analysisId, { reportType, readOnly }), {
     status: 200,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });

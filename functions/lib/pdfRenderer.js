@@ -173,10 +173,9 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
   ` : "";
   const toolbar = `
     <div class="efficia-preview-toolbar no-print">
+      <a href="/admin/audit-review/${safeAnalysisId}">Retourner aux modifications</a>
       ${controlPdfButton}
-      <a href="/admin/audit-review/${safeAnalysisId}">Retourner à la validation</a>
-      <button type="button" data-efficia-approve-report="${safeAnalysisId}" ${approved ? "disabled" : ""}>Approuver le rapport</button>
-      <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur final" class="${approved ? "" : "is-disabled"}" aria-disabled="${approved ? "false" : "true"}">${approved ? "Générer le PDF" : "PDF final après approbation"}</a>
+      <button type="button" data-efficia-approve-and-download="${safeAnalysisId}" data-efficia-approval-complete="${approved ? "true" : "false"}">${approved ? "Télécharger à nouveau le PDF final" : "Approuver et télécharger le PDF final"}</button>
       <p data-efficia-approval-status role="status" aria-live="polite"></p>
     </div>
     ${controlPdfMarker}
@@ -184,31 +183,58 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
       ${controlPdfScript}
 
       document.addEventListener("click", async (event) => {
-        const button = event.target.closest("[data-efficia-approve-report]");
+        const button = event.target.closest("[data-efficia-approve-and-download]");
         if (!button || button.disabled) return;
         const status = document.querySelector("[data-efficia-approval-status]");
+        const analysisId = button.dataset.efficiaApproveAndDownload;
+        let approvalComplete = button.dataset.efficiaApprovalComplete === "true";
         button.disabled = true;
-        button.textContent = "Approbation...";
-        if (status) status.textContent = "Approbation du rapport...";
         try {
-          const response = await fetch("/api/admin/audit-review/" + button.dataset.efficiaApproveReport, {
-            method: "PATCH",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "approve" })
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok || !data.success) {
-            const message = data.message || (data.reference
-              ? "Le rapport n’a pas pu être approuvé. Référence : " + data.reference.slice(0, 8).toUpperCase() + "."
-              : "Le rapport n’a pas pu être approuvé.");
-            throw new Error(message);
+          if (!approvalComplete) {
+            button.textContent = "Approbation...";
+            if (status) status.textContent = "Approbation du rapport...";
+            const approvalResponse = await fetch("/api/admin/audit-review/" + analysisId, {
+              method: "PATCH",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "approve", analysisId: analysisId })
+            });
+            const approvalData = await approvalResponse.json().catch(() => ({}));
+            if (!approvalResponse.ok || !approvalData.success) {
+              const reference = approvalData.reference ? " Référence : " + approvalData.reference + "." : "";
+              throw new Error((approvalData.message || "Le rapport n’a pas pu être approuvé.") + reference);
+            }
+            approvalComplete = true;
+            button.dataset.efficiaApprovalComplete = "true";
           }
-          window.location.reload();
+
+          button.textContent = "Préparation du PDF final...";
+          if (status) status.textContent = "Génération du PDF final...";
+          const pdfResponse = await fetch("/api/pdf/" + analysisId, { credentials: "same-origin" });
+          if (!pdfResponse.ok) {
+            const pdfError = await pdfResponse.json().catch(() => ({}));
+            throw new Error(pdfError.message || "Le PDF final n’a pas pu être téléchargé.");
+          }
+          const pdf = await pdfResponse.blob();
+          const disposition = pdfResponse.headers.get("Content-Disposition") || "";
+          const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+          const filename = filenameMatch ? filenameMatch[1] : "Audit-Efficia-Premium.pdf";
+          const objectUrl = URL.createObjectURL(pdf);
+          const link = document.createElement("a");
+          link.href = objectUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          if (status) status.textContent = "Rapport approuvé et PDF final téléchargé.";
         } catch (error) {
+          if (status) status.textContent = error.message || "L’opération n’a pas pu aboutir.";
+        } finally {
           button.disabled = false;
-          button.textContent = "Approuver le rapport";
-          if (status) status.textContent = error.message || "Le rapport n’a pas pu être approuvé.";
+          button.textContent = approvalComplete
+            ? "Télécharger à nouveau le PDF final"
+            : "Approuver et télécharger le PDF final";
         }
       });
     </script>

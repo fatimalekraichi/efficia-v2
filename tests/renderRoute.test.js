@@ -217,14 +217,16 @@ test("renderAnalysisById refuse un Premium même approuvé sans commande payée 
   assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
 });
 
-test("renderAnalysisById approuvé expose uniquement le PDF serveur final", async () => {
+test("renderAnalysisById approuvé expose uniquement le retéléchargement du PDF serveur final", async () => {
   const response = await renderAnalysisById(makeContext({
     ...analysisRow,
     status: "approved",
   }), "analysis-1");
   const html = await response.text();
 
-  assert.match(html, />Générer le PDF<\/a>/);
+  assert.match(html, />Télécharger à nouveau le PDF final<\/button>/);
+  assert.doesNotMatch(html, />Approuver le rapport<\/button>/);
+  assert.doesNotMatch(html, />Générer le PDF<\/a>/);
   assert.doesNotMatch(html, /<button[^>]+data-efficia-control-pdf/);
   assert.doesNotMatch(html, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
   assert.match(html, /class="efficia-preview-toolbar no-print"/);

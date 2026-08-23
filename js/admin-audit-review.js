@@ -1,4 +1,5 @@
 const analysisId = document.body.dataset.analysisId;
+const pageReportType = document.body.dataset.reportType || "premium";
 const readOnlyMode = document.body.dataset.readOnly === "true";
 const observationBox = document.querySelector("[data-review-observation]");
 const competitorsBox = document.querySelector("[data-review-competitors]");
@@ -17,6 +18,9 @@ const criteriaNotVerifiedSummaryBox = document.querySelector("[data-criteria-not
 const fillUnknownButton = document.querySelector("[data-fill-unknown]");
 const executionEditor = document.querySelector("[data-execution-editor]");
 const executionPending = document.querySelector("[data-execution-pending]");
+const executionSummary = document.querySelector("[data-execution-summary]");
+const executionReadyCount = document.querySelector("[data-execution-ready-count]");
+const executionBlockingCount = document.querySelector("[data-execution-blocking-count]");
 const draftSaveButton = document.querySelector("[data-draft-save]");
 const draftStatus = document.querySelector("[data-draft-status]");
 const cityEditor = document.querySelector("[data-city-editor]");
@@ -1264,14 +1268,82 @@ function executionStatusOptions(selected) {
   ).join("");
 }
 
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function executionItemHasRequiredContent(node) {
+  const group = node.dataset.executionGroup;
+  const value = node.querySelector("[data-execution-value]")?.value?.trim() || "";
+  if (!value || node.dataset.executionBlockingSignal === "true") return false;
+  if (group === "reviewLink") return isHttpUrl(value);
+  if (group === "photos") {
+    return [...node.querySelectorAll("[data-execution-detail]")].every((field) => field.value.trim());
+  }
+  return true;
+}
+
+function updateExecutionSummary() {
+  const nodes = [...(executionEditor?.querySelectorAll("[data-execution-item]") || [])];
+  let ready = 0;
+  let blocking = 0;
+  nodes.forEach((node) => {
+    const status = node.querySelector("[data-execution-status]")?.value;
+    const isPending = status === "needs_confirmation";
+    const isBlocking = isPending && !executionItemHasRequiredContent(node);
+    if (isPending && !isBlocking) ready += 1;
+    if (isBlocking) blocking += 1;
+    node.classList.toggle("is-blocking", isBlocking);
+    const badge = node.querySelector("[data-execution-blocker]");
+    if (badge) badge.hidden = !isBlocking;
+  });
+  if (executionReadyCount) executionReadyCount.textContent = String(ready);
+  if (executionBlockingCount) executionBlockingCount.textContent = String(blocking);
+  executionSummary?.classList.toggle("has-blockers", blocking > 0);
+  return { ready, blocking };
+}
+
+function confirmReadyExecutionItems() {
+  const blockers = [];
+  executionEditor?.querySelectorAll("[data-execution-item]").forEach((node) => {
+    const status = node.querySelector("[data-execution-status]");
+    if (status?.value !== "needs_confirmation") return;
+    if (!executionItemHasRequiredContent(node)) {
+      blockers.push(node);
+      return;
+    }
+    status.value = "approved";
+  });
+  updateExecutionSummary();
+  return blockers;
+}
+
+function focusFirstExecutionBlocker(blockers) {
+  const first = blockers[0];
+  if (!first) return;
+  first.classList.add("is-blocking");
+  first.setAttribute("aria-invalid", "true");
+  first.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  first.querySelector("textarea, input, select")?.focus?.({ preventScroll: true });
+}
+
 function executionItemHtml(group, index, item, valueKey = "text") {
   const value = item?.[valueKey] || item?.text || item?.label || item?.subject || item?.title || "";
-  const pending = item?.status === "needs_confirmation";
+  const blockingSignal = Boolean(item?.blocking || item?.blocked || item?.refused || item?.rejected || item?.error || item?.conflict);
   const details = group === "photos" ? `<label>Cadrage<textarea data-execution-detail="text">${escapeHtml(item?.text || "")}</textarea></label><label>Objectif<textarea data-execution-detail="objective">${escapeHtml(item?.objective || "")}</textarea></label>` : "";
-  return `<div class="execution-editor__item${pending ? " is-pending" : ""}" data-execution-item data-execution-group="${escapeHtml(group)}" data-execution-index="${index}" data-execution-id="${escapeHtml(item?.id || "")}" data-execution-value-key="${escapeHtml(valueKey)}">
+  return `<div class="execution-editor__item" data-execution-item data-execution-group="${escapeHtml(group)}" data-execution-index="${index}" data-execution-id="${escapeHtml(item?.id || "")}" data-execution-value-key="${escapeHtml(valueKey)}" data-execution-blocking-signal="${blockingSignal ? "true" : "false"}">
+    <span class="execution-editor__blocker" data-execution-blocker hidden>Intervention requise</span>
     <label>Contenu<textarea data-execution-value>${escapeHtml(value)}</textarea></label>
     ${details}
-    <label>Statut<select data-execution-status>${executionStatusOptions(item?.status)}</select></label>
+    <details class="execution-editor__advanced">
+      <summary>Options avancées</summary>
+      <label>Statut individuel<select data-execution-status>${executionStatusOptions(item?.status)}</select></label>
+    </details>
   </div>`;
 }
 
@@ -1299,19 +1371,19 @@ function renderExecutionPlan(analysis) {
     executionGroupHtml("Quatre publications Google", "posts", plan.posts || []),
     executionGroupHtml("Objectifs à 30 jours", "actions", plan.actions || [], "objective30Days"),
   ].join("");
-  const missing = plan.integrity?.missing || [];
-  if (executionPending) executionPending.textContent = plan.pendingConfirmationCount || missing.length
-    ? `Éléments manquants avant approbation : ${plan.pendingConfirmationCount} confirmation(s). ${missing.join(" ; ")}`
-    : "Tous les éléments proposés ont un statut explicite.";
+  if (executionPending) executionPending.textContent = "";
+  updateExecutionSummary();
 }
 
 executionEditor?.addEventListener("change", (event) => {
-  const item = event.target.closest("[data-execution-item]");
-  if (item) item.classList.toggle("is-pending", item.querySelector("[data-execution-status]")?.value === "needs_confirmation");
+  updateExecutionSummary();
   scheduleDraftSave();
 });
 
-executionEditor?.addEventListener("input", scheduleDraftSave);
+executionEditor?.addEventListener("input", () => {
+  updateExecutionSummary();
+  scheduleDraftSave();
+});
 
 function collectExecutionPlan() {
   const previous = currentAnalysis?.manualReview?.executionPlan || {};
@@ -1355,8 +1427,8 @@ function restoreExecutionPlan(review) {
     });
     const statusField = node.querySelector("[data-execution-status]");
     if (statusField && item.status in EXECUTION_STATUS_LABELS) statusField.value = item.status;
-    node.classList.toggle("is-pending", statusField?.value === "needs_confirmation");
   });
+  updateExecutionSummary();
 }
 
 function restoreCompetitorSelection(answers) {
@@ -1540,13 +1612,13 @@ competitorsBox?.addEventListener("change", (event) => {
 
 function updateLinks(analysis) {
   if (!analysis?.analysisId || analysis.analysisId !== analysisId) {
-    previewLink.removeAttribute("href");
+    previewLink?.removeAttribute("href");
     pdfLink?.removeAttribute("href");
     legacyGeneratorLink?.removeAttribute("href");
     throw new Error("L’analyse chargée ne correspond pas à l’identifiant demandé.");
   }
   const id = encodeURIComponent(analysis.analysisId || analysisId);
-  previewLink.href = `/api/render/${id}`;
+  if (previewLink) previewLink.href = `/api/render/${id}`;
 
   // Séparation stricte gratuit / premium : le Diagnostic gratuit ne doit
   // jamais appeler /api/pdf/{analysisId} (renderer premium, Cloudflare
@@ -1619,13 +1691,15 @@ async function loadAnalysis() {
 // ce contrôle plus précisément. On renvoie donc systématiquement la valeur
 // déjà enregistrée pour l'analyse en cours, telle quelle, afin de ne jamais
 // l'écraser ni casser la lecture des anciennes analyses qui la contiennent.
-function collectPayload() {
+function collectPayload({ confirmAll = false } = {}) {
   const previousReview = currentAnalysis?.manualReview || {};
   const confirmedCompetitorIds = [...document.querySelectorAll("[data-confirm-competitor]:checked")].map((input) => input.value);
   const excludedCompetitorIds = [...document.querySelectorAll("[data-exclude-competitor]:checked")].map((input) => input.value);
 
   return {
     action: "complete_review",
+    analysisId,
+    confirmAll,
     questionnaireVersion: QUESTIONNAIRE_VERSION,
     ...collectQuestionnaireConditions(),
     reportType: previousReview.reportType || currentAnalysis?.reportType || "premium",
@@ -1768,6 +1842,12 @@ async function saveReview(event) {
     mettreEnEvidencePremierElementRestant(incomplete);
     return;
   }
+  const executionBlockers = pageReportType === "premium" ? confirmReadyExecutionItems() : [];
+  if (executionBlockers.length) {
+    setStatus(`${executionBlockers.length} contenu${executionBlockers.length > 1 ? "s" : ""} nécessite${executionBlockers.length > 1 ? "nt" : ""} une intervention avant l’aperçu.`, "error");
+    focusFirstExecutionBlocker(executionBlockers);
+    return;
+  }
   submitButton.disabled = true;
   submitButton.textContent = "Préparation de l’aperçu...";
   setStatus("Validation enregistrée. Préparation de l’aperçu...");
@@ -1780,7 +1860,7 @@ async function saveReview(event) {
       method: "PATCH",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collectPayload()),
+      body: JSON.stringify(collectPayload({ confirmAll: pageReportType === "premium" })),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
@@ -1790,23 +1870,22 @@ async function saveReview(event) {
         mettreEnEvidencePremierElementRestant(missing);
         return;
       }
+      if (data.error === "EXECUTION_PLAN_CONFIRMATION_REQUIRED") {
+        const blockers = [...(executionEditor?.querySelectorAll("[data-execution-item].is-blocking") || [])];
+        setStatus(data.message || "Certains contenus nécessitent encore une intervention.", "error");
+        focusFirstExecutionBlocker(blockers);
+        return;
+      }
       throw new Error(messageErreurPreparation(data));
     }
-    currentAnalysis = data.analysis;
-    setCriteriaCatalog(currentAnalysis);
-    renderCriteriaReview();
-    fillCriteriaFromAnalysis(currentAnalysis);
-    renderObservation(currentAnalysis);
-    renderCompetitors(currentAnalysis);
-    renderExecutionPlan(currentAnalysis);
-    updateLinks(currentAnalysis);
-    if (draftStatus) draftStatus.textContent = "Brouillon finalisé.";
-    setStatus("Aperçu prêt. Relisez le rapport avant approbation.", "ok");
+    const previewUrl = data.links?.preview;
+    if (!previewUrl) throw new Error("L’aperçu est prêt mais son adresse est indisponible.");
+    window.location.assign(previewUrl);
   } catch (error) {
     setStatus(error.message || "Une erreur est survenue pendant la validation.", "error");
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Valider et préparer l’aperçu";
+    submitButton.textContent = "Tout confirmer et ouvrir l’aperçu";
   }
 }
 

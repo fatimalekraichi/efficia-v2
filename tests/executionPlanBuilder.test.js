@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildExecutionPlan, countPendingExecutionReview, executionPlanApprovalIssues, normalizeExecutionPlanReview } from "../functions/lib/executionPlanBuilder.js";
+import { buildExecutionPlan, confirmReadyExecutionPlanReview, countPendingExecutionReview, executionPlanApprovalIssues, normalizeExecutionPlanReview } from "../functions/lib/executionPlanBuilder.js";
 import { detectExecutionSector } from "../functions/lib/executionPlaybooks.js";
 import { buildDocumentModelFromAnalysis } from "../functions/lib/documentModelFromAnalysis.js";
 import { buildConstat, formatOrdinal } from "../functions/lib/presentationFormatter.js";
@@ -104,6 +104,58 @@ test("l’approbation humaine peut détecter tous les éléments encore à confi
       sms: { status: "not_applicable" }, email: { status: "not_applicable" }, oral: { status: "not_applicable" },
     },
   }), 0);
+});
+
+test("la confirmation globale approuve les contenus ordinaires complets en une action", () => {
+  const result = confirmReadyExecutionPlanReview({
+    description: { id: "description", text: "Description factuelle complète", status: "needs_confirmation" },
+    categoryItems: [{ id: "category", label: "Électricien", status: "needs_confirmation" }],
+    photos: [{ id: "photo", subject: "Équipe", text: "Plan horizontal", objective: "Montrer le savoir-faire", status: "needs_confirmation" }],
+    reviewMessages: {
+      sms: { id: "sms", text: "Message factuel", status: "needs_confirmation" },
+      email: { status: "not_applicable" },
+      oral: { status: "not_applicable" },
+    },
+    reviewLink: "https://example.test/review",
+    reviewLinkStatus: "needs_confirmation",
+  });
+
+  assert.equal(result.blocking.length, 0);
+  assert.equal(result.confirmedCount, 5);
+  assert.equal(result.review.description.status, "approved");
+  assert.equal(result.review.categoryItems[0].status, "approved");
+  assert.equal(result.review.photos[0].status, "approved");
+  assert.equal(result.review.reviewMessages.sms.status, "approved");
+  assert.equal(result.review.reviewLinkStatus, "approved");
+});
+
+test("la confirmation globale conserve les refus et bloque les contenus vides, conflictuels ou mal structurés", () => {
+  const result = confirmReadyExecutionPlanReview({
+    description: { id: "description", text: "", status: "needs_confirmation" },
+    categoryItems: [
+      { id: "refused", label: "Refus explicite", status: "not_applicable" },
+      { id: "foreign", label: "Autre audit", status: "needs_confirmation", analysisId: "analysis-other" },
+    ],
+    serviceItems: [
+      { id: "conflict", text: "Service", status: "needs_confirmation", conflict: "À arbitrer" },
+      { id: "rejected", text: "Contenu explicitement refusé", status: "needs_confirmation", rejected: true },
+    ],
+    photos: [{ id: "photo", subject: "Équipe", text: "", objective: "Preuve", status: "needs_confirmation" }],
+    reviewMessages: { sms: { status: "not_applicable" }, email: { status: "not_applicable" }, oral: { status: "not_applicable" } },
+    reviewLink: "javascript:alert(1)",
+    reviewLinkStatus: "needs_confirmation",
+  }, { analysisId: "analysis-current" });
+
+  assert.equal(result.review.categoryItems[0].status, "not_applicable");
+  assert.equal(result.confirmedCount, 0);
+  assert.deepEqual(result.blocking, [
+    "Description proposée",
+    "Catégorie 2",
+    "Service 1",
+    "Service 2",
+    "Photo 1",
+    "Lien direct d’avis",
+  ]);
 });
 
 test("le document final contient le plan enrichi mais jamais les contenus non validés", () => {

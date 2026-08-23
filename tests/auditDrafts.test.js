@@ -4,6 +4,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
 import { createSessionCookie } from "../functions/admin/_shared.js";
+import { onRequestGet as getAuditReviewPage } from "../functions/admin/audit-review/[analysisId].js";
 import { onRequestPatch as patchAuditReview } from "../functions/api/admin/audit-review/[analysisId].js";
 import { onRequestGet as listDrafts } from "../functions/api/admin/audit-drafts.js";
 import {
@@ -140,7 +141,47 @@ test("l’interface restaure les critères, concurrents et éléments opération
   assert.match(script, /fillCriteriaFromAnalysis\(currentAnalysis, answers\)/);
   assert.match(script, /restoreCompetitorSelection\(answers\)/);
   assert.match(script, /restoreExecutionPlan\(answers\.executionPlan\)/);
-  assert.match(script, /executionEditor\?\.addEventListener\("input", scheduleDraftSave\)/);
+  assert.match(script, /executionEditor\?\.addEventListener\("input", \(\) =>/);
+  assert.match(script, /updateExecutionSummary\(\);\s*scheduleDraftSave\(\);/);
+});
+
+test("le parcours Premium après questionnaire est limité à deux clics obligatoires", async () => {
+  const cookie = (await createSessionCookie({ ADMIN_SESSION_SECRET: SECRET })).split(";")[0];
+  const premiumRow = {
+    analysis_id: PREMIUM_ID,
+    report_type: "premium",
+    status: "awaiting_review",
+    nom: "Entreprise Test",
+    ville: "Bruxelles",
+    normalized_json: "{}",
+    competitors_json: "[]",
+  };
+  const db = {
+    prepare() {
+      return { bind: () => ({ first: async () => premiumRow }) };
+    },
+  };
+  const response = await getAuditReviewPage({
+    request: new Request(`https://local.test/admin/audit-review/${PREMIUM_ID}`, { headers: { Cookie: cookie } }),
+    params: { analysisId: PREMIUM_ID },
+    env: { ADMIN_SESSION_SECRET: SECRET, ORDERS_DB: db },
+  });
+  const html = await response.text();
+  const script = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
+
+  assert.match(html, />Tout confirmer et ouvrir l’aperçu<\/button>/);
+  assert.match(html, /data-execution-ready-count/);
+  assert.match(html, /data-execution-blocking-count/);
+  assert.doesNotMatch(html, /Ouvrir l'ancien générateur gratuit/);
+  assert.doesNotMatch(html, />Aperçu HTML<\/a>/);
+  assert.doesNotMatch(html, />Approuver le rapport<\/button>/);
+  assert.doesNotMatch(html, />Générer le PDF<\/a>/);
+  assert.match(script, /<summary>Options avancées<\/summary>/);
+  assert.match(script, /confirmReadyExecutionItems\(\)/);
+  assert.match(script, /window\.location\.assign\(previewUrl\)/);
+  assert.match(script, /scrollIntoView\?\.\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(script, /querySelector\("textarea, input, select"\)\?\.focus/);
+  assert.doesNotMatch(script, /window\.confirm\(/);
 });
 
 test("le serveur refuse de finaliser un questionnaire réellement incomplet pour les deux types d’audit", async () => {
