@@ -147,6 +147,7 @@ test("renderLatestAnalysis retourne du HTML pour la dernière analyse", async ()
   assert.equal(response.status, 200);
   assert.match(response.headers.get("Content-Type"), /text\/html/);
   assert.match(html, /Vos points forts/);
+  assert.doesNotMatch(html, /<button[^>]+data-efficia-control-pdf/);
 });
 
 test("renderAnalysisById retourne 404 si l'analyse est inconnue", async () => {
@@ -155,6 +156,16 @@ test("renderAnalysisById retourne 404 si l'analyse est inconnue", async () => {
 
   assert.equal(response.status, 404);
   assert.deepEqual(json, { success: false, error: "Analysis not found." });
+});
+
+test("renderAnalysisById refuse une analyse dont l’identifiant chargé diffère de l’identifiant demandé", async () => {
+  const response = await renderAnalysisById(makeContext({
+    ...analysisRow,
+    analysis_id: "analysis-other",
+  }), "analysis-1");
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { success: false, error: "ANALYSIS_ID_MISMATCH" });
 });
 
 test("renderAnalysisById bloque l'aperçu tant que la validation humaine est attendue", async () => {
@@ -206,14 +217,16 @@ test("renderAnalysisById refuse un Premium même approuvé sans commande payée 
   assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
 });
 
-test("renderAnalysisById ajoute un bouton de téléchargement masqué à l'impression", async () => {
+test("renderAnalysisById approuvé expose uniquement le PDF serveur final", async () => {
   const response = await renderAnalysisById(makeContext({
     ...analysisRow,
     status: "approved",
   }), "analysis-1");
   const html = await response.text();
 
-  assert.match(html, /Télécharger le PDF/);
+  assert.match(html, />Générer le PDF<\/a>/);
+  assert.doesNotMatch(html, /<button[^>]+data-efficia-control-pdf/);
+  assert.doesNotMatch(html, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
   assert.match(html, /class="efficia-preview-toolbar no-print"/);
   assert.match(html, /@page/);
   assert.match(html, /print-color-adjust: exact/);
@@ -228,6 +241,21 @@ test("aperçu Premium manuel : identité Premium et aucune déduction de 99 €"
 
   assert.equal(response.status, 200);
   assert.match(html, /Audit Efficia Premium/);
+  assert.match(html, /Exporter le PDF de contrôle/);
+  assert.match(html, /CONTROLE-NON-APPROUVE_Audit-Efficia_La-Planche-des-Saveurs_Dinant_/);
   assert.doesNotMatch(html, /99 € déjà investis/);
   assert.doesNotMatch(html, /intégralement déduits/);
+});
+
+test("un aperçu Diagnostic gratuit ne propose jamais le PDF de contrôle Premium", async () => {
+  const response = await renderAnalysisById(makeContext({
+    ...analysisRow,
+    status: "preview_ready",
+    report_type: "free",
+  }), "analysis-1");
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(html, /<button[^>]+data-efficia-control-pdf/);
+  assert.doesNotMatch(html, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
 });

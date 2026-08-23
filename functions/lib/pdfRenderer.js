@@ -24,6 +24,14 @@ export function buildAuditPdfFilename(analysis, date = new Date()) {
   return `Audit-Efficia-${name}-${fileDate}.pdf`;
 }
 
+export function buildControlPdfTitle(analysis, date = new Date()) {
+  const business = analysis?.business || {};
+  const name = sanitizeFilenamePart(business.name || business.nom || analysis?.analysisId);
+  const city = sanitizeFilenamePart(business.city || business.ville || "Ville");
+  const fileDate = formatDateForFilename(date);
+  return `CONTROLE-NON-APPROUVE_Audit-Efficia_${name}_${city}_${fileDate}.pdf`;
+}
+
 export function addPdfPrintStyles(html) {
   const css = `
     <style id="efficia-pdf-print-css">
@@ -63,18 +71,118 @@ export function addPdfPrintStyles(html) {
   return `${css}${html}`;
 }
 
-export function addPreviewToolbar(html, analysisId, status = "") {
+export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
   const safeAnalysisId = encodeURIComponent(String(analysisId || "latest"));
   const approved = status === "approved" || status === "pdf_generated";
+  const controlPdfAvailable = status === "preview_ready"
+    && options.reportType === "premium"
+    && options.requestedAnalysisId === analysisId;
+  const controlPdfTitle = options.controlPdfTitle || buildControlPdfTitle({ analysisId });
+  const controlPdfButton = controlPdfAvailable ? `
+      <button type="button" data-efficia-control-pdf data-efficia-control-title="${controlPdfTitle}">Exporter le PDF de contrôle</button>
+  ` : "";
+  const controlPdfMarker = controlPdfAvailable ? `
+    <div class="efficia-control-print-watermark" aria-hidden="true">DOCUMENT DE CONTRÔLE — NON APPROUVÉ</div>
+  ` : "";
+  const controlPdfScript = controlPdfAvailable ? `
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-efficia-control-pdf]");
+        if (!button) return;
+        const originalTitle = document.title;
+        document.title = button.dataset.efficiaControlTitle;
+        try {
+          window.print();
+        } finally {
+          document.title = originalTitle;
+        }
+      });
+  ` : "";
+  const controlPdfCss = controlPdfAvailable ? `
+      .efficia-control-print-watermark {
+        display: none;
+      }
+
+      .efficia-control-print-watermark ~ .report-shell .page::after {
+        content: "DOCUMENT DE CONTRÔLE — NON APPROUVÉ";
+        position: absolute;
+        top: 6px;
+        right: 18px;
+        z-index: 20;
+        padding: 3px 8px;
+        border: 1px solid #b91c1c;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.94);
+        color: #b91c1c;
+        font: 900 9px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+
+      .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
+        content: "Version de contrôle destinée à la vérification interne. Ne pas transmettre au client.";
+        position: absolute;
+        top: 7px;
+        left: 18px;
+        z-index: 20;
+        max-width: 430px;
+        color: #7f1d1d;
+        font: 800 9px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+
+      @media screen and (max-width: 600px) {
+        .efficia-control-print-watermark ~ .report-shell .page:first-child {
+          padding-top: 78px;
+        }
+
+        .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
+          top: 34px;
+          right: 18px;
+          max-width: none;
+          text-align: center;
+        }
+      }
+
+      @media print {
+        .efficia-control-print-watermark {
+          position: fixed;
+          top: 2mm;
+          right: 12mm;
+          z-index: 1000;
+          display: block;
+          padding: 1mm 2mm;
+          border: 0.3mm solid #b91c1c;
+          border-radius: 999px;
+          background: #ffffff;
+          color: #b91c1c;
+          font: 900 7pt/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+          letter-spacing: 0.06em;
+          white-space: nowrap;
+        }
+
+        .efficia-control-print-watermark ~ .report-shell .page::after {
+          content: none;
+        }
+
+        .efficia-control-print-watermark ~ .report-shell .page:first-child::before {
+          top: 2mm;
+          left: 12mm;
+          max-width: 105mm;
+          font-size: 7pt;
+        }
+      }
+  ` : "";
   const toolbar = `
     <div class="efficia-preview-toolbar no-print">
-      <button type="button" onclick="window.print()" ${approved ? "" : "disabled"}>${approved ? "Télécharger le PDF" : "PDF après approbation"}</button>
+      ${controlPdfButton}
       <a href="/admin/audit-review/${safeAnalysisId}">Retourner à la validation</a>
       <button type="button" data-efficia-approve-report="${safeAnalysisId}" ${approved ? "disabled" : ""}>Approuver le rapport</button>
-      <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur" class="${approved ? "" : "is-disabled"}" aria-disabled="${approved ? "false" : "true"}">Générer le PDF</a>
+      <a href="/api/pdf/${safeAnalysisId}" aria-label="Téléchargement serveur final" class="${approved ? "" : "is-disabled"}" aria-disabled="${approved ? "false" : "true"}">${approved ? "Générer le PDF" : "PDF final après approbation"}</a>
       <p data-efficia-approval-status role="status" aria-live="polite"></p>
     </div>
+    ${controlPdfMarker}
     <script>
+      ${controlPdfScript}
+
       document.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-efficia-approve-report]");
         if (!button || button.disabled) return;
@@ -110,6 +218,7 @@ export function addPreviewToolbar(html, analysisId, status = "") {
         top: 0;
         z-index: 50;
         display: flex;
+        flex-wrap: wrap;
         justify-content: center;
         gap: 10px;
         padding: 12px;
@@ -151,6 +260,27 @@ export function addPreviewToolbar(html, analysisId, status = "") {
         opacity: 0.55;
       }
 
+      @media screen and (max-width: 600px) {
+        .efficia-preview-toolbar {
+          position: static;
+          gap: 6px;
+          padding: 8px;
+        }
+
+        .efficia-preview-toolbar button,
+        .efficia-preview-toolbar a {
+          flex: 1 1 calc(50% - 6px);
+          min-width: 0;
+          min-height: 44px;
+          padding: 7px 9px;
+          font-size: 12px;
+          line-height: 1.15;
+          text-align: center;
+        }
+      }
+
+      ${controlPdfCss}
+
       [data-efficia-approval-status] {
         flex-basis: 100%;
         margin: 0;
@@ -161,7 +291,9 @@ export function addPreviewToolbar(html, analysisId, status = "") {
     </style>
   `;
 
-  if (html.includes("<body>")) return html.replace("<body>", `<body>${toolbar}`);
+  if (/<body(?:\s[^>]*)?>/i.test(html)) {
+    return html.replace(/<body(?:\s[^>]*)?>/i, (openingTag) => `${openingTag}${toolbar}`);
+  }
   return `${toolbar}${html}`;
 }
 

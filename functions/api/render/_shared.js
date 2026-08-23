@@ -8,7 +8,7 @@ import {
 } from "../analysis/_shared.js";
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
 import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
-import { addPdfPrintStyles, addPreviewToolbar } from "../../lib/pdfRenderer.js";
+import { addPdfPrintStyles, addPreviewToolbar, buildControlPdfTitle } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
 
@@ -63,6 +63,9 @@ export async function renderAnalysisById(context, analysisId) {
   if (!analysis) {
     return jsonResponse({ success: false, error: "Analysis not found." }, 404);
   }
+  if (analysis.analysisId !== analysisId) {
+    return jsonResponse({ success: false, error: "ANALYSIS_ID_MISMATCH" }, 409);
+  }
   const premiumAuthorization = await requirePremiumAnalysisAuthorization(context, verified.db, analysis);
   if (!premiumAuthorization.ok) {
     return jsonResponse({ success: false, error: premiumAuthorization.error }, premiumAuthorization.status);
@@ -83,7 +86,16 @@ export async function renderAnalysisById(context, analysisId) {
     buildDocumentModelFromAnalysis(analysis),
     resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
   );
-  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
+  const html = addPreviewToolbar(
+    addPdfPrintStyles(renderAnalysisHtml(documentModel)),
+    analysis.analysisId,
+    analysis.status,
+    {
+      reportType: analysis.reportType,
+      requestedAnalysisId: analysisId,
+      controlPdfTitle: buildControlPdfTitle(analysis),
+    },
+  );
   return htmlResponse(html);
 }
 
@@ -115,7 +127,12 @@ export async function renderLatestAnalysis(context) {
     buildDocumentModelFromAnalysis(analysis),
     resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
   );
-  const html = addPreviewToolbar(addPdfPrintStyles(renderAnalysisHtml(documentModel)), analysis.analysisId, analysis.status);
+  const html = addPreviewToolbar(
+    addPdfPrintStyles(renderAnalysisHtml(documentModel)),
+    analysis.analysisId,
+    analysis.status,
+    { reportType: analysis.reportType },
+  );
   return htmlResponse(html);
 }
 

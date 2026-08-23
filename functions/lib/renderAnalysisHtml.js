@@ -4573,6 +4573,31 @@ function styles() {
         .free-diagnostic .offer-grid {
           grid-template-columns: 1fr;
         }
+
+        /* Les règles de densité Premium ont une spécificité supérieure aux
+           sélecteurs responsives génériques ci-dessus. On réaffirme donc le
+           repli avec la même portée pour éviter les colonnes comprimées sur
+           mobile, sans modifier le rendu gratuit. */
+        .report-shell:not(.free-diagnostic) .cover-grid,
+        .report-shell:not(.free-diagnostic) .cover-bottom,
+        .report-shell:not(.free-diagnostic) .split-grid,
+        .report-shell:not(.free-diagnostic) .card-grid,
+        .report-shell:not(.free-diagnostic) .priority-card,
+        .report-shell:not(.free-diagnostic) .priority-grid,
+        .report-shell:not(.free-diagnostic) .action-content dl,
+        .report-shell:not(.free-diagnostic) .index-row,
+        .report-shell:not(.free-diagnostic) .offer-grid,
+        .report-shell:not(.free-diagnostic) .pack-grid,
+        .report-shell:not(.free-diagnostic) .method-grid,
+        .report-shell:not(.free-diagnostic) .summary-recap-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .report-shell:not(.free-diagnostic) h1 {
+          max-width: 100%;
+          font-size: clamp(32px, 10vw, 42px);
+          line-height: 1;
+        }
       }
 
       @page {

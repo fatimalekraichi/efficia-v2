@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 import { renderFreeDiagnosticPdfById, renderPdfById } from "../functions/api/pdf/_shared.js";
-import { addPreviewToolbar, buildAuditPdfFilename } from "../functions/lib/pdfRenderer.js";
+import { addPreviewToolbar, buildAuditPdfFilename, buildControlPdfTitle } from "../functions/lib/pdfRenderer.js";
 import { createSessionCookie } from "../functions/admin/_shared.js";
 
 const TOKEN = "test-token";
@@ -218,6 +219,87 @@ test("la barre d’aperçu restitue l’erreur structurée dans la page", () => 
   assert.doesNotMatch(html, /alert\(/);
 });
 
+function premiumControlToolbar(status = "preview_ready", requestedAnalysisId = "analysis-1") {
+  return addPreviewToolbar(
+    "<!doctype html><html><head><title>Titre initial</title></head><body><main class=\"report-shell\"><section class=\"page\"></section><section class=\"page\"></section></main></body></html>",
+    "analysis-1",
+    status,
+    {
+      reportType: "premium",
+      requestedAnalysisId,
+      controlPdfTitle: "CONTROLE-NON-APPROUVE_Audit-Efficia_ME-ELEC_Arlon_2026-08-23.pdf",
+    },
+  );
+}
+
+test("la barre d’aperçu permet un PDF de contrôle uniquement sur le Premium préparé et le bon analysisId", () => {
+  const html = premiumControlToolbar();
+
+  assert.match(html, /<button[^>]+data-efficia-control-pdf[^>]*>Exporter le PDF de contrôle<\/button>/);
+  assert.doesNotMatch(html, /data-efficia-control-pdf[^>]+disabled/);
+  assert.match(html, /href="\/api\/pdf\/analysis-1"[^>]+class="is-disabled"[^>]+aria-disabled="true"[^>]*>PDF final après approbation<\/a>/);
+  assert.match(html, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.match(html, /Version de contrôle destinée à la vérification interne\. Ne pas transmettre au client\./);
+
+  assert.doesNotMatch(premiumControlToolbar("awaiting_review"), /<button[^>]+data-efficia-control-pdf/);
+  assert.doesNotMatch(premiumControlToolbar("approved"), /<button[^>]+data-efficia-control-pdf/);
+  assert.doesNotMatch(premiumControlToolbar("preview_ready", "analysis-other"), /<button[^>]+data-efficia-control-pdf/);
+  assert.doesNotMatch(addPreviewToolbar("<html><body></body></html>", "analysis-1", "preview_ready", {
+    reportType: "free",
+    requestedAnalysisId: "analysis-1",
+  }), /<button[^>]+data-efficia-control-pdf/);
+});
+
+test("le clic de contrôle appelle uniquement window.print et restaure le titre initial", async () => {
+  const html = premiumControlToolbar();
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const listeners = [];
+  const printedTitles = [];
+  let networkCalls = 0;
+  const document = {
+    title: "Titre initial",
+    addEventListener(_type, listener) { listeners.push(listener); },
+    querySelector() { return null; },
+  };
+  const button = {
+    dataset: {
+      efficiaControlTitle: "CONTROLE-NON-APPROUVE_Audit-Efficia_ME-ELEC_Arlon_2026-08-23.pdf",
+    },
+  };
+  const event = {
+    target: {
+      closest(selector) {
+        return selector === "[data-efficia-control-pdf]" ? button : null;
+      },
+    },
+  };
+  const window = { print() { printedTitles.push(document.title); }, location: { reload() {} } };
+
+  vm.runInNewContext(script, {
+    document,
+    window,
+    fetch() { networkCalls += 1; throw new Error("network call forbidden"); },
+  });
+  for (const listener of listeners) await listener(event);
+
+  assert.deepEqual(printedTitles, ["CONTROLE-NON-APPROUVE_Audit-Efficia_ME-ELEC_Arlon_2026-08-23.pdf"]);
+  assert.equal(document.title, "Titre initial");
+  assert.equal(networkCalls, 0);
+});
+
+test("le marquage de contrôle est répété à l’impression et disparaît totalement après approbation", () => {
+  const controlHtml = premiumControlToolbar();
+  const approvedHtml = premiumControlToolbar("approved");
+
+  assert.match(controlHtml, /position: fixed;/);
+  assert.match(controlHtml, /\.efficia-control-print-watermark ~ \.report-shell \.page::after/);
+  assert.match(controlHtml, /@media print/);
+  assert.match(controlHtml, /class="efficia-preview-toolbar no-print"/);
+  assert.doesNotMatch(approvedHtml, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.doesNotMatch(approvedHtml, /Version de contrôle destinée/);
+  assert.match(approvedHtml, /href="\/api\/pdf\/analysis-1"[^>]+class=""[^>]+aria-disabled="false"[^>]*>Générer le PDF<\/a>/);
+});
+
 test("renderPdfById conserve le PDF non finalisé si aucun questionnaire sauvegardé n’existe", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(PDF_BYTES, { status: 200, headers: { "Content-Type": "application/pdf" } });
@@ -238,5 +320,11 @@ test("buildAuditPdfFilename nettoie les caractères spéciaux", () => {
       business: { name: "Garage Étoile & Fils" },
     }, "2026-07-24"),
     "Audit-Efficia-Garage-Etoile-Fils-2026-07-24.pdf",
+  );
+  assert.equal(
+    buildControlPdfTitle({
+      business: { name: "ME ÉLEC / <script>", city: "Arlon & Belgique" },
+    }, "2026-08-23"),
+    "CONTROLE-NON-APPROUVE_Audit-Efficia_ME-ELEC-script_Arlon-Belgique_2026-08-23.pdf",
   );
 });
