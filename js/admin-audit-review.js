@@ -1203,6 +1203,42 @@ function mettreEnEvidencePremierElementRestant(elements) {
   first.focusTarget?.focus?.({ preventScroll: true });
 }
 
+function elementsRestantsSignalesParServeur(keys = []) {
+  const local = listerElementsRestantsPourFinalisation();
+  if (local.length) return local;
+  const locationElement = criteriaGroupsBox?.querySelector("[data-location-criterion]");
+  const contexts = {
+    locationMode: ["Mode d’activité à confirmer", locationElement, 'input[name="condition:locationMode"]'],
+    addressVerification: ["Adresse et épingle Google Maps à confirmer", locationElement?.querySelector('[data-location-control="address"]') || locationElement, 'input[name="location:address"]'],
+    serviceAreaVerification: ["Zone desservie à confirmer", locationElement?.querySelector('[data-location-control="service_area"]') || locationElement, 'input[name="location:serviceArea"]'],
+  };
+  return [...new Set(Array.isArray(keys) ? keys : [])].map((key) => {
+    const criterion = [...(criteriaGroupsBox?.querySelectorAll("[data-criteria-key]") || [])]
+      .find((item) => item.dataset.criteriaKey === key);
+    const context = contexts[key];
+    const element = criterion || context?.[1] || null;
+    return {
+      id: key,
+      label: criterion?.querySelector(".criteria-item__question")?.firstChild?.textContent?.trim()
+        || context?.[0]
+        || key,
+      element,
+      focusTarget: criterion?.querySelector("[data-criteria-option]") || element?.querySelector(context?.[2] || "input, select, textarea"),
+      reason: "server_validation_missing",
+    };
+  });
+}
+
+function messageErreurPreparation(data = {}) {
+  if (data.error === "PREMIUM_NOT_AUTHORIZED") {
+    return "Cet audit Premium n’est pas autorisé à préparer un aperçu.";
+  }
+  const reference = typeof data.reference === "string" && data.reference
+    ? ` Référence : ${data.reference}.`
+    : "";
+  return `L’aperçu n’a pas pu être préparé.${reference}`;
+}
+
 function markUnansweredCriteriaAsNotVerified() {
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
@@ -1739,9 +1775,12 @@ async function saveReview(event) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
       if (data.error === "INCOMPLETE_QUESTIONNAIRE") {
-        throw new Error("Complétez toutes les questions visibles avant de préparer l’aperçu.");
+        const missing = elementsRestantsSignalesParServeur(data.missing);
+        setStatus(globalThis.EfficiaQuestionnaireFinalization.formaterResumeElementsRestants(missing), "error");
+        mettreEnEvidencePremierElementRestant(missing);
+        return;
       }
-      throw new Error(data.detail || data.error || "Impossible de préparer l’aperçu.");
+      throw new Error(messageErreurPreparation(data));
     }
     currentAnalysis = data.analysis;
     setCriteriaCatalog(currentAnalysis);

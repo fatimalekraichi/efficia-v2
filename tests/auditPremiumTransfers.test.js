@@ -8,6 +8,7 @@ import {
   onRequestGet as listTransferSources,
   onRequestPost as transferAudit,
 } from "../functions/api/admin/audit-premium-transfers.js";
+import { onRequestPatch as patchAuditReview } from "../functions/api/admin/audit-review/[analysisId].js";
 import {
   onRequestGet as getDraft,
   onRequestPut as putDraft,
@@ -407,6 +408,99 @@ test("Arlon est sauvegardée, restaurée, figée dans le snapshot et utilisée p
   assert.equal(row(db, "analyses", "analysis_id", transfer.analysisId).normalized_json, rawNormalizedBefore);
 });
 
+test("un Premium manuel transféré complet prépare son aperçu sans commande payée", async () => {
+  const db = new LocalD1();
+  seedFinalAudit(db, SOURCE_ID);
+  const transfer = await createPremiumFromCompletedFree(db, {
+    sourceAnalysisId: SOURCE_ID,
+    idempotencyKey: KEY,
+    administratorCity: "Arlon",
+  });
+  const answers = JSON.parse(row(db, "audit_drafts", "analysis_id", transfer.analysisId).answers_json);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ status: "completed" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  try {
+    const response = await patchAuditReview({
+      request: new Request(`https://preview.example/api/admin/audit-review/${transfer.analysisId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: await sessionCookie(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...answers, action: "complete_review" }),
+      }),
+      params: { analysisId: transfer.analysisId },
+      env: {
+        ADMIN_SESSION_SECRET: SECRET,
+        CONNECTOR_TOKEN: "synthetic-connector-token",
+        ORDERS_DB: db,
+      },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.success, true);
+    assert.equal(body.analysisId, transfer.analysisId);
+    assert.equal(body.links.preview, `/api/render/${transfer.analysisId}`);
+    assert.equal(body.links.pdf, `/api/pdf/${transfer.analysisId}`);
+    assert.equal(db.count("orders"), 0);
+    assert.equal(db.count("audit_questionnaire_snapshots"), 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("un échec technique conserve le brouillon, ne crée aucun snapshot et retourne une référence sûre", async () => {
+  const db = new LocalD1();
+  seedFinalAudit(db, SOURCE_ID);
+  const transfer = await createPremiumFromCompletedFree(db, {
+    sourceAnalysisId: SOURCE_ID,
+    idempotencyKey: KEY,
+    administratorCity: "Arlon",
+  });
+  const draftBefore = row(db, "audit_drafts", "analysis_id", transfer.analysisId);
+  const answers = JSON.parse(draftBefore.answers_json);
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const logged = [];
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: "SYNTHETIC_STAGE_FAILURE" }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" },
+  });
+  console.error = (...args) => logged.push(args.join(" "));
+  try {
+    const response = await patchAuditReview({
+      request: new Request(`https://preview.example/api/admin/audit-review/${transfer.analysisId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: await sessionCookie(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...answers, action: "complete_review" }),
+      }),
+      params: { analysisId: transfer.analysisId },
+      env: {
+        ADMIN_SESSION_SECRET: SECRET,
+        CONNECTOR_TOKEN: "synthetic-connector-token",
+        ORDERS_DB: db,
+      },
+    });
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.equal(body.error, "AUDIT_PREVIEW_PREPARATION_FAILED");
+    assert.match(body.reference, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(row(db, "audit_drafts", "analysis_id", transfer.analysisId), draftBefore);
+    assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(transfer.analysisId).count, 0);
+    assert.equal(logged.some((line) => line.includes(body.reference) && line.includes("SYNTHETIC_STAGE_FAILURE") && line.includes("knowledge")), true);
+    assert.equal(JSON.stringify(body).includes("SYNTHETIC_STAGE_FAILURE"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+  }
+});
+
 test("l’interface expose le transfert uniquement pour un Gratuit v4 et neutralise les doubles clics", () => {
   const admin = readFileSync(new URL("../js/admin.js", import.meta.url), "utf8");
   const dashboard = readFileSync(new URL("../admin.html", import.meta.url), "utf8");
@@ -423,6 +517,10 @@ test("l’interface expose le transfert uniquement pour un Gratuit v4 et neutral
   assert.match(free, /transfertPremiumEnCours/);
   assert.match(premium, /data-confirmed-city/);
   assert.match(premium, /confirmedCity: cleanAdministrativeCity\(confirmedCityInput/);
+  assert.match(premium, /elementsRestantsSignalesParServeur/);
+  assert.match(premium, /scrollIntoView/);
+  assert.match(premium, /focus\?\.\(\{ preventScroll: true \}\)/);
+  assert.match(premium, /L’aperçu n’a pas pu être préparé\.\$\{reference\}/);
 });
 
 test("0017 est réexécutable et impose les unicités du registre", () => {

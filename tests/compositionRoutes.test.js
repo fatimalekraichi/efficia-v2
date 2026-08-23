@@ -89,7 +89,7 @@ function makeAnalysisRow(overrides = {}) {
   };
 }
 
-function makeDb(row, { premiumAuthorized = true } = {}) {
+function makeDb(row, { premiumAuthorized = true, manualAuthorized = false } = {}) {
   return {
     row,
     updates: [],
@@ -101,6 +101,11 @@ function makeDb(row, { premiumAuthorized = true } = {}) {
             if (sql.includes("JOIN orders")) {
               return premiumAuthorized
                 ? { order_id: "order-1", status: "paid", offer_code: "audit", has_authorized_item: 1 }
+                : null;
+            }
+            if (sql.includes("audit_creation_metadata")) {
+              return manualAuthorized
+                ? { analysis_id: row.analysis_id, creation_source: "admin_manual", audit_type: "premium", billing_status: "manual_unpaid", request_status: "completed" }
                 : null;
             }
             return row;
@@ -214,4 +219,19 @@ test("composer refuse la génération Premium sans commande payée liée", async
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), { success: false, error: "PREMIUM_NOT_AUTHORIZED" });
   assert.equal(db.row.document_model_json, null);
+});
+
+test("composer autorise un Premium manuel manual_unpaid sans order_id", async () => {
+  const db = makeDb(makeAnalysisRow({
+    report_type: "premium",
+    order_id: null,
+    reasoning_json: JSON.stringify({ reasoningVersion: "test", reasonings: [] }),
+  }), { premiumAuthorized: false, manualAuthorized: true });
+
+  const response = await runComposerRoute(makeContext(db));
+  const json = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(json.status, "completed");
+  assert.ok(json.documentModel.composerVersion);
+  assert.ok(db.row.document_model_json);
 });

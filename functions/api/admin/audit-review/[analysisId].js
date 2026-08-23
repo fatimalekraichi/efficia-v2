@@ -42,6 +42,22 @@ function withScoreReviewData(analysis) {
   };
 }
 
+function technicalFailureResponse({ analysisId, stage, code, status = 500 }) {
+  const reference = crypto.randomUUID();
+  console.error(JSON.stringify({
+    message: "audit preview preparation failed",
+    reference,
+    analysis_id: analysisId,
+    stage,
+    code,
+  }));
+  return jsonResponse({
+    success: false,
+    error: "AUDIT_PREVIEW_PREPARATION_FAILED",
+    reference,
+  }, status);
+}
+
 async function callStage({ origin, connectorToken, cookie }, stage, analysisId) {
   const response = await fetch(`${origin}/api/${stage}`, {
     method: "POST",
@@ -179,13 +195,12 @@ async function saveManualReview({ context, db, analysisId, payload }) {
 
   const pipeline = await runPostReviewPipeline({ context, analysisId });
   if (!pipeline.ok) {
-    return jsonResponse({
-      success: false,
-      error: "POST_REVIEW_PIPELINE_FAILED",
-      stage: pipeline.stage,
-      stages: pipeline.stages,
-      detail: pipeline.body?.error || pipeline.error || null,
-    }, 502);
+    return technicalFailureResponse({
+      analysisId,
+      stage: pipeline.stage || "pipeline",
+      code: pipeline.body?.error || pipeline.error || "POST_REVIEW_PIPELINE_FAILED",
+      status: 502,
+    });
   }
 
   const refreshed = await loadAnalysisById(db, analysisId);
@@ -194,7 +209,7 @@ async function saveManualReview({ context, db, analysisId, payload }) {
     status: "preview_ready",
     analysisId,
     stages: pipeline.stages,
-    analysis: await withFreeDiagnosticQuery(db, analysisId, withScoreReviewData(refreshed)),
+    analysis: withScoreReviewData(refreshed),
     links: {
       preview: `/api/render/${encodeURIComponent(analysisId)}`,
       data: `/api/analysis/${encodeURIComponent(analysisId)}`,
@@ -287,7 +302,15 @@ export async function onRequestPatch(context) {
 
   const action = normalizeText(payload.action || "complete_review");
   if (action === "complete_review") {
-    return saveManualReview({ context, db, analysisId, payload });
+    try {
+      return await saveManualReview({ context, db, analysisId, payload });
+    } catch (error) {
+      return technicalFailureResponse({
+        analysisId,
+        stage: "complete_review",
+        code: error?.name || "UNEXPECTED_ERROR",
+      });
+    }
   }
   if (action === "approve") {
     return approveAnalysis(db, analysisId);
