@@ -34,8 +34,8 @@ const analysisRow = {
   report_type: "premium",
 };
 
-function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undefined, paid = true, manual = false } = {}) {
-  let storedSnapshot = null;
+function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undefined, snapshot = null, paid = true, manual = false } = {}) {
+  let storedSnapshot = snapshot;
   const storedDraft = draft === undefined && row ? {
     draft_id: "analysis-1",
     analysis_id: "analysis-1",
@@ -108,6 +108,9 @@ function makeContext({ row = analysisRow, token = TOKEN, env = {}, draft = undef
       BROWSER_RENDERING_API_TOKEN: "browser-token-test",
       ...env,
     },
+    testState: {
+      get snapshot() { return storedSnapshot; },
+    },
   };
 }
 
@@ -154,9 +157,10 @@ test("le PDF serveur non configuré renvoie uniquement un code stable et une ré
   const logs = [];
   console.error = (...args) => logs.push(args.join(" "));
   try {
-    const response = await renderPdfById(makeContext({
+    const context = makeContext({
       env: { CLOUDFLARE_ACCOUNT_ID: "", BROWSER_RENDERING_API_TOKEN: "" },
-    }), "analysis-1");
+    });
+    const response = await renderPdfById(context, "analysis-1");
     const body = await response.json();
 
     assert.equal(response.status, 501);
@@ -164,6 +168,9 @@ test("le PDF serveur non configuré renvoie uniquement un code stable et une ré
     assert.match(body.reference, /^[0-9a-f-]{36}$/i);
     assert.doesNotMatch(body.message, /CLOUDFLARE_ACCOUNT_ID|BROWSER_RENDERING_API_TOKEN/);
     assert.match(logs.join("\n"), /PDF_RENDERER_NOT_CONFIGURED/);
+    assert.equal(context.testState.snapshot.analysis_id, "analysis-1");
+    assert.equal(context.testState.snapshot.answers_version, "score-efficia-questionnaire-v4");
+    assert.equal(context.testState.snapshot.pdf_filename, null);
   } finally {
     console.error = originalError;
   }
@@ -341,6 +348,8 @@ test("le marquage de contrôle est répété à l’impression et disparaît tot
   assert.doesNotMatch(approvedHtml, /Version de contrôle destinée/);
   assert.doesNotMatch(approvedHtml, /<p class="efficia-control-print-notice">/);
   assert.match(approvedHtml, /data-efficia-approval-complete="true"[^>]*>Télécharger à nouveau le PDF final<\/button>/);
+  assert.match(approvedHtml, /data-efficia-dashboard-link[^>]*>Retour au tableau de bord<\/a>/);
+  assert.match(approvedHtml, /data-efficia-completion-status[^>]*>Audit terminé<\/strong>/);
 });
 
 function combinedApprovalHarness({ approvalOk = true, pdfAttempts = [true], printThrows = false } = {}) {
@@ -348,6 +357,8 @@ function combinedApprovalHarness({ approvalOk = true, pdfAttempts = [true], prin
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   const listeners = [];
   const status = { textContent: "" };
+  const completionStatus = { hidden: true, textContent: "" };
+  const dashboardLink = { hidden: true };
   const downloads = [];
   const printedTitles = [];
   const removed = [];
@@ -376,6 +387,8 @@ function combinedApprovalHarness({ approvalOk = true, pdfAttempts = [true], prin
     addEventListener(_type, listener) { listeners.push(listener); },
     querySelector(selector) {
       if (selector === "[data-efficia-approval-status]") return status;
+      if (selector === "[data-efficia-completion-status]") return completionStatus;
+      if (selector === "[data-efficia-dashboard-link]") return dashboardLink;
       if (selector === "[data-efficia-control-pdf]") return present.has("control-button") ? controlButton : null;
       if (selector === "[data-efficia-return-modifications]") return present.has("return-link") ? returnLink : null;
       return null;
@@ -435,7 +448,7 @@ function combinedApprovalHarness({ approvalOk = true, pdfAttempts = [true], prin
     fetch,
     URL: sandboxUrl,
   });
-  return { listener: listeners.at(-1), event, button, status, downloads, calls, printedTitles, removed, document };
+  return { listener: listeners.at(-1), event, button, status, completionStatus, dashboardLink, downloads, calls, printedTitles, removed, document };
 }
 
 test("un clic approuve puis télécharge le PDF final", async () => {
@@ -451,6 +464,9 @@ test("un clic approuve puis télécharge le PDF final", async () => {
   assert.equal(harness.button.textContent, "Télécharger à nouveau le PDF final");
   assert.equal(harness.document.documentElement.dataset.efficiaPrintMode, "final-print");
   assert.deepEqual(harness.removed, ["control-button", "return-link", "watermark", "notice"]);
+  assert.equal(harness.completionStatus.textContent, "Audit terminé");
+  assert.equal(harness.completionStatus.hidden, false);
+  assert.equal(harness.dashboardLink.hidden, false);
 });
 
 test("le renderer absent bascule automatiquement en final-print sans marque de contrôle", async () => {
@@ -471,6 +487,8 @@ test("le renderer absent bascule automatiquement en final-print sans marque de c
   assert.equal(harness.button.textContent, "Enregistrer le PDF final");
   assert.deepEqual(harness.removed, ["control-button", "return-link", "watermark", "notice"]);
   assert.equal(harness.downloads.length, 0);
+  assert.equal(harness.completionStatus.textContent, "Audit terminé");
+  assert.equal(harness.dashboardLink.hidden, false);
 });
 
 test("une nouvelle impression Chrome ne réapprouve pas et n’effectue aucune requête", async () => {
@@ -485,6 +503,21 @@ test("une nouvelle impression Chrome ne réapprouve pas et n’effectue aucune r
   assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/admin/")).length, 1);
   assert.equal(harness.printedTitles.length, 2);
   assert.equal(harness.document.title, "Titre initial");
+  assert.equal(harness.completionStatus.textContent, "Audit terminé");
+});
+
+test("une annulation de la boîte Chrome ne peut pas et ne doit pas retirer l’état terminé", async () => {
+  const harness = combinedApprovalHarness({
+    pdfAttempts: [{ status: 501, error: "PDF_RENDERER_NOT_CONFIGURED" }],
+  });
+  await harness.listener(harness.event);
+
+  // window.print() ne révèle ni Enregistrer ni Annuler : seul le résultat de
+  // l'approbation serveur détermine donc l'état de l'audit.
+  assert.equal(harness.printedTitles.length, 1);
+  assert.equal(harness.button.dataset.efficiaApprovalComplete, "true");
+  assert.equal(harness.completionStatus.textContent, "Audit terminé");
+  assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/admin/")).length, 1);
 });
 
 test("une impression Chrome bloquée conserve un bouton et un message utilisateur non technique", async () => {
@@ -550,15 +583,20 @@ test("un double clic ne duplique ni l’approbation ni la génération", async (
   assert.equal(harness.calls.filter((call) => call.url.startsWith("/api/pdf/")).length, 1);
 });
 
-test("renderPdfById conserve le PDF non finalisé si aucun questionnaire sauvegardé n’existe", async () => {
+test("renderPdfById bloque avant le renderer si aucun questionnaire sauvegardé n’existe", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(PDF_BYTES, { status: 200, headers: { "Content-Type": "application/pdf" } });
+  let renderCalls = 0;
+  globalThis.fetch = async () => {
+    renderCalls += 1;
+    return new Response(PDF_BYTES, { status: 200, headers: { "Content-Type": "application/pdf" } });
+  };
   try {
     const response = await renderPdfById(makeContext({ draft: null }), "analysis-1");
     assert.equal(response.status, 409);
     const body = await response.json();
     assert.equal(body.error, "QUESTIONNAIRE_SNAPSHOT_UNAVAILABLE");
     assert.match(body.message, /Aucune sauvegarde du questionnaire/);
+    assert.equal(renderCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

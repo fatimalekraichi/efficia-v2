@@ -63,54 +63,68 @@ export async function loadQuestionnaireSnapshot(db, analysisId) {
   return formatQuestionnaireSnapshot(row);
 }
 
-export async function finalizeQuestionnaireSnapshot(db, analysisId, { pdfFilename = "" } = {}) {
+export async function finalizeQuestionnaireSnapshot(db, analysisId, {
+  pdfFilename = "",
+  completion = "pdf_generated",
+  approvedAt = "",
+} = {}) {
   const existing = await loadQuestionnaireSnapshot(db, analysisId);
-  if (existing) {
-    return { ok: true, created: false, snapshot: existing };
-  }
-
-  const draft = await db.prepare(`
-    SELECT *
-    FROM audit_drafts
-    WHERE analysis_id = ?
-    LIMIT 1
-  `).bind(analysisId).first();
-  if (!draft) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_UNAVAILABLE" };
-
-  const rawAnswers = parseJson(draft.answers_json);
-  const answers = normalizeQuestionnaireAnswers(rawAnswers, draft.answers_version);
-  if (!answers) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_INVALID" };
-  const answersVersion = resolveQuestionnaireVersion(answers, draft.answers_version);
+  let insertSnapshot = null;
   const now = new Date().toISOString();
 
-  const insertSnapshot = db.prepare(`
-    INSERT OR IGNORE INTO audit_questionnaire_snapshots (
-      snapshot_id, analysis_id, source_draft_id, report_type, answers_version,
-      answers_json, current_step, pdf_filename, finalized_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    crypto.randomUUID(),
-    analysisId,
-    draft.draft_id,
-    draft.report_type,
-    answersVersion,
-    JSON.stringify(answers),
-    draft.current_step,
-    pdfFilename || null,
-    now,
-  );
-  const markCompleted = db.prepare(`
-    UPDATE analyses
-    SET status = 'pdf_generated', pdf_generated_at = COALESCE(pdf_generated_at, ?), updated_at = ?
-    WHERE analysis_id = ?
-  `).bind(now, now, analysisId);
+  if (!existing) {
+    const draft = await db.prepare(`
+      SELECT *
+      FROM audit_drafts
+      WHERE analysis_id = ?
+      LIMIT 1
+    `).bind(analysisId).first();
+    if (!draft) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_UNAVAILABLE" };
 
-  const results = await db.batch([insertSnapshot, markCompleted]);
+    const rawAnswers = parseJson(draft.answers_json);
+    const answers = normalizeQuestionnaireAnswers(rawAnswers, draft.answers_version);
+    if (!answers) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_INVALID" };
+    const answersVersion = resolveQuestionnaireVersion(answers, draft.answers_version);
+    insertSnapshot = db.prepare(`
+      INSERT OR IGNORE INTO audit_questionnaire_snapshots (
+        snapshot_id, analysis_id, source_draft_id, report_type, answers_version,
+        answers_json, current_step, pdf_filename, finalized_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      analysisId,
+      draft.draft_id,
+      draft.report_type,
+      answersVersion,
+      JSON.stringify(answers),
+      draft.current_step,
+      pdfFilename || null,
+      now,
+    );
+  }
+
+  const markCompleted = completion === "approved"
+    ? db.prepare(`
+      UPDATE analyses
+      SET
+        status = CASE WHEN status = 'pdf_generated' THEN status ELSE 'approved' END,
+        approved_at = COALESCE(approved_at, ?),
+        updated_at = ?
+      WHERE analysis_id = ?
+    `).bind(approvedAt || now, now, analysisId)
+    : db.prepare(`
+      UPDATE analyses
+      SET status = 'pdf_generated', pdf_generated_at = COALESCE(pdf_generated_at, ?), updated_at = ?
+      WHERE analysis_id = ?
+    `).bind(now, now, analysisId);
+
+  const statements = insertSnapshot ? [insertSnapshot, markCompleted] : [markCompleted];
+  const results = await db.batch(statements);
 
   const snapshot = await loadQuestionnaireSnapshot(db, analysisId);
   return {
     ok: Boolean(snapshot),
-    created: Number(results?.[0]?.meta?.changes || 0) === 1,
+    created: Boolean(insertSnapshot) && Number(results?.[0]?.meta?.changes || 0) === 1,
     snapshot,
   };
 }

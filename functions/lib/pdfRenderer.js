@@ -194,6 +194,8 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
       ${approved ? "" : `<a href="/admin/audit-review/${safeAnalysisId}" data-efficia-return-modifications>Retourner aux modifications</a>`}
       ${controlPdfButton}
       <button type="button" data-efficia-approve-and-download="${safeAnalysisId}" data-efficia-approval-complete="${approved ? "true" : "false"}" data-efficia-final-print-fallback="false" data-efficia-final-title="${finalPdfTitle}">${approved ? "Télécharger à nouveau le PDF final" : "Approuver et télécharger le PDF final"}</button>
+      <a href="/admin" data-efficia-dashboard-link ${approved ? "" : "hidden"}>Retour au tableau de bord</a>
+      <strong data-efficia-completion-status ${approved ? "" : "hidden"}>${approved ? "Audit terminé" : ""}</strong>
       <p data-efficia-approval-status role="status" aria-live="polite"></p>
     </div>
     <script>
@@ -252,6 +254,13 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
             }
             approvalComplete = true;
             button.dataset.efficiaApprovalComplete = "true";
+            const completionStatus = document.querySelector("[data-efficia-completion-status]");
+            if (completionStatus) {
+              completionStatus.hidden = false;
+              completionStatus.textContent = "Audit terminé";
+            }
+            const dashboardLink = document.querySelector("[data-efficia-dashboard-link]");
+            if (dashboardLink) dashboardLink.hidden = false;
             activateEfficiaFinalPrintMode();
           }
 
@@ -280,7 +289,7 @@ export function addPreviewToolbar(html, analysisId, status = "", options = {}) {
           link.click();
           link.remove();
           window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-          if (status) status.textContent = "Rapport approuvé et PDF final téléchargé.";
+          if (status) status.textContent = "Audit terminé. PDF final téléchargé.";
         } catch (error) {
           if (status) status.textContent = error.message || "L’opération n’a pas pu aboutir.";
         } finally {

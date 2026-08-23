@@ -14,7 +14,7 @@ import {
   renderFreeDiagnosticPdf,
 } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
-import { finalizeQuestionnaireSnapshot } from "../../lib/auditQuestionnaireSnapshots.js";
+import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../lib/auditQuestionnaireSnapshots.js";
 import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
 
 const PDF_HEADERS = {
@@ -80,6 +80,19 @@ async function preserveQuestionnaireBeforeCompletion(db, analysisId, filename) {
   }, 409);
 }
 
+async function ensureApprovedQuestionnaireSnapshot(db, analysisId) {
+  const existing = await loadQuestionnaireSnapshot(db, analysisId);
+  if (existing) return null;
+
+  const result = await finalizeQuestionnaireSnapshot(db, analysisId, { completion: "approved" });
+  if (result.ok) return null;
+  return jsonResponse({
+    success: false,
+    error: result.error,
+    message: "Aucune sauvegarde du questionnaire n’existe : l’audit approuvé reste incomplet.",
+  }, 409);
+}
+
 async function renderAnalysisPdf(context, db, analysis, authorizationType = null) {
   if (!canGeneratePdf(analysis)) {
     return jsonResponse({
@@ -94,6 +107,16 @@ async function renderAnalysisPdf(context, db, analysis, authorizationType = null
     resolveReportCommercialPolicy(analysis.reportType, authorizationType),
   );
   const html = renderAnalysisHtml(documentModel);
+  const filename = buildAuditPdfFilename(analysis);
+
+  // Un Premium est terminé par l'approbation et son snapshot immuable. Cette
+  // réparation idempotente couvre les audits approuvés avant l'introduction de
+  // cette règle, y compris lorsque le renderer serveur renvoie ensuite 501 et
+  // que l'administratrice utilise l'impression Chrome.
+  if (documentModel?.reportType !== "free") {
+    const completionError = await ensureApprovedQuestionnaireSnapshot(db, analysis.analysisId);
+    if (completionError) return completionError;
+  }
 
   // Routage : le Diagnostic gratuit utilise le chemin dédié capture page par
   // page (voir functions/lib/pdfRenderer.js). Le premium (ou tout reportType
@@ -104,7 +127,6 @@ async function renderAnalysisPdf(context, db, analysis, authorizationType = null
     : await renderPdfWithCloudflareBrowserRun({ html, env: context.env });
   if (!result.ok) return pdfErrorResponse(result);
 
-  const filename = buildAuditPdfFilename(analysis);
   const preservationError = await preserveQuestionnaireBeforeCompletion(db, analysis.analysisId, filename);
   if (preservationError) return preservationError;
   return pdfResponse(result.pdf, filename);
@@ -194,5 +216,6 @@ export { CORS_HEADERS };
 export const __test__ = {
   canGeneratePdf,
   markPdfGenerated,
+  ensureApprovedQuestionnaireSnapshot,
   preserveQuestionnaireBeforeCompletion,
 };

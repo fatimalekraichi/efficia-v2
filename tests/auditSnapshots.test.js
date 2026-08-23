@@ -19,6 +19,9 @@ import { onRequestDelete as deleteDraft } from "../functions/api/admin/audit-dra
 const SECRET = "audit-snapshot-test-secret-with-32-characters";
 const FREE_ID = "snapshot-free-analysis";
 const PREMIUM_ID = "snapshot-premium-analysis";
+const MANUAL_PREMIUM_ID = "snapshot-manual-premium-completed";
+const PAID_PREMIUM_ID = "snapshot-paid-premium-completed";
+const ACTIVE_PREMIUM_ID = "snapshot-premium-active";
 const DUPLICATION_KEY = "c9096218-ad24-4a49-9028-f80f251e19db";
 
 class LocalD1 {
@@ -166,6 +169,71 @@ test("aperçu et PDF conservent le brouillon puis figent un snapshot idempotent"
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_drafts WHERE draft_id = ?").get(FREE_ID).count, 1);
 });
 
+test("les Premium approuvés sont terminés dès le snapshot, même avec brouillon conservé et sans pdf_generated_at", async () => {
+  const db = new LocalD1();
+  for (const analysisId of [MANUAL_PREMIUM_ID, PAID_PREMIUM_ID, ACTIVE_PREMIUM_ID]) {
+    seedAnalysis(db, analysisId, "premium");
+    seedDraft(db, analysisId, "premium", {
+      questionnaireVersion: "score-efficia-questionnaire-v4",
+      reportType: "premium",
+      responses: { horaires: { points: 2, checklist: ["Horaires vérifiés"] } },
+    });
+  }
+  db.sqlite.prepare("UPDATE analyses SET status = 'awaiting_review', approved_at = NULL WHERE analysis_id = ?").run(ACTIVE_PREMIUM_ID);
+  db.sqlite.prepare(`
+    INSERT INTO audit_creation_metadata (
+      idempotency_key, analysis_id, creation_source, audit_type,
+      billing_status, request_status, created_at, updated_at
+    ) VALUES ('manual-completed-key', ?, 'admin_manual', 'premium',
+      'manual_unpaid', 'completed', '2026-08-23T09:00:00.000Z', '2026-08-23T09:00:00.000Z')
+  `).run(MANUAL_PREMIUM_ID);
+  db.sqlite.prepare(`
+    INSERT INTO orders (
+      order_id, stripe_session_id, email, offer_code, offer_name, amount_total,
+      currency, status, paid_at, created_at, updated_at
+    ) VALUES ('paid-completed-order', 'paid-completed-session', 'fixture@example.test',
+      'audit', 'Audit Premium', 9900, 'eur', 'paid',
+      '2026-08-23T09:00:00.000Z', '2026-08-23T09:00:00.000Z', '2026-08-23T09:00:00.000Z')
+  `).run();
+  db.sqlite.prepare("UPDATE analyses SET order_id = 'paid-completed-order' WHERE analysis_id = ?").run(PAID_PREMIUM_ID);
+
+  const manual = await finalizeQuestionnaireSnapshot(db, MANUAL_PREMIUM_ID, { completion: "approved" });
+  const paid = await finalizeQuestionnaireSnapshot(db, PAID_PREMIUM_ID, { completion: "approved" });
+  assert.equal(manual.created, true);
+  assert.equal(paid.created, true);
+
+  const completedRows = db.sqlite.prepare(`
+    SELECT analysis_id, status, approved_at, pdf_generated_at
+    FROM analyses WHERE analysis_id IN (?, ?)
+    ORDER BY analysis_id
+  `).all(MANUAL_PREMIUM_ID, PAID_PREMIUM_ID);
+  assert.ok(completedRows.every((item) => item.status === "approved"));
+  assert.ok(completedRows.every((item) => item.approved_at));
+  assert.ok(completedRows.every((item) => item.pdf_generated_at === null));
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_drafts").get().count, 3);
+
+  const cookie = (await createSessionCookie({ ADMIN_SESSION_SECRET: SECRET })).split(";")[0];
+  const listContext = {
+    request: new Request("https://preview.example/admin", { headers: { Cookie: cookie } }),
+    env: { ADMIN_SESSION_SECRET: SECRET, ORDERS_DB: db },
+  };
+  const draftsResponse = await listDrafts(listContext);
+  const snapshotsResponse = await listSnapshots(listContext);
+  const drafts = (await draftsResponse.json()).drafts;
+  const completed = (await snapshotsResponse.json()).audits;
+  const draftIds = new Set(drafts.map((item) => item.analysisId));
+  const completedIds = new Set(completed.map((item) => item.analysisId));
+
+  assert.deepEqual([...draftIds], [ACTIVE_PREMIUM_ID]);
+  assert.equal(completedIds.has(MANUAL_PREMIUM_ID), true);
+  assert.equal(completedIds.has(PAID_PREMIUM_ID), true);
+  assert.equal([...draftIds].some((analysisId) => completedIds.has(analysisId)), false);
+  assert.equal(draftsResponse.headers.get("Cache-Control"), "no-store");
+  assert.equal(snapshotsResponse.headers.get("Cache-Control"), "no-store");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 1);
+  assert.equal(db.sqlite.prepare("SELECT COALESCE(SUM(amount_total), 0) AS total FROM orders").get().total, 9900);
+});
+
 test("la duplication crée une nouvelle analyse et un nouveau brouillon sans muter l’original", async () => {
   const db = new LocalD1();
   seedAnalysis(db, PREMIUM_ID, "premium");
@@ -298,6 +366,7 @@ test("le tableau de bord sépare les audits terminés et expose Consulter/Dupliq
   assert.match(adminScript, /crypto\.randomUUID\(\)/);
   assert.match(adminScript, /idempotencyKey/);
   assert.match(adminScript, /readonly=1/);
+  assert.ok((adminScript.match(/cache: "no-store"/g) || []).length >= 2);
   assert.match(premiumScript, /Audit terminé — consultation en lecture seule/);
   assert.match(freeHtml, /Audit terminé — consultation en lecture seule/);
   assert.match(freeHtml, /data\.auditPublicIdActif !== currentAnalysisId/);

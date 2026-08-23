@@ -7,6 +7,7 @@ import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questi
 import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
+import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../../lib/auditQuestionnaireSnapshots.js";
 
 async function readPayload(request) {
   try {
@@ -238,7 +239,9 @@ async function saveManualReview({ context, db, analysisId, payload }) {
 async function approveAnalysis(db, analysisId) {
   const row = await loadRawAnalysis(db, analysisId);
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
-  if (row.report_type !== "free") {
+  const isPremium = row.report_type !== "free";
+  let snapshotCreated = false;
+  if (isPremium) {
     const authorization = await loadAdminPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
       const reference = crypto.randomUUID();
@@ -247,12 +250,31 @@ async function approveAnalysis(db, analysisId) {
     }
   }
   if (["approved", "pdf_generated"].includes(row.status)) {
+    if (isPremium) {
+      const existingSnapshot = await loadQuestionnaireSnapshot(db, analysisId);
+      if (!existingSnapshot) {
+        const finalization = await finalizeQuestionnaireSnapshot(db, analysisId, {
+          completion: "approved",
+          approvedAt: row.approved_at || "",
+        });
+        if (!finalization.ok) {
+          return jsonResponse({
+            success: false,
+            error: finalization.error,
+            message: "Le questionnaire sauvegardé est requis pour terminer cet audit.",
+          }, 409);
+        }
+        snapshotCreated = finalization.created;
+      }
+    }
     return jsonResponse({
       success: true,
       status: row.status,
       analysisId,
       approvedAt: row.approved_at || null,
       idempotent: true,
+      completed: isPremium,
+      snapshotCreated,
     });
   }
   let manualReview = null;
@@ -278,17 +300,34 @@ async function approveAnalysis(db, analysisId) {
     }, 409);
   }
   const now = new Date().toISOString();
-  await db.prepare(`
-    UPDATE analyses
-    SET status = 'approved', approved_at = ?, updated_at = ?
-    WHERE analysis_id = ?
-  `).bind(now, now, analysisId).run();
+  if (isPremium) {
+    const finalization = await finalizeQuestionnaireSnapshot(db, analysisId, {
+      completion: "approved",
+      approvedAt: now,
+    });
+    if (!finalization.ok) {
+      return jsonResponse({
+        success: false,
+        error: finalization.error,
+        message: "Le questionnaire sauvegardé est requis pour terminer cet audit.",
+      }, 409);
+    }
+    snapshotCreated = finalization.created;
+  } else {
+    await db.prepare(`
+      UPDATE analyses
+      SET status = 'approved', approved_at = ?, updated_at = ?
+      WHERE analysis_id = ?
+    `).bind(now, now, analysisId).run();
+  }
 
   return jsonResponse({
     success: true,
     status: "approved",
     analysisId,
     approvedAt: now,
+    completed: isPremium,
+    snapshotCreated,
   });
 }
 

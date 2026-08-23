@@ -270,6 +270,7 @@ const loadDrafts = async () => {
   if (!draftsBody) return;
   const response = await fetch("/api/admin/audit-drafts", {
     credentials: "same-origin",
+    cache: "no-store",
     headers: { Accept: "application/json" },
   });
   if (response.status === 401) return redirectToLogin();
@@ -312,6 +313,7 @@ const loadCompletedAudits = async () => {
   if (!completedAuditsBody) return;
   const response = await fetch("/api/admin/audit-snapshots", {
     credentials: "same-origin",
+    cache: "no-store",
     headers: { Accept: "application/json" },
   });
   if (response.status === 401) return redirectToLogin();

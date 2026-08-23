@@ -55,5 +55,5 @@ export async function onRequestGet(context) {
       city: row.ville || null,
       status: row.status || "pdf_generated",
     })),
-  });
+  }, 200, { "Cache-Control": "no-store" });
 }

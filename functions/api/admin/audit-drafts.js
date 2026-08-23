@@ -60,5 +60,5 @@ export async function onRequestGet(context) {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
-  });
+  }, 200, { "Cache-Control": "no-store" });
 }
