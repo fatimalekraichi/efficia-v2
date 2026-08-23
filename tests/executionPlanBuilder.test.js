@@ -2,10 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildExecutionPlan, confirmReadyExecutionPlanReview, countPendingExecutionReview, executionPlanApprovalIssues, normalizeExecutionPlanReview } from "../functions/lib/executionPlanBuilder.js";
+import { resolveReportCity, runComposerForAnalysis } from "../functions/lib/auditComposition.js";
 import { detectExecutionSector } from "../functions/lib/executionPlaybooks.js";
 import { buildDocumentModelFromAnalysis } from "../functions/lib/documentModelFromAnalysis.js";
+import { addPreviewToolbar, buildAuditPdfFilename, buildControlPdfTitle } from "../functions/lib/pdfRenderer.js";
 import { buildConstat, formatOrdinal } from "../functions/lib/presentationFormatter.js";
+import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../functions/lib/reportCommercialPolicy.js";
 import { renderAnalysisHtml } from "../functions/lib/renderAnalysisHtml.js";
+import { buildScoreCatalog } from "../functions/lib/score-efficia/scoreCatalog.js";
+import { QUESTIONNAIRE_VERSION } from "../functions/lib/score-efficia/questionnaireRules.js";
 
 function model(overrides = {}) {
   return {
@@ -67,6 +72,103 @@ test("description absente ou courte : proposition prudente à confirmer ; suffis
   });
   assert.equal(sufficient.description.status, "approved");
   assert.equal(sufficient.approved.description.text, publicDescription.trim());
+});
+
+test("un Premium manuel transféré v4 utilise partout la ville administrative confirmée", () => {
+  const transferredPremium = analysis({
+    analysisId: "premium-manual-from-free-v4",
+    business: {
+      ...analysis().business,
+      name: "ME ELEC",
+      nom: "ME ELEC",
+      ville: "Arlon",
+      activity: "Électricien",
+      reviewed: {
+        name: "ME ELEC",
+        city: "Non renseignée",
+        category: "Électricien",
+      },
+      normalized: {
+        category: "Électricien",
+        description: "",
+        subtypes: ["Électricien"],
+      },
+    },
+    manualReview: {
+      questionnaireVersion: QUESTIONNAIRE_VERSION,
+      confirmedCity: "Arlon",
+      importedFromFree: {
+        sourceAnalysisId: "free-source-v4",
+        sourceSnapshotId: "snapshot-free-v4",
+      },
+    },
+  });
+
+  const composed = runComposerForAnalysis(transferredPremium).output;
+  const documentModel = applyReportCommercialPolicy(
+    buildDocumentModelFromAnalysis({ ...transferredPremium, documentModel: composed }),
+    resolveReportCommercialPolicy("premium", "admin_manual"),
+  );
+  const finalHtml = addPreviewToolbar(renderAnalysisHtml(documentModel), transferredPremium.analysisId, "approved", {
+    reportType: "premium",
+    requestedAnalysisId: transferredPremium.analysisId,
+    finalPdfTitle: buildAuditPdfFilename(transferredPremium, "2026-08-23"),
+  });
+  const controlHtml = addPreviewToolbar(renderAnalysisHtml(documentModel), transferredPremium.analysisId, "preview_ready", {
+    reportType: "premium",
+    requestedAnalysisId: transferredPremium.analysisId,
+    controlPdfTitle: buildControlPdfTitle(transferredPremium, "2026-08-23"),
+  });
+  const serializedReport = JSON.stringify(documentModel);
+  const visibleFinalHtml = finalHtml
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<!--([\s\S]*?)-->/g, " ")
+    .replace(/<[^>]+>/g, " ");
+  const catalog = buildScoreCatalog();
+  const criteria = catalog.categories.flatMap((category) => category.criteria);
+
+  for (const sentinel of ["Non renseignée", "Non-renseignee", "Non renseigné", "Inconnue", "Unknown", "  "]) {
+    assert.equal(resolveReportCity({ business: { reviewed: { city: sentinel } } }), null);
+  }
+  assert.equal(resolveReportCity(transferredPremium), "Arlon");
+  assert.equal(documentModel.hero.city, "Arlon");
+  assert.equal(documentModel.executionPlan.context.city, "Arlon");
+  assert.match(documentModel.executionPlan.description.text, /« Électricien » à Arlon\./);
+  assert.doesNotMatch(serializedReport, /Non renseignée/i);
+  assert.doesNotMatch(visibleFinalHtml, /Non renseignée/i);
+  assert.equal(
+    buildAuditPdfFilename(transferredPremium, "2026-08-23"),
+    "Audit-Efficia-Premium_ME-ELEC_Arlon_2026-08-23.pdf",
+  );
+  assert.doesNotMatch(finalHtml, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.match(controlHtml, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.doesNotMatch(visibleFinalHtml, /Diagnostic gratuit|offert|99 € déjà investis|intégralement déduits/i);
+  assert.equal(QUESTIONNAIRE_VERSION, "score-efficia-questionnaire-v4");
+  assert.equal(criteria.length, 29);
+  assert.equal(criteria.reduce((sum, criterion) => sum + criterion.max, 0), 100);
+});
+
+test("une description déjà approuvée reste immuable et nécessite une nouvelle version pour être corrigée", () => {
+  const approvedText = "ME ELEC est une fiche Google Business associée à la catégorie « Électricien » à Non renseignée.";
+  const approvedAnalysis = analysis({
+    business: {
+      ...analysis().business,
+      name: "ME ELEC",
+      ville: "Arlon",
+      activity: "Électricien",
+      reviewed: { city: "Non renseignée", category: "Électricien" },
+    },
+    manualReview: {
+      confirmedCity: "Arlon",
+      executionPlan: { description: { text: approvedText, status: "approved" } },
+    },
+  });
+
+  const plan = buildExecutionPlan({ analysis: approvedAnalysis, documentModel: model() });
+  assert.equal(plan.context.city, "Arlon");
+  assert.equal(plan.description.text, approvedText);
+  assert.equal(plan.description.status, "approved");
 });
 
 test("aucun service, attribut, publication ou lien d’avis n’est inventé", () => {

@@ -6,13 +6,45 @@ function firstDefined(...values) {
   return values.find((value) => value !== null && value !== undefined && value !== "");
 }
 
+const UNKNOWN_CITY_VALUES = new Set([
+  "non renseignee",
+  "non renseigne",
+  "inconnue",
+  "inconnu",
+  "unknown",
+]);
+
+function usableCity(value) {
+  if (typeof value !== "string") return null;
+  const city = value.trim();
+  if (!city) return null;
+  const key = city
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ");
+  return UNKNOWN_CITY_VALUES.has(key) ? null : city;
+}
+
 function arrayLength(value) {
   return Array.isArray(value) ? value.length : null;
 }
 
 export function resolveReportCity(analysis = {}) {
   const business = analysis.business || {};
-  return firstDefined(business.reviewed?.city, business.ville) || null;
+  const transferredAnswers = analysis.draft?.answers
+    || analysis.questionnaireDraft?.answers
+    || analysis.questionnaireSnapshot?.answers
+    || analysis.snapshot?.answers
+    || {};
+  return [
+    analysis.manualReview?.confirmedCity,
+    business.reviewed?.city,
+    business.ville,
+    transferredAnswers.confirmedCity,
+    transferredAnswers.fields?.["p-ville"],
+  ].map(usableCity).find(Boolean) || null;
 }
 
 export function buildBusinessContext(analysis = {}) {

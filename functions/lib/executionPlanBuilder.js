@@ -1,4 +1,5 @@
 import { EXECUTION_SIGNAL_PLAYBOOKS, getExecutionPlaybook } from "./executionPlaybooks.js";
+import { resolveReportCity } from "./auditComposition.js";
 import { normalizeCategoryLabel } from "./presentationFormatter.js";
 
 const ALLOWED_STATUSES = new Set(["approved", "needs_confirmation", "not_applicable"]);
@@ -29,7 +30,7 @@ function knownContext(analysis = {}) {
   const category = normalizeCategoryLabel(first(reviewedValue(analysis, "category", "activity"), normalized.category, normalized.type));
   return {
     name: first(reviewedValue(analysis, "name", "name"), analysis.business?.nom),
-    city: first(reviewedValue(analysis, "city", "ville"), analysis.business?.ville),
+    city: resolveReportCity(analysis),
     category,
     description: text(normalized.description, 1200),
     secondaryCategories: Array.isArray(normalized.subtypes)
