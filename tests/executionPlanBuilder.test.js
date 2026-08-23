@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildExecutionPlan, confirmReadyExecutionPlanReview, countPendingExecutionReview, executionPlanApprovalIssues, normalizeExecutionPlanReview } from "../functions/lib/executionPlanBuilder.js";
+import {
+  buildExecutionPlan,
+  confirmReadyExecutionPlanReview,
+  countPendingExecutionReview,
+  executionPlanApprovalIssues,
+  normalizeExecutionPlanReview,
+  rebuildDuplicatedExecutionPlanReview,
+} from "../functions/lib/executionPlanBuilder.js";
 import { resolveReportCity, runComposerForAnalysis } from "../functions/lib/auditComposition.js";
 import { detectExecutionSector } from "../functions/lib/executionPlaybooks.js";
 import { buildDocumentModelFromAnalysis } from "../functions/lib/documentModelFromAnalysis.js";
@@ -169,6 +176,139 @@ test("une description déjà approuvée reste immuable et nécessite une nouvell
   assert.equal(plan.context.city, "Arlon");
   assert.equal(plan.description.text, approvedText);
   assert.equal(plan.description.status, "approved");
+});
+
+test("une duplication reconstruit tous les contenus générés avec la ville et l’identifiant de la copie", () => {
+  const sourceAnalysisId = "premium-source-finalized";
+  const copyAnalysisId = "premium-copy-editable";
+  const staleSentence = "ME ELEC est une fiche Google Business associée à la catégorie « Électricien » à Non renseignée.";
+  const inherited = {
+    description: { text: staleSentence, status: "approved", analysisId: sourceAnalysisId },
+    categoryItems: [{ id: "category-1", label: "Ancienne catégorie", status: "approved", analysisId: sourceAnalysisId }],
+    serviceItems: [{ id: "service-1", text: "Ancien service généré", status: "approved", analysisId: sourceAnalysisId }],
+    photos: [{ id: "photo-1", subject: "Ancienne photo", text: staleSentence, objective: "Ancien objectif", status: "approved", analysisId: sourceAnalysisId }],
+    reviewMessages: { sms: { id: "sms", text: staleSentence, status: "approved", analysisId: sourceAnalysisId } },
+    reviewResponses: [{ id: "response-1", text: staleSentence, status: "approved", analysisId: sourceAnalysisId }],
+    reviewLink: "https://g.page/r/me-elec/review",
+    reviewLinkStatus: "approved",
+    posts: [{ id: "post-1", title: "Ancienne publication", text: staleSentence, status: "approved", analysisId: sourceAnalysisId }],
+    actions: [{ id: "P-DESC", objective30Days: staleSentence, status: "approved", analysisId: sourceAnalysisId }],
+  };
+  const duplicated = analysis({
+    analysisId: copyAnalysisId,
+    business: {
+      ...analysis().business,
+      name: "ME ELEC",
+      nom: "ME ELEC",
+      ville: "Non-renseignee",
+      activity: "Électricien",
+      reviewed: { name: "ME ELEC", city: "Non renseignée", category: "Électricien" },
+      normalized: { category: "Électricien", description: "", subtypes: ["Électricien"] },
+    },
+    manualReview: {
+      questionnaireVersion: QUESTIONNAIRE_VERSION,
+      confirmedCity: "Arlon",
+      responses: { websiteConsistency: { value: "no_website", points: 0, checklist: ["Absence vérifiée"] } },
+    },
+  });
+  const freshModel = buildDocumentModelFromAnalysis({
+    ...duplicated,
+    documentModel: runComposerForAnalysis(duplicated).output,
+  });
+  const rebuilt = rebuildDuplicatedExecutionPlanReview(freshModel.executionPlan, inherited, {
+    analysisId: copyAnalysisId,
+  });
+  const confirmed = confirmReadyExecutionPlanReview(rebuilt, { analysisId: copyAnalysisId });
+  const serialized = JSON.stringify(confirmed.review);
+
+  assert.equal(confirmed.blocking.length, 0);
+  assert.match(confirmed.review.description.text, /« Électricien » à Arlon\./);
+  assert.doesNotMatch(serialized, /Non renseignée|Non-renseignee|Ancien service généré|Ancienne publication/);
+  assert.equal(confirmed.review.reviewLink, inherited.reviewLink);
+  assert.equal(confirmed.review.reviewLinkStatus, "approved");
+  const generatedItems = [
+    confirmed.review.description,
+    ...confirmed.review.categoryItems,
+    ...confirmed.review.serviceItems,
+    ...confirmed.review.photos,
+    ...Object.values(confirmed.review.reviewMessages),
+    ...confirmed.review.reviewResponses,
+    ...confirmed.review.posts,
+    ...confirmed.review.actions,
+  ];
+  assert.ok(generatedItems.length > 0);
+  assert.ok(generatedItems.every((item) => item.analysisId === copyAnalysisId));
+  assert.ok(generatedItems.every((item) => item.analysisId !== sourceAnalysisId));
+
+  const approvedCopy = {
+    ...duplicated,
+    manualReview: { ...duplicated.manualReview, executionPlan: confirmed.review },
+  };
+  const finalModel = applyReportCommercialPolicy(
+    buildDocumentModelFromAnalysis({
+      ...approvedCopy,
+      documentModel: runComposerForAnalysis(approvedCopy).output,
+    }),
+    resolveReportCommercialPolicy("premium", "admin_manual"),
+  );
+  const finalHtml = addPreviewToolbar(renderAnalysisHtml(finalModel), copyAnalysisId, "approved", {
+    reportType: "premium",
+    requestedAnalysisId: copyAnalysisId,
+    finalPdfTitle: buildAuditPdfFilename(approvedCopy, "2026-08-23"),
+  });
+  const controlHtml = addPreviewToolbar(renderAnalysisHtml(finalModel), copyAnalysisId, "preview_ready", {
+    reportType: "premium",
+    requestedAnalysisId: copyAnalysisId,
+    controlPdfTitle: buildControlPdfTitle(approvedCopy, "2026-08-23"),
+  });
+  const visibleFinalHtml = finalHtml
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<!--([\s\S]*?)-->/g, " ")
+    .replace(/<[^>]+>/g, " ");
+  assert.doesNotMatch(finalHtml, /Non renseignée|Non-renseignee|DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.doesNotMatch(visibleFinalHtml, /Diagnostic gratuit|offert|99 € déjà investis|intégralement déduits/i);
+  assert.match(controlHtml, /DOCUMENT DE CONTRÔLE — NON APPROUVÉ/);
+  assert.equal(buildAuditPdfFilename(approvedCopy, "2026-08-23"), "Audit-Efficia-Premium_ME-ELEC_Arlon_2026-08-23.pdf");
+});
+
+test("la reconstruction d’une copie suit un changement de ville et refuse d’inventer une ville absente", () => {
+  const inherited = {
+    description: { text: "Description historique à Arlon", status: "approved" },
+    posts: [{ id: "post-1", text: "Publication historique à Arlon", status: "approved" }],
+  };
+  const withCity = analysis({
+    analysisId: "copy-namur",
+    business: {
+      ...analysis().business,
+      name: "Entreprise Test",
+      activity: "Électricien",
+      reviewed: { city: "Non renseignée", category: "Électricien" },
+      normalized: { category: "Électricien", description: "", subtypes: ["Électricien"] },
+    },
+    manualReview: { confirmedCity: "Namur" },
+  });
+  const withCityModel = buildDocumentModelFromAnalysis({ ...withCity, documentModel: runComposerForAnalysis(withCity).output });
+  const rebuiltWithCity = rebuildDuplicatedExecutionPlanReview(withCityModel.executionPlan, inherited, { analysisId: withCity.analysisId });
+  assert.match(rebuiltWithCity.description.text, /à Namur\./);
+  assert.doesNotMatch(JSON.stringify(rebuiltWithCity), /historique à Arlon/);
+
+  const withoutCity = analysis({
+    analysisId: "copy-without-city",
+    business: {
+      ...analysis().business,
+      ville: "Non-renseignee",
+      reviewed: { city: "Unknown", category: "Électricien" },
+      normalized: { category: "Électricien", description: "", subtypes: ["Électricien"] },
+    },
+    manualReview: { confirmedCity: "" },
+  });
+  const withoutCityModel = buildDocumentModelFromAnalysis({ ...withoutCity, documentModel: runComposerForAnalysis(withoutCity).output });
+  const rebuiltWithoutCity = rebuildDuplicatedExecutionPlanReview(withoutCityModel.executionPlan, inherited, { analysisId: withoutCity.analysisId });
+  const confirmation = confirmReadyExecutionPlanReview(rebuiltWithoutCity, { analysisId: withoutCity.analysisId });
+  assert.equal(rebuiltWithoutCity.description.text, "");
+  assert.ok(confirmation.blocking.includes("Description proposée"));
+  assert.doesNotMatch(JSON.stringify(rebuiltWithoutCity), /Non renseignée|Non-renseignee|Unknown|historique à Arlon/);
 });
 
 test("aucun service, attribut, publication ou lien d’avis n’est inventé", () => {

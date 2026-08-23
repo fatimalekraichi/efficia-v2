@@ -4,7 +4,7 @@ import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
-import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues } from "../../../lib/executionPlanBuilder.js";
+import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues, rebuildDuplicatedExecutionPlanReview } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../../lib/auditQuestionnaireSnapshots.js";
@@ -24,6 +24,43 @@ async function loadRawAnalysis(db, analysisId) {
     WHERE analysis_id = ?
     LIMIT 1
   `).bind(analysisId).first();
+}
+
+async function loadDuplicationSource(db, analysisId) {
+  return db.prepare(`
+    SELECT source_analysis_id
+    FROM audit_questionnaire_duplications
+    WHERE new_analysis_id = ?
+    LIMIT 1
+  `).bind(analysisId).first();
+}
+
+async function rebuildDuplicatedExecutionPlan({ db, row, analysisId, payload }) {
+  const duplication = await loadDuplicationSource(db, analysisId);
+  if (!duplication?.source_analysis_id) return null;
+
+  const cleanPayload = { ...payload, executionPlan: {} };
+  const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, cleanPayload);
+  const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview });
+  const current = await loadAnalysisById(db, analysisId);
+  if (!current) return { ok: false, error: "ANALYSIS_NOT_FOUND" };
+
+  const reconstructionContext = {
+    ...current,
+    manualReview: { ...manualReview, executionPlan: {} },
+    scoreInputs,
+    reviewedScore,
+    business: { ...current.business, reviewed: reviewedObservation },
+    benchmark: { ...current.benchmark, reviewed: reviewedBenchmark },
+  };
+  const freshPlan = buildDocumentModelFromAnalysis(reconstructionContext).executionPlan;
+  if (!freshPlan) return { ok: false, error: "EXECUTION_PLAN_REBUILD_FAILED" };
+
+  return {
+    ok: true,
+    sourceAnalysisId: duplication.source_analysis_id,
+    review: rebuildDuplicatedExecutionPlanReview(freshPlan, payload.executionPlan, { analysisId }),
+  };
 }
 
 async function parseJsonResponse(response) {
@@ -133,7 +170,16 @@ async function saveManualReview({ context, db, analysisId, payload }) {
   let effectivePayload = payload || {};
   let confirmedContentCount = 0;
   if (payload?.confirmAll === true) {
-    const confirmation = confirmReadyExecutionPlanReview(payload.executionPlan, { analysisId });
+    const rebuilt = await rebuildDuplicatedExecutionPlan({ db, row, analysisId, payload });
+    if (rebuilt && !rebuilt.ok) {
+      return jsonResponse({
+        success: false,
+        error: rebuilt.error,
+        message: "Les contenus de la nouvelle version n’ont pas pu être reconstruits.",
+      }, 409);
+    }
+    const executionPlanReview = rebuilt?.review || payload.executionPlan;
+    const confirmation = confirmReadyExecutionPlanReview(executionPlanReview, { analysisId });
     if (confirmation.blocking.length) {
       return jsonResponse({
         success: false,
@@ -404,6 +450,8 @@ export function onRequest(context) {
 
 export const __test__ = {
   loadRawAnalysis,
+  loadDuplicationSource,
+  rebuildDuplicatedExecutionPlan,
   runPostReviewPipeline,
   saveManualReview,
   approveAnalysis,

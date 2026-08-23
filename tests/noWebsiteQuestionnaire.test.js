@@ -126,7 +126,9 @@ test("les scripts conservent no_website dans brouillon, snapshot, lecture seule 
   assert.match(free, /value:selected\?\.dataset\.special/);
   assert.match(free, /selectedOptionIndex:Number\(selected\?\.dataset\.optionIndex\)/);
   assert.match(free, /appliquerReponses\(answers\.responses \|\| answers\.reponses\)/);
-  assert.match(snapshots, /JSON\.stringify\(snapshot\.answers\)/);
+  assert.match(snapshots, /prepareDuplicatedDraftAnswers\(snapshot\.answers/);
+  assert.match(snapshots, /JSON\.stringify\(duplicatedAnswers\)/);
+  assert.doesNotMatch(snapshots, /delete duplicated\.(responses|reponses)/);
   assert.match(snapshots, /normalizeQuestionnaireAnswers\(rawAnswers/);
 });
 

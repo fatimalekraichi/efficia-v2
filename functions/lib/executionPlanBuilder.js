@@ -472,6 +472,33 @@ export function normalizeExecutionPlanReview(value = {}) {
   };
 }
 
+function attachAnalysisId(item, analysisId) {
+  return item && typeof item === "object" ? { ...item, analysisId } : item;
+}
+
+export function rebuildDuplicatedExecutionPlanReview(plan = {}, inherited = {}, { analysisId = "" } = {}) {
+  const messages = Array.isArray(plan.reviews?.messages) ? plan.reviews.messages : [];
+  const inheritedLink = text(inherited?.reviewLink, 1200);
+  const inheritedLinkApproved = inherited?.reviewLinkStatus === "approved" && hasHttpUrl(inheritedLink);
+  const review = {
+    description: attachAnalysisId(plan.description, analysisId),
+    categoryItems: (plan.profileMap?.categoryItems || []).map((item) => attachAnalysisId(item, analysisId)),
+    serviceItems: (plan.profileMap?.serviceItems || []).map((item) => attachAnalysisId(item, analysisId)),
+    photos: (plan.photos || []).map((item) => attachAnalysisId(item, analysisId)),
+    reviewMessages: Object.fromEntries(messages.map((item) => [
+      item.id,
+      attachAnalysisId(item, analysisId),
+    ])),
+    reviewResponses: (plan.reviews?.responseTemplates || []).map((item) => attachAnalysisId(item, analysisId)),
+    reviewLink: inheritedLinkApproved ? inheritedLink : text(plan.reviews?.reviewLink?.value, 1200),
+    reviewLinkStatus: inheritedLinkApproved ? "approved" : status(plan.reviews?.reviewLink?.status),
+    posts: (plan.posts || []).map((item) => attachAnalysisId(item, analysisId)),
+    attributes: list(plan.profileMap?.attributes?.map((item) => item?.label), 12),
+    actions: (plan.actions || []).map((item) => attachAnalysisId(item, analysisId)),
+  };
+  return normalizeExecutionPlanReview(review);
+}
+
 function hasExecutionBlockingSignal(item) {
   return Boolean(
     item?.blocking === true
@@ -513,7 +540,14 @@ export function confirmReadyExecutionPlanReview(value = {}, { analysisId = "" } 
   const mapItems = (items, groupLabel, validator = null) => items.map((item, index) =>
     confirmExecutionItem(item, `${groupLabel} ${index + 1}`, confirmed, blocking, validator, analysisId));
 
-  review.description = confirmExecutionItem(review.description, "Description proposée", confirmed, blocking, null, analysisId);
+  review.description = confirmExecutionItem(
+    review.description,
+    "Description proposée",
+    confirmed,
+    blocking,
+    (item) => Boolean(text(item.text, 5000)),
+    analysisId,
+  );
   review.categoryItems = mapItems(review.categoryItems, "Catégorie");
   review.serviceItems = mapItems(review.serviceItems, "Service");
   review.photos = mapItems(review.photos, "Photo", (item) => Boolean(

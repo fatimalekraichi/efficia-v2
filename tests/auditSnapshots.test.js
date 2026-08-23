@@ -7,9 +7,11 @@ import {
   duplicateQuestionnaireSnapshot,
   finalizeQuestionnaireSnapshot,
   normalizeQuestionnaireAnswers,
+  prepareDuplicatedDraftAnswers,
 } from "../functions/lib/auditQuestionnaireSnapshots.js";
 import { onRequestGet as listDrafts } from "../functions/api/admin/audit-drafts.js";
 import { onRequestGet as listSnapshots } from "../functions/api/admin/audit-snapshots.js";
+import { __test__ as auditReviewTest } from "../functions/api/admin/audit-review/[analysisId].js";
 import {
   onRequestGet as getSnapshot,
   onRequestPost as mutateSnapshot,
@@ -238,6 +240,12 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
   const db = new LocalD1();
   seedAnalysis(db, PREMIUM_ID, "premium");
   db.sqlite.prepare(`
+    UPDATE analyses
+    SET nom = 'ME ELEC', name = 'ME ELEC', ville = 'Non renseignée',
+        activity = 'Électricien', normalized_json = ?
+    WHERE analysis_id = ?
+  `).run(JSON.stringify({ category: "Électricien", description: "", subtypes: ["Électricien"] }), PREMIUM_ID);
+  db.sqlite.prepare(`
     INSERT INTO orders (
       order_id, stripe_session_id, email, offer_code, offer_name, amount_total,
       currency, status, paid_at, created_at, updated_at
@@ -251,12 +259,31 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
     locationMode: "hybrid",
     addressVerification: "exact",
     serviceAreaVerification: "partial",
+    confirmedCity: "Arlon",
+    responses: {
+      websiteConsistency: {
+        value: "no_website",
+        points: 0,
+        checklist: ["Absence de site officiel vérifiée"],
+      },
+      horaires: { value: "partial", points: 1, checklist: ["Jours fériés vérifiés"] },
+    },
     criteriaReview: [{ key: "horaires", value: "partial", checklist: ["Jours fériés vérifiés"] }],
-    executionPlan: { description: { text: "Texte validé", status: "approved" } },
+    executionPlan: {
+      description: {
+        text: "ME ELEC est une fiche Google Business associée à la catégorie « Électricien » à Non renseignée.",
+        status: "approved",
+        analysisId: PREMIUM_ID,
+      },
+      posts: [{ id: "post-1", text: "Ancienne publication à Non renseignée", status: "approved", analysisId: PREMIUM_ID }],
+      reviewResponses: [{ id: "response-1", text: "Ancienne réponse générée", status: "approved", analysisId: PREMIUM_ID }],
+    },
   };
   seedDraft(db, PREMIUM_ID, "premium", answers);
   await finalizeQuestionnaireSnapshot(db, PREMIUM_ID, { pdfFilename: "premium.pdf" });
   const originalBefore = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(PREMIUM_ID);
+  const originalDraftBefore = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(PREMIUM_ID);
+  const originalSnapshotBefore = db.sqlite.prepare("SELECT * FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID);
 
   const duplicate = await duplicateQuestionnaireSnapshot(db, PREMIUM_ID, DUPLICATION_KEY);
   assert.equal(duplicate.ok, true);
@@ -268,21 +295,54 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
   assert.equal(duplicatedAnalysis.report_type, "premium");
   assert.equal(duplicatedAnalysis.order_id, null);
   assert.equal(duplicatedAnalysis.pdf_generated_at, null);
+  assert.equal(duplicatedAnalysis.document_model_json, null);
+  assert.equal(duplicatedAnalysis.approved_at, null);
   const duplicatedDraft = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(duplicate.analysisId);
-  assert.deepEqual(JSON.parse(duplicatedDraft.answers_json), answers);
+  const duplicatedAnswers = JSON.parse(duplicatedDraft.answers_json);
+  const expectedDuplicatedAnswers = prepareDuplicatedDraftAnswers(answers, "score-efficia-questionnaire-v4");
+  assert.deepEqual(duplicatedAnswers, expectedDuplicatedAnswers);
+  assert.equal("executionPlan" in duplicatedAnswers, false);
+  assert.equal(duplicatedAnswers.questionnaireVersion, "score-efficia-questionnaire-v4");
+  assert.equal(duplicatedAnswers.confirmedCity, "Arlon");
+  assert.equal(duplicatedAnswers.responses.websiteConsistency.value, "no_website");
+  assert.equal(duplicatedAnswers.responses.websiteConsistency.points, 0);
+  assert.deepEqual(duplicatedAnswers.responses.websiteConsistency.checklist, ["Absence de site officiel vérifiée"]);
+  assert.equal(duplicatedAnswers.locationMode, "hybrid");
+  const duplicatedManualReview = JSON.parse(duplicatedAnalysis.manual_review_json);
+  assert.equal(duplicatedManualReview.locationMode, "hybrid");
+  assert.equal(duplicatedManualReview.confirmedCity, "Arlon");
+  assert.equal(duplicatedManualReview.responses.websiteConsistency.value, "no_website");
+  assert.equal("executionPlan" in duplicatedManualReview, false);
   assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(PREMIUM_ID), originalBefore);
+  assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(PREMIUM_ID), originalDraftBefore);
+  assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID), originalSnapshotBefore);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID).count, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(duplicate.analysisId).count, 0);
   const duplicatedMetadata = db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(duplicate.analysisId);
   assert.equal(duplicatedMetadata.creation_source, "duplicate_manual");
   assert.equal(duplicatedMetadata.billing_status, "manual_unpaid");
 
+  const rebuilt = await auditReviewTest.rebuildDuplicatedExecutionPlan({
+    db,
+    row: duplicatedAnalysis,
+    analysisId: duplicate.analysisId,
+    payload: { ...duplicatedAnswers, executionPlan: answers.executionPlan },
+  });
+  assert.equal(rebuilt.ok, true);
+  assert.equal(rebuilt.sourceAnalysisId, PREMIUM_ID);
+  assert.match(rebuilt.review.description.text, /« Électricien » à Arlon\./);
+  assert.doesNotMatch(JSON.stringify(rebuilt.review), /Non renseignée|Ancienne publication|Ancienne réponse générée/);
+  assert.equal(rebuilt.review.description.analysisId, duplicate.analysisId);
+
   const retry = await duplicateQuestionnaireSnapshot(db, PREMIUM_ID, DUPLICATION_KEY);
   assert.equal(retry.created, false);
   assert.equal(retry.analysisId, duplicate.analysisId);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM analyses").get().count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_drafts").get().count, 2);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_duplications").get().count, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 1);
+  assert.equal(db.sqlite.prepare("SELECT COALESCE(SUM(amount_total), 0) AS total FROM orders").get().total, 9900);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM order_tasks").get().count, 0);
 });
 
 test("la duplication est atomique si la création du brouillon échoue", async () => {
@@ -308,6 +368,35 @@ test("la duplication est atomique si la création du brouillon échoue", async (
   );
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM analyses").get().count, 1);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_duplications").get().count, 0);
+});
+
+test("la duplication d’un Premium manuel reste administrative sans commande ni tâche artificielle", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, PREMIUM_ID, "premium");
+  db.sqlite.prepare(`
+    INSERT INTO audit_creation_metadata (
+      idempotency_key, analysis_id, creation_source, audit_type,
+      billing_status, request_status, created_at, updated_at
+    ) VALUES ('manual-source-key', ?, 'admin_manual', 'premium',
+      'manual_unpaid', 'completed', '2026-08-23T09:00:00.000Z', '2026-08-23T09:00:00.000Z')
+  `).run(PREMIUM_ID);
+  seedDraft(db, PREMIUM_ID, "premium", {
+    questionnaireVersion: "score-efficia-questionnaire-v4",
+    confirmedCity: "Arlon",
+    responses: { nap: { value: "no_website", points: 0, checklist: [] } },
+    executionPlan: { description: { text: "Ancien texte généré", status: "approved" } },
+  });
+  await finalizeQuestionnaireSnapshot(db, PREMIUM_ID);
+
+  const duplicate = await duplicateQuestionnaireSnapshot(db, PREMIUM_ID, "manual-source-duplication-key");
+  const metadata = db.sqlite.prepare("SELECT * FROM audit_creation_metadata WHERE analysis_id = ?").get(duplicate.analysisId);
+  assert.equal(duplicate.created, true);
+  assert.equal(metadata.creation_source, "duplicate_manual");
+  assert.equal(metadata.audit_type, "premium");
+  assert.equal(metadata.billing_status, "manual_unpaid");
+  assert.equal(db.sqlite.prepare("SELECT order_id FROM analyses WHERE analysis_id = ?").get(duplicate.analysisId).order_id, null);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM order_tasks").get().count, 0);
 });
 
 test("la migration 0015 est réexécutable", () => {

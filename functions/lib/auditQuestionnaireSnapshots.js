@@ -148,6 +148,22 @@ function formatDuplication(snapshot, analysisId, created) {
   };
 }
 
+export function prepareDuplicatedDraftAnswers(answers, storedVersion = "") {
+  const normalized = normalizeQuestionnaireAnswers(answers, storedVersion);
+  if (!normalized) return null;
+
+  // Le snapshot reste immuable. La copie conserve les réponses factuelles,
+  // mais aucun contenu narratif généré ou statut d'approbation de la source.
+  // Ces contenus seront reconstruits avec le contexte et l'identifiant de la
+  // nouvelle analyse lors de la confirmation globale.
+  const duplicated = JSON.parse(JSON.stringify(normalized));
+  delete duplicated.action;
+  delete duplicated.analysisId;
+  delete duplicated.confirmAll;
+  delete duplicated.executionPlan;
+  return duplicated;
+}
+
 export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotencyKey) {
   const snapshot = await loadQuestionnaireSnapshot(db, analysisId);
   if (!snapshot) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_NOT_FOUND" };
@@ -158,6 +174,11 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
   const newAnalysisId = crypto.randomUUID();
   const newDraftId = newAnalysisId;
   const now = new Date().toISOString();
+  const duplicatedAnswers = prepareDuplicatedDraftAnswers(snapshot.answers, snapshot.answersVersion);
+  if (!duplicatedAnswers) return { ok: false, error: "QUESTIONNAIRE_SNAPSHOT_INVALID" };
+  const duplicatedManualReview = snapshot.reportType === "premium"
+    ? JSON.stringify(duplicatedAnswers)
+    : null;
 
   const copyAnalysis = db.prepare(`
     INSERT INTO analyses (
@@ -183,11 +204,11 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
       rating_gap, reviews_gap, photos_gap, rating_percentile,
       reviews_percentile, photos_percentile, top_competitor_name,
       top_competitor_rating, top_competitor_reviews, benchmark_completed_at,
-      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+      NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, NULL,
       NULL, NULL, report_type, NULL, NULL, NULL
     FROM analyses
     WHERE analysis_id = ?
-  `).bind(newAnalysisId, now, now, analysisId);
+  `).bind(newAnalysisId, now, now, duplicatedManualReview, analysisId);
 
   const copyDraft = db.prepare(`
     INSERT INTO audit_drafts (
@@ -199,7 +220,7 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
     newAnalysisId,
     snapshot.reportType,
     snapshot.answersVersion,
-    JSON.stringify(snapshot.answers),
+    JSON.stringify(duplicatedAnswers),
     snapshot.currentStep || "questionnaire",
     now,
     now,
