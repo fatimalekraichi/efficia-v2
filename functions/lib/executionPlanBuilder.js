@@ -480,6 +480,7 @@ export function rebuildDuplicatedExecutionPlanReview(plan = {}, inherited = {}, 
   const messages = Array.isArray(plan.reviews?.messages) ? plan.reviews.messages : [];
   const inheritedLink = text(inherited?.reviewLink, 1200);
   const inheritedLinkApproved = inherited?.reviewLinkStatus === "approved" && hasHttpUrl(inheritedLink);
+  const rebuiltLink = text(plan.reviews?.reviewLink?.value, 1200);
   const review = {
     description: attachAnalysisId(plan.description, analysisId),
     categoryItems: (plan.profileMap?.categoryItems || []).map((item) => attachAnalysisId(item, analysisId)),
@@ -490,8 +491,10 @@ export function rebuildDuplicatedExecutionPlanReview(plan = {}, inherited = {}, 
       attachAnalysisId(item, analysisId),
     ])),
     reviewResponses: (plan.reviews?.responseTemplates || []).map((item) => attachAnalysisId(item, analysisId)),
-    reviewLink: inheritedLinkApproved ? inheritedLink : text(plan.reviews?.reviewLink?.value, 1200),
-    reviewLinkStatus: inheritedLinkApproved ? "approved" : status(plan.reviews?.reviewLink?.status),
+    reviewLink: inheritedLinkApproved ? inheritedLink : rebuiltLink,
+    reviewLinkStatus: inheritedLinkApproved
+      ? "approved"
+      : (rebuiltLink ? status(plan.reviews?.reviewLink?.status) : "not_applicable"),
     posts: (plan.posts || []).map((item) => attachAnalysisId(item, analysisId)),
     attributes: list(plan.profileMap?.attributes?.map((item) => item?.label), 12),
     actions: (plan.actions || []).map((item) => attachAnalysisId(item, analysisId)),
@@ -519,14 +522,46 @@ function hasHttpUrl(value) {
   }
 }
 
-function confirmExecutionItem(item, label, confirmed, blocking, validator = null, expectedAnalysisId = "") {
-  if (!item || item.status !== "needs_confirmation") return item;
-  const itemAnalysisId = text(item.analysisId || item.analysis_id, 160);
+function executionBlocker(item, label, {
+  expectedAnalysisId = "",
+  validator = null,
+  group = "",
+  index = 0,
+  id = "",
+  incompleteStructure = false,
+} = {}) {
+  const itemAnalysisId = text(item?.analysisId || item?.analysis_id, 160);
+  if (itemAnalysisId && itemAnalysisId !== expectedAnalysisId) {
+    return { section: label, reason: "Ce contenu appartient à un autre audit.", code: "analysis_id_mismatch", group, index, id };
+  }
+  if (item?.refused === true || item?.rejected === true) {
+    return { section: label, reason: "Ce contenu a été explicitement refusé.", code: "content_refused", group, index, id };
+  }
+  if (hasExecutionBlockingSignal(item)) {
+    return { section: label, reason: "Un conflit ou une erreur de génération doit être résolu.", code: "generation_conflict", group, index, id };
+  }
   const hasContent = validator
     ? validator(item)
-    : Boolean(text(item.text || item.label || item.subject || item.title || item.objective30Days, 5000));
-  if (!hasContent || hasExecutionBlockingSignal(item) || (itemAnalysisId && itemAnalysisId !== expectedAnalysisId)) {
+    : Boolean(text(item?.text || item?.label || item?.subject || item?.title || item?.objective30Days, 5000));
+  if (!hasContent) {
+    return {
+      section: label,
+      reason: incompleteStructure ? "La structure obligatoire est incomplète." : "Le contenu obligatoire est vide.",
+      code: incompleteStructure ? "incomplete_structure" : "required_content_missing",
+      group,
+      index,
+      id,
+    };
+  }
+  return null;
+}
+
+function confirmExecutionItem(item, label, confirmed, blocking, blockingDetails, options = {}) {
+  if (!item || item.status !== "needs_confirmation") return item;
+  const detail = executionBlocker(item, label, options);
+  if (detail) {
     blocking.push(label);
+    blockingDetails.push(detail);
     return item;
   }
   confirmed.push(label);
@@ -537,31 +572,43 @@ export function confirmReadyExecutionPlanReview(value = {}, { analysisId = "" } 
   const review = normalizeExecutionPlanReview(value);
   const confirmed = [];
   const blocking = [];
-  const mapItems = (items, groupLabel, validator = null) => items.map((item, index) =>
-    confirmExecutionItem(item, `${groupLabel} ${index + 1}`, confirmed, blocking, validator, analysisId));
+  const blockingDetails = [];
+  const mapItems = (items, groupLabel, group, validator = null, incompleteStructure = false) => items.map((item, index) =>
+    confirmExecutionItem(item, `${groupLabel} ${index + 1}`, confirmed, blocking, blockingDetails, {
+      validator,
+      expectedAnalysisId: analysisId,
+      group,
+      index,
+      id: text(item?.id, 160),
+      incompleteStructure,
+    }));
 
   review.description = confirmExecutionItem(
     review.description,
     "Description proposée",
     confirmed,
     blocking,
-    (item) => Boolean(text(item.text, 5000)),
-    analysisId,
+    blockingDetails,
+    { validator: (item) => Boolean(text(item.text, 5000)), expectedAnalysisId: analysisId, group: "description", index: 0, id: text(review.description?.id, 160) },
   );
-  review.categoryItems = mapItems(review.categoryItems, "Catégorie");
-  review.serviceItems = mapItems(review.serviceItems, "Service");
-  review.photos = mapItems(review.photos, "Photo", (item) => Boolean(
+  review.categoryItems = mapItems(review.categoryItems, "Catégorie", "categoryItems");
+  review.serviceItems = mapItems(review.serviceItems, "Service", "serviceItems");
+  review.photos = mapItems(review.photos, "Photo", "photos", (item) => Boolean(
     text(item.subject, 500)
     && text(item.text, 5000)
     && text(item.objective, 1000)
-  ));
+  ), true);
   review.reviewMessages = Object.fromEntries(Object.entries(review.reviewMessages).map(([key, item]) => [
     key,
-    confirmExecutionItem(item, `Message d’avis ${key}`, confirmed, blocking, null, analysisId),
+    confirmExecutionItem(item, `Message d’avis ${key}`, confirmed, blocking, blockingDetails, {
+      expectedAnalysisId: analysisId,
+      group: "reviewMessages",
+      id: key,
+    }),
   ]));
-  review.reviewResponses = mapItems(review.reviewResponses, "Réponse aux avis");
-  review.posts = mapItems(review.posts, "Publication Google");
-  review.actions = mapItems(review.actions, "Objectif à 30 jours", (item) => Boolean(text(item.objective30Days, 600)));
+  review.reviewResponses = mapItems(review.reviewResponses, "Réponse aux avis", "reviewResponses");
+  review.posts = mapItems(review.posts, "Publication Google", "posts");
+  review.actions = mapItems(review.actions, "Objectif à 30 jours", "actions", (item) => Boolean(text(item.objective30Days, 600)));
 
   if (review.reviewLinkStatus === "needs_confirmation") {
     if (hasHttpUrl(review.reviewLink)) {
@@ -569,6 +616,14 @@ export function confirmReadyExecutionPlanReview(value = {}, { analysisId = "" } 
       confirmed.push("Lien direct d’avis");
     } else {
       blocking.push("Lien direct d’avis");
+      blockingDetails.push({
+        section: "Lien direct d’avis",
+        reason: "L’adresse web renseignée n’est pas une URL HTTP ou HTTPS valide.",
+        code: "invalid_url",
+        group: "reviewLink",
+        index: 0,
+        id: "review-link",
+      });
     }
   }
 
@@ -577,6 +632,7 @@ export function confirmReadyExecutionPlanReview(value = {}, { analysisId = "" } 
     confirmedCount: confirmed.length,
     confirmed,
     blocking: [...new Set(blocking)],
+    blockingDetails,
   };
 }
 

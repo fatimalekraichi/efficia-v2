@@ -219,6 +219,21 @@ test("l’approbation administrative refuse une mutation sans Same-Origin", asyn
   assert.deepEqual(await response.json(), { success: false, error: "CROSS_ORIGIN_REQUEST" });
 });
 
+test("la confirmation globale refuse une requête sans session administratrice", async () => {
+  const response = await onRequestPatch({
+    request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Origin: "https://local.test" },
+      body: JSON.stringify({ ...completeManualReview(), action: "complete_review", confirmAll: true, analysisId: ANALYSIS_ID }),
+    }),
+    params: { analysisId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET },
+  });
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "UNAUTHORIZED");
+});
+
 test("la confirmation globale refuse un analysisId différent avant toute écriture", async () => {
   const response = await onRequestPatch({
     request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`, {
@@ -306,5 +321,73 @@ test("la confirmation globale prépare l’aperçu après avoir approuvé les co
     assert.equal(pipelineCalls, 3);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("la confirmation globale refuse une ville sentinelle avec un blocage manuel précis", async () => {
+  const db = dbForManualPremium(row({ ville: "Non renseignée" }));
+  const response = await __test__.saveManualReview({
+    context: {
+      request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`),
+      env: { CONNECTOR_TOKEN: "test-token" },
+    },
+    db,
+    analysisId: ANALYSIS_ID,
+    payload: {
+      ...completeManualReview(),
+      confirmedCity: "",
+      confirmAll: true,
+    },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "EXECUTION_PLAN_CONFIRMATION_REQUIRED");
+  assert.equal(body.message, "Ville confirmée : Une ville fiable doit être confirmée avant de générer les contenus.");
+  assert.deepEqual(body.blockers, [{
+    section: "Ville confirmée",
+    reason: "Une ville fiable doit être confirmée avant de générer les contenus.",
+    code: "reliable_city_missing",
+    field: "confirmedCity",
+  }]);
+});
+
+test("un échec technique de reconstruction renvoie une référence UUID sans détail interne", async () => {
+  const base = dbForManualPremium();
+  const db = {
+    prepare(sql) {
+      if (sql.includes("FROM audit_questionnaire_duplications")) {
+        return { bind: () => ({ first: async () => ({ source_analysis_id: "source-finalized" }) }) };
+      }
+      if (sql.includes("knowledge_json") && sql.includes("FROM analyses")) {
+        return { bind: () => ({ first: async () => null }) };
+      }
+      return base.prepare(sql);
+    },
+  };
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const response = await __test__.saveManualReview({
+      context: {
+        request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`),
+        env: { CONNECTOR_TOKEN: "test-token" },
+      },
+      db,
+      analysisId: ANALYSIS_ID,
+      payload: {
+        ...completeManualReview(),
+        confirmAll: true,
+      },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 500);
+    assert.equal(body.error, "EXECUTION_PLAN_REBUILD_FAILED");
+    assert.equal(body.message, "Les contenus de la nouvelle version n’ont pas pu être reconstruits.");
+    assert.match(body.reference, /^[0-9a-f]{8}-[0-9a-f-]{27}$/);
+    assert.equal("stack" in body, false);
+    assert.equal(JSON.stringify(body).includes("ANALYSIS_NOT_FOUND"), false);
+  } finally {
+    console.error = originalError;
   }
 });

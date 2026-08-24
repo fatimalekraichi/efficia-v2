@@ -1150,6 +1150,15 @@ function listerElementsRestantsPourFinalisation() {
   const locationElement = criteriaGroupsBox?.querySelector("[data-location-criterion]");
   const requiredContexts = [
     {
+      id: "confirmedCity",
+      label: "Ville confirmée",
+      required: pageReportType === "premium",
+      complete: Boolean(cleanAdministrativeCity(confirmedCityInput?.value)),
+      element: cityEditor,
+      focusTarget: confirmedCityInput,
+      reason: "reliable_city_missing",
+    },
+    {
       id: "locationMode",
       label: "Mode d’activité à confirmer",
       complete: ["storefront", "service_area", "hybrid"].includes(location.locationMode),
@@ -1308,28 +1317,39 @@ function updateExecutionSummary() {
   return { ready, blocking };
 }
 
-function confirmReadyExecutionItems() {
-  const blockers = [];
-  executionEditor?.querySelectorAll("[data-execution-item]").forEach((node) => {
-    const status = node.querySelector("[data-execution-status]");
-    if (status?.value !== "needs_confirmation") return;
-    if (!executionItemHasRequiredContent(node)) {
-      blockers.push(node);
-      return;
-    }
-    status.value = "approved";
-  });
-  updateExecutionSummary();
-  return blockers;
-}
-
 function focusFirstExecutionBlocker(blockers) {
   const first = blockers[0];
-  if (!first) return;
-  first.classList.add("is-blocking");
-  first.setAttribute("aria-invalid", "true");
-  first.scrollIntoView?.({ behavior: "smooth", block: "center" });
-  first.querySelector("textarea, input, select")?.focus?.({ preventScroll: true });
+  const element = first?.element || first;
+  if (!element) return;
+  element.closest("details")?.setAttribute("open", "");
+  element.classList.add("is-blocking");
+  element.setAttribute("aria-invalid", "true");
+  const badge = element.querySelector?.("[data-execution-blocker]");
+  if (badge) badge.hidden = false;
+  element.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  (first?.focusTarget || element.querySelector("textarea, input, select"))?.focus?.({ preventScroll: true });
+}
+
+function executionBlockersSignalesParServeur(blockers = []) {
+  const nodes = [...(executionEditor?.querySelectorAll("[data-execution-item]") || [])];
+  return (Array.isArray(blockers) ? blockers : []).map((blocker) => {
+    if (blocker?.field === "confirmedCity") {
+      return { element: cityEditor, focusTarget: confirmedCityInput };
+    }
+    const element = nodes.find((node) => (
+      node.dataset.executionGroup === blocker?.group
+      && (blocker?.id ? node.dataset.executionId === blocker.id : Number(node.dataset.executionIndex) === Number(blocker?.index))
+    ));
+    if (!element) return null;
+    const needsStatusChoice = ["content_refused", "generation_conflict"].includes(blocker?.code);
+    if (needsStatusChoice) element.querySelector("details")?.setAttribute("open", "");
+    return {
+      element,
+      focusTarget: needsStatusChoice
+        ? element.querySelector("[data-execution-status]")
+        : element.querySelector("textarea, input, select"),
+    };
+  }).filter(Boolean);
 }
 
 function executionItemHtml(group, index, item, valueKey = "text") {
@@ -1359,7 +1379,12 @@ function renderExecutionPlan(analysis) {
     if (executionPending) executionPending.textContent = "";
     return;
   }
-  const linkItem = { id: "review-link", text: plan.reviews?.reviewLink?.value || "", status: plan.reviews?.reviewLink?.status || "needs_confirmation" };
+  const reviewLinkValue = plan.reviews?.reviewLink?.value || "";
+  const linkItem = {
+    id: "review-link",
+    text: reviewLinkValue,
+    status: reviewLinkValue ? (plan.reviews?.reviewLink?.status || "needs_confirmation") : "not_applicable",
+  };
   executionEditor.innerHTML = [
     executionGroupHtml("Description proposée", "description", [plan.description]),
     executionGroupHtml("Catégories", "categoryItems", plan.profileMap?.categoryItems || [], "label"),
@@ -1842,12 +1867,6 @@ async function saveReview(event) {
     mettreEnEvidencePremierElementRestant(incomplete);
     return;
   }
-  const executionBlockers = pageReportType === "premium" ? confirmReadyExecutionItems() : [];
-  if (executionBlockers.length) {
-    setStatus(`${executionBlockers.length} contenu${executionBlockers.length > 1 ? "s" : ""} nécessite${executionBlockers.length > 1 ? "nt" : ""} une intervention avant l’aperçu.`, "error");
-    focusFirstExecutionBlocker(executionBlockers);
-    return;
-  }
   submitButton.disabled = true;
   submitButton.textContent = "Préparation de l’aperçu...";
   setStatus("Validation enregistrée. Préparation de l’aperçu...");
@@ -1871,7 +1890,7 @@ async function saveReview(event) {
         return;
       }
       if (data.error === "EXECUTION_PLAN_CONFIRMATION_REQUIRED") {
-        const blockers = [...(executionEditor?.querySelectorAll("[data-execution-item].is-blocking") || [])];
+        const blockers = executionBlockersSignalesParServeur(data.blockers);
         setStatus(data.message || "Certains contenus nécessitent encore une intervention.", "error");
         focusFirstExecutionBlocker(blockers);
         return;

@@ -398,6 +398,27 @@ test("la confirmation globale conserve les refus et bloque les contenus vides, c
     "Photo 1",
     "Lien direct d’avis",
   ]);
+  assert.deepEqual(result.blockingDetails.map((item) => item.code), [
+    "required_content_missing",
+    "analysis_id_mismatch",
+    "generation_conflict",
+    "content_refused",
+    "incomplete_structure",
+    "invalid_url",
+  ]);
+  assert.equal(result.blockingDetails[1].group, "categoryItems");
+  assert.equal(result.blockingDetails[1].id, "foreign");
+});
+
+test("la reconstruction classe un lien d’avis réellement absent comme non applicable", () => {
+  const freshPlan = buildExecutionPlan({ analysis: analysis(), documentModel: model() });
+  const rebuilt = rebuildDuplicatedExecutionPlanReview(freshPlan, {}, { analysisId: "copy-without-review-link" });
+  const confirmation = confirmReadyExecutionPlanReview(rebuilt, { analysisId: "copy-without-review-link" });
+
+  assert.equal(rebuilt.reviewLink, "");
+  assert.equal(rebuilt.reviewLinkStatus, "not_applicable");
+  assert.equal(confirmation.blocking.includes("Lien direct d’avis"), false);
+  assert.equal(confirmation.review.reviewLinkStatus, "not_applicable");
 });
 
 test("le document final contient le plan enrichi mais jamais les contenus non validés", () => {

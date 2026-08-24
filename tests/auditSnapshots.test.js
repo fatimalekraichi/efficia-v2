@@ -17,6 +17,7 @@ import {
   onRequestPost as mutateSnapshot,
 } from "../functions/api/admin/audit-snapshots/[analysisId].js";
 import { onRequestDelete as deleteDraft } from "../functions/api/admin/audit-drafts/[draftId].js";
+import { GRILLE } from "../functions/lib/score-efficia/criteriaCatalog.js";
 
 const SECRET = "audit-snapshot-test-secret-with-32-characters";
 const FREE_ID = "snapshot-free-analysis";
@@ -40,7 +41,7 @@ class LocalD1 {
     ]) {
       this.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
     }
-    this.sqlite.exec("ALTER TABLE analyses ADD COLUMN order_id TEXT");
+    this.sqlite.exec(readFileSync(new URL("../migrations/0008_order_analysis_link.sql", import.meta.url), "utf8"));
     for (const name of [
       "0009_manual_review_gate.sql",
       "0010_analysis_report_type.sql",
@@ -102,6 +103,29 @@ function seedDraft(db, analysisId, reportType, answers, version = answers.questi
       answers_json, current_step, created_at, updated_at
     ) VALUES (?, ?, 'draft', ?, ?, ?, 'questionnaire', ?, ?)
   `).run(analysisId, analysisId, reportType, version, JSON.stringify(answers), now, now);
+}
+
+function completePremiumV4Answers(overrides = {}) {
+  return {
+    questionnaireVersion: "score-efficia-questionnaire-v4",
+    reportType: "premium",
+    photoPresence: "present",
+    reviewsPresence: "present",
+    locationMode: "storefront",
+    addressVerification: "exact",
+    confirmedCity: "Arlon",
+    criteriaReview: GRILLE.flatMap((category) => category.criteres.map((criterion) => ({
+      key: criterion.key,
+      question: criterion.q,
+      value: criterion.key === "nap" ? "no_website" : "compliant",
+      points: criterion.key === "nap" ? 0 : criterion.max,
+      checklist: criterion.key === "nap" ? ["Absence de site officiel vérifiée"] : [],
+    }))),
+    responses: {
+      nap: { value: "no_website", points: 0, checklist: ["Absence de site officiel vérifiée"] },
+    },
+    ...overrides,
+  };
 }
 
 async function apiContext(db, analysisId, { authenticated = true, method = "GET", body = null } = {}) {
@@ -340,6 +364,102 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM analyses").get().count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_drafts").get().count, 2);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_duplications").get().count, 1);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 1);
+  assert.equal(db.sqlite.prepare("SELECT COALESCE(SUM(amount_total), 0) AS total FROM orders").get().total, 9900);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM order_tasks").get().count, 0);
+});
+
+test("une copie Premium v4 reconstruit puis confirme son plan avant aperçu et snapshot idempotent", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, PREMIUM_ID, "premium");
+  db.sqlite.prepare(`
+    UPDATE analyses
+    SET nom = 'ME ELEC', name = 'ME ELEC', ville = 'Non renseignée',
+        activity = 'Électricien', normalized_json = ?
+    WHERE analysis_id = ?
+  `).run(JSON.stringify({ category: "Électricien", description: "", subtypes: ["Électricien"] }), PREMIUM_ID);
+  db.sqlite.prepare(`
+    INSERT INTO orders (
+      order_id, stripe_session_id, email, offer_code, offer_name, amount_total,
+      currency, status, paid_at, created_at, updated_at
+    ) VALUES ('flow-paid-order', 'flow-paid-session', 'fixture@example.test', 'audit',
+      'Audit Premium', 9900, 'eur', 'paid', ?, ?, ?)
+  `).run("2026-08-24T08:00:00.000Z", "2026-08-24T08:00:00.000Z", "2026-08-24T08:00:00.000Z");
+  db.sqlite.prepare("UPDATE analyses SET order_id = 'flow-paid-order' WHERE analysis_id = ?").run(PREMIUM_ID);
+
+  const sourceAnswers = completePremiumV4Answers({
+    executionPlan: {
+      description: { text: "Ancienne narration", status: "approved", analysisId: PREMIUM_ID },
+    },
+  });
+  seedDraft(db, PREMIUM_ID, "premium", sourceAnswers);
+  await finalizeQuestionnaireSnapshot(db, PREMIUM_ID, { completion: "approved" });
+  const sourceBefore = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(PREMIUM_ID);
+  const sourceSnapshotBefore = db.sqlite.prepare("SELECT * FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID);
+
+  const duplicate = await duplicateQuestionnaireSnapshot(db, PREMIUM_ID, "full-flow-duplication-key-20260824");
+  const duplicatedDraft = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(duplicate.analysisId);
+  const duplicatedAnswers = JSON.parse(duplicatedDraft.answers_json);
+  assert.equal("executionPlan" in duplicatedAnswers, false);
+  assert.equal(duplicatedAnswers.questionnaireVersion, "score-efficia-questionnaire-v4");
+  assert.equal(duplicatedAnswers.confirmedCity, "Arlon");
+  assert.equal(duplicatedAnswers.criteriaReview.find((item) => item.key === "nap").value, "no_website");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(duplicate.analysisId).count, 0);
+
+  let pipelineCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    pipelineCalls += 1;
+    return Response.json({ success: true });
+  };
+  try {
+    const response = await auditReviewTest.saveManualReview({
+      context: {
+        request: new Request(`https://preview.example/api/admin/audit-review/${duplicate.analysisId}`),
+        env: { CONNECTOR_TOKEN: "test-token" },
+      },
+      db,
+      analysisId: duplicate.analysisId,
+      payload: {
+        ...duplicatedAnswers,
+        analysisId: duplicate.analysisId,
+        confirmAll: true,
+        executionPlan: sourceAnswers.executionPlan,
+      },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.links.preview, `/api/render/${duplicate.analysisId}`);
+    assert.equal(pipelineCalls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const confirmedReview = JSON.parse(db.sqlite.prepare("SELECT manual_review_json FROM analyses WHERE analysis_id = ?").get(duplicate.analysisId).manual_review_json);
+  const serializedPlan = JSON.stringify(confirmedReview.executionPlan);
+  assert.match(confirmedReview.executionPlan.description.text, /« Électricien » à Arlon\./);
+  assert.doesNotMatch(serializedPlan, /Ancienne narration|Non renseignée/);
+  assert.ok([
+    confirmedReview.executionPlan.description,
+    ...confirmedReview.executionPlan.categoryItems,
+    ...confirmedReview.executionPlan.serviceItems,
+    ...confirmedReview.executionPlan.photos,
+    ...Object.values(confirmedReview.executionPlan.reviewMessages),
+    ...confirmedReview.executionPlan.reviewResponses,
+    ...confirmedReview.executionPlan.posts,
+    ...confirmedReview.executionPlan.actions,
+  ].every((item) => item.status !== "needs_confirmation" && (!item.analysisId || item.analysisId === duplicate.analysisId)));
+  assert.equal(confirmedReview.executionPlan.reviewLinkStatus, "not_applicable");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(duplicate.analysisId).count, 0);
+
+  const approved = await auditReviewTest.approveAnalysis(db, duplicate.analysisId);
+  assert.equal(approved.status, 200, await approved.text());
+  const repeated = await auditReviewTest.approveAnalysis(db, duplicate.analysisId);
+  const repeatedBody = await repeated.json();
+  assert.equal(repeatedBody.idempotent, true);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(duplicate.analysisId).count, 1);
+  assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(PREMIUM_ID), sourceBefore);
+  assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(PREMIUM_ID), sourceSnapshotBefore);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM orders").get().count, 1);
   assert.equal(db.sqlite.prepare("SELECT COALESCE(SUM(amount_total), 0) AS total FROM orders").get().total, 9900);
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM order_tasks").get().count, 0);

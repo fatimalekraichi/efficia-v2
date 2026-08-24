@@ -6,6 +6,7 @@ import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
 import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
 import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues, rebuildDuplicatedExecutionPlanReview } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
+import { resolveReportCity } from "../../../lib/auditComposition.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../../lib/auditQuestionnaireSnapshots.js";
 
@@ -80,7 +81,14 @@ function withScoreReviewData(analysis) {
   };
 }
 
-function technicalFailureResponse({ analysisId, stage, code, status = 500, publicError = "AUDIT_PREVIEW_PREPARATION_FAILED" }) {
+function technicalFailureResponse({
+  analysisId,
+  stage,
+  code,
+  status = 500,
+  publicError = "AUDIT_PREVIEW_PREPARATION_FAILED",
+  message = "Une erreur technique a interrompu la préparation de l’aperçu.",
+}) {
   const reference = crypto.randomUUID();
   console.error(JSON.stringify({
     message: "audit review mutation failed",
@@ -92,8 +100,24 @@ function technicalFailureResponse({ analysisId, stage, code, status = 500, publi
   return jsonResponse({
     success: false,
     error: publicError,
+    message,
     reference,
   }, status);
+}
+
+function executionPlanBlockingResponse(blockers = []) {
+  const first = blockers[0] || {
+    section: "Plan d’exécution",
+    reason: "Une intervention reste nécessaire.",
+    code: "confirmation_required",
+  };
+  return jsonResponse({
+    success: false,
+    error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED",
+    message: `${first.section} : ${first.reason}`,
+    missing: [...new Set(blockers.map((item) => item.section).filter(Boolean))],
+    blockers,
+  }, 409);
 }
 
 async function callStage({ origin, connectorToken, cookie }, stage, analysisId) {
@@ -169,31 +193,8 @@ async function saveManualReview({ context, db, analysisId, payload }) {
 
   let effectivePayload = payload || {};
   let confirmedContentCount = 0;
-  if (payload?.confirmAll === true) {
-    const rebuilt = await rebuildDuplicatedExecutionPlan({ db, row, analysisId, payload });
-    if (rebuilt && !rebuilt.ok) {
-      return jsonResponse({
-        success: false,
-        error: rebuilt.error,
-        message: "Les contenus de la nouvelle version n’ont pas pu être reconstruits.",
-      }, 409);
-    }
-    const executionPlanReview = rebuilt?.review || payload.executionPlan;
-    const confirmation = confirmReadyExecutionPlanReview(executionPlanReview, { analysisId });
-    if (confirmation.blocking.length) {
-      return jsonResponse({
-        success: false,
-        error: "EXECUTION_PLAN_CONFIRMATION_REQUIRED",
-        message: "Certains contenus nécessitent encore une intervention avant de préparer l’aperçu.",
-        missing: confirmation.blocking,
-      }, 409);
-    }
-    confirmedContentCount = confirmation.confirmedCount;
-    effectivePayload = { ...payload, executionPlan: confirmation.review };
-  }
-
-  const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, effectivePayload);
-  const incompleteFields = incompleteQuestionnaireFields(manualReview);
+  let reviewedData = buildReviewedData(row, effectivePayload);
+  let incompleteFields = incompleteQuestionnaireFields(reviewedData.manualReview);
   if (incompleteFields.length) {
     return jsonResponse({
       success: false,
@@ -201,12 +202,48 @@ async function saveManualReview({ context, db, analysisId, payload }) {
       missing: incompleteFields,
     }, 409);
   }
-  if (manualReview.reportType === "premium") {
+  if (reviewedData.manualReview.reportType === "premium") {
+    const reliableCity = resolveReportCity({
+      manualReview: reviewedData.manualReview,
+      business: { reviewed: reviewedData.reviewedObservation, ville: row.ville },
+      draft: { answers: effectivePayload },
+    });
+    if (!reliableCity) {
+      return executionPlanBlockingResponse([{
+        section: "Ville confirmée",
+        reason: "Une ville fiable doit être confirmée avant de générer les contenus.",
+        code: "reliable_city_missing",
+        field: "confirmedCity",
+      }]);
+    }
     const authorization = await loadAdminPremiumAuthorization(db, analysisId);
     if (!authorization.allowed) {
       return jsonResponse({ success: false, error: "PREMIUM_NOT_AUTHORIZED" }, 403);
     }
   }
+
+  if (payload?.confirmAll === true) {
+    const rebuilt = await rebuildDuplicatedExecutionPlan({ db, row, analysisId, payload });
+    if (rebuilt && !rebuilt.ok) {
+      return technicalFailureResponse({
+        analysisId,
+        stage: "execution_plan_rebuild",
+        code: rebuilt.error,
+        publicError: "EXECUTION_PLAN_REBUILD_FAILED",
+        message: "Les contenus de la nouvelle version n’ont pas pu être reconstruits.",
+      });
+    }
+    const executionPlanReview = rebuilt?.review || payload.executionPlan;
+    const confirmation = confirmReadyExecutionPlanReview(executionPlanReview, { analysisId });
+    if (confirmation.blocking.length) {
+      return executionPlanBlockingResponse(confirmation.blockingDetails);
+    }
+    confirmedContentCount = confirmation.confirmedCount;
+    effectivePayload = { ...payload, executionPlan: confirmation.review };
+    reviewedData = buildReviewedData(row, effectivePayload);
+  }
+
+  const { manualReview, reviewedObservation, reviewedBenchmark } = reviewedData;
   const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview });
   const now = new Date().toISOString();
 

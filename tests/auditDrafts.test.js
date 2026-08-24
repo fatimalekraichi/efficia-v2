@@ -177,10 +177,12 @@ test("le parcours Premium après questionnaire est limité à deux clics obligat
   assert.doesNotMatch(html, />Approuver le rapport<\/button>/);
   assert.doesNotMatch(html, />Générer le PDF<\/a>/);
   assert.match(script, /<summary>Options avancées<\/summary>/);
-  assert.match(script, /confirmReadyExecutionItems\(\)/);
+  assert.doesNotMatch(script, /function confirmReadyExecutionItems\(/);
+  assert.match(script, /async function saveReview[\s\S]*await saveDraft\(\{ manual: true \}\)[\s\S]*fetch\(`\/api\/admin\/audit-review\//);
+  assert.match(script, /executionBlockersSignalesParServeur\(data\.blockers\)/);
   assert.match(script, /window\.location\.assign\(previewUrl\)/);
   assert.match(script, /scrollIntoView\?\.\(\{ behavior: "smooth", block: "center" \}\)/);
-  assert.match(script, /querySelector\("textarea, input, select"\)\?\.focus/);
+  assert.match(script, /element\.querySelector\("textarea, input, select"\)/);
   assert.doesNotMatch(script, /window\.confirm\(/);
 });
 
