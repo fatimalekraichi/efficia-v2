@@ -234,13 +234,22 @@
   .teaser-grid span:before{content:"✓";color:#059669;font-weight:900;font-size:.72rem}
   .teaser-more{margin-top:10px;font-size:.76rem;color:#5b6b81;font-style:italic}
   /* — Compact : page 3/priorités courtes — */
-  .page-action .rapport-title{font-size:1.38rem}
+  .page-action .chapitre{margin:12px 0 5px}
+  .page-action .rapport-title{font-size:1.38rem;margin-bottom:6px}
   .page-action .rapport-subtitle{font-size:.8rem;line-height:1.43}
-  .page-action .chk-grid{gap:11px;margin-top:10px}
-  .page-action .chk-rubrique{padding:10px 13px}
-  .page-action .chk-item{padding:3px 0;line-height:1.38}
-  .page-action .chk-compteur{margin:9px 0 1px}
-  .page-action .chk-legend{margin-top:7px;padding:6px 10px}
+  .page-action .chk-grid{gap:8px;margin-top:8px}
+  .page-action .chk-rubrique{padding:7px 11px}
+  .page-action .chk-rubrique h3{margin-bottom:5px}
+  .page-action .chk-item{padding:2px 0;line-height:1.34}
+  .page-action .chk-compteur{margin:7px 0 0}
+  .page-action .chk-legend{margin-top:5px;padding:5px 9px}
+  .page-action .rapport-explication{color:#5b6b81;font-size:.76rem;line-height:1.42}
+  .page-action .rapport-explication--methode{margin-top:8px}
+  .page-action .rapport-explication--reassurance{margin-top:6px}
+  .page-action .next-hint{margin-top:6px}
+  .page-action .pied{bottom:6mm;align-items:flex-start;gap:24px}
+  .page-action .pied > span:first-child{min-width:0}
+  .page-action .pagination-rapport{flex:0 0 auto;margin-left:auto;white-space:nowrap}
   .page-action .priority-card{padding:13px 15px;margin-top:8px;border-radius:16px}
   .page-action .priority-kicker{margin-bottom:7px;padding:4px 8px;font-size:.58rem}
   .page-action .priority-title{font-size:1.06rem;margin-bottom:5px}
@@ -5109,8 +5118,8 @@ function genererRapport(){
     <h1 class="rapport-title">Ce que nous avons analysé</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${entreprise} au crible de ${nbControles} vérifications — les mêmes que fait ${personaSecteur(activite)}, sans s'en rendre compte, avant de choisir qui appeler pour ${secteurActiviteNaturel(activite)}${ville ? ", autour de " + ville : ""}.</p>
     ${checklist.html}
-    <p style="color:#5b6b81;font-size:.76rem;line-height:1.5;margin-top:12px">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
-    <p style="color:#5b6b81;font-size:.76rem;line-height:1.5;margin-top:8px">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.</p>
+    <p class="rapport-explication rapport-explication--methode">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
+    <p class="rapport-explication rapport-explication--reassurance">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.</p>
     <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
     ${pied(3)}
   </div>
