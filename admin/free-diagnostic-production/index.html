@@ -155,6 +155,8 @@
   .score-ring .jauge-int{position:relative;z-index:1}
   .score-potential{margin-top:12px;text-align:center;color:#64748b;font-size:.82rem;font-weight:800;letter-spacing:-.01em}
   .score-potential span{color:#0b1526}
+  .score-depart{margin-top:8px;text-align:center;color:#8a97a8;font-size:.68rem;font-weight:700;letter-spacing:.01em}
+  .score-scope-note{color:#8a97a8;font-size:.72rem;line-height:1.5;margin-top:10px}
   .score-mini-story{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;color:#94a3b8;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
   .score-mini-story b{color:#0b1526;font-size:.92rem;letter-spacing:-.03em}
   .hero-analysis-text{text-align:justify;text-justify:inter-word;hyphens:none;line-height:1.72;font-size:.9rem;letter-spacing:.005em;color:#44546a;margin-top:12px}
@@ -203,6 +205,8 @@
   .priority-time{display:flex;justify-content:flex-end;margin-top:6px;color:#94a3b8;font-size:.6rem;font-weight:700}
   .priority-resultat,.priority-step--action p.priority-resultat{font-size:.74rem;line-height:1.45;color:#44546a;margin:6px 0 0;font-weight:500}
   .priority-resultat b{color:#0b1526;font-weight:800}
+  .priority-sample{margin-top:8px;padding:8px 10px;border-radius:10px;background:#f8fafc;border:1px dashed #dbe3ee;font-size:.7rem;line-height:1.42;color:#44546a}
+  .priority-sample b{display:block;color:#0b1526;font-weight:800;margin-bottom:2px}
   .offer-note{border-top:1px solid #e3ebf6;margin:9px 0 10px;padding-top:8px;font-size:.7rem;line-height:1.45;color:#44546a}
   .offer-note strong{color:#0b1526}
   /* legacy (autres gabarits) */
@@ -230,6 +234,7 @@
   .paid-audit-list{display:grid;gap:7px;margin-top:10px}
   .paid-audit-list div{display:flex;gap:8px;align-items:flex-start;font-size:.79rem;color:#44546a}
   .teaser-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 20px;margin-top:10px}
+  .teaser-grid--compact{grid-template-columns:1fr}
   .teaser-grid span{display:flex;gap:8px;align-items:baseline;font-size:.77rem;color:#44546a;line-height:1.35}
   .teaser-grid span:before{content:"✓";color:#059669;font-weight:900;font-size:.72rem}
   .teaser-more{margin-top:10px;font-size:.76rem;color:#5b6b81;font-style:italic}
@@ -299,8 +304,8 @@
   .offer-choice .offer-cta{margin-top:auto;border-radius:999px;background:#2563eb;color:#fff;text-align:center;padding:9px 12px;font-size:.78rem;font-weight:850}
   .offer-choice:not(.primary) .offer-cta{background:#fff;color:#0b1526;border:1px solid #dce8fa}
   .payment-button{display:block;width:100%;box-sizing:border-box;margin-top:auto;padding:13px 16px;border-radius:999px;font-size:14px;font-weight:800;text-align:center;text-decoration:none}
-  .payment-button--audit{color:#1d4ed8;background:#fff;border:1.5px solid #93c5fd}
-  .payment-button--pack{color:#fff;background:#2563eb;border:1.5px solid #2563eb}
+  .payment-button--audit{color:#fff;background:#2563eb;border:1.5px solid #2563eb}
+  .payment-button--pack{color:#1d4ed8;background:#fff;border:1.5px solid #93c5fd}
   .payment-button--disabled{color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;cursor:not-allowed}
   .qr-zone{border:1px dashed #cbd5e1;border-radius:16px;padding:18px;text-align:center;color:#5b6b81;font-size:.78rem;margin-top:16px}
   .qr-zone img{width:92px;height:92px;object-fit:contain}
@@ -434,38 +439,41 @@
   /* — Compact : page priorités — */
   .page-priorites .rapport-title{font-size:1.5rem;margin-bottom:4px}
   .page-priorites .chapitre{margin:14px 0 5px}
-  .page-priorites .priority-card{padding:10px 14px;margin-top:4px}
-  .page-priorites .priority-kicker{padding:4px 9px;font-size:.58rem;margin-bottom:6px}
+  .page-priorites .priority-card{padding:9px 13px;margin-top:3px}
+  .page-priorites .priority-kicker{padding:4px 9px;font-size:.58rem;margin-bottom:5px}
   .page-priorites .priority-title{font-size:1.04rem;margin-bottom:3px}
   .page-priorites .priority-lead{font-size:.75rem;line-height:1.42;margin-bottom:6px}
-  .page-priorites .priority-step{padding:7px 11px}
-  .page-priorites .priority-step-label{margin-bottom:3px}
-  .page-priorites .priority-step p{font-size:.72rem;line-height:1.38}
+  .page-priorites .priority-step{padding:6px 10px}
+  .page-priorites .priority-step-label{margin-bottom:2px}
+  .page-priorites .priority-step p{font-size:.72rem;line-height:1.34}
   .page-priorites .priority-step--action p{font-size:.78rem}
   .page-priorites .priority-arrow{padding:0;font-size:.7rem}
-  .page-priorites .priority-time{margin-top:4px;font-size:.56rem}
-  .page-priorites .priority-resultat{font-size:.7rem;line-height:1.38;margin-top:4px}
+  .page-priorites .priority-time{margin-top:3px;font-size:.56rem}
+  .page-priorites .priority-resultat{font-size:.7rem;line-height:1.34;margin-top:3px}
+  .page-priorites .priority-sample{font-size:.6rem;line-height:1.22;margin-top:3px;padding:3px 6px;border-style:solid}
   .page-priorites .meaning-box{padding:8px 13px;margin:6px 0 5px}
   .page-priorites .meaning-box h3{margin-bottom:5px}
   .page-priorites .meaning-box ul{gap:3px;font-size:.74rem}
   .page-priorites .next-hint{margin-top:6px}
   /* — Compact : page 1 (hero) — */
-  .page-hero .chapitre{margin:12px 0 5px}
-  .page-hero .rapport-title{font-size:1.6rem;margin-bottom:6px}
-  .page-hero .identite-bandeau{margin-top:10px;padding:8px 12px;font-size:.72rem;gap:4px 14px}
-  .page-hero .score-hero{margin:10px 0 0;gap:24px}
-  .page-hero .hero-analysis-text{font-size:.84rem;line-height:1.5;margin-top:7px}
-  .page-hero .score-direct{margin-top:7px;font-size:.96rem;line-height:1.38}
-  .page-hero .indices-grid{margin:10px 0 2px;gap:10px}
-  .page-hero .indice-card{padding:12px 14px}
-  .page-hero .subscore-value{font-size:25px;margin-top:6px}
-  .page-hero .subscore-description{min-height:0;margin-top:7px;font-size:10.5px;line-height:1.4}
-  .page-hero .indice-card .status{margin-top:6px}
-  .page-hero .meaning-box{margin:9px 0 0;padding:11px 14px}
-  .page-hero .meaning-box h3{margin-bottom:6px}
-  .page-hero .meaning-box ul{gap:3px;font-size:.73rem}
-  .page-hero .methode-note{margin-top:8px;padding-top:6px;font-size:.64rem;line-height:1.38}
-  .page-hero .next-hint{margin-top:7px}
+  .page-hero .chapitre{margin:10px 0 4px}
+  .page-hero .rapport-title{font-size:1.6rem;margin-bottom:5px}
+  .page-hero .identite-bandeau{margin-top:8px;padding:7px 12px;font-size:.72rem;gap:4px 14px}
+  .page-hero .score-hero{margin:8px 0 0;gap:24px}
+  .page-hero .hero-analysis-text{font-size:.83rem;line-height:1.44;margin-top:6px}
+  .page-hero .score-direct{margin-top:6px;font-size:.96rem;line-height:1.34}
+  .page-hero .score-scope-note{margin-top:4px;font-size:.65rem;line-height:1.3}
+  .page-hero .score-depart{margin-top:4px;font-size:.64rem}
+  .page-hero .indices-grid{margin:7px 0 2px;gap:10px}
+  .page-hero .indice-card{padding:10px 14px}
+  .page-hero .subscore-value{font-size:25px;margin-top:5px}
+  .page-hero .subscore-description{min-height:0;margin-top:6px;font-size:10.5px;line-height:1.36}
+  .page-hero .indice-card .status{margin-top:5px}
+  .page-hero .meaning-box{margin:6px 0 0;padding:9px 13px}
+  .page-hero .meaning-box h3{margin-bottom:5px}
+  .page-hero .meaning-box ul{gap:2px;font-size:.73rem}
+  .page-hero .methode-note{margin-top:5px;padding-top:4px;font-size:.64rem;line-height:1.32}
+  .page-hero .next-hint{margin-top:5px}
   /* — Compact : page 5 (plan) — */
   .page-plan .chapitre{margin:14px 0 5px}
   .page-plan .priority-card{padding:14px 16px;margin-top:6px}
@@ -829,10 +837,10 @@ validerConfig();
 <script>
 
 const BANDES = [
- {min:85, nom:"Excellente", couleur:"#059669", verdict:"Votre fiche inspire confiance. Quelques ajustements la rendraient irréprochable."},
- {min:70, nom:"Bonne base", couleur:"#65a30d", verdict:"Votre fiche est solide, mais des opportunités concrètes restent sur la table."},
- {min:50, nom:"Potentiel inexploité", couleur:"#d97706", verdict:"Votre fiche dispose d'une base visible, mais plusieurs leviers peuvent encore renforcer sa capacité à rassurer et convertir."},
- {min:0,  nom:"Potentiel sous-exploité", couleur:"#dc2626", verdict:"La fiche présente plusieurs signaux incomplets. Une optimisation structurée peut améliorer sa lisibilité, sa crédibilité et son potentiel de conversion."}
+ {min:85, nom:"Une fiche déjà convaincante", couleur:"#059669", verdict:"Votre fiche inspire confiance. Quelques ajustements la rendraient irréprochable."},
+ {min:70, nom:"Une fiche déjà solide à consolider", couleur:"#65a30d", verdict:"Votre fiche est solide, mais des opportunités concrètes restent sur la table."},
+ {min:50, nom:"Des bases présentes, mais encore incomplètes", couleur:"#d97706", verdict:"Votre fiche dispose d'une base visible, mais plusieurs leviers peuvent encore renforcer sa capacité à rassurer et convertir."},
+ {min:0,  nom:"Une fiche qui peut mieux rassurer", couleur:"#dc2626", verdict:"La fiche présente plusieurs signaux incomplets. Une optimisation structurée peut améliorer sa lisibilité, sa crédibilité et son potentiel de conversion."}
 ];
 
 const CONTENU_DIAGNOSTIC = {
@@ -967,7 +975,7 @@ const CONTENU_DIAGNOSTIC = {
     premiereAction:"Prévoir un calendrier léger d'une à deux publications par mois."
   },
   classementLocal: {
-    constat:"Google ne met en avant que 3 fiches par recherche locale — sur la recherche testée, la vôtre n'en fait pas partie.",
+    constat:"Sur la recherche testée, votre fiche n'apparaît pas parmi les premiers résultats mis en avant par Google.",
     impact:"Une meilleure présence locale augmente les occasions d'être comparé.",
     premiereAction:"Traiter d'abord catégories, avis, services et cohérence locale."
   },
@@ -3694,8 +3702,7 @@ function mentionScoreProvisoireHtml(className = "methode-note"){
 
 function potentielScoreHtml(scoreActuel, scoreProjete){
   if(!estNombre(scoreProjete) || Number(scoreProjete) <= Number(scoreActuel) + 2) return "";
-  return `<div class="score-potential">Potentiel estimé : <span>${nEntier(scoreProjete)}/100</span></div>
-    <div class="score-mini-story"><b>${nEntier(scoreActuel)}</b><span>→</span><b>${nEntier(scoreProjete)}</b></div>`;
+  return `<div class="score-potential">Potentiel estimé : <span>${nEntier(scoreProjete)}/100</span></div>`;
 }
 
 function phrasePotentielScore(score){
@@ -3749,19 +3756,88 @@ function rechercheNaturelleClient(activite){
   return "une entreprise comme la vôtre";
 }
 
-function texteConsultantPage1({contact, activite, ville, score, scoreProjete}){
+function siteOfficielAbsent(){
+  const id = CRITERE_IDS.nap;
+  return document.querySelector(`input[name="c${id}"]:checked`)?.dataset.special === "no_website";
+}
+
+function joinFr(items){
+  const list = items.filter(Boolean);
+  if(!list.length) return "";
+  if(list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(", ")} et ${list[list.length - 1]}`;
+}
+
+/* Signaux concrets et vérifiés (jamais inventés) que verrait un prospect
+   aujourd'hui sur la fiche — utilisés pour construire le constat d'ouverture
+   de la page 1 sans généraliser au-delà des données disponibles. */
+function signauxActuelsPage1(d){
+  const signaux = [];
+  if(rapportSansAvis()){
+    signaux.push("aucun avis client");
+  } else if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.nbAvis) === 1){
+    signaux.push(`une note de ${fmtNote(d.note)}/5 basée sur un seul avis`);
+  } else if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.note) < 4){
+    signaux.push(`une note de ${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis`);
+  }
+  if(estNombre(d.nbPhotos) && Number(d.nbPhotos) === 0){
+    signaux.push("aucune photo publiée");
+  } else if(estNombre(d.nbPhotos) && Number(d.nbPhotos) < 5){
+    signaux.push("peu de preuves visuelles");
+  }
+  if(siteOfficielAbsent()){
+    signaux.push("aucun site officiel identifiable");
+  }
+  return signaux.slice(0, 3);
+}
+
+function nomCourtRapport(nom, max = 42){
+  const n = String(nom || "").trim();
+  if(n.length <= max) return n;
+  const coupe = n.slice(0, max);
+  const dernierEspace = coupe.lastIndexOf(" ");
+  return (dernierEspace > 20 ? coupe.slice(0, dernierEspace) : coupe).trim() + "…";
+}
+
+function texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete, priorites}){
   const bonjour = contact ? `Bonjour ${contact},` : "Bonjour,";
   const persona = personaSecteur(activite);
   const recherche = rechercheNaturelleClient(activite);
   const lieu = ville ? ` de ${ville}` : "";
   const d = donneesAnalyse || {};
+  const nom = nomCourtRapport(entreprise) || "Votre entreprise";
+  const signaux = signauxActuelsPage1(d);
   const positionPhrase = estNombre(d.position) && Number(d.position) === 1 && estTexte(d.requeteTestee)
-    ? ` Votre fiche apparaît en première position sur la recherche testée « ${libelleRechercheRapport(d.requeteTestee)} ». C'est un excellent point de départ.`
+    ? ` Votre fiche apparaît en première position sur la recherche testée « ${libelleRechercheRapport(d.requeteTestee)} » — un excellent point d'appui.`
     : "";
-  const potentiel = estNombre(scoreProjete) && Number(scoreProjete) > Number(score) + 2
-    ? ` Le potentiel estimé après optimisation atteint ${nEntier(scoreProjete)}/100 : l'enjeu n'est donc pas de tout refaire, mais de corriger les bons leviers.`
-    : "";
-  return `${bonjour}<br>Nous avons étudié votre fiche Google Business exactement comme le ferait ${persona}${lieu} qui cherche ${recherche} aujourd'hui. La bonne nouvelle est que votre entreprise possède déjà plusieurs atouts.${positionPhrase} En revanche, certains éléments empêchent encore votre fiche de convertir autant de visiteurs qu'elle le pourrait.${potentiel}`;
+  const nbPriorites = Array.isArray(priorites) ? priorites.length : 0;
+  const actionPhrase = nbPriorites >= 3 ? "Trois actions ciblées peuvent déjà"
+    : nbPriorites === 2 ? "Deux actions ciblées peuvent déjà"
+    : nbPriorites === 1 ? "Une action ciblée peut déjà"
+    : "Quelques ajustements ciblés peuvent déjà";
+  const suite = ` La situation n'est pas figée. ${actionPhrase} rendre la fiche plus claire, plus rassurante et plus convaincante.`;
+
+  let ouverture, constat, projection;
+  if(score < 50){
+    ouverture = `La fiche Google de ${nom} ne donne pas encore à un client qui la découvre suffisamment de raisons de lui faire confiance.`;
+    constat = signaux.length
+      ? `Aujourd'hui, ${persona}${lieu} découvre ${joinFr(signaux)}.`
+      : `Aujourd'hui, votre fiche laisse encore plusieurs informations importantes à préciser.`;
+    projection = ` Ces éléments ne suffisent pas à évaluer la qualité globale de votre travail, mais ils peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}.`;
+  } else if(score < 80){
+    ouverture = `${nom} a déjà posé de bonnes bases sur sa fiche Google.`;
+    constat = signaux.length
+      ? `Mais aujourd'hui, ${persona}${lieu} remarque encore ${joinFr(signaux)}.`
+      : `Mais certains éléments restent incomplets aux yeux d'un prospect qui compare plusieurs fiches.`;
+    projection = " Ces signaux peuvent freiner la décision de contact, sans remettre en cause le sérieux de votre travail.";
+  } else {
+    ouverture = `${nom} présente déjà une fiche Google bien tenue.`;
+    constat = signaux.length
+      ? `Quelques détails restent à ajuster, notamment ${joinFr(signaux)}.`
+      : "Quelques ajustements fins peuvent encore la rendre plus convaincante.";
+    projection = " Rien d'alarmant : il s'agit surtout de finitions.";
+  }
+  return `${bonjour}<br>${ouverture} ${constat}${projection}${positionPhrase}${suite}`;
 }
 
 function buildPhotoContext(sectorProfile, activity, businessName){
@@ -3999,15 +4075,15 @@ function observationPersonnalisee(cr){
     servicesDecrits: `Vos services sont listés, mais sans description ni repère de prix : le client voit des intitulés, pas ce que vous feriez pour lui.`,
     publicationRecente: `Nous avons cherché un signe de vie récent sur votre fiche — une actualité, une réalisation, une offre. ${estNombre(d.nbPublications) && d.nbPublications === 0 ? "Il n'y en a aucun." : "Le dernier remonte à plusieurs mois."} Votre entreprise est active ; votre fiche ne le montre pas.`,
     rythmePublication: `Les publications existantes sont trop espacées pour donner l'impression d'une entreprise en mouvement.`,
-    photoRecente: `En ouvrant votre galerie, les photos les plus récentes datent. Un client qui les regarde peut se demander si l'activité tourne toujours.`,
-    varietePhotos: `Votre galerie montre toujours le même angle de votre activité. Il manque ce qu'un client cherche vraiment : vos réalisations, votre équipe, votre façon de travailler.`,
+    photoRecente: `En ouvrant votre galerie, les photos les plus récentes datent. Un client qui les regarde peut se demander si l'activité est encore en cours.`,
+    varietePhotos: `Votre galerie répète souvent les mêmes angles de votre activité. Il manque ce qu'un client cherche vraiment : vos réalisations, votre équipe, votre façon de travailler.`,
     nombrePhotos: estNombre(d.nbPhotos) ? `Votre fiche compte ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""}${estNombre(m.photos) ? ", contre " + nEntier(m.photos) + " en moyenne chez vos concurrents" : ""}. C'est peu pour permettre à un client de se faire une idée.` : null,
     tauxReponseAvis: `${buildReviewsResponseSentence(d.avisAnalyses, d.reponsesProprietaire, statutVerificationCritere(cr))} Ces avis, et vos réponses, sont lus par les clients qui hésitent : c'est une conversation publique qui influence la confiance.`,
     qualiteReponsesAvis: `Vos réponses aux avis se ressemblent : le client qui les lit sent le copier-coller, et c'est l'inverse de l'effet recherché.`,
     recenceAvis: estTexte(d.dernierAvis) ? `Votre dernier avis date du ${new Date(d.dernierAvis).toLocaleDateString("fr-FR")}. Une fiche dont les avis s'arrêtent laisse penser que l'activité s'est arrêtée avec eux.` : null,
     classementLocal: estNombre(d.position) && estTexte(d.requeteTestee)
       ? (d.position === 0 ? `Nous avons cherché « ${libelleRechercheRapport(d.requeteTestee)} » comme le ferait un client : votre fiche existe, mais elle ne ressort pas encore dans les premiers résultats.`
-                          : `Sur « ${libelleRechercheRapport(d.requeteTestee)} », votre fiche apparaît comme ${libellePositionRapport(d, {avecRecherche:false})}. La plupart des clients s'arrêtent aux trois premiers résultats organiques.`) : null,
+                          : `Sur « ${libelleRechercheRapport(d.requeteTestee)} », votre fiche apparaît comme ${libellePositionRapport(d, {avecRecherche:false})}. Certains clients ne consultent que les tout premiers résultats organiques.`) : null,
     attractiviteConcurrents: estNombre(volC) ? `Nous avons mis votre fiche côte à côte avec celles qui l'entourent dans les résultats, comme le fait chaque client avant d'appeler. Sur ce qui se voit en premier — avis, photos, détail de l'offre — la comparaison ne tourne pas encore en votre faveur.` : null,
     horaires: `Vos horaires sont incomplets. « Peut-être fermé » est l'une des mentions les plus dissuasives qu'une fiche puisse afficher.`,
     revendiquee: `Votre fiche affiche encore « Vous êtes le propriétaire ? » : elle vit sa vie sans vous, et vous ne pouvez ni la corriger ni y répondre.`,
@@ -4020,21 +4096,21 @@ function observationPersonnalisee(cr){
 /* — Conséquences business, en langage client — jamais techniques. — */
 function impactBusiness(cr){
   const impacts = {
-    volumeAvis: "Entre deux entreprises à note égale, le client appelle presque toujours celle qui a le plus d'avis. Ce n'est pas une question de qualité de travail : c'est le besoin d'être rassuré au moment de choisir quelqu'un qu'on ne connaît pas.",
+    volumeAvis: "Entre deux entreprises à note égale, le client peut préférer celle qui affiche le plus d'avis. Ce n'est pas une question de qualité de travail : c'est le besoin d'être rassuré au moment de choisir quelqu'un qu'on ne connaît pas.",
     descriptionRemplie: "C'est souvent le seul texte qu'un client lit avant de décider s'il vous appelle. Vide, il laisse ce choix au hasard — ou à la fiche d'à côté, qui l'a rempli.",
     descriptionQualite: "Un client ne choisit pas l'entreprise « la meilleure » : il choisit celle dont il comprend qu'elle répond exactement à son besoin, près de chez lui.",
-    servicesPresents: "Un client qui ne trouve pas sa demande dans votre liste ne vous appelle pas pour vérifier : il passe à la fiche suivante. Chaque service absent est une porte fermée.",
+    servicesPresents: "Un client qui ne trouve pas sa demande dans votre liste peut ne pas vous appeler pour vérifier : il risque de poursuivre sa recherche vers une fiche plus explicite.",
     servicesDecrits: "Détailler un service, c'est répondre à l'avance aux questions que le client se pose — et chaque question résolue le rapproche de l'appel.",
-    publicationRecente: "Une fiche silencieuse fait naître un doute simple : « sont-ils toujours en activité ? répondront-ils vite ? ». Ce doute suffit à faire choisir quelqu'un d'autre.",
+    publicationRecente: "Une fiche silencieuse fait naître un doute simple : « sont-ils toujours en activité ? répondront-ils vite ? ». Ce doute peut inciter à poursuivre la recherche vers une fiche jugée plus active.",
     rythmePublication: "La régularité compte plus que le volume : elle dit au client qu'il y a quelqu'un derrière la fiche, aujourd'hui comme le mois prochain.",
     photoRecente: "Des photos récentes prouvent que vous travaillez en ce moment. C'est la différence entre une vitrine allumée et une vitrine éteinte.",
     varietePhotos: "Le client cherche à se projeter : voir vos réalisations, c'est déjà imaginer la sienne.",
-    nombrePhotos: "Les fiches riches en photos reçoivent nettement plus d'appels et de demandes d'itinéraire : le client va vers ce qu'il peut voir.",
+    nombrePhotos: "Une fiche riche en photos peut améliorer les chances d'être comprise ou contactée : le client se projette plus facilement sur ce qu'il peut voir.",
     tauxReponseAvis: "Vos réponses aux avis sont lues par les futurs clients bien plus que par leurs auteurs : elles montrent comment vous traiterez un problème si un jour il y en a un.",
     qualiteReponsesAvis: "Une réponse personnelle et posée vaut une recommandation publique. Une réponse copiée-collée vaut un silence.",
     recenceAvis: "Des avis récents disent : « des clients nous font confiance en ce moment ». Des avis anciens laissent le doute s'installer.",
     classementLocal: "Le problème n'est pas que votre fiche soit mauvaise. Le problème apparaît quand elle ne ressort pas sur les recherches que vos clients utilisent vraiment.",
-    attractiviteConcurrents: "Le client compare toujours deux ou trois fiches avant d'appeler. Ce comparatif silencieux se joue en quelques secondes — sur ce qui se voit, pas sur ce qui est vrai.",
+    attractiviteConcurrents: "Le client compare souvent plusieurs fiches avant d'appeler. Ce comparatif silencieux se joue en quelques secondes — sur ce qui se voit, pas sur ce qui est vrai.",
     horaires: "Un client prêt à se déplacer qui lit « peut-être fermé » ne prend pas le risque : il va là où c'est sûr d'être ouvert.",
     revendiquee: "Tant que la fiche n'est pas entre vos mains, c'est Google et les internautes qui racontent votre entreprise à votre place.",
     questionsReponses: "Chaque question sans réponse est un client qui repart avec son doute — ou avec la réponse approximative d'un inconnu.",
@@ -4233,10 +4309,14 @@ function corrigerLibelleRapport(txt){
 }
 
 function libelleRechercheRapport(txt){
-  return corrigerLibelleRapport(txt)
+  const propre = corrigerLibelleRapport(txt)
     .replace(/\s*,\s*/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  // Garde-fou de mise en page : une recherche testée reste normalement courte
+  // (« plombier Bruxelles ») ; on tronque proprement les cas extrêmes pour
+  // éviter tout débordement de page, sans jamais altérer la donnée stockée.
+  return nomCourtRapport(propre, 55);
 }
 
 function buildReviewsResponseSentence(reviewsAnalyzed, ownerResponses, verificationStatus){
@@ -4566,6 +4646,19 @@ function ecartsExpliquesHtml(){
   </div>`;
 }
 
+const PHRASE_PEDAGOGIE_PAGE2 = "Un client compare rarement une seule fiche : il en ouvre plusieurs en quelques secondes et retient celle qui le rassure le plus vite. Le Score Efficia™ mesure cette capacité à informer, rassurer et faciliter le contact.";
+
+function phraseTransitionPage2(categoriesTriees){
+  const majeures = categoriesTriees.filter(c => c.pct < 40);
+  if(majeures.length >= 2){
+    return "Votre score n'est pas diminué par un seul défaut majeur. Il résulte surtout de plusieurs signaux incomplets qui, mis ensemble, rendent le choix moins évident pour un nouveau client.";
+  }
+  if(majeures.length === 1){
+    return `Votre score est surtout tiré vers le bas par un seul poste : ${majeures[0].cat.cat.toLowerCase()}. Le reste de la fiche tient déjà mieux la comparaison.`;
+  }
+  return "Votre score reste globalement homogène : les points restants relèvent surtout d'ajustements de finition plutôt que d'un problème de fond.";
+}
+
 /* ============ PAGE 3 : CHECKLIST DES POINTS ANALYSÉS ============ */
 const LIBELLES_COURTS = {
   revendiquee:"Fiche revendiquée et vérifiée", categoriePrincipale:"Catégorie principale", categoriesSecondaires:"Catégories secondaires",
@@ -4609,7 +4702,7 @@ function checklistHtml(){
   }).join("");
   inconnus = compterElementsAConfirmerRapport();
   const compteur = `<div class="chk-compteur">
-    <span style="background:#ecfdf5;color:#059669">✓ ${ok} point${ok>1?"s":""} conforme${ok>1?"s":""}</span>
+    <span style="background:#ecfdf5;color:#059669">✓ ${ok} élément${ok>1?"s":""} conforme${ok>1?"s":""}</span>
     <span style="background:#fffbeb;color:#d97706">! ${warn} à améliorer</span>
     <span style="background:#fef2f2;color:#dc2626">✕ ${ko} prioritaire${ko>1?"s":""}</span>
     ${sansSite ? `<span style="background:#f1f5f9;color:#475569">○ ${sansSite} sans site web officiel</span>` : ""}
@@ -4617,6 +4710,35 @@ function checklistHtml(){
   </div>`;
   const legende = `<div class="chk-legend"><strong>Légende</strong> — <span class="chk-ok">✓</span> conforme&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-warn">!</span> à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-ko">✕</span> prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-unknown">○</span> à confirmer manuellement.</div>`;
   return {html:compteur + `<div class="chk-grid">${rubriques}</div>${legende}`, ok, warn, ko, inconnus};
+}
+
+/* Un critère est considéré comme déjà établi par le diagnostic gratuit
+   quand il est noté au maximum des points possibles. */
+function critereConfirmeMax(key){
+  const id = CRITERE_IDS[key];
+  if(!id) return false;
+  const cr = trouverCritere(id);
+  const points = lirePoints(id);
+  return Boolean(cr) && points !== null && Number(points) >= Number(cr.max);
+}
+
+/* Page 5 — liste volontairement dynamique : n'affiche que ce que le
+   diagnostic gratuit n'a réellement pas déterminé. Une catégorie déjà
+   validée, des services déjà analysés, une comparaison déjà réalisée ou
+   une donnée publique déjà connue ne sont jamais présentés comme
+   indéterminés. */
+function elementsIndeterminesPage5(checklist){
+  const items = [];
+  const categorieConfirmee = categoriePrincipaleValideePourRapport() && critereConfirmeMax("categoriesSecondaires");
+  if(!categorieConfirmee) items.push("les catégories exactes à conserver ou modifier");
+  const servicesAnalyses = critereConfirmeMax("servicesPresents") && critereConfirmeMax("servicesDecrits");
+  if(!servicesAnalyses) items.push("les services les plus importants à mettre en avant");
+  const comparaisonPossible = (donneesAnalyse.concurrents || []).length > 0 || estNombre(donneesAnalyse.position);
+  if(comparaisonPossible) items.push("les écarts détaillés avec les concurrents mieux positionnés");
+  items.push("les textes complets à publier");
+  items.push("l'ordre exact des modifications");
+  if(checklist.inconnus > 0) items.push("les informations visibles uniquement depuis le compte Google Business");
+  return items;
 }
 
 const FAMILLES_PRIORITES = [
@@ -4772,10 +4894,12 @@ function constatObservePriorite(item, ctx){
   if(item.famille === "reputation"){
     if(rapportSansAvis()) return "Votre fiche ne présente actuellement aucun avis client.";
     const noteC = m.note ?? d.concurrence?.noteC;
+    if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.nbAvis) === 1)
+      return `Votre fiche ne présente actuellement qu'un seul avis, avec une note de ${fmtNote(d.note)}/5. Ce volume est trop faible pour refléter l'expérience globale de vos clients et peut créer un doute chez une personne qui découvre l'entreprise.`;
     if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.note) < 4.2 && estNombre(noteC))
-      return `Votre fiche dispose déjà de ${nEntier(d.nbAvis)} avis, ce qui constitue une base solide. En revanche, votre note de ${fmtNote(d.note)}/5 reste nettement inférieure à la moyenne concurrentielle observée de ${fmtNote(noteC)}/5.`;
+      return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. En revanche, votre note de ${fmtNote(d.note)}/5 reste nettement inférieure à la moyenne concurrentielle observée de ${fmtNote(noteC)}/5.`;
     if(estNombre(d.note) && estNombre(d.nbAvis) && estNombre(volC) && Number(volC) > Number(d.nbAvis))
-      return `Votre fiche dispose déjà de ${nEntier(d.nbAvis)} avis, ce qui constitue une base solide. Votre note de ${fmtNote(d.note)}/5 doit maintenant être consolidée face à des fiches concurrentes qui affichent ${nEntier(volC)} avis en moyenne.`;
+      return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. Ce volume doit maintenant être consolidé face à des fiches concurrentes qui affichent ${nEntier(volC)} avis en moyenne.`;
     if(estNombre(d.note) && estNombre(d.nbAvis))
       return `Votre note de ${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis est un vrai capital — encore trop discret face aux fiches plus fournies de votre zone.`;
     return "Sur votre fiche, les preuves clients — volume d'avis, réponses visibles — restent en retrait par rapport à ce qu'un prospect attend avant d'appeler.";
@@ -4784,7 +4908,7 @@ function constatObservePriorite(item, ctx){
     if(estNombre(d.position) && d.position === 0)
       return `Lors de notre test${rq ? " sur « " + rq + " »" : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
     if(estNombre(d.position) && d.position > 3)
-      return `Lors de notre test${rq ? " sur « " + rq + " »" : ""}, votre fiche apparaît en ${d.position}e position — juste sous le trio de tête que Google met en avant.`;
+      return `Lors de la recherche testée${rq ? " « " + rq + " »" : ""}, votre fiche apparaît en ${d.position}e position, sous les trois résultats initialement mis en avant dans le Local Pack. Elle risque donc d'être moins visible lors de la première consultation.`;
     return "Votre fiche n'est pas encore alignée avec les mots que tapent réellement les clients de votre zone : catégories, services et mots-clés locaux se répondent mal.";
   }
   if(item.famille === "offre"){
@@ -4824,12 +4948,12 @@ function consequenceBusinessPriorite(item, ctx){
   const persona = personaSecteur(ctx.activite);
   const textes = {
     reputation: rapportSansAvis()
-      ? "Un prospect ne dispose donc d'aucune preuve client pour se rassurer avant de vous contacter. Le premier objectif est d'obtenir des avis authentiques ; les réponses deviendront pertinentes seulement après leur réception."
-      : `Les avis font partie des premiers éléments consultés lorsqu'un prospect compare plusieurs entreprises. L'enjeu est de répondre aux avis, comprendre les motifs d'insatisfaction, améliorer l'expérience qui génère les notes faibles et obtenir progressivement de nouveaux avis authentiques.`,
-    offre: `${majusculeInitiale(persona)} reste quelques secondes sur une fiche. S'il ne peut pas vérifier que vous faites exactement ce qu'il cherche, il n'appelle pas pour demander — il passe à la fiche suivante.`,
-    visibilite: `Google n'affiche que trois fiches par recherche locale — le reste n'apparaît qu'après un clic supplémentaire que peu de gens font. ${majusculeInitiale(persona)} qui ne vous voit pas contacte un concurrent sans savoir que vous existiez.`,
-    photos: `Entre deux fiches comparables, celle qui montre clairement son activité peut davantage rassurer au moment du choix.`,
-    infos: "Un doute pratique — « est-ce ouvert ? est-ce le bon numéro ? » — suffit à reporter un appel. Et un appel reporté est souvent un appel perdu.",
+      ? "Il peut hésiter à vous contacter : sans aucun avis récent, il ne dispose d'aucun élément pour se rassurer avant d'appeler."
+      : "Il peut hésiter à contacter l'entreprise, car il dispose de trop peu d'éléments récents pour se rassurer pleinement.",
+    offre: `${majusculeInitiale(persona)} ne reste que quelques secondes sur une fiche. S'il ne peut pas vérifier rapidement que vous faites exactement ce qu'il cherche, il risque de poursuivre sa recherche plutôt que de vous appeler pour demander.`,
+    visibilite: `Sur ce type de recherche locale, seules quelques fiches sont mises en avant en premier. ${majusculeInitiale(persona)} qui ne voit pas la vôtre parmi elles risque de contacter un concurrent plus visible, sans même savoir que vous existiez.`,
+    photos: `Faute de visuels suffisants, il peut avoir plus de mal à se projeter et préférer une fiche qui montre plus clairement le travail réalisé.`,
+    infos: "Un doute pratique — horaires, coordonnées, adresse — peut suffire à repousser l'appel, surtout si une autre fiche répond plus clairement à ces questions.",
     activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
   };
   return textes[item.famille] || "Cet écart peut réduire la confiance ou retarder la prise de contact.";
@@ -4841,7 +4965,7 @@ function resultatAttenduPriorite(item, ctx){
     reputation: rapportSansAvis()
       ? "les premiers avis authentiques apportent une preuve client visible et rassurante."
       : "des avis plus récents, des réponses visibles, une fiche qui rassure dès le premier regard.",
-    visibilite: `votre fiche redevient candidate au trio de tête que Google affiche${rq ? " sur « " + rq + " »" : ""} — là où partent l'essentiel des appels.`,
+    visibilite: `une fiche mieux positionnée sur les recherches testées${rq ? " comme « " + rq + " »" : ""}, avec de meilleures chances d'être vue au premier regard.`,
     offre: localisationNonVerifiablePubliquement()
       ? "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler."
       : "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
@@ -4850,6 +4974,30 @@ function resultatAttenduPriorite(item, ctx){
     activite: "une fiche visiblement suivie et active."
   };
   return textes[item.famille] || "";
+}
+
+/* Petit résultat concret et immédiatement exploitable, réservé à la priorité
+   n°1 uniquement — jamais un livrable complet de l'Audit payant. */
+function microLivrablePriorite(item, ctx){
+  const d = ctx.data;
+  if(item.famille === "reputation"){
+    if(rapportSansAvis()){
+      return `<div class="priority-sample"><b>Message type pour demander un avis</b>« Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup. »</div>`;
+    }
+    if(estNombre(d.note) && Number(d.note) < 4){
+      return `<div class="priority-sample"><b>Structure de réponse à un avis</b>« Bonjour [Prénom], merci d'avoir partagé votre expérience. Nous sommes désolés qu'elle n'ait pas répondu à vos attentes. Nous souhaitons comprendre précisément ce qui s'est passé et vous invitons à nous contacter directement afin d'en discuter. »</div>`;
+    }
+    return "";
+  }
+  if(item.famille === "offre"){
+    const nomEntreprise = nomCourtRapport(ctx.entreprise, 24) || "Nous";
+    const zone = ctx.ville ? ` (${ctx.ville})` : "";
+    return `<div class="priority-sample"><b>Amorce de description à compléter</b>« ${majusculeInitiale(nomEntreprise)}${zone} : [votre service principal]. »</div>`;
+  }
+  if(item.famille === "photos"){
+    return `<div class="priority-sample"><b>Pour vos prochaines photos</b>Commencez par une photo de la devanture ou de l'équipe : c'est souvent la plus consultée.</div>`;
+  }
+  return "";
 }
 
 function niveauImpactPriorite(item, index = 0){
@@ -4887,11 +5035,11 @@ function rendrePriorite(item, index, variante){
     </div>
     <h2 class="priority-title">${titrePriorite(item)}</h2>
     <div class="priority-flow">
-      <div class="priority-step priority-step--observation"><div class="priority-step-label">Observation</div><p>${observe}</p></div>
+      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observe}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce que voit votre client</div><p>${prospect}</p></div>
+      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu'il peut penser</div><p>${prospect}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--action"><div class="priority-step-label">Action immédiate</div><p>${d.action}</p>${resultat ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultat}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span></div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${d.action}</p>${resultat ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultat}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span>${index === 0 ? microLivrablePriorite(item, ctx) : ""}</div>
     </div>
   </section>`;
 }
@@ -4942,7 +5090,7 @@ function detailPosteFaible(label){
   if(/contenu/.test(l)) return "votre fiche est aujourd'hui muette : elle prouve que vous existez, mais n'explique nulle part ce que vous vendez";
   if(/visibilit/.test(l)) return rapportPositionTop3()
     ? "votre classement est déjà dans le top 3 ; les autres signaux de visibilité restent à consolider sans remettre ce classement en cause"
-    : "Google ne met en avant que trois fiches par recherche — la vôtre doit devenir candidate à ce trio";
+    : "les recherches locales ne mettent en avant qu'un nombre restreint de fiches en premier — la vôtre gagne à s'en rapprocher pour être vue plus tôt";
   if(/avis/.test(l)) return rapportSansAvis()
     ? "votre fiche ne présente aucun avis client et doit d'abord obtenir ses premières preuves sociales"
     : "c'est la première chose qu'un prospect compare avant d'appeler";
@@ -5013,6 +5161,9 @@ function genererRapport(){
   const tempsDiy = calculerTempsInterne().minutes;
   const dateLimite = new Date(Date.now() + CONFIG.rapport.joursValiditeDeduction * 864e5)
     .toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
+  const deductionNote = CONFIG.rapport.joursValiditeDeduction
+    ? `Les 99 € sont déduits si vous commandez un pack éligible dans les ${CONFIG.rapport.joursValiditeDeduction} jours.`
+    : "";
   const enjeuBloc = enjeuRapportHtml(score, activite, ville);
   const projectionBloc = proj.projete > score + 2 ? `
     <div class="projection-grid">
@@ -5023,7 +5174,7 @@ function genererRapport(){
     <p style="color:#8a97a8;font-size:.62rem;line-height:1.35;margin-top:5px">Projection du score de complétude Efficia après correction des critères directement maîtrisables. Elle ne constitue pas une garantie de classement Google, d'appels ou de chiffre d'affaires.</p>` : "";
   const effortBloc = tempsDiy >= 45 ? `
     <div class="effort-grid">
-      <div class="effort-card">Corriger vous-même les ${proj.ameliorables} points détectés<b>${formatMinutes(tempsDiy)}</b>au total, selon les éléments déjà disponibles et les vérifications nécessaires</div>
+      <div class="effort-card">Appliquer vous-même l'ensemble des recommandations<b>${formatMinutes(tempsDiy)}</b>au total, selon les éléments déjà disponibles et les vérifications nécessaires</div>
       <div class="effort-card" style="border-color:#93c5fd;background:#f8fbff">Avec le Pack Visibilité<b>20 à 30 minutes</b>de votre côté : transmettre les informations, puis valider avant publication</div>
     </div>` : "";
   /* — Moteur narratif : angle du rapport selon la faiblesse dominante — */
@@ -5031,8 +5182,9 @@ function genererRapport(){
   const angle = axeInfo.axe && ANGLES[axeInfo.axe] ? ANGLES[axeInfo.axe] : null;
   const resumePerso = resumePersonnalise(score, axeInfo);
   const significationBloc = significationV2(forces, priorites) || signification;
-  const texteIntroConsultant = texteConsultantPage1({contact, activite, ville, score, scoreProjete:proj.projete});
+  const texteIntroConsultant = texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete:proj.projete, priorites:top3p});
   const checklist = checklistHtml();
+  const elementsRestants = elementsIndeterminesPage5(checklist);
   const benchTable = benchmarkTableHtml();
   const ecartsBloc = ecartsExpliquesHtml();
   const dIdent = donneesAnalyse, idParts = [];
@@ -5041,7 +5193,7 @@ function genererRapport(){
   if(estNombre(dIdent.nbPhotos)) idParts.push(`<span>Photos <b>${nEntier(dIdent.nbPhotos)}</b></span>`);
   if(estNombre(dIdent.nbServices)) idParts.push(`<span>Services <b>${nEntier(dIdent.nbServices)}</b></span>`);
   if(estNombre(dIdent.position)) idParts.push(`<span>Position <b>${dIdent.position === 0 ? "non visible" : dIdent.position + "e"}</b></span>`);
-  const identiteBandeau = idParts.length >= 2 ? `<div class="identite-bandeau"><span><b>Fiche analysée :</b> ${entreprise}</span>${idParts.join("")}</div>` : "";
+  const identiteBandeau = idParts.length >= 2 ? `<div class="identite-bandeau"><span><b>Fiche analysée :</b> ${nomCourtRapport(entreprise, 48)}</span>${idParts.join("")}</div>` : "";
   const requeteAffichee = estTexte(dIdent.requeteTestee) ? `« ${libelleRechercheRapport(dIdent.requeteTestee)} »` : "votre recherche locale principale";
   const comparisonLabel = buildCompetitorComparisonLabel((donneesAnalyse.concurrents || []).length, requeteAffichee);
   const domainesPrioritaires = categoriesTriees
@@ -5053,7 +5205,7 @@ function genererRapport(){
     .map(c => ({label:c.cat.cat, pts:Math.round(c.pointsPonderes), max:c.poidsProfil, pct:c.pct === null ? 0 : c.pct}))
     .sort((a,b) => a.pct - b.pct)
     .slice(0,2);
-  const page2SansBenchmark = `<p class="rapport-subtitle">Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
+  const page2SansBenchmark = `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
        ${catsHtml}
        <div class="comparison-insight">
          <h2>En résumé</h2>
@@ -5064,7 +5216,7 @@ function genererRapport(){
          <p class="comparison-note">Les éléments « à confirmer » ne sont pas des défauts : ils demandent simplement une vérification manuelle.</p>
        </div>`;
   const benchmarkBloc = benchTable
-    ? `<p class="rapport-subtitle">${comparisonLabel}</p>
+    ? `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} ${comparisonLabel}</p>
        ${benchTable}${ecartsBloc}
        <h2 style="margin:12px 0 7px;font-size:.96rem">Répartition de votre score par domaine</h2>${catsHtml}`
     : page2SansBenchmark;
@@ -5086,11 +5238,12 @@ function genererRapport(){
     <p class="rapport-subtitle">${entreprise}${activite ? " — " + activite : ""}${ville ? " (" + ville + ")" : ""} • Diagnostic réalisé le ${dateStr}</p>
     ${identiteBandeau}
     <div class="score-hero">
-      <div>${scoreGaugeHtml(score)}${potentielScoreHtml(score, proj.projete)}</div>
+      <div>${scoreGaugeHtml(score)}<div class="score-depart">Point de départ : ${score}/100</div>${potentielScoreHtml(score, proj.projete)}</div>
       <div>
         <span class="score-level"><i style="background:${bande.couleur}"></i>${bande.nom}</span>
         <div class="score-direct">${phraseScore.texte}</div>
         <p class="hero-analysis-text">${texteIntroConsultant}</p>
+        <p class="score-scope-note">Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.</p>
       </div>
     </div>
     ${mentionScoreProvisoireHtml()}
@@ -5107,6 +5260,7 @@ function genererRapport(){
     <div class="chapitre">Étape 2 · Pourquoi ce score</div>
     <h1 class="rapport-title">Pourquoi obtenez-vous ce score ?</h1>
     ${benchmarkBloc}
+    <p class="rapport-subtitle" style="margin-top:8px">${phraseTransitionPage2(categoriesTriees)}</p>
     <div class="next-hint">Page suivante : le détail des points analysés <b>→</b></div>
     ${pied(2)}
   </div>
@@ -5118,8 +5272,8 @@ function genererRapport(){
     <h1 class="rapport-title">Ce que nous avons analysé</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${entreprise} au crible de ${nbControles} vérifications — les mêmes que fait ${personaSecteur(activite)}, sans s'en rendre compte, avant de choisir qui appeler pour ${secteurActiviteNaturel(activite)}${ville ? ", autour de " + ville : ""}.</p>
     ${checklist.html}
-    <p class="rapport-explication rapport-explication--methode">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
-    <p class="rapport-explication rapport-explication--reassurance">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.</p>
+    <p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client qui consulte votre fiche, compare les informations disponibles et observe les entreprises concurrentes.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business : ${checklist.inconnus > 1 ? "ils restent" : "il reste"} donc volontairement à confirmer, plutôt que présenté comme un défaut.` : ""}</p>
+    <p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps. Nous avons isolé les trois actions les plus susceptibles d'améliorer rapidement la clarté et la crédibilité de votre fiche.</p>
     <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
     ${pied(3)}
   </div>
@@ -5143,16 +5297,12 @@ function genererRapport(){
     <h2 style="margin:12px 0 5px;font-size:.96rem">Ce que ces trois priorités peuvent améliorer</h2>
     ${beneficesActions}
     <div class="paid-audit-box">
-      <h2>Ce diagnostic gratuit couvre uniquement les freins visibles de l'extérieur.</h2>
-      <p>L’Audit Google Business approfondit cette lecture avec une analyse structurée de plus de 20 critères, notamment :</p>
-      <div class="teaser-grid">
-        <span>cohérence des catégories</span><span>stratégie d'avis</span>
-        <span>SEO local</span><span>optimisation des services</span>
-        <span>questions / réponses (FAQ)</span><span>publications</span>
-        <span>photos</span><span>mots-clés</span>
-        <span>liens d'action (devis, RDV)</span><span>signaux de confiance</span>
+      <h2>Ce que le diagnostic gratuit ne permet pas encore de déterminer</h2>
+      <p>Ce diagnostic couvre les freins visibles de l'extérieur. Certains éléments ne peuvent être établis qu'avec une analyse plus poussée :</p>
+      <div class="teaser-grid${elementsRestants.length <= 3 ? " teaser-grid--compact" : ""}">
+        ${elementsRestants.map(txt => `<span>${txt}</span>`).join("")}
       </div>
-      <p class="teaser-more">…et de nombreux autres critères ayant un impact direct sur votre visibilité.</p>
+      <p class="teaser-more">L'Audit complet transforme ces constats en plan d'action personnalisé : vous savez précisément quoi modifier, dans quel ordre et avec quels contenus.</p>
     </div>
     <div class="next-hint">Page suivante : deux façons de passer à l'action <b>→</b></div>
     ${pied(5)}
@@ -5166,27 +5316,28 @@ function genererRapport(){
     <p class="rapport-subtitle">Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${entreprise}.</p>
     ${projectionBloc}
     ${effortBloc}
-    <div class="choice-note">Le Pack permet de corriger immédiatement les priorités détectées, sans que vous ayez à modifier la fiche vous-même.</div>
+    <div class="choice-note">Le Pack permet de prendre en charge les priorités détectées, sans que vous ayez à modifier la fiche vous-même.</div>
     <div class="offer-grid">
-      <div class="offer-card offer-choice">
+      <div class="offer-card offer-choice primary">
         <span class="offer-badge">Je le fais moi-même</span>
-        <h3>Audit Efficia complet</h3>
-        <div class="offer-price">99 €</div>
+        <h3>Audit complet Google Business</h3>
+        <div class="offer-price">99 € <small>TTC</small></div>
         <p class="offer-main">Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.</p>
         <ul class="offer-check">
-          <li><span><strong>Analyse structurée</strong> — plus de 20 critères passés en revue</span></li>
-          <li><span><strong>Plan d'action détaillé</strong>, prêt à appliquer</span></li>
-          <li><span><strong>Ordre précis des priorités</strong></span></li>
-          <li><span><strong>Recommandations point par point</strong></span></li>
+          <li><span><strong>Analyse détaillée</strong> de la fiche</span></li>
+          <li><span><strong>Comparaison</strong> avec les concurrents pertinents</span></li>
+          <li><span><strong>Corrections classées par priorité</strong></span></li>
+          <li><span><strong>Textes et recommandations personnalisés</strong></span></li>
+          <li><span><strong>Plan d'action directement applicable</strong></span></li>
         </ul>
-        <p class="offer-note">Prévoyez ensuite ${formatMinutes(tempsDiy)} au total pour appliquer les recommandations vous-même, selon les éléments déjà disponibles et les vérifications nécessaires.</p>
-        ${paymentButtonHtml({url:auditPaymentUrl, label:"Recevoir mon Audit complet", variant:"audit"})}
+        <p class="offer-note">Prévoyez ensuite ${formatMinutes(tempsDiy)} au total pour appliquer les recommandations vous-même, selon les éléments déjà disponibles et les vérifications nécessaires.${deductionNote ? " " + deductionNote : ""}</p>
+        ${paymentButtonHtml({url:auditPaymentUrl, label:"Je veux savoir quoi corriger en premier", variant:"audit"})}
       </div>
-      <div class="offer-card offer-choice primary">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px"><span class="offer-badge" style="margin-bottom:0">Efficia s'occupe de tout</span><span class="offer-reco">Recommandé</span></div>
+      <div class="offer-card offer-choice">
+        <span class="offer-badge">Efficia s'occupe de tout</span>
         <h3>Pack Visibilité Google</h3>
         <div class="offer-price">349 €</div>
-        <p class="offer-main">Nous réalisons les optimisations à votre place.</p>
+        <p class="offer-main">Vous préférez que les optimisations soient prises en charge ? Nous réalisons les optimisations à votre place.</p>
         <ul class="offer-check">
           <li><span><strong>Optimisation complète</strong> de votre fiche par nos soins</span></li>
           <li><span><strong>Description, services et catégories</strong> retravaillés</span></li>

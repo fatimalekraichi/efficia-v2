@@ -37,17 +37,17 @@ function pageFixture({ business, unknown = false, longLabels = false }) {
     }
     return `<div class="chk-rubrique"><h3>${escapeHtml(title)}<span>0/${items.length} conformes</span></h3>${items.map((label) => `<div class="chk-item"><span class="chk-ic chk-unknown">○</span><span>${escapeHtml(label)}</span></div>`).join("")}</div>`;
   }).join("");
-  const unknownSuffix = unknown ? " 3 éléments restent à confirmer. Ils ne sont vérifiables que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet." : "";
+  const unknownSuffix = unknown ? " 3 éléments restent à confirmer. Ils ne sont vérifiables que depuis l'intérieur du compte Google Business : ils restent donc volontairement à confirmer, plutôt que présenté comme un défaut." : "";
 
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action">
     <div class="rapport-header"><div class="rapport-logo" style="height:52px">Efficia Digital</div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
     <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Ce que nous avons analysé</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 29 vérifications — les mêmes que fait un particulier, sans s'en rendre compte, avant de choisir qui appeler pour des travaux d’électricité, autour de Arlon.</p>
-    <div class="chk-compteur"><span>✓ 15 points conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
+    <div class="chk-compteur"><span>✓ 15 éléments conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
     <div class="chk-grid">${cards}</div>
     <div class="chk-legend"><strong>Légende</strong> — ✓ conforme&nbsp;&nbsp;·&nbsp;&nbsp;! à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;✕ prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;○ à confirmer manuellement.</div>
-    <p class="rapport-explication rapport-explication--methode">Reproduire ces vérifications manuellement suppose de contrôler chaque rubrique de la fiche, de tester les recherches en navigation neutre et de relever les fiches concurrentes — comptez environ 2 h 30 pour un œil entraîné.${unknownSuffix}</p>
-    <p class="rapport-explication rapport-explication--reassurance">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.</p>
+    <p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client qui consulte votre fiche, compare les informations disponibles et observe les entreprises concurrentes.${unknownSuffix}</p>
+    <p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps. Nous avons isolé les trois actions les plus susceptibles d'améliorer rapidement la clarté et la crédibilité de votre fiche.</p>
     <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
     <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page 3/6</span></div>
   </div></div><output id="layout-result"></output><script>
@@ -71,8 +71,9 @@ test("la correction de page 3 reste locale et conserve le contrôle anti-débord
   assert.doesNotMatch(css, /\.page-action[^{}]*overflow\s*:\s*hidden/u);
   assert.match(generator, /if\(contentBottom > footerTop - 12\)/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--methode">Reproduire ces vérifications manuellement/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--reassurance">Rassurez-vous/u);
+  assert.match(generator, /<p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client/u);
+  assert.match(generator, /<p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps/u);
+  assert.doesNotMatch(generator, /rapport-explication--reassurance">Rassurez-vous/u);
 });
 
 test("page 3 : les scénarios variables restent au-dessus du footer sans coupe ni chevauchement", { skip: !existsSync(chrome) }, () => {
