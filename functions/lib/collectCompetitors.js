@@ -1,5 +1,5 @@
 // Collecte concurrentielle locale Outscraper (Appel B).
-// Reçoit { activite, ville, placeIdCible, cidCible, urlCible, apiKey }, renvoie :
+// Reçoit { activite, ville, requete, placeIdCible, cidCible, urlCible, apiKey }, renvoie :
 //   succès -> { ok: true, requete, position, concurrents }
 //   erreur -> { ok: false, code, error, status? }
 // placeIdCible/cidCible/urlCible identifient la fiche déjà analysée (Appel A) : toute fiche brute
@@ -35,12 +35,16 @@ function firstPhotoUrl(place) {
 }
 
 function mapCompetitor(place) {
+  const services = Array.isArray(place.services) ? place.services.length : toNumberOrNull(place.services_count);
+  const publications = Array.isArray(place.posts) ? place.posts.length : toNumberOrNull(place.posts_count);
   return {
     name: place.name || "",
     place_id: place.place_id || "",
     rating: toNumberOrNull(place.rating),
     reviews: toNumberOrNull(place.reviews),
     photos_count: toNumberOrNull(place.photos_count),
+    services_count: services,
+    posts_count: publications,
     photo: firstPhotoUrl(place),
   };
 }
@@ -96,7 +100,10 @@ function hasSponsorshipClassification(place) {
 
 export function addSearchResultContext(normalized, competitorResult) {
   const base = normalized && typeof normalized === "object" ? normalized : {};
-  if (competitorResult?.positionKind !== "organic") return base;
+  if (competitorResult?.positionKind !== "organic") {
+    const { search_result_context: _obsoleteSearchResultContext, ...withoutSearchResultContext } = base;
+    return withoutSearchResultContext;
+  }
   return {
     ...base,
     search_result_context: {
@@ -136,12 +143,13 @@ function buildIsSameBusiness({ placeIdCible, cidCible, urlCible }) {
 }
 
 export async function collectCompetitors({
-  activite, ville, placeIdCible, cidCible, urlCible, apiKey,
+  activite, ville, requete: requeteExplicite, placeIdCible, cidCible, urlCible, apiKey,
   timeoutMs = DEFAULT_TIMEOUT_MS, suppressSensitiveLogs = false,
 } = {}) {
   const activiteTrim = (activite || "").trim();
   const villeTrim = (ville || "").trim();
-  if (!activiteTrim || !villeTrim) {
+  const requeteTrim = (requeteExplicite || "").trim();
+  if (!requeteTrim && (!activiteTrim || !villeTrim)) {
     return { ok: false, code: 400, error: "Missing required parameters: activite, ville." };
   }
 
@@ -151,7 +159,7 @@ export async function collectCompetitors({
     return { ok: false, code: 500, error: "Server configuration error." };
   }
 
-  const requete = `${activiteTrim} ${villeTrim}`;
+  const requete = requeteTrim || `${activiteTrim} ${villeTrim}`;
   const url = new URL(OUTSCRAPER_HOST + OUTSCRAPER_SEARCH_PATH);
   url.searchParams.set("query", requete);
   url.searchParams.set("organizationsPerQueryLimit", "10");

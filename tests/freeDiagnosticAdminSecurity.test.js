@@ -351,6 +351,107 @@ test("un Diagnostic gratuit manuel déjà collecté réutilise son état sans fo
   }
 });
 
+test("la relance Électricien Attert remplace atomiquement position, top 3 et benchmark sans altérer la demande ni le brouillon", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, { companyName: "B&V électricité", city: "Attert", googleUrl: "" });
+  markAnalysisCollected(db);
+  db.sqlite.prepare(`
+    UPDATE analyses SET search_query = 'Fournisseur d’électricité Attert', local_position = 8,
+      competitors_json = '[{"name":"Ancien concurrent","rating":3.1,"reviews":8,"photos_count":2}]',
+      avg_rating = 3.1, avg_reviews = 8, avg_photos = 2
+    WHERE analysis_id = ?
+  `).run(ANALYSIS_ID);
+  db.sqlite.prepare(`
+    INSERT INTO audit_drafts (
+      draft_id, analysis_id, status, report_type, answers_version, answers_json,
+      current_step, created_at, updated_at
+    ) VALUES ('preserved-search-draft', ?, 'draft', 'free',
+      'score-efficia-questionnaire-v4', '{"responses":{"nomConforme":{"points":0}},"contact":"Julie"}',
+      'questionnaire', '2026-08-25T08:00:00.000Z', '2026-08-25T08:00:00.000Z')
+  `).run(ANALYSIS_ID);
+  const requestBefore = db.sqlite.prepare("SELECT * FROM diagnostic_requests WHERE analysis_id = ?").get(ANALYSIS_ID);
+  const draftBefore = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID);
+  const originalFetch = globalThis.fetch;
+  let providerQuery = "";
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    providerQuery = url.searchParams.get("query") || "";
+    assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
+    return Response.json({ data: [[
+      { name:"B&V électricité", place_id:"place-target", rating:4.7, reviews:82, photos_count:31, sponsored:false },
+      { name:"Électricité du Nord — Dépannage et installations résidentielles", place_id:"new-1", rating:4.9, reviews:210, photos_count:80, services:["a","b","c"], posts:[1,2], sponsored:false },
+      { name:"Entreprise Générale d’Électricité et Domotique de la Vallée d’Attert", place_id:"new-2", rating:4.6, reviews:95, photos_count:42, services:["a"], posts:[1], sponsored:false },
+      { name:"Solutions électriques industrielles, photovoltaïques et bornes de recharge", place_id:"new-3", rating:4.8, reviews:140, photos_count:61, services:["a","b"], posts:[], sponsored:false },
+    ]] });
+  };
+  try {
+    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: {
+      operation: "refresh_search",
+      analysisId: ANALYSIS_ID,
+      company: "B&V électricité",
+      city: "Attert",
+      activity: "Électricien",
+      searchQuery: "Électricien Attert",
+    } }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(providerQuery, "Électricien Attert");
+    assert.equal(body.operation, "refresh_search");
+    assert.equal(body.business.searchQuery, "Électricien Attert");
+    assert.equal(body.business.localPosition, 1);
+    assert.equal(body.business.competitors.length, 3);
+    assert.deepEqual(body.business.competitors.map((item) => item.services_count), [3, 1, 2]);
+    assert.match(body.searchAnalyzedAt, /^2026-|^20\d{2}-/);
+
+    const row = db.sqlite.prepare(`
+      SELECT activity, search_query, local_position, competitors_json, avg_rating, avg_reviews,
+             avg_photos, rating_gap, reviews_gap, photos_gap, top_competitor_name, normalized_json
+      FROM analyses WHERE analysis_id = ?
+    `).get(ANALYSIS_ID);
+    assert.equal(row.activity, "Pâtisserie");
+    assert.equal(JSON.parse(row.normalized_json).category, "Pâtisserie");
+    assert.equal(row.search_query, "Électricien Attert");
+    assert.equal(row.local_position, 1);
+    assert.equal(JSON.parse(row.competitors_json).length, 3);
+    assert.equal(row.avg_rating, 4.77);
+    assert.equal(row.avg_reviews, 148);
+    assert.equal(row.avg_photos, 61);
+    assert.equal(row.rating_gap, -0.07);
+    assert.equal(row.reviews_gap, -66);
+    assert.equal(row.photos_gap, -30);
+    assert.equal(row.top_competitor_name, "Électricité du Nord — Dépannage et installations résidentielles");
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM diagnostic_requests WHERE analysis_id = ?").get(ANALYSIS_ID), requestBefore);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID), draftBefore);
+    assert.equal(db.count("analyses"), 1);
+    assert.equal(db.count("orders"), 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("un échec de relance conserve intégralement les anciens résultats et le brouillon", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, { companyName: "B&V électricité", city: "Attert", googleUrl: "" });
+  markAnalysisCollected(db);
+  db.sqlite.prepare("UPDATE analyses SET search_query = 'Ancienne recherche', local_position = 7 WHERE analysis_id = ?").run(ANALYSIS_ID);
+  seedManualMetadataAndDraft(db);
+  const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID);
+  const draftBefore = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID);
+  const restoreFetch = installProviderFixture({ fail: true });
+  try {
+    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: {
+      operation:"refresh_search", analysisId:ANALYSIS_ID, company:"B&V électricité",
+      city:"Attert", activity:"Électricien", searchQuery:"Électricien Attert"
+    } }));
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error, "SEARCH_REFRESH_FAILED");
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID), before);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID), draftBefore);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("un échec fournisseur manuel conserve le brouillon et les métadonnées avec une référence sûre", async () => {
   const db = new LocalD1();
   seedAnalysis(db, { withRequest: false, companyName: "Maison Test", city: "Bruxelles", googleUrl: "" });

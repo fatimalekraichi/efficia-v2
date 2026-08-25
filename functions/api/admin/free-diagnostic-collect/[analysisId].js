@@ -4,6 +4,7 @@ import { collectFiche } from "../../../lib/collectFiche.js";
 import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
 import { loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
+import { benchmarkEngine } from "../../../lib/benchmarkEngine.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
 
@@ -83,6 +84,131 @@ function isCollectedFiche(fiche) {
   return Boolean(name && validPlaceId);
 }
 
+function normalizeSearchRefreshPayload(payload) {
+  if (payload?.operation !== "refresh_search") return null;
+  const searchQuery = normalizeText(payload.searchQuery).slice(0, 240);
+  const activity = normalizeText(payload.activity).slice(0, 160);
+  const city = normalizeText(payload.city).slice(0, 160);
+  const company = normalizeText(payload.company).slice(0, 200);
+  if (!searchQuery || !activity || !city || !company) return false;
+  return { searchQuery, activity, city, company };
+}
+
+async function refreshSearchAnalysis({ context, db, analysis, analysisId, payload }) {
+  const normalized = analysis.business?.normalized || {};
+  const fiche = analysis.business?.fiche || {};
+  const result = await collectCompetitors({
+    requete: payload.searchQuery,
+    activite: payload.activity,
+    ville: payload.city,
+    placeIdCible: analysis.business?.placeId || normalized.place_id || fiche.place_id,
+    cidCible: normalized.cid || fiche.cid,
+    urlCible: normalized.location_link || fiche.location_link,
+    apiKey: context.env.OUTSCRAPER_API_KEY,
+    suppressSensitiveLogs: true,
+  });
+  if (!result.ok) {
+    return technicalFailure({
+      phase: "competitor_refresh",
+      errorCode: "SEARCH_REFRESH_FAILED",
+      status: 502,
+    });
+  }
+
+  const competitorsJson = JSON.stringify(result.concurrents);
+  const benchmark = benchmarkEngine({
+    rating: analysis.business?.rating,
+    reviews: analysis.business?.reviews,
+    photos_count: analysis.business?.photosCount,
+    competitors_json: competitorsJson,
+  });
+  const updatedAt = new Date().toISOString();
+  const normalizedWithContext = addSearchResultContext(normalized, result);
+  const state = buildFreeDiagnosticCollectionState({
+    ...analysis,
+    business: {
+      ...analysis.business,
+      searchQuery: result.requete,
+      localPosition: result.position,
+      positionKind: result.positionKind,
+      sponsoredResultsExcluded: result.sponsoredResultsExcluded,
+      competitors: result.concurrents,
+      normalized: normalizedWithContext,
+    },
+    benchmark: {
+      ...analysis.benchmark,
+      score: benchmark.benchmark_score,
+      averages: { rating: benchmark.avg_rating, reviews: benchmark.avg_reviews, photos: benchmark.avg_photos },
+      gaps: { rating: benchmark.rating_gap, reviews: benchmark.reviews_gap, photos: benchmark.photos_gap },
+      percentiles: { rating: benchmark.rating_percentile, reviews: benchmark.reviews_percentile, photos: benchmark.photos_percentile },
+      topCompetitor: {
+        name: benchmark.top_competitor_name,
+        rating: benchmark.top_competitor_rating,
+        reviews: benchmark.top_competitor_reviews,
+      },
+      completedAt: updatedAt,
+    },
+    timestamps: { ...analysis.timestamps, updatedAt, benchmarkCompletedAt: updatedAt },
+  });
+  if (!state) {
+    return technicalFailure({
+      phase: "search_refresh_validation",
+      errorCode: "ANALYSIS_READ_FAILED",
+      status: 500,
+    });
+  }
+  try {
+    await db.prepare(`
+      UPDATE analyses
+      SET search_query = ?, local_position = ?, competitors_json = ?, normalized_json = ?,
+          benchmark_score = ?, avg_rating = ?, avg_reviews = ?, avg_photos = ?,
+          rating_gap = ?, reviews_gap = ?, photos_gap = ?, rating_percentile = ?,
+          reviews_percentile = ?, photos_percentile = ?, top_competitor_name = ?,
+          top_competitor_rating = ?, top_competitor_reviews = ?, benchmark_completed_at = ?,
+          updated_at = ?
+      WHERE analysis_id = ? AND report_type = 'free' AND status = 'awaiting_review'
+    `).bind(
+      result.requete,
+      result.position,
+      competitorsJson,
+      JSON.stringify(normalizedWithContext),
+      benchmark.benchmark_score,
+      benchmark.avg_rating,
+      benchmark.avg_reviews,
+      benchmark.avg_photos,
+      benchmark.rating_gap,
+      benchmark.reviews_gap,
+      benchmark.photos_gap,
+      benchmark.rating_percentile,
+      benchmark.reviews_percentile,
+      benchmark.photos_percentile,
+      benchmark.top_competitor_name,
+      benchmark.top_competitor_rating,
+      benchmark.top_competitor_reviews,
+      updatedAt,
+      updatedAt,
+      analysisId,
+    ).run();
+  } catch (error) {
+    return technicalFailure({
+      phase: "search_refresh_update",
+      errorCode: "ANALYSIS_UPDATE_FAILED",
+      status: 500,
+      error,
+    });
+  }
+
+  return jsonResponse({
+    success: true,
+    analysisId,
+    status: analysis.status,
+    reportType: "free",
+    operation: "refresh_search",
+    searchAnalyzedAt: updatedAt,
+    ...state,
+  }, 200, { "Cache-Control": "no-store" });
+}
+
 async function clearFailedCollection(db, analysisId, { company, city, activity }) {
   await db.prepare(`
     UPDATE analyses
@@ -134,6 +260,24 @@ export async function onRequestPost(context) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_REQUEST_REQUIRED" }, 403);
   }
 
+
+  let payload = {};
+  try {
+    payload = await context.request.json();
+  } catch {
+    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
+  }
+  const searchRefresh = normalizeSearchRefreshPayload(payload);
+  if (searchRefresh === false) {
+    return jsonResponse({ success: false, error: "INVALID_SEARCH_REFRESH" }, 400);
+  }
+  if (searchRefresh) {
+    if (!buildFreeDiagnosticCollectionState(analysis)) {
+      return jsonResponse({ success: false, error: "INITIAL_COLLECTION_REQUIRED" }, 409);
+    }
+    return refreshSearchAnalysis({ context, db, analysis, analysisId, payload: searchRefresh });
+  }
+
   // La création administrative passe déjà par /api/analyze puis /api/benchmark.
   // Si ces données sont exploitables, le bouton de l'ancien questionnaire ne
   // doit ni rappeler le fournisseur, ni réécrire l'analyse. Ce court-circuit
@@ -150,12 +294,6 @@ export async function onRequestPost(context) {
     }, 200, { "Cache-Control": "no-store" });
   }
 
-  let payload = {};
-  try {
-    payload = await context.request.json();
-  } catch {
-    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
-  }
   const manualActivity = normalizeText(payload?.activity).slice(0, 160);
   const googleBusinessUrl = normalizeText(diagnosticRequest?.google_business_url);
   const requestedCompany = usableText(diagnosticRequest?.company_name)

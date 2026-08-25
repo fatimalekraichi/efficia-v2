@@ -84,7 +84,7 @@ function createLegacyHarness(response) {
 
 test("les questionnaires gratuit et Premium affichent chacun un contrôle de brouillon persistant", () => {
   const freeToolbar = sliceBetween(legacyHtml, '<div class="score-flottant">', '<div class="conteneur">');
-  const prospectCard = sliceBetween(legacyHtml, '<div class="conteneur">', '<div class="carte">\n      <h2 style="margin-bottom:6px">Données observées');
+  const prospectCard = sliceBetween(legacyHtml, '<div class="conteneur">', '<div class="carte" id="carte-donnees-observees">\n      <h2 style="margin-bottom:6px">Données observées');
   assert.equal((legacyHtml.match(/id="btn-brouillon-d1"/g) || []).length, 1);
   assert.equal((premiumHtml.match(/data-draft-save/g) || []).length, 1);
   assert.match(freeToolbar, /score-actions[\s\S]*Générer le Diagnostic \(gratuit\)[\s\S]*Aperçu avant impression[\s\S]*Enregistrer le brouillon/);

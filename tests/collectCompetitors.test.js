@@ -301,3 +301,25 @@ test("la métadonnée organique n'est persistée que lorsque la classification p
     sponsoredResultsExcluded: 0,
   }), { name: "Cible" });
 });
+
+test("une recherche personnalisée est transmise au fournisseur sans être reconstruite côté client", async () => {
+  const originalFetch = globalThis.fetch;
+  let receivedQuery = "";
+  globalThis.fetch = async (input) => {
+    receivedQuery = new URL(String(input)).searchParams.get("query") || "";
+    return Response.json({ data: [[{ name: "Concurrent", place_id: "other" }]] });
+  };
+  try {
+    const result = await collectCompetitors({
+      activite: "Électricien",
+      ville: "Attert",
+      requete: "Dépannage électricien agréé Attert",
+      apiKey: "fixture-key",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(receivedQuery, "Dépannage électricien agréé Attert");
+    assert.equal(result.requete, "Dépannage électricien agréé Attert");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
