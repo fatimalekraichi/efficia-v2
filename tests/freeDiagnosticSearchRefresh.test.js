@@ -40,11 +40,11 @@ test("la demande historique et les réponses manuelles ne sont pas remplacées p
   assert.doesNotMatch(refreshFunction, /commande-admin-liee|efficiaAdminOrderContext|appliquerReponses|p-contact/);
   assert.match(html, /Activité : \$\{escapeHtml\(contexte\.activity/);
   assert.match(html, /criteresTouchesManuellement\.has\(criterion\.id\)/);
-  assert.match(html, /reponses\[cr\.key\]\.statut === "manuelle"/);
+  assert.match(html, /saved\.source === "manual" \|\| saved\.statut === "manuelle"/);
 });
 
 test("la catégorie Google observée reste distincte de l’activité confirmée", () => {
-  assert.match(route, /normalizedWithContext = addSearchResultContext\(normalized, result\)/);
+  assert.match(route, /normalizedWithCategories = mergeCategoryObservation\(normalized, result\.targetObservation, payload\.activity\)/);
   const refreshSql = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   assert.doesNotMatch(refreshSql, /SET[^`]*activity\s*=/);
 });

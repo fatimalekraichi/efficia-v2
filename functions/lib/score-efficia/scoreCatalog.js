@@ -6,6 +6,7 @@ import {
   QUESTIONNAIRE_VERSION,
   REVIEW_DEPENDENT_KEYS,
 } from "./questionnaireRules.js";
+import { classifyPrimaryCategory, classifySecondaryCategories } from "../categoryEvidence.js";
 
 function optionValueForIndex(index, total, explicitValue = null) {
   if (explicitValue === "no_reviews") return "no_reviews";
@@ -57,11 +58,11 @@ function wasObserved(normalized, keys) {
   return hasNormalizedKey(normalized, keys);
 }
 
-function getSecondaryCategories(normalized) {
+function getSecondaryCategories(normalized, includeGenericCategories = false) {
   return [...new Set([
     ...asArray(normalized?.secondary_categories),
     ...asArray(normalized?.subtypes),
-    ...asArray(normalized?.categories),
+    ...(includeGenericCategories ? asArray(normalized?.categories) : []),
   ])];
 }
 
@@ -150,15 +151,22 @@ export function buildScoreCatalog() {
   };
 }
 
-export function buildScorePrefill(analysis = {}) {
+export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = false } = {}) {
   const business = analysis.business || {};
   const normalized = business.normalized || {};
   const benchmark = analysis.benchmark || {};
   const competitors = Array.isArray(business.competitors) ? business.competitors : [];
   const criteria = [];
 
-  const primaryCategory = getNormalizedValue(normalized, ["category", "type", "main_category"]) || business.activity;
-  const secondaryCategories = getSecondaryCategories(normalized);
+  const confirmedActivity = verifiedCategoryEvidence
+    ? (getNormalizedValue(normalized, ["confirmed_activity"]) || getNormalizedValue(business, ["confirmedActivity"]))
+    : null;
+  const primaryCategory = getNormalizedValue(normalized, ["category", "type", "main_category"])
+    || (!verifiedCategoryEvidence ? business.activity : null);
+  const secondaryCategories = getSecondaryCategories(normalized, !verifiedCategoryEvidence);
+  const secondaryAvailability = wasObserved(normalized, ["secondary_categories", "subtypes"])
+    ? "available"
+    : "unavailable";
   const workingHours = getNormalizedValue(normalized, ["working_hours", "hours"]);
   const website = getNormalizedValue(normalized, ["website", "site"]);
   const phone = getNormalizedValue(normalized, ["phone", "phone_number"]);
@@ -181,16 +189,55 @@ export function buildScorePrefill(analysis = {}) {
     serviceAreaVerification: "unknown",
   };
 
-  addCriterion(criteria, primaryCategory
-    ? optionForKey("categoriePrincipale", 0, "observed", { value: primaryCategory })
-    : notVerified("categoriePrincipale"));
-
-  if (secondaryCategories.length) {
-    addCriterion(criteria, optionForKey("categoriesSecondaires", 0, "observed", { value: secondaryCategories }));
-  } else if (wasObserved(normalized, ["secondary_categories", "subtypes", "categories"])) {
-    addCriterion(criteria, optionForKey("categoriesSecondaires", 1, "observed", { value: [] }));
+  if (!verifiedCategoryEvidence) {
+    addCriterion(criteria, primaryCategory
+      ? optionForKey("categoriePrincipale", 0, "observed", { value: primaryCategory })
+      : notVerified("categoriePrincipale"));
+    if (secondaryCategories.length) {
+      addCriterion(criteria, optionForKey("categoriesSecondaires", 0, "observed", { value: secondaryCategories }));
+    } else if (wasObserved(normalized, ["secondary_categories", "subtypes", "categories"])) {
+      addCriterion(criteria, optionForKey("categoriesSecondaires", 1, "observed", { value: [] }));
+    } else {
+      addCriterion(criteria, notVerified("categoriesSecondaires"));
+    }
   } else {
-    addCriterion(criteria, notVerified("categoriesSecondaires"));
+    const primaryDecision = classifyPrimaryCategory(confirmedActivity, primaryCategory);
+    const primaryOptionIndex = primaryDecision.status === "precise"
+      ? 0
+      : (primaryDecision.status === "approximate" ? 1 : (primaryDecision.status === "incompatible" ? 2 : null));
+    addCriterion(criteria, primaryOptionIndex === null
+      ? notVerified("categoriePrincipale", "unknown", {
+          activity: confirmedActivity || null,
+          observedCategory: primaryCategory || null,
+        })
+      : optionForKey("categoriePrincipale", primaryOptionIndex, "auto", {
+          activity: confirmedActivity,
+          observedCategory: primaryCategory,
+          decision: primaryDecision.status,
+        }));
+
+    const secondaryDecision = classifySecondaryCategories({
+      activity: confirmedActivity,
+      primaryCategory,
+      secondaryCategories,
+      availability: secondaryAvailability,
+    });
+    if (secondaryDecision.status === "relevant") {
+      addCriterion(criteria, optionForKey("categoriesSecondaires", 0, "auto", {
+        categories: secondaryCategories,
+        relevant: secondaryDecision.relevant,
+      }));
+    } else if (secondaryDecision.status === "none" || secondaryDecision.status === "irrelevant") {
+      addCriterion(criteria, optionForKey("categoriesSecondaires", 1, "auto", {
+        categories: secondaryCategories,
+        decision: secondaryDecision.status,
+      }));
+    } else {
+      addCriterion(criteria, notVerified("categoriesSecondaires", "unknown", {
+        availability: secondaryAvailability,
+        categories: secondaryCategories,
+      }));
+    }
   }
 
   addCriterion(criteria, workingHours

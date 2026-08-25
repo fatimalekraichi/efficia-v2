@@ -256,15 +256,15 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
       "descriptionRemplie", "servicesPresents",
     ]);
     assert.equal(body.scorePrefill.criteria.length, 29);
-    assert.equal(automaticCriteria.length, 7);
-    assert.equal(manualCriteria.length, 22);
-    assert.equal(automaticCriteria.filter((criterion) => prefilledKeys.has(criterion.key)).length, 2);
+    assert.equal(automaticCriteria.length, 6);
+    assert.equal(manualCriteria.length, 23);
+    assert.equal(automaticCriteria.filter((criterion) => prefilledKeys.has(criterion.key)).length, 1);
     assert.equal(automaticCriteria.filter((criterion) => !prefilledKeys.has(criterion.key)).length, 5);
     const scoreDetail = calculateScoreDetail(Object.fromEntries(
       automaticCriteria.map((criterion) => [criterion.key, criterion.points]),
     ));
-    assert.equal(Math.round(scoreDetail.total), 26);
-    assert.equal(scoreDetail.repondus, 7);
+    assert.equal(Math.round(scoreDetail.total), 22);
+    assert.equal(scoreDetail.repondus, 6);
     assert.equal(scoreDetail.totalCrit, 29);
     for (const key of [
       "revendiquee", "horaires", "contact", "adresse", "attributs", "nap",
@@ -351,9 +351,9 @@ test("un Diagnostic gratuit manuel déjà collecté réutilise son état sans fo
   }
 });
 
-test("la relance Électricien Attert remplace atomiquement position, top 3 et benchmark sans altérer la demande ni le brouillon", async () => {
+test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme inadaptée et conserve atomiquement le reste", async () => {
   const db = new LocalD1();
-  seedAnalysis(db, { companyName: "B&V électricité", city: "Attert", googleUrl: "" });
+  seedAnalysis(db, { companyName: "Bivert Alain", city: "Attert", googleUrl: "" });
   markAnalysisCollected(db);
   db.sqlite.prepare(`
     UPDATE analyses SET search_query = 'Fournisseur d’électricité Attert', local_position = 8,
@@ -378,7 +378,7 @@ test("la relance Électricien Attert remplace atomiquement position, top 3 et be
     providerQuery = url.searchParams.get("query") || "";
     assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
     return Response.json({ data: [[
-      { name:"B&V électricité", place_id:"place-target", rating:4.7, reviews:82, photos_count:31, sponsored:false },
+      { name:"Bivert Alain", place_id:"place-target", rating:4.7, reviews:82, photos_count:31, category:"Fournisseur d’électricité", location_link:"https://www.google.com/maps/place/Bivert-Alain", sponsored:false },
       { name:"Électricité du Nord — Dépannage et installations résidentielles", place_id:"new-1", rating:4.9, reviews:210, photos_count:80, services:["a","b","c"], posts:[1,2], sponsored:false },
       { name:"Entreprise Générale d’Électricité et Domotique de la Vallée d’Attert", place_id:"new-2", rating:4.6, reviews:95, photos_count:42, services:["a"], posts:[1], sponsored:false },
       { name:"Solutions électriques industrielles, photovoltaïques et bornes de recharge", place_id:"new-3", rating:4.8, reviews:140, photos_count:61, services:["a","b"], posts:[], sponsored:false },
@@ -388,7 +388,7 @@ test("la relance Électricien Attert remplace atomiquement position, top 3 et be
     const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: {
       operation: "refresh_search",
       analysisId: ANALYSIS_ID,
-      company: "B&V électricité",
+      company: "Bivert Alain",
       city: "Attert",
       activity: "Électricien",
       searchQuery: "Électricien Attert",
@@ -399,6 +399,12 @@ test("la relance Électricien Attert remplace atomiquement position, top 3 et be
     assert.equal(body.operation, "refresh_search");
     assert.equal(body.business.searchQuery, "Électricien Attert");
     assert.equal(body.business.localPosition, 1);
+    assert.equal(body.business.confirmedActivity, "Électricien");
+    assert.equal(body.business.observedPrimaryCategory, "Fournisseur d’électricité");
+    assert.equal(body.business.secondaryCategoriesStatus, "unavailable");
+    assert.equal(body.business.mapsVerification.url, "https://www.google.com/maps/place/Bivert-Alain");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "categoriePrincipale").label, "Inadaptée / générique");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "categoriesSecondaires").value, "not_verified");
     assert.equal(body.business.competitors.length, 3);
     assert.deepEqual(body.business.competitors.map((item) => item.services_count), [3, 1, 2]);
     assert.match(body.searchAnalyzedAt, /^2026-|^20\d{2}-/);
@@ -409,7 +415,8 @@ test("la relance Électricien Attert remplace atomiquement position, top 3 et be
       FROM analyses WHERE analysis_id = ?
     `).get(ANALYSIS_ID);
     assert.equal(row.activity, "Pâtisserie");
-    assert.equal(JSON.parse(row.normalized_json).category, "Pâtisserie");
+    assert.equal(JSON.parse(row.normalized_json).category, "Fournisseur d’électricité");
+    assert.equal(JSON.parse(row.normalized_json).confirmed_activity, "Électricien");
     assert.equal(row.search_query, "Électricien Attert");
     assert.equal(row.local_position, 1);
     assert.equal(JSON.parse(row.competitors_json).length, 3);

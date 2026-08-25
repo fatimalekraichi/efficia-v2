@@ -94,6 +94,27 @@ function normalizeSearchRefreshPayload(payload) {
   return { searchQuery, activity, city, company };
 }
 
+function mergeCategoryObservation(base, observation, confirmedActivity) {
+  const next = { ...(base && typeof base === "object" ? base : {}) };
+  const observedFields = new Set(Array.isArray(next.observed_fields) ? next.observed_fields : []);
+  next.confirmed_activity = confirmedActivity;
+  if (normalizeText(observation?.primaryCategory)) {
+    next.category = normalizeText(observation.primaryCategory);
+    observedFields.add("category");
+  }
+  if (observation?.secondaryCategoriesStatus === "available") {
+    next.subtypes = Array.isArray(observation.secondaryCategories)
+      ? observation.secondaryCategories.map(normalizeText).filter(Boolean)
+      : [];
+    observedFields.add("subtypes");
+  }
+  if (normalizeText(observation?.locationLink)) next.location_link = normalizeText(observation.locationLink);
+  if (normalizeText(observation?.placeId)) next.place_id = normalizeText(observation.placeId);
+  if (normalizeText(observation?.cid)) next.cid = normalizeText(observation.cid);
+  next.observed_fields = [...observedFields];
+  return next;
+}
+
 async function refreshSearchAnalysis({ context, db, analysis, analysisId, payload }) {
   const normalized = analysis.business?.normalized || {};
   const fiche = analysis.business?.fiche || {};
@@ -123,7 +144,9 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     competitors_json: competitorsJson,
   });
   const updatedAt = new Date().toISOString();
-  const normalizedWithContext = addSearchResultContext(normalized, result);
+  const normalizedWithCategories = mergeCategoryObservation(normalized, result.targetObservation, payload.activity);
+  const ficheWithCategories = mergeCategoryObservation(fiche, result.targetObservation, payload.activity);
+  const normalizedWithContext = addSearchResultContext(normalizedWithCategories, result);
   const state = buildFreeDiagnosticCollectionState({
     ...analysis,
     business: {
@@ -134,6 +157,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
       sponsoredResultsExcluded: result.sponsoredResultsExcluded,
       competitors: result.concurrents,
       normalized: normalizedWithContext,
+      fiche: ficheWithCategories,
     },
     benchmark: {
       ...analysis.benchmark,
@@ -160,7 +184,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   try {
     await db.prepare(`
       UPDATE analyses
-      SET search_query = ?, local_position = ?, competitors_json = ?, normalized_json = ?,
+      SET search_query = ?, local_position = ?, competitors_json = ?, normalized_json = ?, fiche_json = ?,
           benchmark_score = ?, avg_rating = ?, avg_reviews = ?, avg_photos = ?,
           rating_gap = ?, reviews_gap = ?, photos_gap = ?, rating_percentile = ?,
           reviews_percentile = ?, photos_percentile = ?, top_competitor_name = ?,
@@ -172,6 +196,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
       result.position,
       competitorsJson,
       JSON.stringify(normalizedWithContext),
+      JSON.stringify(ficheWithCategories),
       benchmark.benchmark_score,
       benchmark.avg_rating,
       benchmark.avg_reviews,
@@ -393,6 +418,9 @@ export async function onRequestPost(context) {
   }
 
   const updatedAt = new Date().toISOString();
+  const normalizedWithConfirmedActivity = manualActivity
+    ? { ...normalized, confirmed_activity: manualActivity }
+    : normalized;
   try {
     await db.prepare(`
       UPDATE analyses
@@ -415,7 +443,7 @@ export async function onRequestPost(context) {
       competitorData.position,
       JSON.stringify(competitorData.concurrents),
       JSON.stringify(fiche),
-      JSON.stringify(addSearchResultContext(normalized, competitorData)),
+      JSON.stringify(addSearchResultContext(normalizedWithConfirmedActivity, competitorData)),
       updatedAt,
       analysisId,
     ).run();
@@ -462,4 +490,4 @@ export function onRequest(context) {
   return jsonResponse({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
 }
 
-export const __test__ = { normalizeFiche, usableText, isCollectedFiche };
+export const __test__ = { normalizeFiche, usableText, isCollectedFiche, mergeCategoryObservation };

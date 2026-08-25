@@ -4,6 +4,7 @@
 import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
 import { loadPremiumAuthorization } from "./premiumAuthorization.js";
 import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
+import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -57,6 +58,40 @@ function wasObserved(normalized, ...fields) {
     && normalized.observed_fields.some((field) => fields.includes(field));
 }
 
+function categoryList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+export function buildGoogleMapsVerificationLink({ locationLink, placeId, cid, company, address, city } = {}) {
+  if (isCanonicalGoogleMapsUrl(locationLink)) {
+    return { url: new URL(locationLink).toString(), mode: "exact", source: "location_link" };
+  }
+  const safePlaceId = String(placeId || "").trim();
+  if (/^[a-zA-Z0-9_-]{3,200}$/.test(safePlaceId) && !/^__[^_]+(?:_[^_]+)*__$/.test(safePlaceId)) {
+    const url = new URL("https://www.google.com/maps/search/");
+    url.searchParams.set("api", "1");
+    url.searchParams.set("query", String(company || "Fiche Google"));
+    url.searchParams.set("query_place_id", safePlaceId);
+    return { url: url.toString(), mode: "exact", source: "place_id" };
+  }
+  const safeCid = String(cid || "").trim();
+  if (/^[0-9]{3,40}$/.test(safeCid)) {
+    const url = new URL("https://www.google.com/maps");
+    url.searchParams.set("cid", safeCid);
+    return { url: url.toString(), mode: "exact", source: "cid" };
+  }
+  const query = [company, address || city].map((item) => String(item || "").trim()).filter(Boolean).join(" ");
+  if (!query) return { url: "", mode: "unavailable", source: "none" };
+  const url = new URL("https://www.google.com/maps/search/");
+  url.searchParams.set("api", "1");
+  url.searchParams.set("query", query);
+  return { url: url.toString(), mode: "fallback", source: "search" };
+}
+
 function analysisWithCollectedBenchmark(analysis) {
   const competitors = Array.isArray(analysis?.business?.competitors) ? analysis.business.competitors : [];
   if (!competitors.length) return analysis;
@@ -103,14 +138,33 @@ export function buildFreeDiagnosticCollectionState(analysis) {
   // Le moteur historique attend un benchmark (moyennes + écarts). Le parcours
   // gratuit persiste déjà le panel brut : on adapte ces données au contrat du
   // moteur, sans relancer le fournisseur et sans créer une seconde formule.
-  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis));
+  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis), { verifiedCategoryEvidence: true });
+  const confirmedActivity = firstNonEmpty(normalized.confirmed_activity);
+  const observedPrimaryCategory = firstNonEmpty(normalized.category, fiche.category, normalized.type, fiche.type);
+  const secondaryCategories = categoryList(normalized.subtypes ?? normalized.secondary_categories);
+  const secondaryCategoriesStatus = wasObserved(normalized, "subtypes", "secondary_categories")
+    ? "available"
+    : "unavailable";
+  const mapsVerification = buildGoogleMapsVerificationLink({
+    locationLink: firstNonEmpty(normalized.location_link, fiche.location_link),
+    placeId,
+    cid: firstNonEmpty(normalized.cid, fiche.cid),
+    company,
+    address: firstNonEmpty(normalized.address, fiche.address),
+    city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
+  });
 
   return {
     business: {
       company,
       city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
-      activity: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type, business.activity),
-      activitySource: firstNonEmpty(normalized.category, normalized.type, fiche.category, fiche.type) ? "detected" : "manual",
+      activity: firstNonEmpty(confirmedActivity, business.activity, observedPrimaryCategory),
+      activitySource: confirmedActivity ? "manual" : "detected",
+      confirmedActivity,
+      observedPrimaryCategory,
+      secondaryCategories,
+      secondaryCategoriesStatus,
+      mapsVerification,
       rating: numberOrNull(business.rating),
       reviews: numberOrNull(business.reviews),
       photosCount: numberOrNull(business.photosCount),

@@ -49,6 +49,29 @@ function mapCompetitor(place) {
   };
 }
 
+function normalizeCategoryList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function mapTargetObservation(place) {
+  if (!place || typeof place !== "object") return null;
+  const secondaryAvailable = Object.prototype.hasOwnProperty.call(place, "subtypes");
+  return {
+    primaryCategory: String(place.category || place.type || "").trim(),
+    secondaryCategories: secondaryAvailable ? normalizeCategoryList(place.subtypes) : [],
+    secondaryCategoriesStatus: secondaryAvailable ? "available" : "unavailable",
+    locationLink: String(place.location_link || "").trim(),
+    placeId: String(place.place_id || "").trim(),
+    cid: String(place.cid || place.google_id || place.googleId || "").trim(),
+  };
+}
+
 function extractPlaces(payload) {
   const data = payload && payload.data;
   if (!Array.isArray(data) || !data.length) return [];
@@ -226,6 +249,7 @@ export async function collectCompetitors({
 
   const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
   const excluded = rankedPlaces.filter((place) => isSameBusiness(place));
+  const targetObservation = mapTargetObservation(excluded[0]);
   const afterExclusion = rankedPlaces.filter((place) => !isSameBusiness(place));
 
   if (!suppressSensitiveLogs) {
@@ -252,5 +276,8 @@ export async function collectCompetitors({
     concurrents,
     positionKind: sponsorshipClassificationAvailable ? "organic" : "observed",
     sponsoredResultsExcluded: sponsoredResults.length,
+    targetObservation,
   };
 }
+
+export const __test__ = { mapTargetObservation };

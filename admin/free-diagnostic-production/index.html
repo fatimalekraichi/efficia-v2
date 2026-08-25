@@ -54,6 +54,14 @@
   .critere .note-auto{font-size:.82rem;color:var(--bleu);background:var(--fond2);border-radius:6px;padding:4px 10px;display:inline-block;margin-bottom:8px}
   .badge-auto{font-size:.7rem;font-weight:700;color:#fff;background:var(--vert);border-radius:99px;padding:2px 8px;vertical-align:middle;margin-left:6px}
   .badge-verif{font-size:.7rem;font-weight:700;color:#fff;background:var(--ambre);border-radius:99px;padding:2px 8px;vertical-align:middle;margin-left:6px}
+  .category-evidence{margin-top:12px;padding:12px;border:1px solid var(--bord);border-radius:10px;background:var(--fond2);font-size:.82rem;line-height:1.5;overflow-wrap:anywhere}
+  .category-evidence p{margin:2px 0;min-width:0}
+  .category-evidence strong{color:var(--encre)}
+  .category-evidence__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .category-evidence__fallback{color:#92400e;font-weight:700}
+  .category-evidence__help{margin-top:8px!important;color:var(--gris)}
+  .category-manual-warning{margin-top:8px;padding:8px 10px;border:1px solid #fbbf24;border-radius:8px;background:#fffbeb;color:#92400e;font-weight:700}
+  .category-manual-warning[hidden]{display:none}
   .critere.a-verifier{background:#fffbeb;padding-left:10px;padding-right:10px}
   .critere.finalisation-manquante,.controle-localisation.finalisation-manquante{outline:3px solid #dc2626;outline-offset:3px;scroll-margin-top:180px}
   .opts{display:flex;flex-wrap:wrap;gap:8px}
@@ -1070,7 +1078,22 @@ GRILLE.forEach(cat => {
       const noReviewsResponse = cr.key === "tauxReponseAvis" && special === "no_reviews";
       html += `<label${noReviewsResponse ? " hidden" : ""}><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}"${special ? ` data-special="${special}"` : ""}${noReviewsResponse ? " disabled" : ""} onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
     });
-    html += `</div></div>`;
+    html += `</div>`;
+    if(cr.key === "categoriesSecondaires"){
+      html += `<div class="category-evidence" id="category-evidence" aria-live="polite">
+        <p><strong>Activité confirmée :</strong> <span id="category-confirmed-activity">Non vérifiable automatiquement</span></p>
+        <p><strong>Catégorie principale observée :</strong> <span id="category-primary-observed">Non vérifiable automatiquement</span></p>
+        <p><strong>Catégories secondaires détectées :</strong> <span id="category-secondary-observed">Non vérifiable automatiquement</span></p>
+        <p><strong>Source :</strong> analyse automatique de la fiche</p>
+        <div class="category-evidence__actions">
+          <a class="btn-mini" id="category-maps-link" target="_blank" rel="noopener noreferrer" hidden>Vérifier les catégories de la fiche</a>
+          <span class="category-evidence__fallback" id="category-maps-fallback" hidden>Recherche Maps de secours</span>
+        </div>
+        <p class="category-evidence__help">Avec GMB Everywhere, regardez la ligne « GMB Categories ». La première catégorie est la catégorie principale. Les suivantes, si elles apparaissent, sont les catégories secondaires. Si une seule catégorie apparaît, aucune catégorie secondaire n’a été détectée par l’extension.</p>
+        <div class="category-manual-warning" id="category-manual-warning" hidden></div>
+      </div>`;
+    }
+    html += `</div>`;
     idx++;
   });
   html += `</div>`;
@@ -2481,7 +2504,7 @@ function statsScore(){
   return {ameliorables, pointsPerdus};
 }
 
-let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
 
 /* ====== COUCHE DONNÉES SÛRES ======
    Règle absolue du rapport client : une donnée absente ne s'affiche pas.
@@ -2636,7 +2659,7 @@ function mettreAJourIndicateursInternes(score, repondus, totalCrit){
 }
 
 /* ============ MARQUAGE AUTO / À VÉRIFIER ============ */
-function cocher(id, pts, note, type){ // type: "auto" | "prefill"
+function cocher(id, pts, note, type){ // type: "auto" | "auto-confirm" | "prefill"
   const radios = [...document.querySelectorAll(`input[name="c${id}"]`)];
   // coche l'option la plus proche des points visés, sans jamais les dépasser
   // (robuste même si le barème des options a été modifié dans CONFIG)
@@ -2647,7 +2670,10 @@ function cocher(id, pts, note, type){ // type: "auto" | "prefill"
   const el = document.getElementById("crit-"+id);
   el.querySelector(".badges").innerHTML = type === "auto"
     ? `<span class="badge-auto">AUTO</span>`
-    : `<span class="badge-auto" style="background:var(--ambre)">PRÉ-REMPLI — à confirmer</span>`;
+    : (type === "auto-confirm"
+      ? `<span class="badge-auto" style="background:var(--ambre)">AUTO — à confirmer</span>`
+      : `<span class="badge-auto" style="background:var(--ambre)">PRÉ-REMPLI — à confirmer</span>`);
+  sourcesCriteres.set(id, type === "prefill" ? "unknown" : "auto");
   if(note) el.querySelector(".zone-note").innerHTML = `<span class="note-auto">🔎 ${note}</span>`;
   el.classList.remove("a-verifier");
 }
@@ -2656,6 +2682,17 @@ function marquerManuel(id, note){
   el.classList.add("a-verifier");
   el.querySelector(".badges").innerHTML = `<span class="badge-verif">À VÉRIFIER</span>`;
   if(note) el.querySelector(".zone-note").innerHTML = `<span class="note-auto" style="background:#fffbeb;color:#92400e">🔎 ${note}</span>`;
+  sourcesCriteres.set(id, "unknown");
+}
+
+function marquerAutoAConfirmer(id, note){
+  const el = document.getElementById("crit-"+id);
+  el.classList.add("a-verifier");
+  el.querySelector(".badges").innerHTML = `<span class="badge-auto" style="background:var(--ambre)">AUTO — à confirmer</span>`;
+  el.querySelector(".zone-note").innerHTML = note
+    ? `<span class="note-auto" style="background:#fffbeb;color:#92400e">🔎 ${escapeHtml(note)}</span>`
+    : "";
+  sourcesCriteres.set(id, "unknown");
 }
 
 function reinitialiserAnalyse(){
@@ -2668,7 +2705,7 @@ function reinitialiserAnalyse(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
   auditPublicIdActif = null;
   auditSourceActif = null;
   auditFallbackLocalId = null;
@@ -2676,6 +2713,7 @@ function reinitialiserAnalyse(){
   dernierPayloadAuditComplete = "";
   collecteDiagnosticValidee = false;
   criteresTouchesManuellement.clear();
+  sourcesCriteres.clear();
   majConditionsQuestionnaire();
   calc();
 }
@@ -2688,6 +2726,7 @@ const MESSAGE_RECHERCHE_PERIMEE = "La recherche a été modifiée. Relancez l’
 let relanceRechercheEnCours = false;
 let requetePersonnalisee = false;
 const criteresTouchesManuellement = new Set();
+const sourcesCriteres = new Map();
 
 function normaliserRecherche(value){ return String(value || "").trim().replace(/\s+/g, " "); }
 function composerRequeteProposee(){
@@ -2738,9 +2777,55 @@ function enregistrerPersonnalisationRequete(){
 }
 
 const CRITERES_PRE_REMPLIS_A_CONFIRMER = new Set([
-  "categoriePrincipale", "categoriesSecondaires", "horaires",
+  "horaires",
   "descriptionRemplie", "servicesPresents"
 ]);
+
+function urlGoogleMapsSure(value){
+  try{
+    const url = new URL(String(value || ""));
+    const host = url.hostname.toLowerCase();
+    const allowed = /^(www\.|maps\.)?google\.(com|be|fr|nl|de|co\.uk)$/.test(host);
+    return url.protocol === "https:" && allowed && (url.pathname === "/maps" || url.pathname.startsWith("/maps/"));
+  }catch{
+    return false;
+  }
+}
+
+function actualiserPreuvesCategories(business = {}){
+  const activity = String(business.confirmedActivity || "").trim();
+  const primary = String(business.observedPrimaryCategory || "").trim();
+  const secondary = Array.isArray(business.secondaryCategories)
+    ? business.secondaryCategories.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const secondaryAvailable = business.secondaryCategoriesStatus === "available";
+  const setText = (id, value) => {
+    const element = document.getElementById(id);
+    if(element) element.textContent = value;
+  };
+  setText("category-confirmed-activity", activity || "Non vérifiable automatiquement");
+  setText("category-primary-observed", primary || "Non vérifiable automatiquement");
+  setText("category-secondary-observed", secondaryAvailable
+    ? (secondary.length ? secondary.join(" · ") : "aucune catégorie secondaire détectée")
+    : "Non vérifiable automatiquement");
+
+  const link = document.getElementById("category-maps-link");
+  const fallback = document.getElementById("category-maps-fallback");
+  const maps = business.mapsVerification;
+  const safe = maps && urlGoogleMapsSure(maps.url);
+  if(link){
+    link.hidden = !safe;
+    if(safe) link.href = maps.url;
+    else link.removeAttribute("href");
+  }
+  if(fallback) fallback.hidden = !(safe && maps.mode === "fallback");
+
+  donneesAnalyse.activiteConfirmee = activity || null;
+  donneesAnalyse.categoriePrincipaleObservee = primary || null;
+  donneesAnalyse.categoriesSecondairesObservees = secondary;
+  donneesAnalyse.statutCategoriesSecondaires = secondaryAvailable ? "available" : "unavailable";
+  donneesAnalyse.verificationMaps = safe ? maps : null;
+}
 
 function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   const criteria = Array.isArray(scorePrefill?.criteria) ? scorePrefill.criteria : [];
@@ -2748,12 +2833,18 @@ function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   GRILLE.forEach((category) => category.criteres.forEach((criterion) => {
     const prefill = byKey.get(criterion.key);
     if(prefill && estNombre(prefill.points) && prefill.value !== "not_verified"){
+      const categoryAuto = (criterion.key === "categoriePrincipale" || criterion.key === "categoriesSecondaires")
+        && prefill.source === "auto";
       cocher(
         criterion.id,
         Number(prefill.points),
         "",
-        CRITERES_PRE_REMPLIS_A_CONFIRMER.has(criterion.key) ? "prefill" : "auto"
+        categoryAuto ? "auto-confirm" : (CRITERES_PRE_REMPLIS_A_CONFIRMER.has(criterion.key) ? "prefill" : "auto")
       );
+      return;
+    }
+    if(criterion.key === "categoriePrincipale" || criterion.key === "categoriesSecondaires"){
+      marquerAutoAConfirmer(criterion.id, "Donnée insuffisante : décision de l’administrateur requise.");
       return;
     }
     marquerManuel(criterion.id, "");
@@ -2796,6 +2887,11 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     derniereAnalyseRechercheAt: business.searchAnalyzedAt || null,
     derniereActiviteAnalysee: normaliserRecherche(document.getElementById("p-activite")?.value) || null,
     requeteAffichee: business.searchQuery || null,
+    activiteConfirmee: business.confirmedActivity || null,
+    categoriePrincipaleObservee: business.observedPrimaryCategory || null,
+    categoriesSecondairesObservees: Array.isArray(business.secondaryCategories) ? business.secondaryCategories : [],
+    statutCategoriesSecondaires: business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
+    verificationMaps: business.mapsVerification || null,
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
     concurrents: concurrents.map((item) => ({
       label: item.name || "Concurrent",
@@ -2830,6 +2926,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     collectionButton.disabled = true;
   }
   preRemplirDonneesObservees();
+  actualiserPreuvesCategories(business);
   requetePersonnalisee = normaliserRecherche(business.searchQuery) !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
@@ -2876,7 +2973,7 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
   requetePersonnalisee = false;
   mettreAJourEtatRecherche();
   majConditionsQuestionnaire();
@@ -2978,6 +3075,11 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     derniereAnalyseRechercheAt:analyzedAt || business.searchAnalyzedAt || new Date().toISOString(),
     derniereActiviteAnalysee:normaliserRecherche(document.getElementById("p-activite")?.value),
     requeteAffichee:actualQuery,
+    activiteConfirmee:business.confirmedActivity || normaliserRecherche(document.getElementById("p-activite")?.value) || null,
+    categoriePrincipaleObservee:business.observedPrimaryCategory || null,
+    categoriesSecondairesObservees:Array.isArray(business.secondaryCategories) ? business.secondaryCategories : [],
+    statutCategoriesSecondaires:business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
+    verificationMaps:business.mapsVerification || null,
     concurrents:competitors,
     ...comparisons
   };
@@ -2993,15 +3095,35 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     });
   }
   donneesAnalyse = next;
+  actualiserPreuvesCategories(business);
   const refreshedCriteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
-  ["classementLocal", "attractiviteConcurrents"].forEach((key) => {
+  const manualConflicts = [];
+  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires"].forEach((key) => {
     const criterion = GRILLE.flatMap((category) => category.criteres).find((item) => item.key === key);
     const prefill = refreshedCriteria.get(key);
-    const badge = criterion && document.getElementById(`crit-${criterion.id}`)?.querySelector(".badges")?.textContent || "";
-    if(criterion && prefill && estNombre(prefill.points) && badge.includes("AUTO") && !criteresTouchesManuellement.has(criterion.id)){
-      cocher(criterion.id, Number(prefill.points), "", "auto");
+    if(!criterion || !prefill) return;
+    if(criteresTouchesManuellement.has(criterion.id)){
+      const currentPoints = lirePoints(criterion.id);
+      if(estNombre(prefill.points) && estNombre(currentPoints) && Number(prefill.points) !== Number(currentPoints)){
+        manualConflicts.push(criterion.q);
+      }
+      return;
+    }
+    if(estNombre(prefill.points)){
+      const isCategory = key === "categoriePrincipale" || key === "categoriesSecondaires";
+      cocher(criterion.id, Number(prefill.points), "", isCategory ? "auto-confirm" : "auto");
+    }else if(key === "categoriePrincipale" || key === "categoriesSecondaires"){
+      effacerReponseCritere(criterion.id);
+      marquerAutoAConfirmer(criterion.id, "Donnée insuffisante : décision de l’administrateur requise.");
     }
   });
+  const warning = document.getElementById("category-manual-warning");
+  if(warning){
+    warning.hidden = !manualConflicts.length;
+    warning.textContent = manualConflicts.length
+      ? "Les nouvelles données contredisent une réponse manuelle. La réponse de l’administrateur est conservée : vérifiez-la avant de poursuivre."
+      : "";
+  }
   requetePersonnalisee = actualQuery !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   calc();
@@ -3063,12 +3185,13 @@ function collecterReponses(){
       const el = document.getElementById("crit-"+cr.id);
       const badge = el?.querySelector(".badges")?.textContent || "";
       const statut = badge.includes("AUTO") ? "automatique" : badge.includes("PRÉ-REMPLI") ? "pre-remplie" : "manuelle";
+      const source = sourcesCriteres.get(cr.id) || (statut === "automatique" ? "auto" : (statut === "manuelle" ? "manual" : "unknown"));
       const checklist = [...document.querySelectorAll(`input[data-check-crit="${cr.id}"]:checked`)]
         .map(input => Number(input.dataset.checkIndex))
         .filter(Number.isInteger);
       reponses[cr.key] = cr.key === "adresse"
         ? {points:p, statut:"manuelle", checklist}
-        : {points:p, value:selected?.dataset.special || statutEvaluationCritere(cr, p), statut, selectedOptionIndex:Number(selected?.dataset.optionIndex), checklist};
+        : {points:p, value:selected?.dataset.special || statutEvaluationCritere(cr, p), statut, source, selectedOptionIndex:Number(selected?.dataset.optionIndex), checklist};
     }
   }));
   return reponses;
@@ -3282,6 +3405,9 @@ function appliquerReponses(reponses){
   if(!reponses) return;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(reponses[cr.key] === undefined) return;
+    const saved = typeof reponses[cr.key] === "object" ? reponses[cr.key] : {};
+    const savedManual = saved.source === "manual" || saved.statut === "manuelle";
+    if((cr.key === "categoriePrincipale" || cr.key === "categoriesSecondaires") && !savedManual) return;
     const valeur = typeof reponses[cr.key] === "object" ? reponses[cr.key].points : reponses[cr.key];
     if(cr.key === "adresse"){
       legacyLocationPoints = estNombre(valeur) ? Number(valeur) : null;
@@ -3292,7 +3418,15 @@ function appliquerReponses(reponses){
       ? document.querySelector(`input[name="c${cr.id}"][data-option-index="${optionIndex}"]`)
       : [...document.querySelectorAll(`input[name="c${cr.id}"]`)].find(r => parseFloat(r.value) === parseFloat(valeur) && !r.dataset.special);
     if(radio) radio.checked = true;
-    if(typeof reponses[cr.key] === "object" && reponses[cr.key].statut === "manuelle") criteresTouchesManuellement.add(cr.id);
+    if(savedManual){
+      criteresTouchesManuellement.add(cr.id);
+      sourcesCriteres.set(cr.id, "manual");
+      const element = document.getElementById(`crit-${cr.id}`);
+      if(element){
+        element.classList.remove("a-verifier");
+        element.querySelector(".badges").innerHTML = `<span class="badge-verif" style="background:var(--bleu)">MANUEL</span>`;
+      }
+    }
     const checklist = typeof reponses[cr.key] === "object" && Array.isArray(reponses[cr.key].checklist)
       ? new Set(reponses[cr.key].checklist.map(Number))
       : new Set();
@@ -3678,7 +3812,16 @@ if(!modeLectureSeule()){
   document.getElementById("d-requete")?.addEventListener("input", enregistrerPersonnalisationRequete);
   document.getElementById("zone-criteres")?.addEventListener("change", (event) => {
     const match = String(event.target?.name || "").match(/^c(\d+)$/);
-    if(match) criteresTouchesManuellement.add(Number(match[1]));
+    if(match){
+      const id = Number(match[1]);
+      criteresTouchesManuellement.add(id);
+      sourcesCriteres.set(id, "manual");
+      const element = document.getElementById(`crit-${id}`);
+      if(element){
+        element.classList.remove("a-verifier");
+        element.querySelector(".badges").innerHTML = `<span class="badge-verif" style="background:var(--bleu)">MANUEL</span>`;
+      }
+    }
   });
 }
 
