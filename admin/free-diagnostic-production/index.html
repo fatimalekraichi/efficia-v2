@@ -1093,6 +1093,28 @@ GRILLE.forEach(cat => {
         <div class="category-manual-warning" id="category-manual-warning" hidden></div>
       </div>`;
     }
+    if(cr.key === "liensAction"){
+      html += `<div class="category-evidence" id="action-links-evidence" aria-live="polite">
+        <p><strong>Liens d’action détectés :</strong> <span id="action-links-summary">Non vérifiable automatiquement</span></p>
+        <div id="action-links-details"></div>
+        <p><strong>Résultat :</strong> <span id="action-links-decision">À confirmer</span></p>
+      </div>`;
+    }
+    if(cr.key === "classementLocal"){
+      html += `<div class="category-evidence" id="local-rank-evidence" aria-live="polite">
+        <p><strong>Position observée :</strong> <span id="local-rank-position">À confirmer</span></p>
+        <p><strong>Recherche testée :</strong> <span id="local-rank-query">Non renseignée</span></p>
+        <p><strong>Date de collecte :</strong> <span id="local-rank-date">Non renseignée</span></p>
+        <p><strong>Source du rang :</strong> <span id="local-rank-source">Non vérifiable</span></p>
+      </div>`;
+    }
+    if(cr.key === "attractiviteConcurrents"){
+      html += `<div class="category-evidence" id="competitive-evidence" aria-live="polite">
+        <p><strong>Fiche analysée :</strong> <span id="competitive-business">Non vérifiable</span></p>
+        <p><strong>Moyenne concurrentielle :</strong> <span id="competitive-average">Non vérifiable</span></p>
+        <p><strong>Résultat du calcul :</strong> <span id="competitive-decision">À confirmer</span></p>
+      </div>`;
+    }
     html += `</div>`;
     idx++;
   });
@@ -1203,12 +1225,17 @@ function conditionAvis(){
   return selected ? "present" : "unknown";
 }
 
-function effacerReponseCritere(key){
-  const id = CRITERE_IDS[key];
-  if(id === undefined) return;
+function effacerReponseCritereParId(id){
+  if(!Number.isInteger(id)) return;
   document.querySelectorAll(`input[name="c${id}"], input[data-check-crit="${id}"]`).forEach(input => { input.checked = false; });
   const note = document.getElementById("crit-"+id)?.querySelector(".zone-note");
   if(note) note.innerHTML = "";
+}
+
+function effacerReponseCritere(key){
+  const id = CRITERE_IDS[key];
+  if(id === undefined) return;
+  effacerReponseCritereParId(id);
 }
 
 function masquerCritereConditionnel(key, masquer){
@@ -2504,7 +2531,7 @@ function statsScore(){
   return {ameliorables, pointsPerdus};
 }
 
-let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
+let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
 
 /* ====== COUCHE DONNÉES SÛRES ======
    Règle absolue du rapport client : une donnée absente ne s'affiche pas.
@@ -2686,6 +2713,8 @@ function marquerManuel(id, note){
 }
 
 function marquerAutoAConfirmer(id, note){
+  if(criteresTouchesManuellement.has(id) || sourcesCriteres.get(id) === "manual") return false;
+  effacerReponseCritereParId(id);
   const el = document.getElementById("crit-"+id);
   el.classList.add("a-verifier");
   el.querySelector(".badges").innerHTML = `<span class="badge-auto" style="background:var(--ambre)">AUTO — à confirmer</span>`;
@@ -2693,6 +2722,7 @@ function marquerAutoAConfirmer(id, note){
     ? `<span class="note-auto" style="background:#fffbeb;color:#92400e">🔎 ${escapeHtml(note)}</span>`
     : "";
   sourcesCriteres.set(id, "unknown");
+  return true;
 }
 
 function reinitialiserAnalyse(){
@@ -2705,7 +2735,7 @@ function reinitialiserAnalyse(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
   auditPublicIdActif = null;
   auditSourceActif = null;
   auditFallbackLocalId = null;
@@ -2780,6 +2810,11 @@ const CRITERES_PRE_REMPLIS_A_CONFIRMER = new Set([
   "horaires",
   "descriptionRemplie", "servicesPresents"
 ]);
+const CRITERES_AUTOMATIQUES_A_PREUVE = new Set([
+  "categoriePrincipale", "categoriesSecondaires", "horaires", "contact", "liensAction",
+  "nombrePhotos", "noteMoyenne", "volumeAvis", "descriptionRemplie", "servicesPresents",
+  "classementLocal", "attractiviteConcurrents"
+]);
 
 function urlGoogleMapsSure(value){
   try{
@@ -2827,6 +2862,51 @@ function actualiserPreuvesCategories(business = {}){
   donneesAnalyse.verificationMaps = safe ? maps : null;
 }
 
+function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
+  const criteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
+  const setText = (id, value) => {
+    const element = document.getElementById(id);
+    if(element) element.textContent = value;
+  };
+
+  const actionLinks = Array.isArray(business.actionLinks) ? business.actionLinks : [];
+  const actionAvailable = business.actionLinksStatus === "available";
+  const directCount = actionLinks.filter((link) => link?.status === "direct").length;
+  setText("action-links-summary", actionAvailable
+    ? (directCount ? `${directCount} lien${directCount > 1 ? "s" : ""} direct${directCount > 1 ? "s" : ""}` : "aucun lien d’action direct détecté")
+    : "Non vérifiable automatiquement");
+  const details = document.getElementById("action-links-details");
+  if(details){
+    details.replaceChildren();
+    actionLinks.forEach((link) => {
+      const row = document.createElement("p");
+      row.textContent = `${link.type || "action"} · ${link.url || "URL non vérifiable"} · domaine ${link.domain || "non vérifiable"} · source ${link.source || "fournisseur"} · ${link.status || "non vérifiable"}`;
+      details.appendChild(row);
+    });
+  }
+  setText("action-links-decision", criteria.get("liensAction")?.label || "À confirmer");
+
+  const rank = business.rankEvidence || {};
+  setText("local-rank-position", Number.isFinite(Number(business.localPosition))
+    ? (Number(business.localPosition) === 0 ? "Absente" : String(Number(business.localPosition)))
+    : "À confirmer");
+  setText("local-rank-query", business.searchQuery || "Non renseignée");
+  const collectedAt = business.searchAnalyzedAt ? new Date(business.searchAnalyzedAt) : null;
+  setText("local-rank-date", collectedAt && !Number.isNaN(collectedAt.getTime()) ? collectedAt.toLocaleString("fr-FR") : "Non renseignée");
+  setText("local-rank-source", rank.source ? `${rank.source}${Number.isFinite(Number(rank.rawRank)) ? ` · rang brut ${Number(rank.rawRank)}` : ""}` : "Non vérifiable");
+
+  const attractiveness = criteria.get("attractiviteConcurrents");
+  const evidence = attractiveness?.evidence || {};
+  const displayRating = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(1).replace(".", ",") : "—";
+  setText("competitive-business", `${displayRating(evidence.rating)}/5 · ${Number.isFinite(Number(evidence.reviews)) ? Number(evidence.reviews) : "—"} avis`);
+  setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? Math.round(Number(evidence.averageReviews) * 10) / 10 : "—"} avis`);
+  setText("competitive-decision", attractiveness?.label || "À confirmer");
+
+  donneesAnalyse.liensAction = actionLinks;
+  donneesAnalyse.statutLiensAction = actionAvailable ? "available" : "unavailable";
+  donneesAnalyse.preuveRang = rank;
+}
+
 function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   const criteria = Array.isArray(scorePrefill?.criteria) ? scorePrefill.criteria : [];
   const byKey = new Map(criteria.map((criterion) => [criterion.key, criterion]));
@@ -2843,7 +2923,7 @@ function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
       );
       return;
     }
-    if(criterion.key === "categoriePrincipale" || criterion.key === "categoriesSecondaires"){
+    if(CRITERES_AUTOMATIQUES_A_PREUVE.has(criterion.key)){
       marquerAutoAConfirmer(criterion.id, "Donnée insuffisante : décision de l’administrateur requise.");
       return;
     }
@@ -2892,6 +2972,9 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     categoriesSecondairesObservees: Array.isArray(business.secondaryCategories) ? business.secondaryCategories : [],
     statutCategoriesSecondaires: business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
     verificationMaps: business.mapsVerification || null,
+    preuveRang: business.rankEvidence || null,
+    liensAction: Array.isArray(business.actionLinks) ? business.actionLinks : [],
+    statutLiensAction: business.actionLinksStatus === "available" ? "available" : "unavailable",
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
     concurrents: concurrents.map((item) => ({
       label: item.name || "Concurrent",
@@ -2927,6 +3010,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   }
   preRemplirDonneesObservees();
   actualiserPreuvesCategories(business);
+  actualiserPreuvesAutomatiques(business, scorePrefill);
   requetePersonnalisee = normaliserRecherche(business.searchQuery) !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
@@ -2973,7 +3057,7 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
   requetePersonnalisee = false;
   mettreAJourEtatRecherche();
   majConditionsQuestionnaire();
@@ -3040,13 +3124,13 @@ function calculerComparaisonsRecherche(concurrents){
   const noteFiche = estNombre(donneesAnalyse.note) ? Number(donneesAnalyse.note) : null;
   return {
     moyennesConcurrents:{note, avis, photos:moyenne("photos"), services:moyenne("services"), pubs:moyenne("pubs")},
-    concurrence:avis !== null && vol !== null ? {
+    concurrence:avis !== null && vol !== null && note !== null && noteFiche !== null ? {
       vol,
       volC:avis,
-      note:noteFiche ?? 0,
-      noteC:note ?? 0,
+      note:noteFiche,
+      noteC:note,
       ecartConcurrentFaible:vol >= avis * (1 - CONFIG.seuils.toleranceConcurrents)
-        && (note === null || (noteFiche ?? 0) >= note - CONFIG.seuils.toleranceNoteConcurrents)
+        && noteFiche >= note * (1 - CONFIG.seuils.toleranceConcurrents)
     } : null
   };
 }
@@ -3080,6 +3164,9 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     categoriesSecondairesObservees:Array.isArray(business.secondaryCategories) ? business.secondaryCategories : [],
     statutCategoriesSecondaires:business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
     verificationMaps:business.mapsVerification || null,
+    preuveRang:business.rankEvidence || null,
+    liensAction:Array.isArray(business.actionLinks) ? business.actionLinks : [],
+    statutLiensAction:business.actionLinksStatus === "available" ? "available" : "unavailable",
     concurrents:competitors,
     ...comparisons
   };
@@ -3096,9 +3183,10 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   }
   donneesAnalyse = next;
   actualiserPreuvesCategories(business);
+  actualiserPreuvesAutomatiques(business, scorePrefill);
   const refreshedCriteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
   const manualConflicts = [];
-  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires"].forEach((key) => {
+  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction"].forEach((key) => {
     const criterion = GRILLE.flatMap((category) => category.criteres).find((item) => item.key === key);
     const prefill = refreshedCriteria.get(key);
     if(!criterion || !prefill) return;
@@ -3112,8 +3200,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     if(estNombre(prefill.points)){
       const isCategory = key === "categoriePrincipale" || key === "categoriesSecondaires";
       cocher(criterion.id, Number(prefill.points), "", isCategory ? "auto-confirm" : "auto");
-    }else if(key === "categoriePrincipale" || key === "categoriesSecondaires"){
-      effacerReponseCritere(criterion.id);
+    }else if(CRITERES_AUTOMATIQUES_A_PREUVE.has(key)){
       marquerAutoAConfirmer(criterion.id, "Donnée insuffisante : décision de l’administrateur requise.");
     }
   });
@@ -4736,10 +4823,12 @@ function synchroniserDonneesManuelles(){
     d.concurrents = saisis;
     const moy = champ => { const vals = saisis.map(c => c[champ]).filter(estNombre); return vals.length ? vals.reduce((s,v) => s + Number(v), 0) / vals.length : null; };
     const volC = moy("avis"), noteC = moy("note");
-    if(volC !== null && estNombre(d.nbAvis)){
-      const vol = Number(d.nbAvis), note = Number(d.note) || 0;
-      d.concurrence = {vol, volC, note, noteC: noteC ?? 0,
-        ecartConcurrentFaible: vol >= volC * (1 - CONFIG.seuils.toleranceConcurrents) && (!noteC || note >= noteC - CONFIG.seuils.toleranceNoteConcurrents)};
+    if(volC !== null && noteC !== null && estNombre(d.nbAvis) && estNombre(d.note)){
+      const vol = Number(d.nbAvis), note = Number(d.note);
+      d.concurrence = {vol, volC, note, noteC,
+        ecartConcurrentFaible: vol >= volC * (1 - CONFIG.seuils.toleranceConcurrents) && note >= noteC * (1 - CONFIG.seuils.toleranceConcurrents)};
+    }else{
+      d.concurrence = null;
     }
     d.moyennesConcurrents = {note:noteC, avis:volC, photos:moy("photos"), services:moy("services"), pubs:moy("pubs")};
   }

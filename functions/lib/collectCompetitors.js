@@ -6,6 +6,8 @@
 // correspondant à l'un de ces identifiants est exclue de `concurrents` avant retour — la fiche
 // analysée ne doit jamais apparaître comme son propre concurrent.
 
+import { extractActionLinkEvidence } from "./actionLinkEvidence.js";
+
 const OUTSCRAPER_HOST = "https://api.app.outscraper.com";
 const OUTSCRAPER_SEARCH_PATH = "/maps/search-v3";
 const DEFAULT_TIMEOUT_MS = 25000;
@@ -62,6 +64,7 @@ function normalizeCategoryList(value) {
 function mapTargetObservation(place) {
   if (!place || typeof place !== "object") return null;
   const secondaryAvailable = Object.prototype.hasOwnProperty.call(place, "subtypes");
+  const actionLinkEvidence = extractActionLinkEvidence(place);
   return {
     primaryCategory: String(place.category || place.type || "").trim(),
     secondaryCategories: secondaryAvailable ? normalizeCategoryList(place.subtypes) : [],
@@ -69,6 +72,46 @@ function mapTargetObservation(place) {
     locationLink: String(place.location_link || "").trim(),
     placeId: String(place.place_id || "").trim(),
     cid: String(place.cid || place.google_id || place.googleId || "").trim(),
+    actionLinksStatus: actionLinkEvidence.availability,
+    actionLinks: actionLinkEvidence.links,
+  };
+}
+
+const RANK_FIELDS = ["rank", "position", "search_rank", "search_position", "local_rank"];
+
+function numericRank(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
+  const number = Number(normalized);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
+function isMapMarkerOnly(place) {
+  if (!place || typeof place !== "object") return false;
+  if (place.is_map_marker === true || place.map_marker === true || place.marker_only === true) return true;
+  const type = String(place.result_type || place.resultType || "").trim().toLowerCase();
+  return type === "map_marker" || type === "marker" || type === "map-only";
+}
+
+export function normalizeProviderRank(place, zeroBasedIndex) {
+  const field = RANK_FIELDS.find((key) => numericRank(place?.[key]) !== null);
+  if (field) {
+    const rawRank = numericRank(place[field]);
+    if (rawRank === zeroBasedIndex) {
+      return { rawRank, normalizedOneBasedRank: rawRank + 1, source: `provider_${field}_zero_based` };
+    }
+    if (rawRank === zeroBasedIndex + 1) {
+      return { rawRank, normalizedOneBasedRank: rawRank, source: `provider_${field}_one_based` };
+    }
+    return { rawRank, normalizedOneBasedRank: null, source: `provider_${field}_ambiguous` };
+  }
+  if (isMapMarkerOnly(place)) {
+    return { rawRank: zeroBasedIndex, normalizedOneBasedRank: null, source: "map_marker_without_list_rank" };
+  }
+  return {
+    rawRank: zeroBasedIndex,
+    normalizedOneBasedRank: zeroBasedIndex + 1,
+    source: "provider_result_index_zero_based",
   };
 }
 
@@ -123,12 +166,21 @@ function hasSponsorshipClassification(place) {
 
 export function addSearchResultContext(normalized, competitorResult) {
   const base = normalized && typeof normalized === "object" ? normalized : {};
+  const rankEvidence = competitorResult?.rankEvidence;
+  const withRank = rankEvidence ? {
+    ...base,
+    search_rank_context: {
+      raw_rank: rankEvidence.rawRank ?? null,
+      normalized_one_based_rank: rankEvidence.normalizedOneBasedRank ?? null,
+      source: String(rankEvidence.source || "unknown"),
+    },
+  } : base;
   if (competitorResult?.positionKind !== "organic") {
-    const { search_result_context: _obsoleteSearchResultContext, ...withoutSearchResultContext } = base;
+    const { search_result_context: _obsoleteSearchResultContext, ...withoutSearchResultContext } = withRank;
     return withoutSearchResultContext;
   }
   return {
-    ...base,
+    ...withRank,
     search_result_context: {
       position_kind: "organic",
       sponsored_results_excluded: Number(competitorResult.sponsoredResultsExcluded) || 0,
@@ -230,10 +282,13 @@ export async function collectCompetitors({
   const sponsoredResults = places.filter(isSponsoredResult);
   const sponsorshipClassificationAvailable = places.some(hasSponsorshipClassification);
   const organicPlaces = places.filter((place) => !isSponsoredResult(place));
-  const targetPlaceId = (placeIdCible || "").trim();
   const rankedPlaces = sponsorshipClassificationAvailable ? organicPlaces : places;
-  const targetIndex = targetPlaceId ? rankedPlaces.findIndex(place => place.place_id === targetPlaceId) : -1;
-  const position = targetIndex >= 0 ? targetIndex + 1 : 0;
+  const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
+  const targetIndex = rankedPlaces.findIndex((place) => isSameBusiness(place));
+  const rankEvidence = targetIndex >= 0
+    ? normalizeProviderRank(rankedPlaces[targetIndex], targetIndex)
+    : { rawRank: null, normalizedOneBasedRank: 0, source: "target_not_found" };
+  const position = rankEvidence.normalizedOneBasedRank;
 
   // Objectif 5 (mission "corriger les deux problèmes critiques", logs de
   // diagnostic temporaires — à retirer une fois le correctif validé sur la
@@ -247,7 +302,6 @@ export async function collectCompetitors({
     });
   }
 
-  const isSameBusiness = buildIsSameBusiness({ placeIdCible, cidCible, urlCible });
   const excluded = rankedPlaces.filter((place) => isSameBusiness(place));
   const targetObservation = mapTargetObservation(excluded[0]);
   const afterExclusion = rankedPlaces.filter((place) => !isSameBusiness(place));
@@ -277,7 +331,8 @@ export async function collectCompetitors({
     positionKind: sponsorshipClassificationAvailable ? "organic" : "observed",
     sponsoredResultsExcluded: sponsoredResults.length,
     targetObservation,
+    rankEvidence,
   };
 }
 
-export const __test__ = { mapTargetObservation };
+export const __test__ = { mapTargetObservation, isMapMarkerOnly };

@@ -1,4 +1,5 @@
 import { hasGoogleMapsHost, resolveGoogleMapsUrl } from "./googleMapsUrl.js";
+import { extractActionLinkEvidence } from "./actionLinkEvidence.js";
 
 // Logique de collecte Outscraper (Appel A), partagée par /api/outscraper et /api/analyze.
 // Ne dépend d'AUCUN objet Request/Response : reçoit { nom, ville, apiKey }, renvoie un
@@ -395,6 +396,7 @@ function decideOutcome(ranked) {
 // Extraction + normalisation de la première fiche (mêmes champs que la sortie publique actuelle).
 function mapPlace(place) {
   const hasAnyField = (...keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(place, key));
+  const actionLinkEvidence = extractActionLinkEvidence(place);
   const observed_fields = [
     hasAnyField("description") ? "description" : null,
     hasAnyField("working_hours") ? "working_hours" : null,
@@ -403,6 +405,7 @@ function mapPlace(place) {
     hasAnyField("site", "website") ? "site" : null,
     hasAnyField("address", "full_address") ? "address" : null,
     hasAnyField("services", "service_options", "service_list") ? "services" : null,
+    actionLinkEvidence.availability === "available" ? "action_links" : null,
   ].filter(Boolean);
   const photos_sample = Array.isArray(place.photos_sample)
     ? place.photos_sample
@@ -448,6 +451,8 @@ function mapPlace(place) {
     city: place.city || "",
     borough: place.borough || place.county || "",
     observed_fields,
+    action_links_status: actionLinkEvidence.availability,
+    action_links: actionLinkEvidence.links,
     ...(observed_fields.includes("services") ? {
       services: place.services ?? place.service_options ?? place.service_list ?? [],
     } : {}),

@@ -43,6 +43,8 @@ function normalizeFiche(fiche = {}) {
     city: normalizeText(fiche.city),
     borough: normalizeText(fiche.borough),
     observed_fields: Array.isArray(fiche.observed_fields) ? fiche.observed_fields : [],
+    action_links_status: fiche.action_links_status === "available" ? "available" : "unavailable",
+    action_links: Array.isArray(fiche.action_links) ? fiche.action_links : [],
     ...(Array.isArray(fiche.observed_fields) && fiche.observed_fields.includes("services")
       ? { services: Array.isArray(fiche.services) ? fiche.services : [] }
       : {}),
@@ -108,6 +110,11 @@ function mergeCategoryObservation(base, observation, confirmedActivity) {
       : [];
     observedFields.add("subtypes");
   }
+  if (observation?.actionLinksStatus === "available") {
+    next.action_links_status = "available";
+    next.action_links = Array.isArray(observation.actionLinks) ? observation.actionLinks : [];
+    observedFields.add("action_links");
+  }
   if (normalizeText(observation?.locationLink)) next.location_link = normalizeText(observation.locationLink);
   if (normalizeText(observation?.placeId)) next.place_id = normalizeText(observation.placeId);
   if (normalizeText(observation?.cid)) next.cid = normalizeText(observation.cid);
@@ -155,6 +162,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
       localPosition: result.position,
       positionKind: result.positionKind,
       sponsoredResultsExcluded: result.sponsoredResultsExcluded,
+      rankEvidence: result.rankEvidence,
       competitors: result.concurrents,
       normalized: normalizedWithContext,
       fiche: ficheWithCategories,
@@ -413,6 +421,7 @@ export async function onRequestPost(context) {
         concurrents: competitorResult.concurrents,
         positionKind: competitorResult.positionKind,
         sponsoredResultsExcluded: competitorResult.sponsoredResultsExcluded,
+        rankEvidence: competitorResult.rankEvidence,
       };
     }
   }

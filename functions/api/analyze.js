@@ -87,6 +87,8 @@ function normaliserFiche(fiche) {
     city: fiche.city || "",
     borough: fiche.borough || "",
     observed_fields: Array.isArray(fiche.observed_fields) ? fiche.observed_fields : [],
+    action_links_status: fiche.action_links_status === "available" ? "available" : "unavailable",
+    action_links: Array.isArray(fiche.action_links) ? fiche.action_links : [],
     ...(Array.isArray(fiche.observed_fields) && fiche.observed_fields.includes("services")
       ? { services: Array.isArray(fiche.services) ? fiche.services : [] }
       : {}),
@@ -291,6 +293,7 @@ export async function onRequestPost(context) {
         concurrents: competitorsResult.concurrents,
         positionKind: competitorsResult.positionKind,
         sponsoredResultsExcluded: competitorsResult.sponsoredResultsExcluded,
+        rankEvidence: competitorsResult.rankEvidence,
       };
     } else {
       console.error("analyze: collecte concurrents échouée", competitorsResult.code, competitorsResult.error);

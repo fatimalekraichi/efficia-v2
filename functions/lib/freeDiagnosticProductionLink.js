@@ -5,6 +5,7 @@ import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
 import { loadPremiumAuthorization } from "./premiumAuthorization.js";
 import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
 import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
+import { normalizeStoredActionLinkEvidence } from "./actionLinkEvidence.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -153,6 +154,8 @@ export function buildFreeDiagnosticCollectionState(analysis) {
     address: firstNonEmpty(normalized.address, fiche.address),
     city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
   });
+  const actionLinkEvidence = normalizeStoredActionLinkEvidence(normalized);
+  const rankContext = normalized.search_rank_context || {};
 
   return {
     business: {
@@ -165,6 +168,8 @@ export function buildFreeDiagnosticCollectionState(analysis) {
       secondaryCategories,
       secondaryCategoriesStatus,
       mapsVerification,
+      actionLinksStatus: actionLinkEvidence.availability,
+      actionLinks: actionLinkEvidence.links,
       rating: numberOrNull(business.rating),
       reviews: numberOrNull(business.reviews),
       photosCount: numberOrNull(business.photosCount),
@@ -172,6 +177,11 @@ export function buildFreeDiagnosticCollectionState(analysis) {
         ? numberOrNull(business.descriptionLength)
         : null,
       localPosition: numberOrNull(business.localPosition),
+      rankEvidence: {
+        rawRank: numberOrNull(rankContext.raw_rank),
+        normalizedOneBasedRank: numberOrNull(rankContext.normalized_one_based_rank),
+        source: firstNonEmpty(rankContext.source) || "legacy_local_position",
+      },
       positionKind: business.positionKind === "organic" ? "organic" : "observed",
       sponsoredResultsExcluded: numberOrNull(business.sponsoredResultsExcluded) ?? 0,
       searchQuery: firstNonEmpty(business.searchQuery),

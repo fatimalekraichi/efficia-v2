@@ -263,7 +263,7 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     const scoreDetail = calculateScoreDetail(Object.fromEntries(
       automaticCriteria.map((criterion) => [criterion.key, criterion.points]),
     ));
-    assert.equal(Math.round(scoreDetail.total), 22);
+    assert.equal(Math.round(scoreDetail.total), 20);
     assert.equal(scoreDetail.repondus, 6);
     assert.equal(scoreDetail.totalCrit, 29);
     for (const key of [
@@ -280,7 +280,7 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.ok(restoreFetch.calls.some((url) => url === GOOGLE_URL));
     assert.ok(restoreFetch.calls.some((url) => new URL(url).searchParams.get("query") === CANONICAL_GOOGLE_URL));
     assert.ok(!restoreFetch.calls.some((url) => new URL(url).hostname === "api.app.outscraper.com" && new URL(url).searchParams.get("query") === GOOGLE_URL));
-    assert.doesNotMatch(JSON.stringify(body), /simulated-provider-key|fatima@example\.com|raw/i);
+    assert.doesNotMatch(JSON.stringify(body), /simulated-provider-key|fatima@example\.com|raw_(?:payload|response)/i);
 
     const row = db.sqlite.prepare(`
       SELECT analysis_id, nom, ville, activity, status, report_type, pdf_generated_at
@@ -356,7 +356,11 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
   seedAnalysis(db, { companyName: "Bivert Alain", city: "Attert", googleUrl: "" });
   markAnalysisCollected(db);
   db.sqlite.prepare(`
-    UPDATE analyses SET search_query = 'Fournisseur d’électricité Attert', local_position = 8,
+    UPDATE analyses SET nom = 'Bivert Alain', name = 'Bivert Alain', ville = 'Attert',
+      rating = 1.8, reviews = 5, photos_count = 1,
+      fiche_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité"}',
+      normalized_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité","observed_fields":["category"]}',
+      search_query = 'Fournisseur d’électricité Attert', local_position = 8,
       competitors_json = '[{"name":"Ancien concurrent","rating":3.1,"reviews":8,"photos_count":2}]',
       avg_rating = 3.1, avg_reviews = 8, avg_photos = 2
     WHERE analysis_id = ?
@@ -378,10 +382,10 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     providerQuery = url.searchParams.get("query") || "";
     assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
     return Response.json({ data: [[
-      { name:"Bivert Alain", place_id:"place-target", rating:4.7, reviews:82, photos_count:31, category:"Fournisseur d’électricité", location_link:"https://www.google.com/maps/place/Bivert-Alain", sponsored:false },
-      { name:"Électricité du Nord — Dépannage et installations résidentielles", place_id:"new-1", rating:4.9, reviews:210, photos_count:80, services:["a","b","c"], posts:[1,2], sponsored:false },
-      { name:"Entreprise Générale d’Électricité et Domotique de la Vallée d’Attert", place_id:"new-2", rating:4.6, reviews:95, photos_count:42, services:["a"], posts:[1], sponsored:false },
-      { name:"Solutions électriques industrielles, photovoltaïques et bornes de recharge", place_id:"new-3", rating:4.8, reviews:140, photos_count:61, services:["a","b"], posts:[], sponsored:false },
+      { name:"AS pro elec", place_id:"new-1", rating:4.4, reviews:7, photos_count:0, services:["a","b","c"], posts:[1,2], sponsored:false },
+      { name:"Moris Wilfried", place_id:"new-2", rating:5, reviews:5, photos_count:1, services:["a"], posts:[1], sponsored:false },
+      { name:"Electrolux95", place_id:"new-3", rating:5, reviews:20, photos_count:2, services:["a","b"], posts:[], sponsored:false },
+      { name:"Bivert Alain", place_id:"place-target", rank:3, rating:1.8, reviews:5, photos_count:1, category:"Fournisseur d’électricité", location_link:"https://www.google.com/maps/place/Bivert-Alain", reservation_links:[], booking_appointment_link:null, order_links:null, sponsored:false },
     ]] });
   };
   try {
@@ -398,13 +402,17 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     assert.equal(providerQuery, "Électricien Attert");
     assert.equal(body.operation, "refresh_search");
     assert.equal(body.business.searchQuery, "Électricien Attert");
-    assert.equal(body.business.localPosition, 1);
+    assert.equal(body.business.localPosition, 4);
+    assert.deepEqual(body.business.rankEvidence, { rawRank:3, normalizedOneBasedRank:4, source:"provider_rank_zero_based" });
     assert.equal(body.business.confirmedActivity, "Électricien");
     assert.equal(body.business.observedPrimaryCategory, "Fournisseur d’électricité");
     assert.equal(body.business.secondaryCategoriesStatus, "unavailable");
     assert.equal(body.business.mapsVerification.url, "https://www.google.com/maps/place/Bivert-Alain");
     assert.equal(body.scorePrefill.criteria.find((item) => item.key === "categoriePrincipale").label, "Inadaptée / générique");
     assert.equal(body.scorePrefill.criteria.find((item) => item.key === "categoriesSecondaires").value, "not_verified");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "classementLocal").label, "Visible en 1re page");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "attractiviteConcurrents").label, "Derrière");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "liensAction").label, "Manquants");
     assert.equal(body.business.competitors.length, 3);
     assert.deepEqual(body.business.competitors.map((item) => item.services_count), [3, 1, 2]);
     assert.match(body.searchAnalyzedAt, /^2026-|^20\d{2}-/);
@@ -418,15 +426,15 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     assert.equal(JSON.parse(row.normalized_json).category, "Fournisseur d’électricité");
     assert.equal(JSON.parse(row.normalized_json).confirmed_activity, "Électricien");
     assert.equal(row.search_query, "Électricien Attert");
-    assert.equal(row.local_position, 1);
+    assert.equal(row.local_position, 4);
     assert.equal(JSON.parse(row.competitors_json).length, 3);
-    assert.equal(row.avg_rating, 4.77);
-    assert.equal(row.avg_reviews, 148);
-    assert.equal(row.avg_photos, 61);
-    assert.equal(row.rating_gap, -0.07);
-    assert.equal(row.reviews_gap, -66);
-    assert.equal(row.photos_gap, -30);
-    assert.equal(row.top_competitor_name, "Électricité du Nord — Dépannage et installations résidentielles");
+    assert.equal(row.avg_rating, 4.8);
+    assert.equal(row.avg_reviews, 11);
+    assert.equal(row.avg_photos, 1);
+    assert.equal(row.rating_gap, -3);
+    assert.equal(row.reviews_gap, -6);
+    assert.equal(row.photos_gap, 0);
+    assert.equal(row.top_competitor_name, "Electrolux95");
     assert.deepEqual(db.sqlite.prepare("SELECT * FROM diagnostic_requests WHERE analysis_id = ?").get(ANALYSIS_ID), requestBefore);
     assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID), draftBefore);
     assert.equal(db.count("analyses"), 1);

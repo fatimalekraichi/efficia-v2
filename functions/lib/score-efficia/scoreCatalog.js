@@ -7,6 +7,22 @@ import {
   REVIEW_DEPENDENT_KEYS,
 } from "./questionnaireRules.js";
 import { classifyPrimaryCategory, classifySecondaryCategories } from "../categoryEvidence.js";
+import { normalizeStoredActionLinkEvidence } from "../actionLinkEvidence.js";
+
+export const AUTO_EVIDENCE_CONTRACTS = Object.freeze({
+  categoriePrincipale: "activité confirmée + catégorie principale observée",
+  categoriesSecondaires: "statut de disponibilité + liste fournisseur",
+  horaires: "champ horaires fournisseur non vide",
+  contact: "présence explicite des champs téléphone/site",
+  liensAction: "champs CTA fournisseur explicitement observés",
+  nombrePhotos: "nombre de photos numérique",
+  noteMoyenne: "note numérique",
+  volumeAvis: "volume propre + moyenne concurrentielle numériques",
+  descriptionRemplie: "champ description observé + longueur numérique",
+  servicesPresents: "champ services observé + liste fournisseur",
+  classementLocal: "rang normalisé one-based + source du rang",
+  attractiviteConcurrents: "note et avis propres + moyennes concurrentielles",
+});
 
 function optionValueForIndex(index, total, explicitValue = null) {
   if (explicitValue === "no_reviews") return "no_reviews";
@@ -19,8 +35,39 @@ function optionValueForIndex(index, total, explicitValue = null) {
 
 function asNumber(value) {
   if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
+  const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
+  const number = Number(normalized);
   return Number.isFinite(number) ? number : null;
+}
+
+export function classifyLocalRank(value) {
+  const rank = asNumber(value);
+  if (rank === null || !Number.isInteger(rank) || rank < 0) return { status:"unknown", optionIndex:null };
+  if (rank === 0) return { status:"absent", optionIndex:2 };
+  if (rank <= 3) return { status:"top3", optionIndex:0 };
+  return { status:"first_page", optionIndex:1 };
+}
+
+export function classifyCompetitiveAttractiveness({ rating, reviews, averageRating, averageReviews, tolerance = CONFIG.seuils.toleranceConcurrents } = {}) {
+  const ownRating = asNumber(rating);
+  const ownReviews = asNumber(reviews);
+  const competitorRating = asNumber(averageRating);
+  const competitorReviews = asNumber(averageReviews);
+  if ([ownRating, ownReviews, competitorRating, competitorReviews].some((value) => value === null)
+      || competitorRating <= 0 || competitorReviews <= 0) {
+    return { status:"unknown", optionIndex:null, ratingRatio:null, reviewsRatio:null };
+  }
+  const ratingRatio = ownRating / competitorRating;
+  const reviewsRatio = ownReviews / competitorReviews;
+  const lowerBound = 1 - tolerance;
+  const upperBound = 1 + tolerance;
+  if (ratingRatio < lowerBound || reviewsRatio < lowerBound) {
+    return { status:"behind", optionIndex:2, ratingRatio, reviewsRatio };
+  }
+  if (ratingRatio > upperBound && reviewsRatio > upperBound) {
+    return { status:"ahead", optionIndex:0, ratingRatio, reviewsRatio };
+  }
+  return { status:"comparable", optionIndex:1, ratingRatio, reviewsRatio };
 }
 
 function asArray(value) {
@@ -171,14 +218,16 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
   const website = getNormalizedValue(normalized, ["website", "site"]);
   const phone = getNormalizedValue(normalized, ["phone", "phone_number"]);
   const contactWasObserved = wasObserved(normalized, ["website", "site", "phone", "phone_number"]);
+  const actionLinkEvidence = normalizeStoredActionLinkEvidence(normalized);
   const services = getServices(normalized);
   const photos = asNumber(business.photosCount);
   const rating = asNumber(business.rating);
   const reviewsCount = asNumber(business.reviews);
   const avgReviews = asNumber(benchmark.averages?.reviews);
+  const avgRating = asNumber(benchmark.averages?.rating);
   const localPosition = asNumber(business.localPosition);
+  const rankSource = String(normalized.search_rank_context?.source || "").trim();
   const descriptionLength = asNumber(business.descriptionLength);
-  const gaps = benchmark.gaps || {};
   const conditions = {
     photoPresence: photos === null ? "unknown" : (photos > 0 ? "present" : "none"),
     reviewsPresence: reviewsCount === null && rating === null
@@ -245,11 +294,18 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
     : notVerified("horaires"));
 
   if (contactWasObserved) {
-    addCriterion(criteria, optionForKey("contact", phone && website ? 0 : (phone || website ? 1 : 2), "observed", { phone: Boolean(phone), website: Boolean(website) }));
-    addCriterion(criteria, optionForKey("liensAction", phone || website ? 0 : 2, "observed", { phone: Boolean(phone), website: Boolean(website) }));
+    addCriterion(criteria, optionForKey("contact", phone && website ? 0 : (phone || website ? 1 : 2), "observed", { availability:"available", phone: Boolean(phone), website: Boolean(website) }));
   } else {
     addCriterion(criteria, notVerified("contact"));
-    addCriterion(criteria, notVerified("liensAction"));
+  }
+  if (actionLinkEvidence.availability === "available") {
+    addCriterion(criteria, optionForKey("liensAction", actionLinkEvidence.directLinks.length ? 0 : 2, "observed", {
+      availability:"available",
+      links:actionLinkEvidence.links,
+      directLinks:actionLinkEvidence.directLinks.length,
+    }));
+  } else {
+    addCriterion(criteria, notVerified("liensAction", "unknown", { availability:"unavailable", links:[] }));
   }
 
   // Une adresse publique ne permet pas de conclure si l'activité reçoit sur
@@ -276,7 +332,7 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
   } else if (avgReviews !== null && avgReviews > 0) {
     addCriterion(criteria, optionForKey("volumeAvis", reviewsCount >= avgReviews * (1 - CONFIG.seuils.toleranceConcurrents) ? 0 : (reviewsCount >= avgReviews * 0.5 ? 1 : 2), "observed", { value: reviewsCount, average: avgReviews }));
   } else {
-    addCriterion(criteria, optionForKey("volumeAvis", reviewsCount >= 30 ? 0 : (reviewsCount >= 10 ? 1 : 2), "observed", { value: reviewsCount }));
+    addCriterion(criteria, notVerified("volumeAvis", "unknown", { value:reviewsCount, average:null }));
   }
 
   if (descriptionLength === null || !wasObserved(normalized, ["description", "description_length"])) {
@@ -289,26 +345,49 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
   addCriterion(criteria, notVerified("descriptionQualite"));
 
   if (Array.isArray(services)) {
-    addCriterion(criteria, optionForKey("servicesPresents", services.length ? 0 : 2, "observed", { value: services.length }));
+    addCriterion(criteria, optionForKey("servicesPresents", services.length ? 0 : 2, "observed", { availability:"available", value: services.length }));
   } else {
     addCriterion(criteria, notVerified("servicesPresents"));
   }
   addCriterion(criteria, notVerified("servicesDecrits"));
 
-  if (localPosition === null) {
-    addCriterion(criteria, notVerified("classementLocal"));
+  const localRankDecision = classifyLocalRank(localPosition);
+  if (localRankDecision.optionIndex === null || !rankSource) {
+    addCriterion(criteria, notVerified("classementLocal", "unknown", { value:localPosition, source:rankSource || null }));
   } else {
-    addCriterion(criteria, optionForKey("classementLocal", localPosition >= 1 && localPosition <= 3 ? 0 : (localPosition >= 4 && localPosition <= 10 ? 1 : 2), "observed", { value: localPosition }));
+    addCriterion(criteria, optionForKey("classementLocal", localRankDecision.optionIndex, "observed", {
+      value:localPosition,
+      source:rankSource,
+      decision:localRankDecision.status,
+      rawRank:asNumber(normalized.search_rank_context?.raw_rank),
+    }));
   }
 
-  if (!competitors.length) {
-    addCriterion(criteria, notVerified("attractiviteConcurrents"));
+  const attractiveness = classifyCompetitiveAttractiveness({
+    rating,
+    reviews:reviewsCount,
+    averageRating:avgRating,
+    averageReviews:avgReviews,
+  });
+  if (!competitors.length || attractiveness.optionIndex === null) {
+    addCriterion(criteria, notVerified("attractiviteConcurrents", "unknown", {
+      rating,
+      reviews:reviewsCount,
+      averageRating:avgRating,
+      averageReviews:avgReviews,
+    }));
   } else {
-    let positiveSignals = 0;
-    if (asNumber(gaps.rating) !== null && asNumber(gaps.rating) >= -0.1) positiveSignals += 1;
-    if (asNumber(gaps.reviews) !== null && asNumber(gaps.reviews) >= 0) positiveSignals += 1;
-    if (asNumber(gaps.photos) !== null && asNumber(gaps.photos) >= 0) positiveSignals += 1;
-    addCriterion(criteria, optionForKey("attractiviteConcurrents", positiveSignals >= 2 ? 0 : (positiveSignals === 1 ? 1 : 2), "observed", { competitors: competitors.length, gaps }));
+    addCriterion(criteria, optionForKey("attractiviteConcurrents", attractiveness.optionIndex, "observed", {
+      competitors:competitors.length,
+      rating,
+      reviews:reviewsCount,
+      averageRating:avgRating,
+      averageReviews:avgReviews,
+      tolerance:CONFIG.seuils.toleranceConcurrents,
+      decision:attractiveness.status,
+      ratingRatio:attractiveness.ratingRatio,
+      reviewsRatio:attractiveness.reviewsRatio,
+    }));
   }
 
   // La conformité du nom nécessite une comparaison humaine avec les sources
