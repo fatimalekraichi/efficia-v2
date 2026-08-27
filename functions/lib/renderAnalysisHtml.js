@@ -45,7 +45,7 @@ const EFFICIA_BLUE = "#2563eb";
 // pondération réelle (scoreConfig.js, non modifié). N'affecte ni ne dépend
 // de la valeur du score — reste identique quel que soit le résultat, à la
 // différence de scoreInterpretationNote() juste en dessous.
-const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. La méthode Efficia™ évalue actuellement 29 critères répartis en six domaines, puis replace les résultats dans leur contexte local.";
+const SCORE_AUTHORITY_NOTE = "Le Score Efficia™ mesure la capacité actuelle de votre fiche Google Business à transformer une recherche locale en prise de contact. La méthode Efficia™ évalue actuellement 28 critères notés répartis en six domaines, complétés par une synthèse concurrentielle non notée.";
 const PROVISIONAL_SCORE_NOTE = "Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.";
 
 function escapeHtml(value) {
@@ -1657,7 +1657,7 @@ function freeSituationSection(model) {
       ${positionSummary(free) ? `<p class="methode-note">${safeText(positionSummary(free))}</p>` : ""}
       ${model.websiteAvailabilityNote ? `<p class="methode-note">${safeText(model.websiteAvailabilityNote)}</p>` : ""}
       ${freeMeaningBox(model)}
-      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.total)} critères passés en revue selon la méthode Efficia™.</p>
+      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.totalScored ?? free.criteriaSummary?.total)} critères notés et une synthèse concurrentielle non notée selon la méthode Efficia™.</p>
       <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>
       ${footer(model, "Page 1/6")}
     </section>
@@ -1721,13 +1721,21 @@ function freeCriteriaSection(model) {
   const summary = free.criteriaSummary || { total: 0, counts: {}, byDomain: [] };
   const counts = summary.counts || {};
   const notVerifiedCount = counts.not_verified || 0;
+  const competitiveSummary = (summary.summaries || []).find((item) => item.key === "attractiviteConcurrents");
+  const competitiveEvidence = competitiveSummary?.evidence || {};
+  const compactNumber = (value, digits = 1) => {
+    const number = Number(value);
+    return Number.isFinite(number)
+      ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits }).format(number)
+      : "—";
+  };
 
   return `
     <section class="page page-criteria" data-free-page="3">
       ${header(model.vocabulary?.reportLabel)}
       <div class="chapitre">ÉTAPE 3 · CE QUE NOUS AVONS VÉRIFIÉ</div>
       <h1>Ce que nous avons analysé</h1>
-      <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${safeText(hero.businessName, "votre entreprise")} au crible de ${safeNumber(summary.total)} vérifications.</p>
+      <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${safeText(hero.businessName, "votre entreprise")} au crible de ${safeNumber(summary.totalScored ?? summary.total)} critères notés et d’une synthèse concurrentielle non notée.</p>
       <div class="chk-compteur">
         <span class="count-tag status-compliant">${safeNumber(counts.compliant)} conformes</span>
         <span class="count-tag status-partial">${safeNumber(counts.partial)} à améliorer</span>
@@ -1738,6 +1746,12 @@ function freeCriteriaSection(model) {
       </div>
       <div class="chk-grid">
         ${(summary.byDomain || []).map(freeCriteriaDomainCard).join("") || `<p class="empty">Détail des critères non disponible.</p>`}
+      </div>
+      <div class="competitive-summary">
+        <h3>Confiance visible face aux concurrents</h3>
+        <p><strong>Votre fiche :</strong> ${safeText(`${compactNumber(competitiveEvidence.rating)}/5 et ${compactNumber(competitiveEvidence.reviews, 0)} avis`)}</p>
+        <p><strong>Moyenne des concurrents :</strong> ${safeText(`${compactNumber(competitiveEvidence.averageRating)}/5 et ${compactNumber(competitiveEvidence.averageReviews, 2)} avis`)}</p>
+        <p><strong>Confiance visible :</strong> ${safeText(competitiveSummary?.label || "À confirmer")}</p>
       </div>
       <div class="chk-legend">Légende — <span class="chk-ok">✓</span> conforme&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-warn">!</span> à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-ko">✕</span> prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-unknown">○</span> à confirmer manuellement.</div>
       <p class="rapport-note">Rassurez-vous : il n'est ni nécessaire ni utile de tout corriger d'un coup. Nous avons retenu les trois points qui, pour votre fiche précisément, changeront le plus de choses.${notVerifiedCount ? ` ${notVerifiedCount === 1 ? "1 élément reste" : `${notVerifiedCount} éléments restent`} à confirmer. ${notVerifiedCount === 1 ? "Il n'est vérifiable" : "Ils ne sont vérifiables"} que depuis l'intérieur du compte Google Business — c'est la première chose que couvre l'Audit complet.` : ""}</p>
@@ -4158,6 +4172,17 @@ function styles() {
       .free-diagnostic .chk-legend .chk-warn { color: var(--orange); font-weight: 900; }
       .free-diagnostic .chk-legend .chk-ko { color: var(--red); font-weight: 900; }
       .free-diagnostic .chk-legend .chk-unknown { color: var(--muted); font-weight: 900; }
+      .free-diagnostic .competitive-summary {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid #dbeafe;
+        border-radius: 8px;
+        background: #f8fbff;
+        font-size: 9px;
+        line-height: 1.35;
+      }
+      .free-diagnostic .competitive-summary h3 { margin: 0 0 4px; font-size: 10px; color: var(--ink); }
+      .free-diagnostic .competitive-summary p { margin: 1px 0; }
 
       /* — Pages 4/5 : cartes de priorité, reprises de .priority-card/         */
       /*   .priority-kicker/.priority-title/.priority-flow/.priority-step*/   */
@@ -4647,6 +4672,26 @@ function styles() {
           /* ce blocage doit être réaffirmé ici pour l'impression/PDF.        */
           overflow: hidden;
         }
+
+        /* La largeur CSS d'une feuille A4 imprimée tombe sous le breakpoint
+           écran de 900 px. Réaffirmer la grille de la page 3 évite donc que
+           le repli mobile empile les six familles et pousse la synthèse hors
+           de la zone imprimable. */
+        .free-diagnostic .page-criteria .chk-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 7px;
+          margin-top: 6px;
+        }
+        .free-diagnostic .page-criteria .chk-compteur { gap: 7px; margin-top: 6px; }
+        .free-diagnostic .page-criteria .count-tag { padding: 4px 10px; font-size: 10px; }
+        .free-diagnostic .page-criteria .chk-rubrique { padding: 7px 10px; }
+        .free-diagnostic .page-criteria .chk-rubrique h3 { margin-bottom: 4px; font-size: 11.5px; }
+        .free-diagnostic .page-criteria .chk-item { padding: 1px 0; font-size: 9.5px; line-height: 1.24; }
+        .free-diagnostic .page-criteria .competitive-summary { margin-top: 5px; padding: 5px 8px; line-height: 1.2; }
+        .free-diagnostic .page-criteria .competitive-summary h3 { margin-bottom: 2px; }
+        .free-diagnostic .page-criteria .chk-legend { margin-top: 4px; padding: 4px 8px; font-size: 9px; }
+        .free-diagnostic .page-criteria .rapport-note { margin-top: 5px; font-size: 10px; line-height: 1.3; }
+        .free-diagnostic .page-criteria .next-hint { margin-top: 5px; font-size: 10px; }
 
         .page:last-child {
           page-break-after: auto;

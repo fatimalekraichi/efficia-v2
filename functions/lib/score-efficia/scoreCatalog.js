@@ -1,5 +1,5 @@
 import { GRILLE } from "./criteriaCatalog.js";
-import { CONFIG, SCORING_VERSION } from "./scoreConfig.js";
+import { CONFIG, LEGACY_SCORING_VERSION, SCORING_VERSION, resolveScoringVersion } from "./scoreConfig.js";
 import {
   CRITERIA_DEPENDENCIES,
   PHOTO_DEPENDENT_KEYS,
@@ -203,28 +203,39 @@ function addCriterion(items, item) {
   if (item) items.push(item);
 }
 
-export function buildScoreCatalog() {
+export function buildScoreCatalog(requestedScoringVersion = SCORING_VERSION) {
+  const scoringVersion = resolveScoringVersion(requestedScoringVersion);
   return {
-    scoringVersion: SCORING_VERSION,
+    scoringVersion,
     questionnaireVersion: QUESTIONNAIRE_VERSION,
     categories: GRILLE.map((category) => ({
       key: category.key,
       label: category.cat,
-      points: category.pts,
+      points: scoringVersion === LEGACY_SCORING_VERSION
+        ? category.pts
+        : category.criteres.filter((criterion) => criterion.scored !== false).reduce((sum, criterion) => sum + criterion.max, 0),
       precondition: null,
       criteria: category.criteres.map((criterion) => ({
         key: criterion.key,
-        question: criterion.q,
+        question: scoringVersion === LEGACY_SCORING_VERSION && criterion.legacyQuestion
+          ? criterion.legacyQuestion
+          : criterion.q,
         help: criterion.aide,
-        max: criterion.max,
+        max: scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false ? criterion.max : 0,
+        historicalMax: criterion.max,
+        scored: scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false,
+        informational: scoringVersion !== LEGACY_SCORING_VERSION && criterion.informational === true,
         checklist: criterion.checklist ? CONFIG.checklist.criteres[criterion.checklist] || [] : [],
-        options: criteriaOptions(criterion),
+        options: scoringVersion !== LEGACY_SCORING_VERSION && criterion.informational === true
+          ? []
+          : criteriaOptions(criterion),
       })),
     })),
   };
 }
 
-export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = false } = {}) {
+export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = false, scoringVersion: requestedScoringVersion = SCORING_VERSION } = {}) {
+  const scoringVersion = resolveScoringVersion(requestedScoringVersion);
   const business = analysis.business || {};
   const normalized = business.normalized || {};
   const benchmark = analysis.benchmark || {};
@@ -451,9 +462,20 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
   });
 
   return {
-    scoringVersion: SCORING_VERSION,
+    scoringVersion,
     questionnaireVersion: QUESTIONNAIRE_VERSION,
     conditions,
-    criteria: criteria.filter((criterion) => !hiddenCriteria.has(criterion.key)),
+    criteria: criteria.filter((criterion) => !hiddenCriteria.has(criterion.key)).map((criterion) => (
+      scoringVersion !== LEGACY_SCORING_VERSION && criterion.key === "attractiviteConcurrents"
+        ? {
+            ...criterion,
+            question: "Confiance visible face aux concurrents",
+            selectedOptionIndex: null,
+            points: null,
+            scored: false,
+            informational: true,
+          }
+        : criterion
+    )),
   };
 }

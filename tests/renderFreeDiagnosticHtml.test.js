@@ -77,7 +77,7 @@ function fischerAnalysis() {
   };
 }
 
-async function buildDocumentModel(reportType) {
+export async function buildDocumentModel(reportType) {
   const path = new URL("./fixtures/knowledge-weak-profile.json", import.meta.url);
   const knowledgeInput = JSON.parse(await readFile(path, "utf8"));
   const knowledge = runKnowledgeEngine({ ...knowledgeInput, reportType });
@@ -152,6 +152,24 @@ test("Diagnostic gratuit : exactement 6 pages et les 6 étapes attendues", async
   assert.match(html, /Comment les résoudre|Ce que ces trois priorités peuvent améliorer/);
   assert.match(html, /ÉTAPE 6 · PASSER À L'ACTION/);
   assert.match(html, /Passer à l'action|Deux façons d'améliorer votre fiche/);
+});
+
+test("Diagnostic gratuit v5 : la synthèse concurrentielle est informative et factuelle", async () => {
+  const documentModel = await buildDocumentModel("free");
+  documentModel.freeDiagnostic.criteriaSummary.totalScored = 28;
+  documentModel.freeDiagnostic.criteriaSummary.totalInformational = 1;
+  documentModel.freeDiagnostic.criteriaSummary.summaries = [{
+    key: "attractiviteConcurrents",
+    label: "Derrière",
+    status: "deficient",
+    evidence: { rating: 1.8, reviews: 5, averageRating: 4.8, averageReviews: 10.6666666667 },
+  }];
+  const rendered = renderFreeDiagnosticHtml(documentModel);
+  assert.match(rendered, /28 critères notés et d’une synthèse concurrentielle non notée/);
+  assert.match(rendered, /Confiance visible face aux concurrents/);
+  assert.match(rendered, /1,8\/5 et 5 avis/);
+  assert.match(rendered, /4,8\/5 et 10,67 avis/);
+  assert.match(rendered, /Confiance visible :<\/strong> Derrière/);
 });
 
 test("Diagnostic gratuit : indices 79/65/13 affichés", async () => {

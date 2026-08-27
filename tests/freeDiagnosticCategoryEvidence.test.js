@@ -107,7 +107,7 @@ test("une réponse manuelle préexistante n’est pas écrasée par une relance"
 });
 
 test("une ancienne réponse automatique de catégorie est recalculée après changement d’activité", () => {
-  assert.match(html, /\["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"\]/);
+  assert.match(html, /\["classementLocal", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"\]/);
   assert.match(html, /\(cr\.key === "categoriePrincipale" \|\| cr\.key === "categoriesSecondaires"\) && !savedManual\) return/);
 });
 

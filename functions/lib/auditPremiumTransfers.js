@@ -1,4 +1,5 @@
 import { buildScoreCatalog } from "./score-efficia/scoreCatalog.js";
+import { SCORING_VERSION } from "./score-efficia/scoreConfig.js";
 import {
   normalizeLocationCriterion,
   normalizeQuestionnaireConditions,
@@ -109,6 +110,7 @@ export function buildPremiumDraftFromFreeSnapshot({ snapshot, analysis, administ
   return {
     ...sourceAnswers,
     questionnaireVersion: QUESTIONNAIRE_VERSION,
+    scoringVersion: SCORING_VERSION,
     reportType: "premium",
     fields,
     responses,
@@ -223,7 +225,7 @@ export async function createPremiumFromCompletedFree(db, {
       top_competitor_rating, top_competitor_reviews, benchmark_completed_at,
       NULL, NULL, NULL, NULL, NULL, NULL,
       NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-      'premium', NULL, NULL, NULL
+      'premium', NULL, NULL, ?
     FROM analyses WHERE analysis_id = ?
   `).bind(
     targetAnalysisId,
@@ -233,6 +235,7 @@ export async function createPremiumFromCompletedFree(db, {
     now,
     now,
     sourceActivity,
+    SCORING_VERSION,
     sourceAnalysisId,
   );
   const createDraft = db.prepare(`

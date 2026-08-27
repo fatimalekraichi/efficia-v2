@@ -168,7 +168,8 @@ test("Bivert 1,8/5 et 5 avis face à 4,8/5 et 11 avis est Derrière", () => {
   assert.equal(decision.optionIndex, 2);
   const attractiveness = criterion(buildScorePrefill(analysis(), { verifiedCategoryEvidence:true }), "attractiviteConcurrents");
   assert.equal(attractiveness.label, "Derrière");
-  assert.equal(attractiveness.points, 0);
+  assert.equal(attractiveness.points, null);
+  assert.equal(attractiveness.scored, false);
 });
 
 test("les valeurs décimales françaises avec virgule suivent le même calcul", () => {
@@ -188,7 +189,7 @@ test("des benchmarks incomplets donnent À confirmer, jamais Comparable", () => 
 test("la relance recalcule les benchmarks avant de reconstruire les réponses AUTO", () => {
   const refresh = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   assert.ok(refresh.indexOf("const benchmark = benchmarkEngine") < refresh.indexOf("const state = buildFreeDiagnosticCollectionState"));
-  assert.match(html, /\["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"\]/);
+  assert.match(html, /\["classementLocal", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"\]/);
 });
 
 test("chaque critère AUTO du diagnostic possède un contrat de preuve permanent", () => {

@@ -268,8 +268,8 @@ const REVIEW_CRITERIA_GROUPS = [
       },
       {
         key: "volumeAvis",
-        question: "Le volume d’avis est-il suffisant pour rassurer ?",
-        help: "Comparer le nombre d’avis à la moyenne observée dans la zone.",
+        question: "Le volume d’avis est-il supérieur à la moyenne des trois concurrents les mieux placés ?",
+        help: "Comparer le nombre d’avis aux trois concurrents directs retenus, avec une tolérance de 10 %.",
         options: [
           ["compliant", "Suffisant"],
           ["partial", "Moyen"],
@@ -444,14 +444,11 @@ const REVIEW_CRITERIA_GROUPS = [
       },
       {
         key: "attractiviteConcurrents",
-        question: "La fiche paraît-elle aussi attractive que les concurrents observés ?",
-        help: "Comparer la preuve visible : avis, photos, présentation, clarté.",
-        options: [
-          ["compliant", "Avantage"],
-          ["partial", "Comparable"],
-          ["deficient", "En retrait"],
-          ["not_verified", "Non vérifié"],
-        ],
+        question: "Confiance visible face aux concurrents",
+        help: "Synthèse automatique non notée de la note et du volume d’avis.",
+        informational: true,
+        scored: false,
+        options: [],
       },
     ],
   },
@@ -627,6 +624,17 @@ function renderCriteriaReview() {
       ` : ""}
       ${getGroupCriteria(group).map((criterion) => {
         if (criterion.key === "adresse") return locationCriterionHtml();
+        if (criterion.informational === true) {
+          return `<article class="criteria-item criteria-item--informational" data-criteria-key="${escapeHtml(criterion.key)}" data-informational-criterion>
+            <div class="criteria-item__question">${escapeHtml(getCriterionQuestion(criterion))}</div>
+            <div class="criteria-item__help">${escapeHtml(getCriterionHelp(criterion))}</div>
+            <div class="criteria-summary-evidence" data-competitive-summary>
+              <p><strong>Votre fiche :</strong> <span data-competitive-business>Non vérifiable</span></p>
+              <p><strong>Moyenne des concurrents :</strong> <span data-competitive-average>Non vérifiable</span></p>
+              <p><strong>Confiance visible :</strong> <span data-competitive-decision>À confirmer</span></p>
+            </div>
+          </article>`;
+        }
         const checklist = getCriterionChecklist(criterion);
         return `
         <article class="criteria-item" data-criteria-key="${escapeHtml(criterion.key)}">
@@ -931,6 +939,21 @@ function fillCriteriaFromAnalysis(analysis, draftReview = null) {
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
       if (criterion.key === "adresse") return;
+      if (criterion.informational === true) {
+        const summary = savedCriteria.get(criterion.key) || currentPrefillCriteria.get(criterion.key) || fallbackAutoCriteria.get(criterion.key);
+        const evidence = summary?.evidence || {};
+        const item = criteriaGroupsBox?.querySelector(`[data-criteria-key="${criterion.key}"]`);
+        const number = (value, digits = 1) => Number.isFinite(Number(value))
+          ? Number(value).toLocaleString("fr-FR", { maximumFractionDigits: digits })
+          : "—";
+        const business = item?.querySelector("[data-competitive-business]");
+        const average = item?.querySelector("[data-competitive-average]");
+        const decision = item?.querySelector("[data-competitive-decision]");
+        if (business) business.textContent = `${number(evidence.rating)}/5 et ${number(evidence.reviews, 0)} avis`;
+        if (average) average.textContent = `${number(evidence.averageRating)}/5 et ${number(evidence.averageReviews, 2)} avis`;
+        if (decision) decision.textContent = summary?.label || "À confirmer";
+        return;
+      }
       if (reviewsPresence === "none" && criterion.key === "noteMoyenne") return;
       const saved = savedCriteria.get(criterion.key);
       const auto = currentPrefillCriteria.get(criterion.key) || fallbackAutoCriteria.get(criterion.key);
@@ -962,6 +985,23 @@ function collectCriteriaReview() {
   getCriteriaGroups().forEach((group) => {
     getGroupCriteria(group).forEach((criterion) => {
       if (criterion.key === "adresse") return;
+      if (criterion.informational === true) {
+        const summary = currentPrefillCriteria.get(criterion.key);
+        criteria.push({
+          key: criterion.key,
+          category: getGroupLabel(group),
+          question: getCriterionQuestion(criterion),
+          value: CRITERIA_VALUES.has(summary?.value) ? summary.value : "not_verified",
+          label: summary?.label || "À confirmer",
+          checklist: [],
+          selectedOptionIndex: null,
+          points: null,
+          source: summary?.source || "unknown",
+          evidence: summary?.evidence || null,
+          informational: true,
+        });
+        return;
+      }
       const criterionItem = criteriaGroupsBox?.querySelector(`[data-criteria-key="${criterion.key}"]`);
       if (criterionItem?.classList.contains("is-dependency-hidden")) return;
       const selected = criteriaGroupsBox?.querySelector(`input[name="criterion:${criterion.key}"]:checked`);
@@ -1064,7 +1104,7 @@ function setCriterionHidden(key, hidden) {
 }
 
 // Surbrillance des critères "Non vérifié" : purement visuelle, ne touche ni
-// à la valeur du critère ni à son calcul (score inchangé, mêmes 29 critères).
+// à la valeur du critère ni à son calcul.
 function updateNotVerifiedHighlights() {
   if (!criteriaGroupsBox) return 0;
   let notVerifiedCount = 0;
@@ -1712,9 +1752,10 @@ async function loadAnalysis() {
 }
 
 // Ces champs (type de rapport, statuts "corrections et confirmations") ne
-// sont plus éditables depuis cette page : la grille des 29 critères couvre
-// ce contrôle plus précisément. On renvoie donc systématiquement la valeur
-// déjà enregistrée pour l'analyse en cours, telle quelle, afin de ne jamais
+// sont plus éditables depuis cette page : les 28 critères notés et la synthèse
+// informative couvrent ce contrôle plus précisément. On renvoie donc la valeur
+// déjà enregistrée
+// pour l'analyse en cours, telle quelle, afin de ne jamais
 // l'écraser ni casser la lecture des anciennes analyses qui la contiennent.
 function collectPayload({ confirmAll = false } = {}) {
   const previousReview = currentAnalysis?.manualReview || {};
@@ -1726,6 +1767,7 @@ function collectPayload({ confirmAll = false } = {}) {
     analysisId,
     confirmAll,
     questionnaireVersion: QUESTIONNAIRE_VERSION,
+    scoringVersion: currentAnalysis?.effectiveScoringVersion || currentAnalysis?.scoringVersion || "score-efficia-v5",
     ...collectQuestionnaireConditions(),
     reportType: previousReview.reportType || currentAnalysis?.reportType || "premium",
     descriptionStatus: previousReview.descriptionStatus,

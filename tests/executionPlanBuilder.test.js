@@ -153,7 +153,9 @@ test("un Premium manuel transféré v4 utilise partout la ville administrative c
   assert.doesNotMatch(visibleFinalHtml, /Diagnostic gratuit|offert|99 € déjà investis|intégralement déduits/i);
   assert.equal(QUESTIONNAIRE_VERSION, "score-efficia-questionnaire-v4");
   assert.equal(criteria.length, 29);
-  assert.equal(criteria.reduce((sum, criterion) => sum + criterion.max, 0), 100);
+  assert.equal(criteria.filter((criterion) => criterion.scored).length, 28);
+  assert.equal(criteria.filter((criterion) => criterion.informational).length, 1);
+  assert.equal(criteria.reduce((sum, criterion) => sum + criterion.max, 0), 96);
 });
 
 test("une description déjà approuvée reste immuable et nécessite une nouvelle version pour être corrigée", () => {

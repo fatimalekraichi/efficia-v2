@@ -4,6 +4,7 @@
 import { loadDiagnosticRequestContext } from "./diagnosticRequests.js";
 import { loadPremiumAuthorization } from "./premiumAuthorization.js";
 import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
+import { resolveScoringVersion } from "./score-efficia/scoreConfig.js";
 import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
 import { normalizeStoredActionLinkEvidence } from "./actionLinkEvidence.js";
 
@@ -139,7 +140,11 @@ export function buildFreeDiagnosticCollectionState(analysis) {
   // Le moteur historique attend un benchmark (moyennes + écarts). Le parcours
   // gratuit persiste déjà le panel brut : on adapte ces données au contrat du
   // moteur, sans relancer le fournisseur et sans créer une seconde formule.
-  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis), { verifiedCategoryEvidence: true });
+  const scoringVersion = resolveScoringVersion(analysis?.scoringVersion, { historicalFallback: true });
+  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis), {
+    verifiedCategoryEvidence: true,
+    scoringVersion,
+  });
   const confirmedActivity = firstNonEmpty(normalized.confirmed_activity);
   const observedPrimaryCategory = firstNonEmpty(normalized.category, fiche.category, normalized.type, fiche.type);
   const secondaryCategories = categoryList(normalized.subtypes ?? normalized.secondary_categories);
@@ -158,6 +163,7 @@ export function buildFreeDiagnosticCollectionState(analysis) {
   const rankContext = normalized.search_rank_context || {};
 
   return {
+    scoringVersion,
     business: {
       company,
       city: firstNonEmpty(normalized.city, normalized.borough, fiche.city, fiche.borough, business.ville),
@@ -259,6 +265,7 @@ export function buildFreeDiagnosticProductionContext(analysis, orderContext) {
     premiumAllowed,
     collectionAvailable,
     ...(collectionState ? {
+      scoringVersion: collectionState.scoringVersion,
       collection: collectionState.business,
       scorePrefill: collectionState.scorePrefill,
     } : {}),

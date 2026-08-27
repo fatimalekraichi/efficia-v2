@@ -65,7 +65,7 @@ const GRILLE = [
   opts:[["4,5 et plus",CONFIG.poids.avis.note],["4,0 à 4,4",4],["3,5 à 3,9",2],[`Moins de ${String(CONFIG.seuils.noteMoyenne).replace(".",",")}`,0],["Aucun avis",0,"no_reviews"]],
   reco:"Mettre en place un parcours de collecte d'avis (QR code, demande systématique) : une note faible peut limiter la confiance au moment de comparer plusieurs fiches.",
   force:"Excellente note moyenne — un vrai capital confiance."},
- {key:"volumeAvis", q:"Le volume d'avis est-il supérieur aux concurrents directs ?", aide:"Comparer avec les 3 fiches concurrentes les mieux placées. Un écart inférieur à 10 % est considéré comparable.", max:CONFIG.poids.avis.volume,
+ {key:"volumeAvis", q:"Le volume d’avis est-il supérieur à la moyenne des trois concurrents les mieux placés ?", aide:"Comparer avec les 3 fiches concurrentes les mieux placées. Un écart inférieur à 10 % est considéré comparable.", max:CONFIG.poids.avis.volume,
   opts:[["Supérieur",CONFIG.poids.avis.volume],["Comparable",3],["Inférieur",0]],
   reco:"Augmenter le volume d'avis : à note égale, un volume plus élevé peut renforcer la confiance lors de la comparaison.",
   force:"Volume d'avis supérieur à la concurrence."},
@@ -123,7 +123,7 @@ const GRILLE = [
   opts:[["Top 3",CONFIG.poids.visibilite.classement],["Visible en 1re page",3],["Absente",0]],
   reco:"Travailler le référencement local (catégories, avis, complétude, cohérence) : hors du top 3 de Maps, la fiche capte une fraction des recherches.",
   force:"Présente dans le top 3 local — très bonne visibilité observée."},
- {key:"attractiviteConcurrents", q:"Face aux 3 concurrents directs, la fiche est-elle plus attractive ?", aide:"Comparaison note + volume d'avis calculée automatiquement avec une tolérance de 10 %.", max:CONFIG.poids.visibilite.attractivite,
+ {key:"attractiviteConcurrents", q:"Confiance visible face aux concurrents", legacyQuestion:"Face aux 3 concurrents directs, la fiche est-elle plus attractive ?", aide:"Synthèse automatique de la note et du volume d'avis, comparés aux moyennes concurrentielles.", max:CONFIG.poids.visibilite.attractivite, scored:false, informational:true,
   opts:[["Devant",CONFIG.poids.visibilite.attractivite],["Comparable",2],["Derrière",0]],
   reco:"Combler l'écart avec les concurrents directs : le prospect compare toujours 2-3 fiches avant de choisir.",
   force:"Fiche plus attractive que les concurrents directs."}

@@ -10,6 +10,7 @@ import { onRequestPost as authorizePremium } from "../functions/api/admin/premiu
 import { loadAnalysisById } from "../functions/api/analysis/_shared.js";
 import { buildFreeDiagnosticCollectionState } from "../functions/lib/freeDiagnosticProductionLink.js";
 import { calculateScoreDetail } from "../functions/lib/score-efficia/scoreEngine.js";
+import { LEGACY_SCORING_VERSION } from "../functions/lib/score-efficia/scoreConfig.js";
 
 const ADMIN_SECRET = "local-admin-secret";
 const ANALYSIS_ID = "analysis-free-123";
@@ -280,7 +281,7 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     assert.equal(automaticCriteria.filter((criterion) => !prefilledKeys.has(criterion.key)).length, 5);
     const scoreDetail = calculateScoreDetail(Object.fromEntries(
       automaticCriteria.map((criterion) => [criterion.key, criterion.points]),
-    ));
+    ), "default", LEGACY_SCORING_VERSION);
     assert.equal(Math.round(scoreDetail.total), 17);
     assert.equal(scoreDetail.repondus, 6);
     assert.equal(scoreDetail.totalCrit, 29);

@@ -21,6 +21,7 @@ import {
 } from "../functions/lib/auditPremiumTransfers.js";
 import { buildReviewedObservation } from "../functions/lib/manualReview.js";
 import { buildScoreCatalog } from "../functions/lib/score-efficia/scoreCatalog.js";
+import { LEGACY_SCORING_VERSION } from "../functions/lib/score-efficia/scoreConfig.js";
 import { runScoreEfficia } from "../functions/lib/score-efficia/scoreEngine.js";
 import { QUESTIONNAIRE_VERSION } from "../functions/lib/score-efficia/questionnaireRules.js";
 
@@ -96,7 +97,7 @@ class LocalD1 {
 
 function completeAnswers({ city = "Arlon", noWebsite = true } = {}) {
   const responses = {};
-  buildScoreCatalog().categories.forEach((category) => {
+  buildScoreCatalog(LEGACY_SCORING_VERSION).categories.forEach((category) => {
     category.criteria.forEach((criterion) => {
       const option = criterion.key === "nap" && noWebsite
         ? criterion.options.find((item) => item.value === "no_website")
@@ -220,10 +221,12 @@ test("le transfert crée un Premium manuel éditable sans muter le diagnostic gr
   const metadata = row(db, "audit_creation_metadata", "analysis_id", result.analysisId);
   const answers = JSON.parse(draft.answers_json);
   assert.equal(premium.report_type, "premium");
+  assert.equal(premium.scoring_version, "score-efficia-v5");
   assert.equal(premium.status, "awaiting_review");
   assert.equal(premium.order_id, null);
   assert.equal(draft.answers_version, QUESTIONNAIRE_VERSION);
   assert.equal(answers.reportType, "premium");
+  assert.equal(answers.scoringVersion, "score-efficia-v5");
   assert.equal(answers.locationMode, "service_area");
   assert.equal(answers.serviceAreaVerification, "coherent");
   assert.deepEqual(answers.confirmedCompetitorIds, ["competitor-one"]);

@@ -1,4 +1,5 @@
 import { GRILLE } from "./criteriaCatalog.js";
+import { LEGACY_SCORING_VERSION, resolveScoringVersion } from "./scoreConfig.js";
 
 export const QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v4";
 export const LEGACY_QUESTIONNAIRE_VERSION = "score-efficia-questionnaire-v2";
@@ -155,15 +156,18 @@ export function conditionForCriterion(key, conditions = {}, criteriaReview = [])
   return null;
 }
 
-export function requiredVisibleCriterionKeys(conditions = {}, criteriaReview = []) {
-  return GRILLE.flatMap((category) => category.criteres.map((criterion) => criterion.key))
+export function requiredVisibleCriterionKeys(conditions = {}, criteriaReview = [], scoringVersion = null) {
+  const version = resolveScoringVersion(scoringVersion, { historicalFallback: scoringVersion === null });
+  return GRILLE.flatMap((category) => category.criteres
+    .filter((criterion) => version === LEGACY_SCORING_VERSION || criterion.scored !== false)
+    .map((criterion) => criterion.key))
     .filter((key) => conditionForCriterion(key, conditions, criteriaReview) === null);
 }
 
 export function incompleteQuestionnaireFields(manualReview = {}) {
   const conditions = normalizeQuestionnaireConditions(manualReview, manualReview.criteriaReview);
   const criteria = new Map((manualReview.criteriaReview || []).map((item) => [item.key, item]));
-  const missing = requiredVisibleCriterionKeys(conditions, manualReview.criteriaReview)
+  const missing = requiredVisibleCriterionKeys(conditions, manualReview.criteriaReview, manualReview.scoringVersion)
     .filter((key) => {
       const criterion = criteria.get(key);
       if (!criterion) return true;

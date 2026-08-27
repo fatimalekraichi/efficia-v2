@@ -1,4 +1,10 @@
-export const SCORING_VERSION = "score-efficia-v4";
+export const LEGACY_SCORING_VERSION = "score-efficia-v4";
+export const SCORING_VERSION = "score-efficia-v5";
+
+export function resolveScoringVersion(value, { historicalFallback = false } = {}) {
+  if (value === LEGACY_SCORING_VERSION || value === SCORING_VERSION) return value;
+  return historicalFallback ? LEGACY_SCORING_VERSION : SCORING_VERSION;
+}
 
 export const CONFIG = {
   totalScore: 100,

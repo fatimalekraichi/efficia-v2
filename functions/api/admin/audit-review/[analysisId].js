@@ -3,6 +3,7 @@ import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrd
 import { buildReviewedData } from "../../../lib/manualReview.js";
 import { buildScoreCatalog, buildScorePrefill } from "../../../lib/score-efficia/scoreCatalog.js";
 import { runScoreEfficia } from "../../../lib/score-efficia/scoreEngine.js";
+import { resolveScoringVersion } from "../../../lib/score-efficia/scoreConfig.js";
 import { incompleteQuestionnaireFields } from "../../../lib/score-efficia/questionnaireRules.js";
 import { confirmReadyExecutionPlanReview, executionPlanApprovalIssues, rebuildDuplicatedExecutionPlanReview } from "../../../lib/executionPlanBuilder.js";
 import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAnalysis.js";
@@ -40,9 +41,11 @@ async function rebuildDuplicatedExecutionPlan({ db, row, analysisId, payload }) 
   const duplication = await loadDuplicationSource(db, analysisId);
   if (!duplication?.source_analysis_id) return null;
 
-  const cleanPayload = { ...payload, executionPlan: {} };
+  const scoringVersion = resolveScoringVersion(row.scoring_version || payload.scoringVersion, { historicalFallback: true });
+  const cleanPayload = { ...payload, scoringVersion, executionPlan: {} };
   const { manualReview, reviewedObservation, reviewedBenchmark } = buildReviewedData(row, cleanPayload);
-  const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview });
+  manualReview.scoringVersion = scoringVersion;
+  const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview, scoringVersion });
   const current = await loadAnalysisById(db, analysisId);
   if (!current) return { ok: false, error: "ANALYSIS_NOT_FOUND" };
 
@@ -74,10 +77,12 @@ async function parseJsonResponse(response) {
 
 function withScoreReviewData(analysis) {
   if (!analysis) return analysis;
+  const scoringVersion = resolveScoringVersion(analysis.scoringVersion, { historicalFallback: true });
   return {
     ...analysis,
-    scoreCatalog: buildScoreCatalog(),
-    scorePrefill: buildScorePrefill(analysis),
+    effectiveScoringVersion: scoringVersion,
+    scoreCatalog: buildScoreCatalog(scoringVersion),
+    scorePrefill: buildScorePrefill(analysis, { scoringVersion }),
   };
 }
 
@@ -191,7 +196,8 @@ async function saveManualReview({ context, db, analysisId, payload }) {
   const row = await loadRawAnalysis(db, analysisId);
   if (!row) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
 
-  let effectivePayload = payload || {};
+  const scoringVersion = resolveScoringVersion(row.scoring_version || payload?.scoringVersion, { historicalFallback: true });
+  let effectivePayload = { ...(payload || {}), scoringVersion };
   let confirmedContentCount = 0;
   let reviewedData = buildReviewedData(row, effectivePayload);
   let incompleteFields = incompleteQuestionnaireFields(reviewedData.manualReview);
@@ -239,12 +245,13 @@ async function saveManualReview({ context, db, analysisId, payload }) {
       return executionPlanBlockingResponse(confirmation.blockingDetails);
     }
     confirmedContentCount = confirmation.confirmedCount;
-    effectivePayload = { ...payload, executionPlan: confirmation.review };
+    effectivePayload = { ...payload, scoringVersion, executionPlan: confirmation.review };
     reviewedData = buildReviewedData(row, effectivePayload);
   }
 
   const { manualReview, reviewedObservation, reviewedBenchmark } = reviewedData;
-  const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview });
+  manualReview.scoringVersion = scoringVersion;
+  const { scoreInputs, reviewedScore } = runScoreEfficia({ manualReview, scoringVersion });
   const now = new Date().toISOString();
 
   try {

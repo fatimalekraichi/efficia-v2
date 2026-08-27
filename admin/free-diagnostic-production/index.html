@@ -1064,6 +1064,22 @@ GRILLE.forEach(cat => {
       idx++;
       return;
     }
+    if(cr.informational === true){
+      html += `<div class="critere critere--synthese" id="crit-${idx}" data-informational-criterion="${cr.key}">
+        <div class="q">${cr.q}<span class="badges"><span class="badge">AUTO — synthèse non notée</span></span></div>
+        <div class="aide">💡 ${cr.aide}</div>
+        <div class="opts" data-legacy-attractiveness-options hidden>
+          ${cr.opts.map(([lab, pts], optionIndex) => `<label><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}" onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`).join("")}
+        </div>
+        <div class="category-evidence" id="competitive-evidence" aria-live="polite">
+          <p><strong>Votre fiche :</strong> <span id="competitive-business">Non vérifiable</span></p>
+          <p><strong>Moyenne des concurrents :</strong> <span id="competitive-average">Non vérifiable</span></p>
+          <p><strong>Confiance visible :</strong> <span id="competitive-decision">À confirmer</span></p>
+        </div>
+      </div>`;
+      idx++;
+      return;
+    }
     html += `<div class="critere" id="crit-${idx}"><div class="q">${cr.q}<span class="badges"></span></div>
              <div class="aide">💡 ${cr.aide}</div><div class="zone-note"></div>`;
     if(cr.checklist && CONFIG.checklist.criteres[cr.checklist]){
@@ -1112,13 +1128,6 @@ GRILLE.forEach(cat => {
         <p><strong>Recherche testée :</strong> <span id="local-rank-query">Non renseignée</span></p>
         <p><strong>Date de collecte :</strong> <span id="local-rank-date">Non renseignée</span></p>
         <p><strong>Source du rang :</strong> <span id="local-rank-source">Non vérifiable</span></p>
-      </div>`;
-    }
-    if(cr.key === "attractiviteConcurrents"){
-      html += `<div class="category-evidence" id="competitive-evidence" aria-live="polite">
-        <p><strong>Fiche analysée :</strong> <span id="competitive-business">Non vérifiable</span></p>
-        <p><strong>Moyenne concurrentielle :</strong> <span id="competitive-average">Non vérifiable</span></p>
-        <p><strong>Résultat du calcul :</strong> <span id="competitive-decision">À confirmer</span></p>
       </div>`;
     }
     html += `</div>`;
@@ -1312,7 +1321,10 @@ const CRITERIA_DEPENDENCIES = [
 let profilActif = "default";
 let collecteDiagnosticEnCours = false;
 let collecteDiagnosticValidee = false;
-const SCORING_VERSION = "score-efficia-v4";
+const LEGACY_SCORING_VERSION = "score-efficia-v4";
+const SCORING_VERSION = "score-efficia-v5";
+let scoringVersionActif = SCORING_VERSION;
+function critereEstNote(cr){ return scoringVersionActif === LEGACY_SCORING_VERSION || cr?.scored !== false; }
 const AUDIT_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=audit&audit={{auditPublicId}}";
 const PACK_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=visibility&audit={{auditPublicId}}";
 let auditPublicIdActif = null;
@@ -2418,7 +2430,10 @@ function calculScoreDetail(){
   const categories = [];
   GRILLE.forEach(cat => {
     let brut = 0, maxEvalue = 0, repondusCat = 0, nonVerifiesCat = 0;
-    cat.criteres.forEach(cr => {
+    const criteresNotes = cat.criteres.filter(critereEstNote);
+    const maximumBrutHistorique = cat.criteres.reduce((s, cr) => s + Number(cr.max || 0), 0);
+    const maximumBrutNote = criteresNotes.reduce((s, cr) => s + Number(cr.max || 0), 0);
+    criteresNotes.forEach(cr => {
       totalCrit++;
       const p = lirePoints(cr.id);
       if(p !== null){
@@ -2431,16 +2446,24 @@ function calculScoreDetail(){
       }
     });
     const poidsProfil = profil[cat.key] ?? cat.pts;
-    const pct = maxEvalue ? brut / maxEvalue : null;
-    const pointsPonderes = pct === null ? null : pct * poidsProfil;
-    if(pct !== null){
-      total += pointsPonderes;
-      poidsPrisEnCompte += poidsProfil;
+    const capacitePct = maximumBrutHistorique > 0 ? maximumBrutNote / maximumBrutHistorique : 0;
+    const maximumEffectifCategorie = capacitePct * poidsProfil;
+    const pctReponses = maxEvalue ? brut / maxEvalue : null;
+    const pct = pctReponses === null ? null : pctReponses * capacitePct;
+    const pointsPonderesBruts = pctReponses === null ? null : pctReponses * maximumEffectifCategorie;
+    if(pctReponses !== null){
+      total += pointsPonderesBruts;
+      poidsPrisEnCompte += maximumEffectifCategorie;
     }
-    categories.push({cat, brut, maxEvalue, pct, poidsProfil, pointsPonderes, repondusCat, nonVerifiesCat});
+    categories.push({cat, brut, maxEvalue, pct, capacitePct, poidsProfil, pointsPonderesBruts, maximumEffectifCategorie, repondusCat, nonVerifiesCat});
   });
-  const scoreNormalise = poidsPrisEnCompte ? total * (100 / poidsPrisEnCompte) : 0;
-  return {total:Number.isFinite(scoreNormalise) ? scoreNormalise : 0, repondus, totalCrit, categories, profil};
+  const facteurNormalisation = poidsPrisEnCompte > 0 ? 100 / poidsPrisEnCompte : 0;
+  const scoreNormalise = Math.min(100, Math.max(0, total * facteurNormalisation));
+  categories.forEach(c => {
+    c.pointsPonderes = c.pointsPonderesBruts === null ? null : c.pointsPonderesBruts * facteurNormalisation;
+    c.maximumEffectifNormalise = c.maximumEffectifCategorie * facteurNormalisation;
+  });
+  return {total:Number.isFinite(scoreNormalise) ? scoreNormalise : 0, repondus, totalCrit, categories, profil, maximumEffectifProfil:poidsPrisEnCompte, facteurNormalisation};
 }
 
 function listerElementsRestantsPourFinalisation(){
@@ -2485,7 +2508,7 @@ function listerElementsRestantsPourFinalisation(){
     }
   ];
   const criteria = GRILLE.flatMap(cat => cat.criteres)
-    .filter(cr => cr.key !== "adresse")
+    .filter(cr => cr.key !== "adresse" && (typeof critereEstNote === "function" ? critereEstNote(cr) : cr.scored !== false))
     .map(cr => {
       const element = document.getElementById("crit-"+cr.id);
       const selected = document.querySelector(`input[name="c${cr.id}"]:checked`);
@@ -2907,6 +2930,13 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
   setText("competitive-business", `${displayRating(evidence.rating)}/5 · ${Number.isFinite(Number(evidence.reviews)) ? Number(evidence.reviews) : "—"} avis`);
   setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? Math.round(Number(evidence.averageReviews) * 10) / 10 : "—"} avis`);
   setText("competitive-decision", attractiveness?.label || "À confirmer");
+  donneesAnalyse.syntheseConcurrence = {
+    rating:evidence.rating,
+    reviews:evidence.reviews,
+    averageRating:evidence.averageRating,
+    averageReviews:evidence.averageReviews,
+    label:attractiveness?.label || "À confirmer"
+  };
 
   const reviewVolume = criteria.get("volumeAvis");
   const reviewEvidence = reviewVolume?.evidence || {};
@@ -2928,6 +2958,7 @@ function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   const byKey = new Map(criteria.map((criterion) => [criterion.key, criterion]));
   GRILLE.forEach((category) => category.criteres.forEach((criterion) => {
     const prefill = byKey.get(criterion.key);
+    if(!critereEstNote(criterion)) return;
     if(prefill && estNombre(prefill.points) && prefill.value !== "not_verified"){
       const categoryAuto = (criterion.key === "categoriePrincipale" || criterion.key === "categoriesSecondaires")
         && prefill.source === "auto";
@@ -3203,7 +3234,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   const refreshedCriteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
   const manualConflicts = [];
   let reviewVolumeManualConflict = false;
-  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"].forEach((key) => {
+  ["classementLocal", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"].forEach((key) => {
     const criterion = GRILLE.flatMap((category) => category.criteres).find((item) => item.key === key);
     const prefill = refreshedCriteria.get(key);
     if(!criterion || !prefill) return;
@@ -3286,6 +3317,7 @@ async function relancerAnalyseRecherche(){
 function collecterReponses(){
   const reponses = {};
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
+    if(!critereEstNote(cr)) return;
     const element = document.getElementById("crit-"+cr.id);
     if(element?.classList.contains("condition-hidden")) return;
     const selected = cr.key === "adresse"
@@ -3334,6 +3366,20 @@ function collecterCriteresAudit(){
   const criteria = [];
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(critereEstMasque(cr)) return;
+    if(!critereEstNote(cr)){
+      criteria.push({
+        key:cr.key,
+        label:cr.q,
+        categoryKey:cat.key,
+        categoryLabel:cat.cat,
+        pointsAwarded:null,
+        maxPoints:0,
+        evaluationStatus:"informational",
+        verificationStatus:"observed",
+        informational:true
+      });
+      return;
+    }
     const points = lirePoints(cr.id);
     const nonApplicable = critereEstNonApplicable(cr);
     const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
@@ -3447,7 +3493,7 @@ function construirePayloadAuditComplete(options = {}){
     trustScore: indices.confiance,
     conversionScore: indices.conversion,
     sectorProfile: profilActif || "default",
-    scoringVersion: SCORING_VERSION,
+    scoringVersion: scoringVersionActif,
     auditStatus: "generated",
     pdfFilename: options.pdfFilename || dernierNomPdfGenere || "",
     criteria: collecterCriteresAudit(),
@@ -3962,6 +4008,18 @@ function analysisIdDepuisUrl(){
   return (params.get("analysisId") || "").trim();
 }
 
+function appliquerVersionScoring(version){
+  scoringVersionActif = version === LEGACY_SCORING_VERSION ? LEGACY_SCORING_VERSION : SCORING_VERSION;
+  const legacy = scoringVersionActif === LEGACY_SCORING_VERSION;
+  const summary = document.querySelector('[data-informational-criterion="attractiviteConcurrents"]');
+  const legacyOptions = summary?.querySelector("[data-legacy-attractiveness-options]");
+  if(legacyOptions) legacyOptions.hidden = !legacy;
+  const badge = summary?.querySelector(".badges");
+  if(badge) badge.innerHTML = legacy
+    ? '<span class="badge-auto">AUTO — critère historique noté</span>'
+    : '<span class="badge-auto">AUTO — synthèse non notée</span>';
+}
+
 async function initialiserContexteCommandeAdmin(){
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return;
@@ -3982,6 +4040,7 @@ async function initialiserContexteCommandeAdmin(){
 
   const contexte = donnees.context;
   window.efficiaAdminOrderContext = contexte;
+  appliquerVersionScoring(contexte.scoringVersion);
 
   definirSiVide("p-entreprise", contexte.company);
   definirSiVide("p-ville", contexte.city);
@@ -4711,7 +4770,10 @@ function scoreProjetePack(){
   let totalProjete = 0, poidsPrisEnCompte = 0, corriges = 0, ameliorables = 0;
   GRILLE.forEach(cat => {
     let brut = 0, maxEvalue = 0;
-    cat.criteres.forEach(cr => {
+    const criteresNotes = cat.criteres.filter(critereEstNote);
+    const maximumBrutHistorique = cat.criteres.reduce((s, cr) => s + Number(cr.max || 0), 0);
+    const maximumBrutNote = criteresNotes.reduce((s, cr) => s + Number(cr.max || 0), 0);
+    criteresNotes.forEach(cr => {
       const p = lirePoints(cr.id);
       if(p === null) return;
       const fixable = PACK_CRITERES.includes(cr.key) && !critereEstNonVerifiablePubliquement(cr);
@@ -4721,8 +4783,10 @@ function scoreProjetePack(){
     });
     const poidsProfil = profil[cat.key] ?? cat.pts;
     if(maxEvalue){
-      totalProjete += (brut / maxEvalue) * poidsProfil;
-      poidsPrisEnCompte += poidsProfil;
+      const capacitePct = maximumBrutHistorique > 0 ? maximumBrutNote / maximumBrutHistorique : 0;
+      const maximumEffectifCategorie = capacitePct * poidsProfil;
+      totalProjete += (brut / maxEvalue) * maximumEffectifCategorie;
+      poidsPrisEnCompte += maximumEffectifCategorie;
     }
   });
   const score = poidsPrisEnCompte ? totalProjete * (100 / poidsPrisEnCompte) : 0;
@@ -5016,6 +5080,7 @@ function critereEligiblePourNarration(cr, famille = null){
 
 function compterElementsAConfirmerRapport(){
   return GRILLE.flatMap(cat => cat.criteres).filter(cr => {
+    if(!(typeof critereEstNote === "function" ? critereEstNote(cr) : cr.scored !== false)) return false;
     if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return false;
     return critereEstNonVerifiablePubliquement(cr) || lirePoints(cr.id) === null;
   }).length;
@@ -5137,7 +5202,7 @@ const LIBELLES_COURTS = {
   descriptionRemplie:"Description remplie", descriptionQualite:"Description ciblée (ville, offre)", servicesPresents:"Services présents",
   servicesDecrits:"Services détaillés", questionsReponses:"Questions / Réponses", liensAction:"Liens d'action (devis, RDV)",
   publicationRecente:"Publication récente", rythmePublication:"Rythme de publication",
-  classementLocal:"Classement local", attractiviteConcurrents:"Attractivité vs concurrents", nomConforme:"Conformité du nom"
+  classementLocal:"Classement local", attractiviteConcurrents:"Confiance visible face aux concurrents", nomConforme:"Conformité du nom"
 };
 function checklistHtml(){
   let ok = 0, warn = 0, ko = 0, inconnus = 0, sansSite = 0;
@@ -5148,6 +5213,13 @@ function checklistHtml(){
       return true;
     });
     const items = visibleCriteria.map(cr => {
+      if(!critereEstNote(cr)){
+        const synthese = donneesAnalyse.syntheseConcurrence || {};
+        const valeur = (value, digits = 1) => estNombre(value)
+          ? Number(value).toLocaleString("fr-FR", {maximumFractionDigits:digits})
+          : "—";
+        return `<div class="chk-item chk-item--informational"><span class="chk-ic chk-unknown">i</span><span><strong>${LIBELLES_COURTS[cr.key] || cr.q}</strong><br>Votre fiche : ${valeur(synthese.rating)}/5 et ${valeur(synthese.reviews, 0)} avis · Concurrents : ${valeur(synthese.averageRating)}/5 et ${valeur(synthese.averageReviews, 2)} avis · ${synthese.label || "À confirmer"}</span></div>`;
+      }
       const p = lirePoints(cr.id);
       const nonApplicable = critereEstNonApplicable(cr);
       const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
@@ -5164,9 +5236,10 @@ function checklistHtml(){
         : (publiclyUnverifiable ? "Zone desservie : à confirmer — information non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
     }).join("");
-    const evalues = visibleCriteria.filter(cr => !critereEstNonApplicable(cr) && !critereEstNonVerifiablePubliquement(cr) && lirePoints(cr.id) !== null);
+    const evalues = visibleCriteria.filter(cr => critereEstNote(cr) && !critereEstNonApplicable(cr) && !critereEstNonVerifiablePubliquement(cr) && lirePoints(cr.id) !== null);
     const conformes = evalues.filter(cr => lirePoints(cr.id) >= cr.max).length;
-    return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || visibleCriteria.length} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
+    const scoredVisibleCount = visibleCriteria.filter(critereEstNote).length;
+    return `<div class="chk-rubrique"><h3>${cat.cat}<span>${conformes}/${evalues.length || scoredVisibleCount} conformes${evalues.length ? "" : " à confirmer"}</span></h3>${items}</div>`;
   }).join("");
   inconnus = compterElementsAConfirmerRapport();
   const compteur = `<div class="chk-compteur">
@@ -5584,12 +5657,12 @@ function genererRapport(){
   const ville = document.getElementById("p-ville").value || "";
   const contact = document.getElementById("p-contact").value;
   const dateStr = new Date().toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
-  const nbControles = GRILLE.reduce((s, cat) => s + cat.criteres.length, 0);
+  const nbControles = GRILLE.reduce((s, cat) => s + cat.criteres.filter(critereEstNote).length, 0);
   const auditPaymentUrl = resolvePaymentUrl(AUDIT_PAYMENT_URL, "audit");
   const packPaymentUrl = resolvePaymentUrl(PACK_PAYMENT_URL, "visibility");
 
   let catsBlocs = [], forces = [], priorites = [], categoriesTriees = [];
-  detailScore.categories.forEach(({cat, pct, poidsProfil, pointsPonderes, maxEvalue}) => {
+  detailScore.categories.forEach(({cat, pct, poidsProfil, pointsPonderes, maxEvalue, maximumEffectifNormalise}) => {
     let pts = 0;
     cat.criteres.forEach(cr => {
       if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
@@ -5605,7 +5678,7 @@ function genererRapport(){
       ? statutDomaine(pctAffiche)
       : {label:"Données insuffisantes", couleur:"#64748b", fond:"#f8fafc"};
     categoriesTriees.push({cat, pct:pctAffiche});
-    const pointsAffiches = maxEvalue ? `${Math.round(pointsPonderes)}/${poidsProfil}` : "À confirmer";
+    const pointsAffiches = maxEvalue ? `${Math.round(pointsPonderes)}/${Math.round(maximumEffectifNormalise || poidsProfil)}` : "À confirmer";
     catsBlocs.push({pct:pctAffiche, evalue:!!maxEvalue, html:`<div class="barre-cat"><div class="ligne"><span>${cat.cat}</span><strong>${pointsAffiches}</strong>
       <span class="statut-domaine" style="background:${statut.fond};color:${statut.couleur}">${statut.label}</span></div>
       <div class="barre-fond"><div class="barre-rempli" style="width:${pctAffiche}%;background:${statut.couleur}"></div></div></div>`});
@@ -5670,7 +5743,7 @@ function genererRapport(){
     .map(c => c.cat.cat.toLowerCase());
   const postesFaibles = detailScore.categories
     .filter(c => c.maxEvalue)
-    .map(c => ({label:c.cat.cat, pts:Math.round(c.pointsPonderes), max:c.poidsProfil, pct:c.pct === null ? 0 : c.pct}))
+    .map(c => ({label:c.cat.cat, pts:Math.round(c.pointsPonderes), max:Math.round(c.maximumEffectifNormalise || c.poidsProfil), pct:c.pct === null ? 0 : c.pct}))
     .sort((a,b) => a.pct - b.pct)
     .slice(0,2);
   const page2SansBenchmark = `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
@@ -6215,7 +6288,7 @@ function construireBlocsAuditPremium(){
   const categoriesTriees = [];
   detail.categories.forEach(c => {
     const pct = c.pct === null ? 0 : Math.round(100 * c.pct);
-    categoriesTriees.push({nom:c.cat.cat, key:c.cat.key, pct, evalue:!!c.maxEvalue, pts:Math.round(c.pointsPonderes || 0), max:c.poidsProfil});
+    categoriesTriees.push({nom:c.cat.cat, key:c.cat.key, pct, evalue:!!c.maxEvalue, pts:Math.round(c.pointsPonderes || 0), max:Math.round(c.maximumEffectifNormalise || c.poidsProfil)});
     c.cat.criteres.forEach(cr => {
       if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
       const p = lirePoints(cr.id);

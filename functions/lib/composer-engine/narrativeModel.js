@@ -28,13 +28,17 @@ export function buildDomains(categories) {
   return categories.map((category) => ({
     key: category.key,
     label: category.label,
-    points: Number.isFinite(category.brut) ? Math.round(category.brut * 100) / 100 : null,
-    max: category.maxEvalue ?? null,
+    points: Number.isFinite(category.pointsPonderes)
+      ? Math.round(category.pointsPonderes * 100) / 100
+      : (Number.isFinite(category.brut) ? Math.round(category.brut * 100) / 100 : null),
+    max: Number.isFinite(category.maximumEffectifNormalise)
+      ? Math.round(category.maximumEffectifNormalise * 100) / 100
+      : (category.maxEvalue ?? null),
     pct: Number.isFinite(category.pct) ? category.pct : null,
   }));
 }
 
-// Résumé des 29 critères par statut déjà attribué en validation manuelle
+// Résumé des critères notés et des synthèses informatives attribués en validation manuelle
 // (compliant/partial/deficient/not_verified) — simple comptage + regroupement
 // par domaine, aucune nouvelle grille de statut.
 function buildCriteriaSummary(criteria) {
@@ -42,8 +46,19 @@ function buildCriteriaSummary(criteria) {
 
   const counts = { compliant: 0, partial: 0, deficient: 0, not_verified: 0 };
   const domainsByKey = new Map();
+  const summaries = [];
 
   for (const item of criteria) {
+    if (item?.scored === false || item?.informational === true) {
+      summaries.push({
+        key: item.key,
+        question: item.question,
+        label: item.label || "À confirmer",
+        status: item.status || "not_verified",
+        evidence: item.evidence || null,
+      });
+      continue;
+    }
     if (item?.status === "not_applicable") continue;
     if (item?.status === "absence_confirmed" && item?.key !== "tauxReponseAvis") continue;
     const status = item?.status === "absence_confirmed"
@@ -66,8 +81,11 @@ function buildCriteriaSummary(criteria) {
 
   return {
     total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+    totalScored: Object.values(counts).reduce((sum, count) => sum + count, 0),
+    totalInformational: summaries.length,
     counts,
     byDomain: [...domainsByKey.values()],
+    summaries,
   };
 }
 

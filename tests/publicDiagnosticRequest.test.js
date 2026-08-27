@@ -242,9 +242,10 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
     assert.equal(db.count("orders"), 0);
     assert.equal(db.count("order_tasks"), 0);
 
-    const analysis = db.first("SELECT status, report_type, benchmark_completed_at, document_model_json, pdf_generated_at FROM analyses");
+    const analysis = db.first("SELECT status, report_type, scoring_version, benchmark_completed_at, document_model_json, pdf_generated_at FROM analyses");
     assert.equal(analysis.status, "awaiting_review");
     assert.equal(analysis.report_type, "free");
+    assert.equal(analysis.scoring_version, "score-efficia-v5");
     assert.ok(analysis.benchmark_completed_at);
     assert.equal(analysis.document_model_json, null);
     assert.equal(analysis.pdf_generated_at, null);

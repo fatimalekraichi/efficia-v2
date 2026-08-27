@@ -1,5 +1,11 @@
 import { GRILLE } from "./criteriaCatalog.js";
-import { BANDES, CONFIG, SCORING_VERSION } from "./scoreConfig.js";
+import {
+  BANDES,
+  CONFIG,
+  LEGACY_SCORING_VERSION,
+  SCORING_VERSION,
+  resolveScoringVersion,
+} from "./scoreConfig.js";
 import {
   QUESTIONNAIRE_VERSION,
   conditionForCriterion,
@@ -49,7 +55,8 @@ export function pointsFromManualStatus(criterion, review) {
   return null;
 }
 
-export function buildScoreInputsFromManualReview(manualReview = {}) {
+export function buildScoreInputsFromManualReview(manualReview = {}, requestedScoringVersion = null) {
+  const scoringVersion = resolveScoringVersion(requestedScoringVersion || manualReview.scoringVersion);
   const reviews = new Map((manualReview.criteriaReview || []).map((item) => [item.key, item]));
   const conditions = normalizeQuestionnaireConditions(manualReview, manualReview.criteriaReview);
   const answers = {};
@@ -58,12 +65,15 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
   for (const category of GRILLE) {
     for (const criterion of category.criteres) {
       const review = reviews.get(criterion.key) || null;
+      const scored = scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false;
       const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
       const explicitAbsence = Boolean(absenceCondition);
       const locationPoints = criterion.key === "adresse" && conditions.locationMode !== "unknown"
         ? (Number.isFinite(review?.points) ? Math.max(0, Math.min(2, Number(review.points))) : null)
         : undefined;
-      const points = explicitAbsence ? 0 : (locationPoints !== undefined ? locationPoints : pointsFromManualStatus(criterion, review));
+      const points = scored
+        ? (explicitAbsence ? 0 : (locationPoints !== undefined ? locationPoints : pointsFromManualStatus(criterion, review)))
+        : null;
       const noReviewsResponse = absenceCondition === "no_reviews" && criterion.key === "tauxReponseAvis";
       answers[criterion.key] = points;
       criteria.push({
@@ -78,13 +88,15 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
         source: explicitAbsence ? "conditional_absence" : (absenceCondition ? "conditional_dependency" : (review?.source || null)),
         evidence: absenceCondition ? { condition: absenceCondition } : (review?.evidence || null),
         points,
-        max: criterion.max,
+        max: scored ? criterion.max : 0,
+        historicalMax: criterion.max,
+        scored,
       });
     }
   }
 
   return {
-    scoringVersion: SCORING_VERSION,
+    scoringVersion,
     questionnaireVersion: manualReview.questionnaireVersion || QUESTIONNAIRE_VERSION,
     conditions,
     provisional: isPubliclyUnverifiableLocation(conditions),
@@ -94,7 +106,12 @@ export function buildScoreInputsFromManualReview(manualReview = {}) {
   };
 }
 
-export function calculateScoreDetail(answers = {}, profileKey = "default") {
+function bounded(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION) {
+  const scoringVersion = resolveScoringVersion(requestedScoringVersion);
   const profil = CONFIG.secteurs[profileKey] || CONFIG.secteurs.default;
   let total = 0;
   let poidsPrisEnCompte = 0;
@@ -108,7 +125,10 @@ export function calculateScoreDetail(answers = {}, profileKey = "default") {
     let repondusCat = 0;
     let nonVerifiesCat = 0;
 
+    const historicalRawMax = cat.criteres.reduce((sum, criterion) => sum + criterion.max, 0);
     cat.criteres.forEach((cr) => {
+      const scored = scoringVersion === LEGACY_SCORING_VERSION || cr.scored !== false;
+      if (!scored) return;
       totalCrit += 1;
       // Portage fidèle de l'ancien Score Efficia (calc() : somme brute sur la
       // grille de 100 points). Chaque critère compte son max au dénominateur,
@@ -127,10 +147,14 @@ export function calculateScoreDetail(answers = {}, profileKey = "default") {
     });
 
     const poidsProfil = profil[cat.key] ?? cat.pts;
-    const pct = maxEvalue ? brut / maxEvalue : 0;
-    const pointsPonderes = pct * poidsProfil;
-    total += pointsPonderes;
-    poidsPrisEnCompte += poidsProfil;
+    const legacy = scoringVersion === LEGACY_SCORING_VERSION;
+    const denominator = legacy ? maxEvalue : historicalRawMax;
+    const pct = denominator > 0 ? brut / denominator : 0;
+    const capacitePct = denominator > 0 ? maxEvalue / denominator : 0;
+    const pointsPonderesBruts = pct * poidsProfil;
+    const maximumEffectifCategorie = capacitePct * poidsProfil;
+    total += pointsPonderesBruts;
+    poidsPrisEnCompte += legacy ? poidsProfil : maximumEffectifCategorie;
 
     categories.push({
       key: cat.key,
@@ -139,13 +163,26 @@ export function calculateScoreDetail(answers = {}, profileKey = "default") {
       maxEvalue,
       pct,
       poidsProfil,
-      pointsPonderes,
+      pointsPonderes: pointsPonderesBruts,
+      pointsPonderesBruts,
+      maximumEffectifCategorie,
+      historicalRawMax,
+      capacitePct,
       repondusCat,
       nonVerifiesCat,
     });
   });
 
-  const scoreNormalise = poidsPrisEnCompte ? total * (100 / poidsPrisEnCompte) : 0;
+  const facteurNormalisation = Number.isFinite(poidsPrisEnCompte) && poidsPrisEnCompte > 0
+    ? 100 / poidsPrisEnCompte
+    : 0;
+  const scoreNormalise = bounded(total * facteurNormalisation, 0, 100);
+  if (scoringVersion !== LEGACY_SCORING_VERSION) {
+    categories.forEach((category) => {
+      category.pointsPonderes = category.pointsPonderesBruts * facteurNormalisation;
+      category.maximumEffectifNormalise = category.maximumEffectifCategorie * facteurNormalisation;
+    });
+  }
   return {
     total: Number.isFinite(scoreNormalise) ? scoreNormalise : 0,
     repondus,
@@ -153,6 +190,9 @@ export function calculateScoreDetail(answers = {}, profileKey = "default") {
     categories,
     profil,
     poidsPrisEnCompte,
+    maximumEffectifProfil: poidsPrisEnCompte,
+    facteurNormalisation,
+    scoringVersion,
   };
 }
 
@@ -204,7 +244,7 @@ const PACK_CRITERIA = new Set([
   "liensAction",
 ]);
 
-export function scoreProjetePack(answers = {}) {
+export function scoreProjetePack(answers = {}, profileKey = "default", scoringVersion = SCORING_VERSION) {
   const projected = { ...answers };
   let corriges = 0;
   let ameliorables = 0;
@@ -222,7 +262,7 @@ export function scoreProjetePack(answers = {}) {
     }
   }
   return {
-    projete: Math.min(97, Math.round(calculateScoreDetail(projected).total)),
+    projete: Math.min(97, Math.round(calculateScoreDetail(projected, profileKey, scoringVersion).total)),
     corriges,
     ameliorables,
   };
@@ -232,25 +272,30 @@ function findBand(score) {
   return BANDES.find((band) => score >= band.min) || BANDES.at(-1);
 }
 
-export function runScoreEfficia({ manualReview = {} } = {}) {
-  const scoreInputs = buildScoreInputsFromManualReview(manualReview);
-  const detail = calculateScoreDetail(scoreInputs.answers, scoreInputs.profileKey);
-  const score = Number(detail.total.toFixed(2));
+export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {}) {
+  const resolvedScoringVersion = resolveScoringVersion(scoringVersion || manualReview.scoringVersion);
+  const scoreInputs = buildScoreInputsFromManualReview(manualReview, resolvedScoringVersion);
+  const detail = calculateScoreDetail(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion);
   const roundedScore = Math.round(detail.total);
+  const score = resolvedScoringVersion === LEGACY_SCORING_VERSION
+    ? Number(detail.total.toFixed(2))
+    : roundedScore;
 
   return {
     scoreInputs,
     reviewedScore: {
-      scoringVersion: SCORING_VERSION,
+      scoringVersion: resolvedScoringVersion,
       score,
       roundedScore,
       repondus: detail.repondus,
       totalCrit: detail.totalCrit,
       indices: indicesProspect(scoreInputs.answers),
-      projectedPackScore: scoreProjetePack(scoreInputs.answers),
+      projectedPackScore: scoreProjetePack(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion),
       band: findBand(roundedScore),
       categories: detail.categories,
       provisional: scoreInputs.provisional,
+      maximumEffectifProfil: detail.maximumEffectifProfil,
+      facteurNormalisation: detail.facteurNormalisation,
     },
   };
 }

@@ -1,4 +1,5 @@
 import { QUESTIONNAIRE_VERSION } from "./score-efficia/questionnaireRules.js";
+import { SCORING_VERSION } from "./score-efficia/scoreConfig.js";
 
 export const SUPPORTED_QUESTIONNAIRE_VERSIONS = Object.freeze([
   "score-efficia-questionnaire-v2",
@@ -205,10 +206,10 @@ export async function duplicateQuestionnaireSnapshot(db, analysisId, idempotency
       reviews_percentile, photos_percentile, top_competitor_name,
       top_competitor_rating, top_competitor_reviews, benchmark_completed_at,
       NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, NULL,
-      NULL, NULL, report_type, NULL, NULL, NULL
+      NULL, NULL, report_type, NULL, NULL, ?
     FROM analyses
     WHERE analysis_id = ?
-  `).bind(newAnalysisId, now, now, duplicatedManualReview, analysisId);
+  `).bind(newAnalysisId, now, now, duplicatedManualReview, SCORING_VERSION, analysisId);
 
   const copyDraft = db.prepare(`
     INSERT INTO audit_drafts (

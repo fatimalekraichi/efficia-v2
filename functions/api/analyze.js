@@ -18,6 +18,7 @@ import {
   persistDiagnosticRequestAtomically,
 } from "../lib/diagnosticRequests.js";
 import { verifyConnectorToken } from "./_auth.js";
+import { SCORING_VERSION } from "../lib/score-efficia/scoreConfig.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -319,8 +320,9 @@ export async function onRequestPost(context) {
         analysis_id, nom, ville, query, place_id, name,
         rating, reviews, photos_count, description_length,
         activity, search_query, local_position, competitors_json,
-        status, fiche_json, normalized_json, created_at, updated_at, report_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, fiche_json, normalized_json, created_at, updated_at, report_type,
+        scoring_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       analysisId,
       storedNom,
@@ -342,6 +344,7 @@ export async function onRequestPost(context) {
       now,
       now,
       diagnosticRequest ? "free" : null,
+      SCORING_VERSION,
     );
 
     if (diagnosticRequest) {

@@ -9,6 +9,7 @@ const CONSISTENCY_STATUS = new Set(["poor", "average", "strong", "unknown"]);
 const REPORT_TYPES = new Set(["free", "premium"]);
 const CRITERIA_REVIEW_VALUES = new Set(["compliant", "partial", "deficient", "not_verified", "no_website"]);
 import { GRILLE } from "./score-efficia/criteriaCatalog.js";
+import { resolveScoringVersion } from "./score-efficia/scoreConfig.js";
 const CURRENT_CRITERIA_KEYS = new Set(GRILLE.flatMap((category) => category.criteres.map((criterion) => criterion.key)));
 
 import {
@@ -135,6 +136,9 @@ export function normalizeManualReview(payload = {}) {
   const conditions = normalizeQuestionnaireConditions(payload, normalizedCriteria);
   const conditionalCriteria = sanitizeConditionalCriteria(normalizedCriteria, conditions);
   return {
+    scoringVersion: resolveScoringVersion(payload.scoringVersion, {
+      historicalFallback: payload.scoringVersion === null || payload.scoringVersion === undefined || payload.scoringVersion === "",
+    }),
     reportType: pickAllowed(payload.reportType, REPORT_TYPES, "premium"),
     questionnaireVersion: cleanText(payload.questionnaireVersion, 80)
       || (normalizedCriteria.some((item) => item.key === "adresse") ? LEGACY_QUESTIONNAIRE_VERSION : QUESTIONNAIRE_VERSION),

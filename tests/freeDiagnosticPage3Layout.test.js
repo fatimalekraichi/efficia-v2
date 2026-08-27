@@ -18,7 +18,7 @@ const domains = [
   ["Avis clients", ["Note moyenne", "Volume d'avis vs concurrents", "Avis récents", "Réponses aux avis", "Qualité des réponses"]],
   ["Contenu de la fiche", ["Description remplie", "Description ciblée (ville, offre)", "Services présents", "Services détaillés", "Questions / Réponses", "Liens d'action (devis, RDV)"]],
   ["Activité & animation", ["Publication récente", "Rythme de publication"]],
-  ["Visibilité locale", ["Classement local", "Attractivité vs concurrents"]],
+  ["Visibilité locale", ["Classement local", "Confiance visible face aux concurrents — Votre fiche : 1,8/5 et 5 avis · Moyenne : 4,8/5 et 10,67 avis · Derrière"]],
 ];
 
 function escapeHtml(value) {
@@ -42,7 +42,7 @@ function pageFixture({ business, unknown = false, longLabels = false }) {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action">
     <div class="rapport-header"><div class="rapport-logo" style="height:52px">Efficia Digital</div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
     <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Ce que nous avons analysé</h1>
-    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 29 vérifications — les mêmes que fait un particulier, sans s'en rendre compte, avant de choisir qui appeler pour des travaux d’électricité, autour de Arlon.</p>
+    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 28 critères notés et d’une synthèse concurrentielle non notée.</p>
     <div class="chk-compteur"><span>✓ 15 éléments conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
     <div class="chk-grid">${cards}</div>
     <div class="chk-legend"><strong>Légende</strong> — ✓ conforme&nbsp;&nbsp;·&nbsp;&nbsp;! à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;✕ prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;○ à confirmer manuellement.</div>

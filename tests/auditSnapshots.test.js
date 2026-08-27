@@ -317,6 +317,7 @@ test("la duplication crée une nouvelle analyse et un nouveau brouillon sans mut
   const duplicatedAnalysis = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(duplicate.analysisId);
   assert.equal(duplicatedAnalysis.status, "awaiting_review");
   assert.equal(duplicatedAnalysis.report_type, "premium");
+  assert.equal(duplicatedAnalysis.scoring_version, "score-efficia-v5");
   assert.equal(duplicatedAnalysis.order_id, null);
   assert.equal(duplicatedAnalysis.pdf_generated_at, null);
   assert.equal(duplicatedAnalysis.document_model_json, null);

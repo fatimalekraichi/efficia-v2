@@ -73,7 +73,7 @@ test("le prix TTC, le délai, la méthode et les limites commerciales sont prés
   assert.match(stripHtml(html), /99 € TTC — paiement unique, sans abonnement/);
   assert.match(html, /3 à 5 jours ouvrés après réception des informations nécessaires/);
   assert.match(html, /Analyse structurée de plus de 20 critères/);
-  assert.match(html, /29 critères répartis en six domaines/);
+  assert.match(html, /28 critères notés répartis en six domaines, complétés par une synthèse concurrentielle non notée/);
   assert.match(html, /ne garantit aucun classement, nombre de contacts ou résultat commercial/);
   assert.match(html, /ne sont pas comprises dans cette offre/);
   assert.match(html, /même entreprise et à la même fiche Google Business/);
