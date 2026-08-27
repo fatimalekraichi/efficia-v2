@@ -261,6 +261,11 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
 test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {
   const helperCode = sliceBetween(html, "function rapportSansAvis()", "function faiblesseChiffree(");
   const selectionCode = sliceBetween(html, "const FAMILLES_PRIORITES =", "function contexteRapport()");
+  // etatCritere (utilisé par consequenceReputation/consequencePhotos, appelées
+  // depuis consequenceBusinessPriorite ci-dessous) vit plus haut dans le
+  // fichier, à côté de critereConfirmeMax : on l'inclut explicitement plutôt
+  // que de la réécrire en mock, pour exercer le vrai code de production.
+  const etatCritereCode = sliceBetween(html, "function etatCritere(key){", "function elementsIndeterminesPage5(");
   const narrativeCode = sliceBetween(html, "function recommandationPriorite", "function niveauImpactPriorite");
   const state = {
     reviewsPresence: "none",
@@ -296,7 +301,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     globalThis: null,
   };
   context.globalThis = context;
-  vm.runInNewContext(`${helperCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
+  vm.runInNewContext(`${helperCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
     FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite,
     recommandationPriorite, beneficePriorite, constatObservePriorite,
     consequenceBusinessPriorite, resultatAttenduPriorite,

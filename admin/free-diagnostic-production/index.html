@@ -2889,6 +2889,40 @@ function actualiserPreuvesCategories(business = {}){
   donneesAnalyse.verificationMaps = safe ? maps : null;
 }
 
+/* Libellé de la synthèse informative "Confiance visible face aux concurrents"
+   (page 3). Dérivé du statut renvoyé par classifyCompetitiveAttractiveness
+   (evidence.decision : ahead/behind/comparable/contrasted/unknown) — jamais
+   des options notées de la grille (Devant/Comparable/Derrière), qui restent
+   réservées au calcul historique v4. Une combinaison mixte de signaux
+   (ex. note inférieure mais volume supérieur, ou un signal "comparable"
+   combiné à un signal "supérieure"/"inférieure") donne toujours une
+   conclusion nuancée "Contrastée", jamais une conclusion absolue trompeuse.
+   Ce libellé reste strictement informatif : aucun point, aucune case à
+   cocher, aucun effet sur le score, la complétude ou les pondérations. */
+const LIBELLES_CONFIANCE_CONCURRENCE = {
+  ahead:"Devant",
+  behind:"Derrière",
+  comparable:"Comparable",
+  unknown:"À confirmer"
+};
+/* Cas "Contrastée" : les deux règles ci-dessus (note propre / concurrence,
+   volume propre / concurrence) ne pointent pas dans le même sens — la
+   conclusion doit rester nuancée et préciser lequel des deux signaux est
+   favorable et lequel ne l'est pas, plutôt qu'un simple mot ambigu. */
+const PHRASES_CONFIANCE_CONTRASTEE = {
+  "down|up":"Confiance visible contrastée : volume d'avis supérieur, mais note nettement inférieure.",
+  "up|down":"Confiance visible contrastée : note supérieure, mais volume d'avis nettement inférieur.",
+  "comparable|up":"Confiance visible contrastée : volume d'avis supérieur, note comparable à la moyenne concurrentielle.",
+  "comparable|down":"Confiance visible contrastée : volume d'avis inférieur, note comparable à la moyenne concurrentielle.",
+  "up|comparable":"Confiance visible contrastée : note supérieure, volume d'avis comparable à la moyenne concurrentielle.",
+  "down|comparable":"Confiance visible contrastée : note inférieure, volume d'avis comparable à la moyenne concurrentielle."
+};
+function libelleConfianceConcurrence(decision, ratingSignal, reviewsSignal){
+  if(decision === "contrasted")
+    return PHRASES_CONFIANCE_CONTRASTEE[`${ratingSignal}|${reviewsSignal}`] || "Confiance visible contrastée : les signaux observés ne pointent pas dans le même sens.";
+  return LIBELLES_CONFIANCE_CONCURRENCE[decision] || "À confirmer";
+}
+
 function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
   const criteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
   const setText = (id, value) => {
@@ -2927,13 +2961,25 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
   const displayRating = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(1).replace(".", ",") : "—";
   setText("competitive-business", `${displayRating(evidence.rating)}/5 · ${Number.isFinite(Number(evidence.reviews)) ? Number(evidence.reviews) : "—"} avis`);
   setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? Math.round(Number(evidence.averageReviews) * 10) / 10 : "—"} avis`);
-  setText("competitive-decision", attractiveness?.label || "À confirmer");
+  // Garde-fou de version — NE JAMAIS afficher la conclusion "Contrastée" (v5,
+  // basée sur synthesisStatus) pour une analyse v4 ou historique sans version :
+  // scoringVersionActif est déjà résolu correctement en amont (avec repli v4
+  // strict pour l'historique sans version, voir freeDiagnosticProductionLink.js
+  // -> resolveScoringVersion(..., { historicalFallback:true })). Pour v4 /
+  // historique, on conserve tel quel le libellé historique (Devant / Comparable
+  // / Derrière / À confirmer), calculé exactement comme avant — jamais
+  // synthesisStatus. Pour v5 uniquement, on affiche la synthèse nuancée.
+  const conclusionHistorique = attractiveness?.label || "À confirmer";
+  const libelleConfiance = scoringVersionActif === LEGACY_SCORING_VERSION
+    ? conclusionHistorique
+    : libelleConfianceConcurrence(evidence.synthesisStatus, evidence.ratingSignal, evidence.reviewsSignal);
+  setText("competitive-decision", libelleConfiance);
   donneesAnalyse.syntheseConcurrence = {
     rating:evidence.rating,
     reviews:evidence.reviews,
     averageRating:evidence.averageRating,
     averageReviews:evidence.averageReviews,
-    label:attractiveness?.label || "À confirmer"
+    label:libelleConfiance
   };
 
   const reviewVolume = criteria.get("volumeAvis");
@@ -5350,6 +5396,24 @@ function critereConfirmeMax(key){
   return Boolean(cr) && points !== null && Number(points) >= Number(cr.max);
 }
 
+/* Variante à 3 états de critereConfirmeMax, utilisée par les textes de
+   conséquence (avis, photos) pour ne jamais affirmer une insuffisance non
+   étayée par les données :
+   - "conforme"    : critère répondu au maximum des points possibles.
+   - "insuffisant" : critère répondu mais pas au maximum.
+   - "inconnu"     : critère non répondu (aucune donnée disponible).
+   Ne remplace pas critereConfirmeMax (comportement 2 états déjà utilisé
+   ailleurs) — s'y ajoute pour les besoins de narration fine. */
+function etatCritere(key){
+  const id = CRITERE_IDS[key];
+  if(id === undefined) return "inconnu";
+  const cr = trouverCritere(id);
+  if(!cr) return "inconnu";
+  const points = lirePoints(id);
+  if(points === null) return "inconnu";
+  return Number(points) >= Number(cr.max) ? "conforme" : "insuffisant";
+}
+
 /* Page 5 — liste volontairement dynamique : n'affiche que ce que le
    diagnostic gratuit n'a réellement pas déterminé. Une catégorie déjà
    validée, des services déjà analysés, une comparaison déjà réalisée ou
@@ -5473,9 +5537,50 @@ function prioritePhotosPorteSurActualite(item){
   return estNombre(d.nbPhotos) && estNombre(moyennePhotos) && Number(d.nbPhotos) >= Number(moyennePhotos) * 0.9;
 }
 
+/* Normalise un texte pour la détection sectorielle : minuscules + accents
+   retirés (même convention que slugPDF/sanitizeFilenamePart), afin que
+   "Électricien" (avec accent, tel que renvoyé par corrigerLibelleRapport)
+   soit reconnu au même titre que "electricien" (saisie sans accent). */
+function texteSecteurNormalise(valeur){
+  return String(valeur || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/* Classification sectorielle sûre et volontairement simple (une fonction
+   centralisée et testable suffit — pas de moteur de détection séparé) :
+   ordre de priorité imposé — activité confirmée, puis requête locale,
+   puis catégorie normalisée observée. Le premier candidat qui correspond
+   à un secteur connu l'emporte ; sinon secteur inconnu (fallback générique
+   sûr, jamais une recommandation automobile hors de ce secteur). */
+function classifierSecteurPhotos(ctx){
+  const d = ctx?.data || {};
+  const candidats = [ctx?.activite, ctx?.recherche, d.categoriePrincipaleObservee];
+  for(const candidat of candidats){
+    const t = texteSecteurNormalise(candidat);
+    if(!t) continue;
+    if(/garage|auto|automobile|fap|voiture|mecan/.test(t)) return "automobile";
+    if(/electric/.test(t)) return "electricien";
+    if(/restaurant|cafe|boulanger|traiteur|pizzeria/.test(t)) return "restaurant";
+    if(/plomb|chauff|menuis|toitur|batiment|artisan|macon|peintre|couvreur|serrurier/.test(t)) return "artisan";
+  }
+  return "inconnu";
+}
+
+const EXEMPLES_PHOTOS_PAR_SECTEUR = {
+  automobile:"Ajouter 4 à 6 photos récentes de véhicules pris en charge, de l'atelier, des équipements ou de réalisations.",
+  electricien:"Ajouter 4 à 6 photos récentes de chantiers, tableaux électriques, installations, éclairages, réalisations avant/après, équipe ou véhicules d'intervention.",
+  restaurant:"Ajouter 4 à 6 photos récentes de plats, de la salle, de l'équipe, de la devanture ou de l'ambiance.",
+  artisan:"Ajouter 4 à 6 photos récentes de chantiers, réalisations, équipements, équipe ou avant/après.",
+  inconnu:"Ajouter 4 à 6 photos récentes de réalisations, des locaux, de l'équipe, des équipements ou d'exemples du travail effectué."
+};
+
+function exemplesPhotosSectoriels(ctx){
+  const secteur = classifierSecteurPhotos(ctx);
+  return EXEMPLES_PHOTOS_PAR_SECTEUR[secteur] || EXEMPLES_PHOTOS_PAR_SECTEUR.inconnu;
+}
+
 function actionPhotosPriorite(item){
   return prioritePhotosPorteSurActualite(item)
-    ? "Ajouter 4 à 6 photos récentes de l'atelier, des équipements, de l'équipe ou de véhicules pris en charge."
+    ? exemplesPhotosSectoriels(contexteRapport())
     : "Ajouter une série courte de photos nettes : extérieur, équipe, réalisations et détails utiles.";
 }
 
@@ -5603,15 +5708,80 @@ function constatObservePriorite(item, ctx){
   return item.constat || "";
 }
 
+/* Conséquence "réputation" pour le prospect — dérivée des preuves
+   réellement disponibles (récence des avis, réponses, note, volume face
+   à la moyenne concurrentielle) plutôt que d'une phrase générique unique.
+   Règles permanentes :
+   - ne jamais évoquer un manque d'avis récents quand recenceAvis est
+     "conforme" ;
+   - distinguer clairement volume / récence / note moyenne / réponses ;
+   - ne jamais inventer une insuffisance non étayée par les données ;
+   - à défaut de preuve suffisante, formulation prudente plutôt
+     qu'affirmation. */
+function consequenceReputation(ctx){
+  if(rapportSansAvis())
+    return "Il peut hésiter à vous contacter : sans aucun avis récent, il ne dispose d'aucun élément pour se rassurer avant d'appeler.";
+
+  const d = ctx.data || {};
+  const m = d.moyennesConcurrents || {};
+  const volC = m.avis ?? d.concurrence?.volC;
+  const volumeSuperieur = estNombre(d.nbAvis) && estNombre(volC) && Number(d.nbAvis) > Number(volC);
+  const noteFaible = estNombre(d.note) && Number(d.note) < 4.2;
+  const recence = etatCritere("recenceAvis");
+  const reponses = etatCritere("tauxReponseAvis");
+
+  if(recence === "conforme" && volumeSuperieur && noteFaible && reponses === "insuffisant")
+    return `Malgré un volume d'avis supérieur à la moyenne, la note de ${fmtNote(d.note)}/5 et l'absence de réponses visibles peuvent créer un doute au moment de choisir l'entreprise.`;
+  if(recence === "conforme" && volumeSuperieur && noteFaible)
+    return `Malgré un volume d'avis supérieur à la moyenne, la note de ${fmtNote(d.note)}/5 peut créer un doute au moment de choisir l'entreprise.`;
+  if(recence === "conforme" && reponses === "insuffisant")
+    return "Il peut hésiter à contacter l'entreprise : les avis sont récents, mais l'absence de réponses visibles peut créer un doute au moment de choisir.";
+  if(recence === "conforme" && noteFaible)
+    return `Il peut hésiter à contacter l'entreprise : la note de ${fmtNote(d.note)}/5 ne suffit pas toujours à le rassurer avant d'appeler.`;
+  if(recence === "insuffisant")
+    return "Il peut hésiter à contacter l'entreprise, car il dispose de trop peu d'éléments récents pour se rassurer pleinement.";
+  if(noteFaible)
+    return `Il peut hésiter à contacter l'entreprise : la note de ${fmtNote(d.note)}/5 ne suffit pas toujours à le rassurer avant d'appeler.`;
+  return "Il peut hésiter à contacter l'entreprise tant que les preuves clients visibles ne le rassurent pas pleinement.";
+}
+
+/* Conséquence "photos" pour le prospect — distingue explicitement le
+   volume (comparé à la moyenne concurrentielle, via prioritePhotosPorteSurActualite
+   déjà utilisée pour le constat et le titre de cette même priorité) de
+   l'actualité des photos (etatCritere("photoRecente")), pour ne jamais
+   qualifier d'insuffisant un volume qui est en réalité supérieur ou
+   comparable à la moyenne observée. */
+function consequencePhotos(item, ctx){
+  const d = ctx.data || {};
+  const volumeConnu = estNombre(d.nbPhotos) && estNombre(d.moyennesConcurrents?.photos);
+  const volumeSuffisant = volumeConnu && prioritePhotosPorteSurActualite(item);
+  const volumeInsuffisant = volumeConnu && !volumeSuffisant;
+  const actualiteInsuffisante = etatCritere("photoRecente") === "insuffisant";
+
+  // volume suffisant (comparable ou supérieur à la moyenne concurrentielle) + photos anciennes.
+  if(volumeSuffisant && actualiteInsuffisante)
+    return "Si les photos ne sont pas récentes, le client peut se demander si la fiche reflète encore l'activité actuelle.";
+  // volume insuffisant ET photos anciennes : les deux causes sont réelles, on ne confond pas l'une avec l'autre.
+  if(volumeInsuffisant && actualiteInsuffisante)
+    return "Avec trop peu de photos, et des visuels qui ne sont plus récents, le client peut avoir plus de mal à se projeter et douter que la fiche reflète l'activité actuelle.";
+  // volume insuffisant, actualité correcte ou inconnue : seul le volume est en cause.
+  if(volumeInsuffisant)
+    return "Faute de visuels suffisants, il peut avoir plus de mal à se projeter et préférer une fiche qui montre plus clairement le travail réalisé.";
+  // volume suffisant/comparable et actualité correcte ou inconnue : la priorité photos vient d'un autre
+  // critère (variété, qualité) — ne jamais qualifier le volume d'insuffisant dans ce cas.
+  if(volumeSuffisant)
+    return "Les visuels de votre fiche restent un point que le client observe avant de vous contacter — ils méritent d'être renforcés.";
+  // données insuffisantes : ni le volume ni l'actualité ne sont établis avec certitude.
+  return "Sans données suffisantes sur vos photos, le client peut avoir plus de mal à se projeter avant de vous contacter.";
+}
+
 function consequenceBusinessPriorite(item, ctx){
   const persona = personaSecteur(ctx.activite);
   const textes = {
-    reputation: rapportSansAvis()
-      ? "Il peut hésiter à vous contacter : sans aucun avis récent, il ne dispose d'aucun élément pour se rassurer avant d'appeler."
-      : "Il peut hésiter à contacter l'entreprise, car il dispose de trop peu d'éléments récents pour se rassurer pleinement.",
+    reputation: consequenceReputation(ctx),
     offre: `${majusculeInitiale(persona)} ne reste que quelques secondes sur une fiche. S'il ne peut pas vérifier rapidement que vous faites exactement ce qu'il cherche, il risque de poursuivre sa recherche plutôt que de vous appeler pour demander.`,
     visibilite: `Sur ce type de recherche locale, seules quelques fiches sont mises en avant en premier. ${majusculeInitiale(persona)} qui ne voit pas la vôtre parmi elles risque de contacter un concurrent plus visible, sans même savoir que vous existiez.`,
-    photos: `Faute de visuels suffisants, il peut avoir plus de mal à se projeter et préférer une fiche qui montre plus clairement le travail réalisé.`,
+    photos: consequencePhotos(item, ctx),
     infos: "Un doute pratique — horaires, coordonnées, adresse — peut suffire à repousser l'appel, surtout si une autre fiche répond plus clairement à ces questions.",
     activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
   };

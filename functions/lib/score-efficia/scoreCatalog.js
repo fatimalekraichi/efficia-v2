@@ -48,6 +48,17 @@ export function classifyLocalRank(value) {
   return { status:"first_page", optionIndex:1 };
 }
 
+// Classe chaque métrique (note / volume d'avis) séparément par rapport à la
+// moyenne concurrentielle, dans la même tolérance métier existante :
+// "up" (nettement au-dessus), "down" (nettement en dessous), "comparable"
+// (dans la tolérance). Sert uniquement à calculer `synthesisStatus`
+// ci-dessous, jamais `status`/`optionIndex` (voir note plus bas).
+function classifyCompetitiveSignal(ratio, lowerBound, upperBound) {
+  if (ratio < lowerBound) return "down";
+  if (ratio > upperBound) return "up";
+  return "comparable";
+}
+
 export function classifyCompetitiveAttractiveness({ rating, reviews, averageRating, averageReviews, tolerance = CONFIG.seuils.toleranceConcurrents } = {}) {
   const ownRating = asNumber(rating);
   const ownReviews = asNumber(reviews);
@@ -55,19 +66,46 @@ export function classifyCompetitiveAttractiveness({ rating, reviews, averageRati
   const competitorReviews = asNumber(averageReviews);
   if ([ownRating, ownReviews, competitorRating, competitorReviews].some((value) => value === null)
       || competitorRating <= 0 || competitorReviews <= 0) {
-    return { status:"unknown", optionIndex:null, ratingRatio:null, reviewsRatio:null };
+    return { status:"unknown", optionIndex:null, ratingRatio:null, reviewsRatio:null, ratingSignal:null, reviewsSignal:null, synthesisStatus:"unknown" };
   }
   const ratingRatio = ownRating / competitorRating;
   const reviewsRatio = ownReviews / competitorReviews;
   const lowerBound = 1 - tolerance;
   const upperBound = 1 + tolerance;
+
+  // `status`/`optionIndex` : comportement historique INCHANGÉ (logique "OR"
+  // d'origine), conservé tel quel car il alimente encore le point v4
+  // (grille notée historique) via optionForKey — ne jamais le modifier ici
+  // sous peine de déplacer silencieusement des scores v4 déjà calculés.
+  let status;
   if (ratingRatio < lowerBound || reviewsRatio < lowerBound) {
-    return { status:"behind", optionIndex:2, ratingRatio, reviewsRatio };
+    status = "behind";
+  } else if (ratingRatio > upperBound && reviewsRatio > upperBound) {
+    status = "ahead";
+  } else {
+    status = "comparable";
   }
-  if (ratingRatio > upperBound && reviewsRatio > upperBound) {
-    return { status:"ahead", optionIndex:0, ratingRatio, reviewsRatio };
-  }
-  return { status:"comparable", optionIndex:1, ratingRatio, reviewsRatio };
+  const optionIndex = status === "ahead" ? 0 : status === "behind" ? 2 : 1;
+
+  // `synthesisStatus` : nouvelle classification purement informative pour la
+  // synthèse "Confiance visible face aux concurrents" du diagnostic gratuit
+  // (v5). Combine les deux signaux indépendamment :
+  // - les deux "up"         -> ahead ("Devant")
+  // - les deux "down"       -> behind ("Derrière")
+  // - les deux "comparable" -> comparable ("Comparable")
+  // - toute combinaison mixte (up/down, up/comparable, down/comparable)
+  //   -> contrasted ("Contrastée") : jamais de conclusion absolue quand les
+  //   signaux ne pointent pas tous dans le même sens.
+  // N'affecte jamais optionIndex/points/status ci-dessus.
+  const ratingSignal = classifyCompetitiveSignal(ratingRatio, lowerBound, upperBound);
+  const reviewsSignal = classifyCompetitiveSignal(reviewsRatio, lowerBound, upperBound);
+  let synthesisStatus;
+  if (ratingSignal === "up" && reviewsSignal === "up") synthesisStatus = "ahead";
+  else if (ratingSignal === "down" && reviewsSignal === "down") synthesisStatus = "behind";
+  else if (ratingSignal === "comparable" && reviewsSignal === "comparable") synthesisStatus = "comparable";
+  else synthesisStatus = "contrasted";
+
+  return { status, optionIndex, ratingRatio, reviewsRatio, ratingSignal, reviewsSignal, synthesisStatus };
 }
 
 export function classifyReviewVolume({ reviews, competitors, tolerance = CONFIG.seuils.toleranceConcurrents } = {}) {
@@ -429,6 +467,15 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
       decision:attractiveness.status,
       ratingRatio:attractiveness.ratingRatio,
       reviewsRatio:attractiveness.reviewsRatio,
+      // Libellé informatif de la synthèse "Confiance visible face aux
+      // concurrents" (v5) — distinct de `decision` (status historique, lié
+      // à optionIndex/points v4) pour ne jamais faire bouger un score déjà
+      // calculé. ratingSignal/reviewsSignal permettent au libellé "Contrastée"
+      // de préciser QUEL signal est au-dessus/en dessous. Voir
+      // classifyCompetitiveAttractiveness.
+      synthesisStatus:attractiveness.synthesisStatus,
+      ratingSignal:attractiveness.ratingSignal,
+      reviewsSignal:attractiveness.reviewsSignal,
     }));
   }
 
