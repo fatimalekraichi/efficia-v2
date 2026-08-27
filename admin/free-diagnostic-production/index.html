@@ -5433,6 +5433,161 @@ function elementsIndeterminesPage5(checklist){
   return items;
 }
 
+/* ===== Priorité "Informations essentielles" — narration construite à partir
+   de l'état réel de chaque sous-critère (jamais un texte figé qui cite des
+   critères déjà conformes, ou qui présente un critère "à confirmer" comme un
+   défaut avéré). Règles permanentes :
+   - un sous-critère "conforme" n'est jamais cité comme un problème ;
+   - un sous-critère "à confirmer" (points partiels, ex. zone desservie en
+     mode "partial") n'est jamais présenté comme un défaut avéré ;
+   - seuls les sous-critères réellement non conformes (0 point) alimentent le
+     titre, le constat, la recommandation et le résultat attendu ;
+   - un seul défaut réel => texte focalisé sur ce seul défaut ;
+   - plusieurs défauts réels => les textes les regroupent, sans en inventer. */
+const CRITERES_INFOS_NARRATION = ["revendiquee","horaires","contact","attributs","adresse","nap","nomConforme"];
+
+/* Variante à 4 états d'etatCritere, réservée à la priorité "Informations
+   essentielles" : distingue un critère non conforme (0 point, défaut avéré)
+   d'un critère à confirmer (points partiels — ex. zone desservie en mode
+   "partial", ou nom de fiche "douteux / légèrement surchargé"). Cas
+   particulier "nap" (cohérence fiche/site) : quand aucun site n'est
+   disponible, il n'y a rien à comparer — jamais présenté comme une
+   incohérence. */
+function etatCritereInfos(key){
+  if(key === "nap" && typeof napRadioAucunSite === "function" && napRadioAucunSite()) return "inconnu";
+  if(key === "adresse" && typeof localisationNonVerifiablePubliquement === "function" && localisationNonVerifiablePubliquement()) return "aConfirmer";
+  const id = CRITERE_IDS[key];
+  if(id === undefined) return "inconnu";
+  const cr = trouverCritere(id);
+  if(!cr) return "inconnu";
+  const points = lirePoints(id);
+  if(points === null) return "inconnu";
+  const max = Number(cr.max);
+  const p = Number(points);
+  if(p >= max) return "conforme";
+  if(p <= 0) return "nonConforme";
+  return "aConfirmer";
+}
+
+function defautsInfos(){
+  return CRITERES_INFOS_NARRATION.filter(key => etatCritereInfos(key) === "nonConforme");
+}
+
+function elementsInfosAConfirmer(){
+  return CRITERES_INFOS_NARRATION.filter(key => etatCritereInfos(key) === "aConfirmer");
+}
+
+const TITRES_UNIQUES_INFOS = {
+  revendiquee: "Revendiquer et vérifier votre fiche",
+  horaires: "Compléter vos horaires",
+  contact: "Faciliter la prise de contact (téléphone, site)",
+  attributs: "Compléter les attributs utiles de votre fiche",
+  adresse: "Clarifier votre zone desservie",
+  nap: "Aligner votre fiche avec votre site",
+  nomConforme: "Corriger le nom affiché sur votre fiche"
+};
+
+const FRAGMENT_INFOS = {
+  revendiquee: "la fiche n'apparaît pas revendiquée et vérifiée",
+  horaires: "les horaires restent incomplets",
+  contact: "le téléphone ou le site posent un problème d'accès",
+  attributs: "certains attributs utiles (accès, paiement ou autres attributs applicables) ne sont pas renseignés",
+  adresse: "la zone desservie ou l'adresse mérite d'être corrigée",
+  nap: "le nom, l'adresse ou le téléphone diffèrent entre la fiche et le site",
+  nomConforme: "le nom affiché ne correspond pas au nom réel de l'entreprise"
+};
+
+const ACTIONS_INFOS = {
+  revendiquee: "Revendiquer votre fiche Google Business et la faire vérifier.",
+  horaires: "Compléter les horaires de votre fiche Google Business, jours fériés inclus.",
+  contact: "Vérifier et corriger le téléphone et le site renseignés sur votre fiche Google Business.",
+  attributs: "Vérifier dans votre compte Google Business les attributs réellement applicables à votre activité et compléter ceux qui manquent.",
+  adresse: "Vérifier et corriger la zone desservie ou l'adresse dans les paramètres de localisation de votre fiche Google Business.",
+  nap: "Harmoniser le nom, l'adresse et le téléphone entre votre fiche Google Business et votre site.",
+  nomConforme: "Corriger le nom affiché sur votre fiche Google Business pour qu'il corresponde au nom réel de l'entreprise."
+};
+
+const FRAGMENTS_A_CONFIRMER_INFOS = {
+  adresse: "la zone desservie affichée reste à confirmer"
+};
+
+function titreInfosPriorite(){
+  const defauts = defautsInfos();
+  if(defauts.length === 1) return TITRES_UNIQUES_INFOS[defauts[0]] || "Sécuriser les informations essentielles";
+  return "Sécuriser les informations essentielles";
+}
+
+function constatInfos(){
+  const defauts = defautsInfos();
+  if(defauts.length === 1 && defauts[0] === "attributs")
+    return "Certains attributs utiles à votre activité, comme les modalités d'accès ou de paiement lorsqu'elles s'appliquent, ne sont pas renseignés sur votre fiche Google.";
+  if(defauts.length === 1)
+    return `Sur votre fiche Google, ${FRAGMENT_INFOS[defauts[0]]}.`;
+  if(defauts.length > 1)
+    return `Sur votre fiche Google, ${joinFr(defauts.map(k => FRAGMENT_INFOS[k]))}.`;
+  const aConfirmer = elementsInfosAConfirmer().filter(k => FRAGMENTS_A_CONFIRMER_INFOS[k]);
+  if(aConfirmer.length)
+    return `Sur votre fiche Google, ${joinFr(aConfirmer.map(k => FRAGMENTS_A_CONFIRMER_INFOS[k]))}.`;
+  return "Certaines informations de votre fiche Google restent à préciser.";
+}
+
+/* "Ce qu'il peut penser" pour la priorité "infos" : volontairement neutre —
+   ne cite aucun sous-critère par nom, donc reste valide quel que soit le(s)
+   défaut(s) réel(s) sans jamais mentionner un critère déjà conforme. */
+function consequenceInfos(){
+  return "Un prospect peut manquer d'informations pratiques au moment de comparer votre entreprise avec une autre fiche plus complète.";
+}
+
+function premierPasInfos(){
+  const defauts = defautsInfos();
+  if(defauts.length === 1) return ACTIONS_INFOS[defauts[0]];
+  if(defauts.length > 1) return `Corriger, dans votre compte Google Business : ${joinFr(defauts.map(k => FRAGMENT_INFOS[k]))}.`;
+  if(elementsInfosAConfirmer().includes("adresse")) return "Vérifier la zone desservie renseignée dans les paramètres de localisation de votre fiche Google Business.";
+  return "Vérifier dans votre compte Google Business les informations essentielles de votre fiche et les compléter si besoin.";
+}
+
+/* "Résultat attendu" pour la priorité "infos" : comme pour la conséquence,
+   volontairement générique — ne cite aucun critère par nom. */
+function resultatAttenduInfos(){
+  return "une fiche plus complète, avec moins d'incertitudes pratiques avant le premier contact.";
+}
+
+/* ===== Priorité "Réputation client" (avis) — "Votre premier pas" et
+   "Résultat attendu", construits sur le même principe que consequenceReputation
+   ci-dessus : jamais de récence présentée comme un problème quand
+   recenceAvis est conforme ; ne jamais qualifier une note insuffisante de
+   "bon signal" ; toujours une collecte d'avis présentée comme éthique
+   (avis authentiques, clients réellement servis — jamais faux, achetés,
+   incités ou triés). */
+function premierPasReputation(ctx){
+  const d = ctx.data || {};
+  const noteFaible = estNombre(d.note) && Number(d.note) < 4.2;
+  const reponses = etatCritere("tauxReponseAvis");
+  const recence = etatCritere("recenceAvis");
+  if(noteFaible && reponses === "insuffisant")
+    return "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis et répondre aux avis visibles avec un message personnalisé.";
+  if(noteFaible)
+    return "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis, pour faire progressivement remonter votre note.";
+  if(reponses === "insuffisant")
+    return "Répondre aux avis visibles avec un message personnalisé pour renforcer la confiance que vos avis installent déjà.";
+  if(recence === "insuffisant")
+    return "Poursuivre la collecte de nouveaux avis authentiques pour retrouver une bonne dynamique de récence.";
+  return "Continuer à solliciter des avis authentiques auprès de vos clients et à répondre aux nouveaux avis pour maintenir cette dynamique positive.";
+}
+
+function resultatAttenduReputation(ctx){
+  const d = ctx.data || {};
+  const noteFaible = estNombre(d.note) && Number(d.note) < 4.2;
+  const reponses = etatCritere("tauxReponseAvis");
+  const recence = etatCritere("recenceAvis");
+  const parts = [];
+  if(noteFaible) parts.push("une note progressivement plus représentative de la qualité réelle de votre travail");
+  if(reponses === "insuffisant") parts.push("des réponses visibles");
+  if(recence === "insuffisant") parts.push("des avis plus récents");
+  parts.push(parts.length ? "une fiche plus rassurante au premier regard" : "une fiche qui continue de rassurer dès le premier regard");
+  return joinFr(parts) + ".";
+}
+
 const FAMILLES_PRIORITES = [
   {key:"offre", label:"Offre et services", criteres:["servicesPresents","servicesDecrits","descriptionRemplie","descriptionQualite","questionsReponses","liensAction"], impact:5, action:"Clarifier les services principaux, la zone desservie et les raisons de vous contacter."},
   {key:"reputation", label:"Réputation client", criteres:["volumeAvis","tauxReponseAvis","qualiteReponsesAvis","recenceAvis","noteMoyenne"], impact:5, action:"Installer un parcours de collecte d'avis et répondre aux avis visibles avec un message personnalisé."},
@@ -5446,6 +5601,8 @@ function actionFamillePriorite(famille, item = null){
   if(famille.key === "reputation" && rapportSansAvis()){
     return "Mettre en place un parcours simple pour obtenir les premiers avis authentiques.";
   }
+  if(famille.key === "reputation") return premierPasReputation(contexteRapport());
+  if(famille.key === "infos") return premierPasInfos();
   if(famille.key === "offre" && localisationNonVerifiablePubliquement()){
     return "Clarifier les services principaux et les raisons de vous contacter.";
   }
@@ -5518,12 +5675,12 @@ function titrePriorite(item){
     if(ctx.recherche) return `Apparaître quand on cherche « ${ctx.recherche} »`;
     if(ctx.ville) return `Être visible sur les recherches autour de ${ctx.ville}`;
   }
+  if(item.famille === "infos") return titreInfosPriorite();
   const titres = {
     reputation:"Renforcer votre réputation client",
     offre:"Clarifier votre spécialité",
     visibilite:"Être visible sur les bonnes recherches",
     photos:prioritePhotosPorteSurActualite(item) ? "Actualiser régulièrement vos photos" : "Montrer davantage de preuves visuelles",
-    infos:"Sécuriser les informations essentielles",
     activite:"Montrer que la fiche est active"
   };
   return titres[item.famille] || item.critere.q || "Améliorer ce point";
@@ -5590,9 +5747,7 @@ function recommandationPriorite(item, ctx){
   const reco = {
     reputation: rapportSansAvis()
       ? "Mettre en place un parcours simple pour obtenir les premiers avis authentiques. Dès la réception des premiers avis, y répondre de manière professionnelle et personnalisée."
-      : estNombre(d.note) && estNombre(d.nbAvis)
-      ? `Votre note de ${fmtNote(d.note)}/5 est un bon signal. Le prochain levier est d'obtenir davantage d'avis et de répondre aux avis visibles.`
-      : "Faciliter la collecte de nouveaux avis et répondre aux avis déjà visibles.",
+      : premierPasReputation(ctx),
     offre: localisationNonVerifiablePubliquement()
       ? `Expliquer clairement ce que vous faites et pourquoi un client devrait vous contacter pour ${service}.`
       : `Expliquer clairement ce que vous faites, où vous intervenez et pourquoi un client devrait vous contacter pour ${service}.`,
@@ -5604,7 +5759,7 @@ function recommandationPriorite(item, ctx){
       : estNombre(d.nbPhotos)
       ? `Ajouter des photos utiles et variées. Aujourd'hui, ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""} ne suffisent pas toujours à rassurer une personne qui compare.`
       : "Ajouter des photos récentes, nettes et utiles pour montrer concrètement l'entreprise.",
-    infos: "Corriger les informations qui rassurent immédiatement : horaires, contact, adresse, attributs et cohérence avec le site.",
+    infos: premierPasInfos(),
     activite: "Publier un signe d'activité récent pour montrer que l'entreprise est disponible et suivie."
   };
   return reco[item.famille] || item.action;
@@ -5699,7 +5854,7 @@ function constatObservePriorite(item, ctx){
     return "Les visuels de votre fiche ne montrent pas encore votre travail — c'est pourtant la première chose que regarde un prospect qui compare.";
   }
   if(item.famille === "infos")
-    return "Nous avons relevé des écarts sur les informations de base de votre fiche : horaires, attributs ou cohérence avec votre site.";
+    return constatInfos();
   if(item.famille === "activite"){
     if(estNombre(d.nbPublications) && d.nbPublications === 0)
       return "Aucune publication n'est visible sur votre fiche — aucun signe d'activité récent pour un prospect qui la consulte.";
@@ -5782,7 +5937,7 @@ function consequenceBusinessPriorite(item, ctx){
     offre: `${majusculeInitiale(persona)} ne reste que quelques secondes sur une fiche. S'il ne peut pas vérifier rapidement que vous faites exactement ce qu'il cherche, il risque de poursuivre sa recherche plutôt que de vous appeler pour demander.`,
     visibilite: `Sur ce type de recherche locale, seules quelques fiches sont mises en avant en premier. ${majusculeInitiale(persona)} qui ne voit pas la vôtre parmi elles risque de contacter un concurrent plus visible, sans même savoir que vous existiez.`,
     photos: consequencePhotos(item, ctx),
-    infos: "Un doute pratique — horaires, coordonnées, adresse — peut suffire à repousser l'appel, surtout si une autre fiche répond plus clairement à ces questions.",
+    infos: consequenceInfos(),
     activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
   };
   return textes[item.famille] || "Cet écart peut réduire la confiance ou retarder la prise de contact.";
@@ -5793,13 +5948,13 @@ function resultatAttenduPriorite(item, ctx){
   const textes = {
     reputation: rapportSansAvis()
       ? "les premiers avis authentiques apportent une preuve client visible et rassurante."
-      : "des avis plus récents, des réponses visibles, une fiche qui rassure dès le premier regard.",
+      : resultatAttenduReputation(ctx),
     visibilite: `une fiche mieux positionnée sur les recherches testées${rq ? " comme « " + rq + " »" : ""}, avec de meilleures chances d'être vue au premier regard.`,
     offre: localisationNonVerifiablePubliquement()
       ? "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler."
       : "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
     photos: prioritePhotosPorteSurActualite(item) ? "votre galerie montre une entreprise active aujourd'hui." : "votre travail devient visible avant même le premier contact.",
-    infos: "plus aucun doute pratique entre le prospect et son appel.",
+    infos: resultatAttenduInfos(),
     activite: "une fiche visiblement suivie et active."
   };
   return textes[item.famille] || "";

@@ -501,3 +501,355 @@ test("garde-fou explicite : même si le prefill sous-jacent est v5, scoringVersi
   assert.equal(conclusion, "Derrière");
   assert.doesNotMatch(conclusion, /Contrastée/);
 });
+
+/* ---------------------------------------------------------------------- */
+/* 11) Cas réel MK Elec (2026-08-27) — deux nouvelles incohérences :      */
+/*   - page 4 "Résultat attendu" (réputation) promettait "des avis plus  */
+/*     récents" alors que "Avis récents" est conforme (page 3) ;         */
+/*   - page 5 priorité "Informations essentielles" citait horaires /     */
+/*     coordonnées / adresse de façon générique, y compris quand ces     */
+/*     critères sont conformes, et sans jamais distinguer un critère     */
+/*     "à confirmer" (zone desservie) d'un défaut avéré.                 */
+/* ---------------------------------------------------------------------- */
+const ID_BY_KEY_TASKC = {
+  recenceAvis: 1, tauxReponseAvis: 2, qualiteReponsesAvis: 3, photoRecente: 4, varietePhotos: 5,
+  revendiquee: 6, horaires: 7, contact: 8, attributs: 9, adresse: 10, nap: 11, nomConforme: 12,
+};
+const MAX_OVERRIDES_TASKC = { 6: 3, 7: 3, 8: 3, 9: 2, 10: 2, 11: 3, 12: 2 };
+
+function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis = false, nonVerifiablePubliquement = false } = {}) {
+  const code = sliceBetween(html, "function critereConfirmeMax(key){", "function microLivrablePriorite(item, ctx){");
+  const points = {};
+  Object.entries(etats).forEach(([key, etat]) => {
+    const id = ID_BY_KEY_TASKC[key];
+    const max = MAX_OVERRIDES_TASKC[id] || 4;
+    points[id] =
+      etat === "conforme" ? max :
+      etat === "aConfirmer" ? Math.max(1, max - 1) :
+      (etat === "insuffisant" || etat === "nonConforme") ? 0 :
+      null;
+  });
+  const context = {
+    CONFIG: { seuils: { toleranceConcurrents: 0.10 } },
+    estNombre: (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)),
+    fmtNote: (n) => Number(n).toFixed(1).replace(".", ","),
+    nEntier: (v) => Math.round(Number(v)),
+    rapportSansAvis: () => sansAvis,
+    personaSecteur: () => "un particulier qui cherche un artisan",
+    majusculeInitiale: (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1),
+    secteurActiviteNaturel: () => "une intervention",
+    localisationNonVerifiablePubliquement: () => nonVerifiablePubliquement,
+    categoriePrincipaleValideePourRapport: () => true,
+    zoneDesserteDoitEtreCorrigee: () => false,
+    joinFr: (items) => {
+      const list = items.filter(Boolean);
+      if (!list.length) return "";
+      if (list.length === 1) return list[0];
+      return `${list.slice(0, -1).join(", ")} et ${list[list.length - 1]}`;
+    },
+    CRITERE_IDS: ID_BY_KEY_TASKC,
+    trouverCritere: (id) => (id !== undefined && id !== null ? { max: MAX_OVERRIDES_TASKC[id] || 4 } : null),
+    lirePoints: (id) => (id in points ? points[id] : null),
+    donneesAnalyse,
+  };
+  vm.runInNewContext(code, context);
+  return context;
+}
+
+const REPUTATION_ITEM = { famille: "reputation" };
+const INFOS_ITEM = { famille: "infos" };
+const FORBIDDEN_RECENCY = /des avis plus récents|davantage d'avis récents|manque d'avis récents|retrouver de la récence/i;
+
+/* --- Avis (10 scénarios permanents) --- */
+
+test("Avis 1 : note insuffisante + volume conforme + récence conforme + réponses absentes -> jamais de récence, note+réponses au centre", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "conforme", tauxReponseAvis: "insuffisant" } });
+  const ctx = { data: { note: 3.1, nbAvis: 17, moyennesConcurrents: { avis: 12 } } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
+  assert.doesNotMatch(resultat, FORBIDDEN_RECENCY);
+  assert.match(premierPas, /avis authentiques/i);
+  assert.match(premierPas, /répondre aux avis visibles/i);
+  assert.match(resultat, /note progressivement plus représentative/i);
+  assert.match(resultat, /réponses visibles/i);
+});
+
+test("Avis 2 : note insuffisante + volume conforme + récence insuffisante + réponses absentes -> la récence peut apparaître, étayée", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "insuffisant" } });
+  const ctx = { data: { note: 3.4, nbAvis: 15, moyennesConcurrents: { avis: 10 } } };
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.match(resultat, /avis plus récents/i);
+  assert.match(resultat, /note progressivement plus représentative/i);
+});
+
+test("Avis 3 : note insuffisante + volume insuffisant + récence conforme + réponses conformes -> seule la note est visée", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "conforme", tauxReponseAvis: "conforme" } });
+  const ctx = { data: { note: 3.8, nbAvis: 4, moyennesConcurrents: { avis: 20 } } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
+  assert.doesNotMatch(premierPas, /répondre aux avis visibles/i);
+  assert.doesNotMatch(resultat, /réponses visibles|avis plus récents/i);
+  assert.match(resultat, /note progressivement plus représentative/i);
+});
+
+test("Avis 4 : note conforme + volume conforme + récence conforme + réponses conformes -> aucune critique, formulation positive", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "conforme", tauxReponseAvis: "conforme" } });
+  const ctx = { data: { note: 4.7, nbAvis: 30, moyennesConcurrents: { avis: 10 } } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
+  assert.doesNotMatch(resultat, /note progressivement plus représentative|réponses visibles|avis plus récents/i);
+  assert.match(resultat, /continue de rassurer/i);
+});
+
+test("Avis 5 : aucun avis -> branche dédiée rapportSansAvis, jamais la logique evidence-driven", () => {
+  const context = createFullPriorityHarness({ sansAvis: true });
+  const ctx = { data: {} };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.match(premierPas, /premiers avis authentiques/i);
+  assert.match(resultat, /premiers avis authentiques/i);
+});
+
+test("Avis 6 : avis récents conformes -> jamais de formulation de manque de récence (recommandation + résultat)", () => {
+  const scenarios = [
+    { recenceAvis: "conforme", tauxReponseAvis: "conforme", note: 4.9, nbAvis: 25 },
+    { recenceAvis: "conforme", tauxReponseAvis: "insuffisant", note: 3.0, nbAvis: 6 },
+    { recenceAvis: "conforme", note: 4.0, nbAvis: 9 },
+  ];
+  for (const scenario of scenarios) {
+    const context = createFullPriorityHarness({ etats: scenario });
+    const ctx = { data: { note: scenario.note, nbAvis: scenario.nbAvis } };
+    assert.doesNotMatch(context.recommandationPriorite(REPUTATION_ITEM, ctx), FORBIDDEN_RECENCY, JSON.stringify(scenario));
+    assert.doesNotMatch(context.resultatAttenduPriorite(REPUTATION_ITEM, ctx), FORBIDDEN_RECENCY, JSON.stringify(scenario));
+  }
+});
+
+test("Avis 7 : avis récents insuffisants -> une recommandation liée à la récence peut apparaître", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "conforme" } });
+  const ctx = { data: { note: 4.5, nbAvis: 20 } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  assert.match(premierPas, /récence/i);
+});
+
+test("Avis 8 : réponses conformes -> jamais de critique des réponses", () => {
+  const context = createFullPriorityHarness({ etats: { tauxReponseAvis: "conforme", recenceAvis: "conforme" } });
+  const ctx = { data: { note: 3.9, nbAvis: 10 } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.doesNotMatch(premierPas, /répondre aux avis visibles/i);
+  assert.doesNotMatch(resultat, /réponses visibles/i);
+});
+
+test("Avis 9 : réponses absentes -> une recommandation de réponse personnalisée doit apparaître", () => {
+  const context = createFullPriorityHarness({ etats: { tauxReponseAvis: "insuffisant", recenceAvis: "conforme" } });
+  const ctx = { data: { note: 4.4, nbAvis: 18 } };
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  assert.match(premierPas, /message personnalisé/i);
+});
+
+test("Avis 10 : cas exact MK Elec -> textes exacts requis sur les 4 champs, jamais de formulation de récence manquante", () => {
+  const context = createFullPriorityHarness({ etats: { recenceAvis: "conforme", tauxReponseAvis: "insuffisant" } });
+  const ctx = { data: { note: MK_ELEC.note, nbAvis: MK_ELEC.nbAvis, moyennesConcurrents: { avis: MK_ELEC.moyenneAvisConcurrents, note: MK_ELEC.moyenneNoteConcurrents } } };
+  const constat = context.constatObservePriorite(REPUTATION_ITEM, ctx);
+  const prospect = context.consequenceBusinessPriorite(REPUTATION_ITEM, ctx);
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.equal(constat, "Votre fiche dispose de 17 avis. En revanche, votre note de 3,1/5 reste nettement inférieure à la moyenne concurrentielle observée de 5,0/5.");
+  assert.equal(prospect, "Malgré un volume d'avis supérieur à la moyenne, la note de 3,1/5 et l'absence de réponses visibles peuvent créer un doute au moment de choisir l'entreprise.");
+  assert.equal(premierPas, "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis et répondre aux avis visibles avec un message personnalisé.");
+  assert.equal(resultat, "une note progressivement plus représentative de la qualité réelle de votre travail, des réponses visibles et une fiche plus rassurante au premier regard.");
+  for (const texte of [constat, prospect, premierPas, resultat]) {
+    assert.doesNotMatch(texte, FORBIDDEN_RECENCY, texte);
+  }
+});
+
+/* --- Informations essentielles (12 scénarios permanents) --- */
+
+test("Infos 11 : seuls les attributs sont non conformes -> titre, constat et premier pas exacts (MK Elec)", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "nonConforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Compléter les attributs utiles de votre fiche");
+  assert.equal(context.constatObservePriorite(INFOS_ITEM, { data: {} }), "Certains attributs utiles à votre activité, comme les modalités d'accès ou de paiement lorsqu'elles s'appliquent, ne sont pas renseignés sur votre fiche Google.");
+  assert.equal(context.recommandationPriorite(INFOS_ITEM, { data: {} }), "Vérifier dans votre compte Google Business les attributs réellement applicables à votre activité et compléter ceux qui manquent.");
+  assert.equal(context.actionFamillePriorite({ key: "infos" }), "Vérifier dans votre compte Google Business les attributs réellement applicables à votre activité et compléter ceux qui manquent.");
+});
+
+test("Infos 12 : seuls les horaires sont non conformes -> titre et constat centrés sur les horaires uniquement", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "nonConforme", contact: "conforme", attributs: "conforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Compléter vos horaires");
+  assert.match(context.constatObservePriorite(INFOS_ITEM, { data: {} }), /horaires/i);
+  assert.doesNotMatch(context.constatObservePriorite(INFOS_ITEM, { data: {} }), /attributs|cohérence|zone desservie|adresse/i);
+});
+
+test("Infos 13 : seule la cohérence fiche/site (nap) est non conforme", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "conforme", adresse: "conforme", nap: "nonConforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Aligner votre fiche avec votre site");
+  assert.match(context.constatObservePriorite(INFOS_ITEM, { data: {} }), /diffèrent entre la fiche et le site/i);
+  assert.doesNotMatch(context.constatObservePriorite(INFOS_ITEM, { data: {} }), /horaires|attributs/i);
+});
+
+test("Infos 14 : attributs ET horaires non conformes -> les deux sont regroupés, titre générique", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "nonConforme", contact: "conforme", attributs: "nonConforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Sécuriser les informations essentielles");
+  const constat = context.constatObservePriorite(INFOS_ITEM, { data: {} });
+  assert.match(constat, /horaires/i);
+  assert.match(constat, /attributs/i);
+  const premierPas = context.recommandationPriorite(INFOS_ITEM, { data: {} });
+  assert.match(premierPas, /horaires/i);
+  assert.match(premierPas, /attributs/i);
+});
+
+test("Infos 15 : tous les critères sont conformes -> aucune critique, formulation neutre", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "conforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Sécuriser les informations essentielles");
+  assert.doesNotMatch(context.constatObservePriorite(INFOS_ITEM, { data: {} }), /horaires|attributs|cohérence|diffèrent|zone desservie/i);
+});
+
+test("Infos 16 : zone desservie 'à confirmer' + tout le reste conforme -> jamais un défaut avéré", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "conforme", adresse: "aConfirmer", nap: "conforme", nomConforme: "conforme" },
+  });
+  const constat = context.constatObservePriorite(INFOS_ITEM, { data: {} });
+  assert.doesNotMatch(constat, /non conforme|défaut|manquant|absent/i);
+  assert.match(constat, /confirmer/i);
+  assert.equal(context.defautsInfos().length, 0);
+});
+
+test("Infos 17 : zone desservie 'à confirmer' + attributs non conformes -> seuls les attributs sont cités comme défaut", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "nonConforme", adresse: "aConfirmer", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Compléter les attributs utiles de votre fiche");
+  const constat = context.constatObservePriorite(INFOS_ITEM, { data: {} });
+  assert.match(constat, /attributs/i);
+  assert.doesNotMatch(constat, /zone desservie/i);
+  assert.equal(context.defautsInfos().length, 1);
+  assert.equal(context.defautsInfos()[0], "attributs");
+});
+
+test("Infos 18 : téléphone/site (contact) conformes -> jamais cités comme problème", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "nonConforme", contact: "conforme", attributs: "nonConforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  const texts = [
+    context.titrePriorite(INFOS_ITEM),
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+  ].join(" ");
+  assert.doesNotMatch(texts, /téléphone|site web/i);
+});
+
+test("Infos 19 : horaires conformes -> jamais cités comme problème", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "nonConforme", attributs: "conforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  const texts = [
+    context.titrePriorite(INFOS_ITEM),
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+  ].join(" ");
+  assert.doesNotMatch(texts, /horaires/i);
+});
+
+test("Infos 20 : cohérence fiche/site (nap) conforme -> jamais citée comme problème", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "nonConforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  const texts = [
+    context.titrePriorite(INFOS_ITEM),
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+  ].join(" ");
+  assert.doesNotMatch(texts, /diffèrent entre la fiche et le site|cohérence/i);
+});
+
+test("Infos 21 : un critère 'à confirmer' n'est jamais compté parmi les défauts avérés (invariant général)", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "aConfirmer", horaires: "conforme", contact: "conforme", attributs: "conforme", adresse: "aConfirmer", nap: "conforme", nomConforme: "aConfirmer" },
+  });
+  assert.equal(context.defautsInfos().length, 0);
+  assert.equal(context.elementsInfosAConfirmer().length, 3);
+});
+
+test("Infos 22 : cas exact MK Elec -> seuls les attributs cités dans la troisième priorité, textes exacts requis", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "nonConforme", adresse: "aConfirmer", nap: "conforme", nomConforme: "conforme" },
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Compléter les attributs utiles de votre fiche");
+  assert.equal(
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    "Certains attributs utiles à votre activité, comme les modalités d'accès ou de paiement lorsqu'elles s'appliquent, ne sont pas renseignés sur votre fiche Google.",
+  );
+  assert.equal(
+    context.consequenceBusinessPriorite(INFOS_ITEM, { data: {} }),
+    "Un prospect peut manquer d'informations pratiques au moment de comparer votre entreprise avec une autre fiche plus complète.",
+  );
+  assert.equal(
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+    "Vérifier dans votre compte Google Business les attributs réellement applicables à votre activité et compléter ceux qui manquent.",
+  );
+  assert.equal(context.resultatAttenduPriorite(INFOS_ITEM, { data: {} }), "une fiche plus complète, avec moins d'incertitudes pratiques avant le premier contact.");
+  const allTexts = [
+    context.titrePriorite(INFOS_ITEM),
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    context.consequenceBusinessPriorite(INFOS_ITEM, { data: {} }),
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+    context.resultatAttenduPriorite(INFOS_ITEM, { data: {} }),
+  ].join(" ");
+  assert.doesNotMatch(allTexts, /\bhoraires\b|\btéléphone\b|\bsite web\b|zone desservie|cohérence|\badresse\b/i);
+});
+
+test("Infos 23 : zone desservie 'non vérifiable publiquement' (adresse à 0 point brut) -> jamais un défaut avéré, même à 0 point", () => {
+  // Régression : lorsque scoreLocalisation() renvoie 0 pour l'état "non vérifiable
+  // publiquement" (distinct de l'état "incohérent", également à 0 point), la fiche
+  // ne doit jamais présenter la zone desservie / l'adresse comme un défaut confirmé.
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "conforme", adresse: "nonConforme", nap: "conforme", nomConforme: "conforme" },
+    nonVerifiablePubliquement: true,
+  });
+  const constat = context.constatObservePriorite(INFOS_ITEM, { data: {} });
+  assert.doesNotMatch(constat, /non conforme|défaut|manquant|absent|corrigée|mérite d.être corrigée/i);
+  assert.equal(context.defautsInfos().length, 0);
+  assert.equal(context.elementsInfosAConfirmer().includes("adresse"), true);
+});
+
+test("Infos 24 : cas réel MK Elec Saint-Léger (score 45/100, PDF de référence) -> attributs seuls cités, zone desservie jamais présentée comme un défaut même à 0 point", () => {
+  // Reproduit exactement le cas réel ayant révélé le bug : scoreLocalisation() renvoie 0
+  // pour "Non vérifiable publiquement" (et non 1 comme pour l'état "Partielle"), ce qui
+  // faisait auparavant tomber "adresse" dans la branche nonConforme et citait à tort
+  // "la zone desservie ou l'adresse" dans la troisième priorité.
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "conforme", horaires: "conforme", contact: "conforme", attributs: "nonConforme", adresse: "nonConforme", nap: "conforme", nomConforme: "conforme" },
+    nonVerifiablePubliquement: true,
+  });
+  assert.equal(context.titrePriorite(INFOS_ITEM), "Compléter les attributs utiles de votre fiche");
+  assert.equal(
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    "Certains attributs utiles à votre activité, comme les modalités d'accès ou de paiement lorsqu'elles s'appliquent, ne sont pas renseignés sur votre fiche Google.",
+  );
+  assert.equal(
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+    "Vérifier dans votre compte Google Business les attributs réellement applicables à votre activité et compléter ceux qui manquent.",
+  );
+  assert.equal(context.resultatAttenduPriorite(INFOS_ITEM, { data: {} }), "une fiche plus complète, avec moins d'incertitudes pratiques avant le premier contact.");
+  const allTexts = [
+    context.titrePriorite(INFOS_ITEM),
+    context.constatObservePriorite(INFOS_ITEM, { data: {} }),
+    context.consequenceBusinessPriorite(INFOS_ITEM, { data: {} }),
+    context.recommandationPriorite(INFOS_ITEM, { data: {} }),
+    context.resultatAttenduPriorite(INFOS_ITEM, { data: {} }),
+  ].join(" ");
+  assert.doesNotMatch(allTexts, /\bhoraires\b|\btéléphone\b|\bsite web\b|zone desservie|cohérence|\badresse\b/i);
+});

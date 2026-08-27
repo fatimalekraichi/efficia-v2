@@ -260,7 +260,7 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
 
 test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {
   const helperCode = sliceBetween(html, "function rapportSansAvis()", "function faiblesseChiffree(");
-  const selectionCode = sliceBetween(html, "const FAMILLES_PRIORITES =", "function contexteRapport()");
+  const selectionCode = sliceBetween(html, '/* ===== Priorit\u00e9 "Informations essentielles"', "function contexteRapport()");
   // etatCritere (utilisé par consequenceReputation/consequencePhotos, appelées
   // depuis consequenceBusinessPriorite ci-dessous) vit plus haut dans le
   // fichier, à côté de critereConfirmeMax : on l'inclut explicitement plutôt
@@ -275,13 +275,29 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     publiclyUnverifiable: true,
   };
   const criteriaForCount = [{ id: 7, key: "adresse", max: 2 }];
+  // tauxReponseAvis/recenceAvis : par défaut "inconnu" (pas de mock d'id),
+  // ajustables via state.reponsesPoints / state.recencePoints pour exercer
+  // premierPasReputation / resultatAttenduReputation (evidence-driven :
+  // jamais une recommandation sur une insuffisance non étayée).
+  state.reponsesPoints = null;
+  state.recencePoints = null;
+  const criteresById = {
+    1: { id: 1, key: "categoriePrincipale", get max() { return state.categoryMax; } },
+    2: { id: 2, key: "tauxReponseAvis", max: 3 },
+    3: { id: 3, key: "recenceAvis", max: 2 },
+  };
   const context = {
     conditionAvis: () => state.reviewsPresence,
     donneesAnalyse: { nbAvis: 0, note: null, position: 2, moyennesConcurrents: {}, concurrence: null },
     estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
-    CRITERE_IDS: { categoriePrincipale: 1 },
-    trouverCritere: (id) => id === 1 ? { id: 1, key: "categoriePrincipale", max: state.categoryMax } : null,
-    lirePoints: (id) => id === 1 ? state.categoryPoints : 0,
+    CRITERE_IDS: { categoriePrincipale: 1, tauxReponseAvis: 2, recenceAvis: 3 },
+    trouverCritere: (id) => criteresById[id] || null,
+    lirePoints: (id) => {
+      if(id === 1) return state.categoryPoints;
+      if(id === 2) return state.reponsesPoints;
+      if(id === 3) return state.recencePoints;
+      return 0;
+    },
     modeLocalisation: () => "service_area",
     reponseZoneDesserte: () => state.publiclyUnverifiable ? "not_verifiable" : "coherent",
     critereEstNonVerifiablePubliquement: (criterion) => state.publiclyUnverifiable && criterion?.key === "adresse",
@@ -298,6 +314,12 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     prioritePhotosPorteSurActualite: () => false,
     personaSecteur: () => "un client",
     majusculeInitiale: (value) => value.charAt(0).toUpperCase() + value.slice(1),
+    joinFr: (items) => {
+      const list = items.filter(Boolean);
+      if(!list.length) return "";
+      if(list.length === 1) return list[0];
+      return `${list.slice(0, -1).join(", ")} et ${list[list.length - 1]}`;
+    },
     globalThis: null,
   };
   context.globalThis = context;
@@ -355,8 +377,29 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   state.reviewsPresence = "present";
   context.donneesAnalyse.nbAvis = 12;
   context.donneesAnalyse.note = 4.1;
+  // Note insuffisante ET absence de réponses avérée (0/3) : la recommandation
+  // doit couvrir les deux volets, jamais un seul deviné sans preuve.
+  state.reponsesPoints = 0;
   const withReviews = context.api.recommandationPriorite(reputation, reportContext);
   assert.match(withReviews, /répondre aux avis visibles/i);
+  assert.match(withReviews, /avis authentiques/i);
+
+  // Réponses non étayées (état "inconnu") : ne jamais deviner une
+  // insuffisance de réponses qui n'est pas établie par les données.
+  state.reponsesPoints = null;
+  const withoutResponseEvidence = context.api.recommandationPriorite(reputation, reportContext);
+  assert.doesNotMatch(withoutResponseEvidence, /répondre aux avis visibles/i);
+
+  // recenceAvis conforme (2/2) : jamais une promesse "avis plus récents".
+  state.recencePoints = 2;
+  const resultatRecenceConforme = context.api.resultatAttenduPriorite(reputation, reportContext);
+  assert.doesNotMatch(resultatRecenceConforme, /avis plus récents|davantage d'avis récents/i);
+
+  // recenceAvis insuffisante (0/2) : une formulation liée à la récence peut
+  // légitimement apparaître, car cette fois elle est étayée par les données.
+  state.recencePoints = 0;
+  const resultatRecenceInsuffisante = context.api.resultatAttenduPriorite(reputation, reportContext);
+  assert.match(resultatRecenceInsuffisante, /avis plus récents/i);
 
   assert.match(html, /actionFamillePriorite\(r\.fam, r\)/);
   assert.match(html, /rapportSansAvis\(\).*noteMoyenne.*recenceAvis.*tauxReponseAvis.*qualiteReponsesAvis/s);
