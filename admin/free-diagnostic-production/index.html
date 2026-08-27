@@ -678,10 +678,11 @@
         <div><label for="d-site-etat">État constaté</label>
           <select id="d-site-etat" onchange="majAffichageSiteOfficiel()">
             <option value="">— À sélectionner —</option>
-            <option value="accessible">Accessible</option>
-            <option value="inaccessible">Inaccessible lors du contrôle</option>
+            <option value="accessible">Site accessible avec un contenu professionnel</option>
+            <option value="incomplet">Site accessible mais vide ou inachevé</option>
+            <option value="inaccessible">Site inaccessible ou en erreur</option>
             <option value="a_confirmer">À confirmer</option>
-            <option value="aucun">Aucun site renseigné sur la fiche</option>
+            <option value="aucun">Aucun site officiel renseigné</option>
           </select>
         </div>
         <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric"></div>
@@ -3429,8 +3430,23 @@ function collecterCriteresAudit(){
     const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
     const special = cr.key === "adresse" ? "" : document.querySelector(`input[name="c${cr.id}"]:checked`)?.dataset.special || "";
     const napSiteState = cr.key === "nap" ? etatSiteOfficielCourant() : null;
+    /* "incomplet" et "inaccessible" sont des observations manuelles CONFIRMÉES
+       (site vérifié par l'administrateur) — jamais "not_verified" : seul
+       "a_confirmer" représente une véritable incertitude à ce sujet.
+       "incomplet"    -> "partial"   (problème confirmé, à améliorer)
+       "inaccessible" -> "deficient" (problème confirmé, le plus sévère parmi
+                          les statuts confirmés existants — équivalent à un
+                          critère noté à 0 point)
+       "accessible"   -> statut habituel selon les points (conforme si le
+                          critère l'est par ailleurs)
+       "aucun"        -> "no_website" (inchangé)
+       "a_confirmer"  -> "not_verified" (seul état réellement incertain) */
     const evaluationStatus = nonApplicable ? "not_applicable" : (publiclyUnverifiable ? "not_verified" : napSiteState
-      ? (napSiteState.etat === "aucun" ? "no_website" : (napSiteState.etat === "accessible" ? statutEvaluationCritere(cr, points) : "not_verified"))
+      ? (napSiteState.etat === "aucun" ? "no_website"
+        : napSiteState.etat === "accessible" ? statutEvaluationCritere(cr, points)
+        : napSiteState.etat === "incomplet" ? "partial"
+        : napSiteState.etat === "inaccessible" ? "deficient"
+        : "not_verified")
       : (special === "no_website" ? "no_website" : statutEvaluationCritere(cr, points)));
     criteria.push({
       key: cr.key,
@@ -4368,7 +4384,7 @@ function lireEtatSiteOfficiel(){
 function etatSiteOfficielCourant(){
   const saisie = lireEtatSiteOfficiel();
   if(saisie.url){
-    const etat = ["accessible","inaccessible","a_confirmer"].includes(saisie.etat) ? saisie.etat : "a_confirmer";
+    const etat = ["accessible","inaccessible","incomplet","a_confirmer"].includes(saisie.etat) ? saisie.etat : "a_confirmer";
     return {etat, url:saisie.url, codeHttp:saisie.codeHttp || ""};
   }
   if(saisie.etat === "aucun") return {etat:"aucun", url:"", codeHttp:""};
@@ -4391,6 +4407,9 @@ function messageEtatSiteOfficiel(etatCourant){
     return etatCourant.codeHttp
       ? `Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur serveur ${etatCourant.codeHttp}.`
       : "Un site officiel est bien associé à l’entreprise, mais il était inaccessible lors de notre contrôle.";
+  }
+  if(etatCourant.etat === "incomplet"){
+    return "Un site officiel est bien associé à l’entreprise, mais son contenu était encore très incomplet lors de notre contrôle.";
   }
   return "Un site officiel est renseigné, mais sa cohérence avec la fiche reste à confirmer.";
 }
@@ -4434,6 +4453,8 @@ function signauxActuelsPage1(d){
   }
   if(siteOfficielAbsent()){
     signaux.push("aucun site officiel identifiable");
+  } else if(etatSiteOfficielCourant()?.etat === "incomplet"){
+    signaux.push("un site officiel encore très peu renseigné");
   }
   return signaux.slice(0, 3);
 }
@@ -5348,8 +5369,16 @@ function checklistHtml(){
       const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
       const napSiteStateChk = cr.key === "nap" ? etatSiteOfficielCourant() : null;
       const noWebsite = Boolean(napSiteStateChk && napSiteStateChk.etat === "aucun");
+      /* "incomplet" et "inaccessible" sont des observations confirmées par
+         l'administrateur (site vérifié) : elles ne s'affichent jamais en "○"
+         (à confirmer) — "a_confirmer" reste le seul état réellement incertain.
+         "incomplet"    -> "!" (warn, à améliorer)
+         "inaccessible" -> "✕" (ko, prioritaire — le défaut confirmé le plus
+                            sévère parmi les symboles existants) */
+      const siteConfirmedWarn = Boolean(napSiteStateChk && napSiteStateChk.etat === "incomplet");
+      const siteConfirmedKo = Boolean(napSiteStateChk && napSiteStateChk.etat === "inaccessible");
       const siteMessage = napSiteStateChk && napSiteStateChk.etat !== "accessible" ? messageEtatSiteOfficiel(napSiteStateChk) : null;
-      const statut = nonApplicable ? "not_applicable" : noWebsite ? "no_website" : siteMessage ? "unknown" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
+      const statut = nonApplicable ? "not_applicable" : noWebsite ? "no_website" : siteConfirmedKo ? "ko" : siteConfirmedWarn ? "warn" : siteMessage ? "unknown" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
       if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else if(statut === "no_website") sansSite++; else if(statut !== "not_applicable") warn++;
       const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" || statut === "not_applicable" || statut === "no_website" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
       const label = rapportSansAvis() && cr.key === "noteMoyenne"
@@ -5618,7 +5647,12 @@ function actionFamillePriorite(famille, item = null){
 }
 
 function appliquerPrioriteSiteInaccessible(top3p, etatSiteRapport){
-  if(!etatSiteRapport || etatSiteRapport.etat !== "inaccessible") return top3p;
+  /* États du site officiel qui déclenchent une priorité dédiée, forcée en tête :
+     un problème confirmé (site en erreur, ou accessible mais commercialement
+     inexploitable) mérite une action immédiate. "accessible" (site professionnel)
+     et "a_confirmer" (état non tranché) n'en font jamais une priorité. */
+  const etatsPrioritaires = ["inaccessible","incomplet"];
+  if(!etatSiteRapport || !etatsPrioritaires.includes(etatSiteRapport.etat)) return top3p;
   let filtre = top3p.filter(item => item.famille !== "photos" && item.critere?.key !== "nap" && item.famille !== "site_officiel");
   if(filtre.length > 2) filtre = filtre.slice(0, 2);
   return [{famille:"site_officiel", critere:null, siteState:etatSiteRapport}, ...filtre].slice(0, 3);
@@ -6005,18 +6039,42 @@ function tempsPriorite(item){
 
 function rendrePrioriteSiteOfficiel(item, index){
   const impact = {label:"Impact très élevé", couleur:"#dc2626", fond:"#fef2f2"};
+  /* Contenu de la priorité "site officiel", selon l'état constaté. Un site
+     accessible mais commercialement vide (page par défaut, "Hello world!",
+     thème non personnalisé...) n'est jamais décrit comme une erreur serveur
+     ou une page inaccessible : le problème réel est l'absence de contenu
+     exploitable, pas l'accessibilité technique. */
+  const CONTENU_PRIORITE_SITE_OFFICIEL = {
+    inaccessible: {
+      titre: "Remettre le site officiel en ligne",
+      observation: "Votre entreprise est bien visible sur Google, mais une personne qui clique sur votre site arrive actuellement sur une page d’erreur. Elle peut alors revenir immédiatement aux résultats Google et contacter un concurrent.",
+      client: "Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site en erreur.",
+      action: "Faire vérifier l’hébergement, les journaux d’erreur et la configuration du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.",
+      resultat: "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+      delai: "Délai dépendant de votre hébergeur — à traiter en priorité."
+    },
+    incomplet: {
+      titre: "Finaliser le site officiel",
+      observation: "Votre entreprise est bien visible sur Google et un site officiel est associé à la fiche. Cependant, son contenu reste très peu renseigné et ne présente pas clairement vos services.",
+      client: "Il peut se demander si le site est encore en construction ou si les informations présentées sont à jour, puis revenir aux résultats Google pour contacter un concurrent.",
+      action: "Remplacer le contenu par défaut ou inachevé par une présentation claire de l’entreprise, les services proposés, la zone d’intervention et les coordonnées de contact.",
+      resultat: "un site accessible, crédible et suffisamment clair pour informer un prospect avant son premier contact.",
+      delai: "Temps variable selon les contenus à préparer."
+    }
+  };
+  const contenu = CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.etat] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible;
   return `<section class="priority-card">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <div class="priority-kicker">Priorité n°${index + 1}</div>
       <span class="priority-kicker" style="background:${impact.fond};color:${impact.couleur};border-color:${impact.couleur}33">${impact.label}</span>
     </div>
-    <h2 class="priority-title">Remettre le site officiel en ligne</h2>
+    <h2 class="priority-title">${contenu.titre}</h2>
     <div class="priority-flow">
-      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>Votre entreprise est bien visible sur Google, mais une personne qui clique sur votre site arrive actuellement sur une page d’erreur. Elle peut alors revenir immédiatement aux résultats Google et contacter un concurrent.</p></div>
+      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${contenu.observation}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site en erreur.</p></div>
+      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>${contenu.client}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>Faire vérifier l’hébergement, les journaux d’erreur et la configuration du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.</p><p class="priority-resultat"><b>Résultat attendu :</b> un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.</p><span class="priority-time">Délai dépendant de votre hébergeur — à traiter en priorité.</span></div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${contenu.action}</p><p class="priority-resultat"><b>Résultat attendu :</b> ${contenu.resultat}</p><span class="priority-time">${contenu.delai}</span></div>
     </div>
   </section>`;
 }

@@ -277,3 +277,339 @@ test("le nouveau contrôle 'État du site officiel' est bien non noté (absent d
   const grilleSource = readFileSync(new URL("../functions/lib/score-efficia/criteriaCatalog.js", import.meta.url), "utf8");
   assert.doesNotMatch(grilleSource, /d-site-url|d-site-etat|d-site-code|websiteStatus/);
 });
+
+/* ---------------------------------------------------------------------- */
+/* 6) État "site accessible mais vide / inachevé" (cas réel Appel'FRED,   */
+/*    Score-Efficia_Appel-FRED-electricien_Neufchateau_2026-08-27_V1.pdf) */
+/*    — le diagnostic annonçait à tort un site "inaccessible / page       */
+/*    d'erreur" alors qu'appelfred.com répondait avec une installation    */
+/*    WordPress par défaut ("Hello world!") jamais personnalisée.         */
+/* ---------------------------------------------------------------------- */
+
+test("URL présente et état 'incomplet' => jamais confondu avec 'inaccessible' ni 'aucun'", () => {
+  const context = createSiteStateHarness({ url: "https://appelfred.com/", etat: "incomplet" });
+  const etat = context.etatSiteOfficielCourant();
+  assert.equal(etat.etat, "incomplet");
+  assert.equal(etat.url, "https://appelfred.com/");
+  assert.equal(context.siteOfficielAbsent(), false);
+});
+
+test("message 'incomplet' : texte factuel exact, jamais 'erreur', 'inaccessible' ou 'page d'erreur'", () => {
+  const context = createSiteStateHarness({ url: "https://appelfred.com/", etat: "incomplet" });
+  const etat = context.etatSiteOfficielCourant();
+  const message = context.messageEtatSiteOfficiel(etat);
+  assert.equal(
+    message,
+    "Un site officiel est bien associé à l’entreprise, mais son contenu était encore très incomplet lors de notre contrôle.",
+  );
+  assert.doesNotMatch(message, /erreur|inaccessible|[Aa]ucun site/);
+});
+
+test("état 'incomplet' avec un code HTTP éventuellement saisi : le code n'apparaît jamais dans ce message (réservé à 'inaccessible')", () => {
+  const context = createSiteStateHarness({ url: "https://appelfred.com/", etat: "incomplet", codeHttp: "200" });
+  const etat = context.etatSiteOfficielCourant();
+  const message = context.messageEtatSiteOfficiel(etat);
+  assert.doesNotMatch(message, /200/);
+});
+
+test("état 'accessible' avec contenu professionnel : toujours aucun message, aucune critique (non-régression)", () => {
+  const context = createSiteStateHarness({ url: "https://exemple-pro.fr", etat: "accessible" });
+  const etat = context.etatSiteOfficielCourant();
+  assert.equal(context.messageEtatSiteOfficiel(etat), null);
+});
+
+/* ---------------------------------------------------------------------- */
+/* 7) Signal page 1 (constat d'ouverture)                                  */
+/* ---------------------------------------------------------------------- */
+
+function createPage1SignauxHarness({ url = "", etat = "", codeHttp = "", sansAvis = false } = {}) {
+  const code = sliceBetween(html, "function napRadioAucunSite(){", "function nomCourtRapport(");
+  const fields = {
+    "d-site-url": { value: url },
+    "d-site-etat": { value: etat },
+    "d-site-code": { value: codeHttp },
+  };
+  const context = {
+    CRITERE_IDS: { nap: 7 },
+    document: {
+      getElementById: (id) => fields[id] || null,
+      querySelector: () => null,
+    },
+    rapportSansAvis: () => sansAvis,
+    estNombre: (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)),
+    fmtNote: (n) => Number(n).toFixed(1).replace(".", ","),
+    nEntier: (v) => Math.round(Number(v)),
+  };
+  vm.runInNewContext(code, context);
+  return context;
+}
+
+test("page 1 — état 'incomplet' : signal 'un site officiel encore très peu renseigné', jamais 'aucun site officiel identifiable'", () => {
+  const context = createPage1SignauxHarness({ url: "https://appelfred.com/", etat: "incomplet", sansAvis: true });
+  const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
+  assert.ok(signaux.includes("un site officiel encore très peu renseigné"));
+  assert.ok(!signaux.some((s) => /aucun site officiel/.test(s)));
+});
+
+test("page 1 — état 'aucun' : signal 'aucun site officiel identifiable' (non-régression)", () => {
+  const context = createPage1SignauxHarness({ etat: "aucun", sansAvis: true });
+  const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
+  assert.ok(signaux.includes("aucun site officiel identifiable"));
+});
+
+test("page 1 — état 'accessible' (contenu professionnel) : aucun signal lié au site officiel", () => {
+  const context = createPage1SignauxHarness({ url: "https://exemple-pro.fr", etat: "accessible", sansAvis: true });
+  const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
+  assert.ok(!signaux.some((s) => /site officiel/.test(s)));
+});
+
+test("page 1 — état 'a_confirmer' : aucun signal lié au site officiel (état non tranché, formulation prudente)", () => {
+  const context = createPage1SignauxHarness({ url: "https://exemple.fr", etat: "a_confirmer", sansAvis: true });
+  const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
+  assert.ok(!signaux.some((s) => /site officiel/.test(s)));
+});
+
+/* ---------------------------------------------------------------------- */
+/* 8) Sélection de priorité pour l'état "incomplet"                        */
+/* ---------------------------------------------------------------------- */
+
+test("site 'incomplet' => priorité n°1 'site_officiel', au même titre que 'inaccessible'", () => {
+  const context = createPriorityHarness();
+  const top3p = [
+    { famille: "reputation", critere: { key: "noteMoyenne" } },
+    { famille: "specialite", critere: { key: "descriptionRemplie" } },
+  ];
+  const resultat = context.appliquerPrioriteSiteInaccessible(top3p, { etat: "incomplet" });
+  assert.equal(resultat[0].famille, "site_officiel");
+  assert.equal([resultat[1].famille, resultat[2].famille].join(","), "reputation,specialite");
+});
+
+test("cas Appel'FRED exact : ordre final 'Finaliser le site officiel' puis réputation puis spécialité", () => {
+  const context = createPriorityHarness();
+  const top3p = [
+    { famille: "reputation", critere: { key: "noteMoyenne" } },
+    { famille: "specialite", critere: { key: "descriptionRemplie" } },
+    { famille: "photos", critere: { key: "nombrePhotos" } },
+  ];
+  const resultat = context.appliquerPrioriteSiteInaccessible(top3p, { etat: "incomplet" });
+  assert.equal([resultat[0].famille, resultat[1].famille, resultat[2].famille].join(","), "site_officiel,reputation,specialite");
+});
+
+/* ---------------------------------------------------------------------- */
+/* 9) Contenu rendu de la carte priorité "site officiel"                   */
+/* ---------------------------------------------------------------------- */
+
+function createPrioriteSiteOfficielRenderHarness() {
+  const code = sliceBetween(html, "function rendrePrioriteSiteOfficiel(", "function rendrePriorite(");
+  const context = {};
+  vm.runInNewContext(code, context);
+  return context;
+}
+
+test("rendu priorité 'inaccessible' : texte strictement inchangé (non-régression)", () => {
+  const context = createPrioriteSiteOfficielRenderHarness();
+  const htmlRendu = context.rendrePrioriteSiteOfficiel({ siteState: { etat: "inaccessible" } }, 0);
+  assert.match(htmlRendu, /<h2 class="priority-title">Remettre le site officiel en ligne<\/h2>/);
+  assert.match(htmlRendu, /une page d’erreur/);
+  assert.match(htmlRendu, /Délai dépendant de votre hébergeur/);
+});
+
+test("rendu priorité 'incomplet' : titre et textes exacts requis (formulation technologiquement neutre), jamais 'erreur', 'page d'erreur' ni 'remettre le site en ligne'", () => {
+  const context = createPrioriteSiteOfficielRenderHarness();
+  const htmlRendu = context.rendrePrioriteSiteOfficiel({ siteState: { etat: "incomplet" } }, 0);
+  assert.match(htmlRendu, /<h2 class="priority-title">Finaliser le site officiel<\/h2>/);
+  assert.match(htmlRendu, /son contenu reste très peu renseigné et ne présente pas clairement vos services/);
+  assert.match(htmlRendu, /Remplacer le contenu par défaut ou inachevé par une présentation claire/);
+  assert.match(htmlRendu, /Temps variable selon les contenus à préparer\./);
+  assert.doesNotMatch(htmlRendu, /page d’erreur|page d'erreur/);
+  assert.doesNotMatch(htmlRendu, /erreur serveur/);
+  assert.doesNotMatch(htmlRendu, /Remettre le site officiel en ligne/);
+});
+
+test("rendu priorité 'incomplet' générique : ne mentionne jamais une technologie particulière (WordPress, Wix, Squarespace, ...)", () => {
+  const context = createPrioriteSiteOfficielRenderHarness();
+  const htmlRendu = context.rendrePrioriteSiteOfficiel({ siteState: { etat: "incomplet" } }, 0);
+  assert.doesNotMatch(htmlRendu, /WordPress/i);
+  assert.doesNotMatch(htmlRendu, /Wix/i);
+  assert.doesNotMatch(htmlRendu, /Squarespace/i);
+  assert.doesNotMatch(htmlRendu, /Shopify|Webflow|Jimdo|Joomla|Drupal/i);
+});
+
+/* ---------------------------------------------------------------------- */
+/* 10) Persistance de la réponse manuelle "incomplet" (brouillon/rechargement) */
+/* ---------------------------------------------------------------------- */
+
+function createDraftPersistenceHarness() {
+  const code = sliceBetween(html, "function champsBrouillonD1(){", "function restaurerLocalisation(");
+  const fields = {};
+  const context = {
+    document: {
+      getElementById: (id) => {
+        if (!(id in fields)) fields[id] = { value: "" };
+        return fields[id];
+      },
+    },
+  };
+  vm.runInNewContext(code, context);
+  context.__fields = fields;
+  return context;
+}
+
+test("persistance brouillon : une réponse manuelle 'incomplet' (URL + état) est sauvegardée puis restaurée à l'identique", () => {
+  const context = createDraftPersistenceHarness();
+  context.__fields["d-site-url"] = { value: "https://appelfred.com/" };
+  context.__fields["d-site-etat"] = { value: "incomplet" };
+  context.__fields["d-site-code"] = { value: "" };
+  const snapshot = context.champsBrouillonD1();
+  assert.equal(snapshot["d-site-etat"], "incomplet");
+  assert.equal(snapshot["d-site-url"], "https://appelfred.com/");
+  // Simule un rechargement de page (champs vidés), puis restauration depuis le brouillon sauvegardé.
+  context.__fields["d-site-url"] = { value: "" };
+  context.__fields["d-site-etat"] = { value: "" };
+  context.appliquerChampsBrouillonD1(snapshot);
+  assert.equal(context.__fields["d-site-url"].value, "https://appelfred.com/");
+  assert.equal(context.__fields["d-site-etat"].value, "incomplet");
+});
+
+/* ---------------------------------------------------------------------- */
+/* 11) Le nouveau contrôle 'État du site officiel' propose les 5 états exacts */
+/* ---------------------------------------------------------------------- */
+
+test("le sélecteur admin #d-site-etat propose les 5 libellés exacts demandés, l'URL restant un champ séparé", () => {
+  const selectBlock = sliceBetween(html, '<select id="d-site-etat"', "</select>");
+  assert.match(selectBlock, /Aucun site officiel renseigné/);
+  assert.match(selectBlock, /Site inaccessible ou en erreur/);
+  assert.match(selectBlock, /Site accessible mais vide ou inachevé/);
+  assert.match(selectBlock, /Site accessible avec un contenu professionnel/);
+  assert.match(selectBlock, /À confirmer/);
+  // L'URL reste un champ dédié, indépendant de l'état constaté.
+  assert.match(html, /id="d-site-url"/);
+});
+
+/* ---------------------------------------------------------------------- */
+/* 12) "incomplet" est un constat CONFIRMÉ (jamais "à confirmer")          */
+/*     — seul "a_confirmer" doit rester le véritable état incertain,       */
+/*     dans le payload JSON (evaluationStatus) et dans la checklist page 3 */
+/*     (symbole affiché). Aucun impact sur le calcul du score dans les     */
+/*     deux cas.                                                           */
+/* ---------------------------------------------------------------------- */
+
+function createEvaluationStatusHarness({ etat } = {}) {
+  const code = sliceBetween(html, 'const special = cr.key === "adresse"', "criteria.push({");
+  // points / nonApplicable / publiclyUnverifiable sont déclarés AVANT ce bloc dans le
+  // fichier source (non repris ici) : fournis comme paramètres de la fonction de test.
+  const wrapped = `function computeEvaluationStatus(cr, points, nonApplicable, publiclyUnverifiable){\n${code}\n  return evaluationStatus;\n}`;
+  const context = {
+    document: { querySelector: () => null },
+    etatSiteOfficielCourant: () => (etat ? { etat, url: "https://appelfred.com/", codeHttp: "" } : null),
+    statutEvaluationCritere: () => "compliant",
+  };
+  vm.runInNewContext(wrapped, context);
+  return context.computeEvaluationStatus({ key: "nap", id: 7, max: 3 }, 3, false, false);
+}
+
+function createChecklistStatutHarness({ etat, p = 3 } = {}) {
+  const code = sliceBetween(html, "const napSiteStateChk = cr.key", 'if(statut === "ok") ok++');
+  // nonApplicable / publiclyUnverifiable / p sont déclarés AVANT ce bloc dans le
+  // fichier source (non repris ici) : fournis comme paramètres de la fonction de test.
+  const wrapped = `function computeChecklistStatut(cr, p, nonApplicable, publiclyUnverifiable){\n${code}\n  return statut;\n}`;
+  const context = {
+    critereEstNonApplicable: () => false,
+    critereEstNonVerifiablePubliquement: () => false,
+    etatSiteOfficielCourant: () => (etat ? { etat, url: "https://appelfred.com/", codeHttp: "" } : null),
+    messageEtatSiteOfficiel: (e) => (e ? `message pour ${e.etat}` : null),
+  };
+  vm.runInNewContext(wrapped, context);
+  return context.computeChecklistStatut({ key: "nap", id: 7, max: 3 }, p, false, false);
+}
+
+test("evaluationStatus : 'incomplet' et 'a_confirmer' produisent deux statuts différents", () => {
+  const incomplet = createEvaluationStatusHarness({ etat: "incomplet" });
+  const aConfirmer = createEvaluationStatusHarness({ etat: "a_confirmer" });
+  assert.notEqual(incomplet, aConfirmer);
+});
+
+test("evaluationStatus : 'incomplet' est un constat confirmé et à améliorer ('partial'), jamais 'not_verified'", () => {
+  assert.equal(createEvaluationStatusHarness({ etat: "incomplet" }), "partial");
+});
+
+test("evaluationStatus : 'a_confirmer' reste 'not_verified' — seul véritable état incertain", () => {
+  assert.equal(createEvaluationStatusHarness({ etat: "a_confirmer" }), "not_verified");
+});
+
+test("checklist page 3 : 'incomplet' et 'a_confirmer' produisent deux symboles différents", () => {
+  const incomplet = createChecklistStatutHarness({ etat: "incomplet" });
+  const aConfirmer = createChecklistStatutHarness({ etat: "a_confirmer" });
+  assert.notEqual(incomplet, aConfirmer);
+});
+
+test("checklist page 3 : 'incomplet' s'affiche en '!' (à améliorer, warn), jamais en '○' (à confirmer)", () => {
+  assert.equal(createChecklistStatutHarness({ etat: "incomplet" }), "warn");
+});
+
+test("checklist page 3 : 'a_confirmer' reste '○' (unknown) — seul véritable état incertain", () => {
+  assert.equal(createChecklistStatutHarness({ etat: "a_confirmer" }), "unknown");
+});
+
+test("le contrôle 'État du site officiel' n'influence jamais le calcul des points : lirePoints() ne référence ni etatSiteOfficielCourant() ni le champ #d-site-etat (score strictement inchangé, quel que soit l'état narratif retenu)", () => {
+  const lirePointsSource = sliceBetween(html, "function lirePoints(id){", "const PHOTO_DEPENDENT_KEYS");
+  assert.doesNotMatch(lirePointsSource, /etatSiteOfficielCourant/);
+  assert.doesNotMatch(lirePointsSource, /d-site-etat/);
+});
+
+test("la priorité 'Finaliser le site officiel' reste déclenchée pour l'état 'incomplet' après ce correctif (non-régression)", () => {
+  const context = createPriorityHarness();
+  const top3p = [{ famille: "reputation" }, { famille: "specialite" }];
+  const resultat = context.appliquerPrioriteSiteInaccessible(top3p, { etat: "incomplet" });
+  assert.equal(resultat[0].famille, "site_officiel");
+});
+
+/* ---------------------------------------------------------------------- */
+/* 13) "inaccessible" est également un constat CONFIRMÉ (pas "à confirmer") */
+/*     — seul "a_confirmer" reste not_verified/unknown/"○" ; "accessible"   */
+/*     reste conforme selon le critère existant ; "aucun" garde no_website. */
+/*     Les cinq états sont vérifiés explicitement, avec confirmation que    */
+/*     le score reste strictement inchangé dans tous les cas.              */
+/* ---------------------------------------------------------------------- */
+
+test("evaluationStatus : 'inaccessible' est un constat confirmé, jamais 'not_verified' — statut le plus sévère parmi les enums confirmés existants ('deficient')", () => {
+  assert.equal(createEvaluationStatusHarness({ etat: "inaccessible" }), "deficient");
+});
+
+test("evaluationStatus : les cinq états produisent la correspondance attendue", () => {
+  assert.equal(createEvaluationStatusHarness({ etat: "accessible" }), "compliant"); // selon le critère existant (mock: conforme)
+  assert.equal(createEvaluationStatusHarness({ etat: "incomplet" }), "partial");
+  assert.equal(createEvaluationStatusHarness({ etat: "inaccessible" }), "deficient");
+  assert.equal(createEvaluationStatusHarness({ etat: "a_confirmer" }), "not_verified");
+  assert.equal(createEvaluationStatusHarness({ etat: "aucun" }), "no_website");
+});
+
+test("checklist page 3 : 'inaccessible' est un constat confirmé, jamais '○' — symbole '✕' (ko), le plus sévère parmi les symboles existants", () => {
+  assert.equal(createChecklistStatutHarness({ etat: "inaccessible" }), "ko");
+});
+
+test("checklist page 3 : les cinq états produisent le symbole attendu", () => {
+  assert.equal(createChecklistStatutHarness({ etat: "accessible", p: 3 }), "ok"); // selon les points existants (p >= max)
+  assert.equal(createChecklistStatutHarness({ etat: "incomplet" }), "warn");
+  assert.equal(createChecklistStatutHarness({ etat: "inaccessible" }), "ko");
+  assert.equal(createChecklistStatutHarness({ etat: "a_confirmer" }), "unknown");
+  assert.equal(createChecklistStatutHarness({ etat: "aucun" }), "no_website");
+});
+
+test("les cinq états du site officiel n'ont toujours aucun impact sur le calcul du score (lirePoints() reste indépendant de l'état narratif, y compris 'inaccessible')", () => {
+  const lirePointsSource = sliceBetween(html, "function lirePoints(id){", "const PHOTO_DEPENDENT_KEYS");
+  assert.doesNotMatch(lirePointsSource, /etatSiteOfficielCourant/);
+  assert.doesNotMatch(lirePointsSource, /d-site-etat/);
+  // Les cinq statuts narratifs eux-mêmes ne réintroduisent aucune référence
+  // à un poids ou un seuil de score : ils ne font que reformuler p/max déjà lus.
+  ["accessible", "incomplet", "inaccessible", "a_confirmer", "aucun"].forEach((etat) => {
+    assert.doesNotThrow(() => createEvaluationStatusHarness({ etat }));
+    assert.doesNotThrow(() => createChecklistStatutHarness({ etat }));
+  });
+});
+
+test("la priorité 'Finaliser le site officiel' (état 'incomplet') ne mentionne aucune technologie particulière au niveau générique — WordPress reste réservé à la personnalisation e-mail du cas réel, hors générateur", () => {
+  const rendrePrioriteSource = sliceBetween(html, "function rendrePrioriteSiteOfficiel(item, index){", "function rendrePriorite(item, index, variante){");
+  assert.doesNotMatch(rendrePrioriteSource, /WordPress/i);
+  assert.doesNotMatch(rendrePrioriteSource, /Wix|Squarespace|Shopify|Webflow|Jimdo|Joomla|Drupal/i);
+});
