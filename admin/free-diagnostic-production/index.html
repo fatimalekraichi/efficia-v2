@@ -672,6 +672,21 @@
         <div><label for="d-position">Position observée (0 = non visible)</label><input type="text" id="d-position" placeholder="3" inputmode="numeric"></div>
         <div><label for="d-requete">Recherche testée</label><input type="text" id="d-requete" placeholder="électricien bruxelles"></div>
       </div>
+      <div class="donnees-grid" style="margin-top:10px;border-top:1px dashed #e2e8f0;padding-top:10px">
+        <div style="grid-column:1 / -1;font-size:.78rem;color:var(--gris)">État du site officiel — contrôle manuel, non noté (n'affecte pas le score)</div>
+        <div><label for="d-site-url">URL détectée</label><input type="text" id="d-site-url" placeholder="https://exemple.eu" inputmode="url"></div>
+        <div><label for="d-site-etat">État constaté</label>
+          <select id="d-site-etat" onchange="majAffichageSiteOfficiel()">
+            <option value="">— À sélectionner —</option>
+            <option value="accessible">Accessible</option>
+            <option value="inaccessible">Inaccessible lors du contrôle</option>
+            <option value="a_confirmer">À confirmer</option>
+            <option value="aucun">Aucun site renseigné sur la fiche</option>
+          </select>
+        </div>
+        <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric"></div>
+        <div><label>&nbsp;</label><button type="button" class="btn-mini" onclick="ouvrirSiteOfficielDetecte()">Ouvrir le site détecté</button></div>
+      </div>
       <div class="recherche-actions">
         <button class="btn-mini" id="btn-relancer-recherche" type="button" onclick="relancerAnalyseRecherche()">Relancer l’analyse sur cette recherche</button>
         <p class="recherche-etat" id="etat-recherche-analysee" aria-live="polite"></p>
@@ -2533,7 +2548,7 @@ function statsScore(){
   let ameliorables = 0, pointsPerdus = 0;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(critereEstMasque(cr) || critereEstNonApplicable(cr) || critereEstNonVerifiablePubliquement(cr)) return;
-    if(cr.key === "nap" && document.querySelector(`input[name="c${cr.id}"]:checked`)?.dataset.special === "no_website") return;
+    if(cr.key === "nap" && siteOfficielAbsent()) return;
     const p = lirePoints(cr.id);
     if(p !== null && p < cr.max){
       ameliorables++;
@@ -3367,7 +3382,10 @@ function collecterCriteresAudit(){
     const nonApplicable = critereEstNonApplicable(cr);
     const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
     const special = cr.key === "adresse" ? "" : document.querySelector(`input[name="c${cr.id}"]:checked`)?.dataset.special || "";
-    const evaluationStatus = nonApplicable ? "not_applicable" : (publiclyUnverifiable ? "not_verified" : (special === "no_website" ? "no_website" : statutEvaluationCritere(cr, points)));
+    const napSiteState = cr.key === "nap" ? etatSiteOfficielCourant() : null;
+    const evaluationStatus = nonApplicable ? "not_applicable" : (publiclyUnverifiable ? "not_verified" : napSiteState
+      ? (napSiteState.etat === "aucun" ? "no_website" : (napSiteState.etat === "accessible" ? statutEvaluationCritere(cr, points) : "not_verified"))
+      : (special === "no_website" ? "no_website" : statutEvaluationCritere(cr, points)));
     criteria.push({
       key: cr.key,
       label: libelleQuestionLocalisation(cr),
@@ -3428,7 +3446,7 @@ function collecterRecommandationsAudit(){
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(critereEstMasque(cr) || critereEstNonApplicable(cr) || critereEstNonVerifiablePubliquement(cr)) return;
     const points = lirePoints(cr.id);
-    const aucunSite = cr.key === "nap" && document.querySelector(`input[name="c${cr.id}"]:checked`)?.dataset.special === "no_website";
+    const aucunSite = cr.key === "nap" && siteOfficielAbsent();
     if(points !== null && points < cr.max && !aucunSite) candidats.push({critere:cr, points, perdu:cr.max - points});
   }));
   return selectionnerPrioritesDynamiques(candidats).slice(0, 3).map((item, index) => {
@@ -3700,7 +3718,7 @@ function majEtatBrouillonD1(etat, updatedAt = null){
 }
 
 function champsBrouillonD1(){
-  const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"];
+  const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-site-url","d-site-etat","d-site-code"];
   return Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || ""]));
 }
 
@@ -3838,6 +3856,7 @@ async function restaurerBrouillonD1(){
   }
   restaurerLocalisation(answers);
   appliquerReponses(answers.responses || answers.reponses);
+  majAffichageSiteOfficiel();
   if(answers.photoPresence === "none"){
     const noPhotos = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
     if(noPhotos) noPhotos.checked = true;
@@ -4275,10 +4294,73 @@ function rechercheNaturelleClient(activite){
   return "une entreprise comme la vôtre";
 }
 
-function siteOfficielAbsent(){
+function napRadioAucunSite(){
   const id = CRITERE_IDS.nap;
   return document.querySelector(`input[name="c${id}"]:checked`)?.dataset.special === "no_website";
 }
+
+/* Lit le contrôle manuel non noté "État du site officiel" (URL + état constaté
+   + code HTTP éventuel). Purement déclaratif : aucune requête serveur n'est
+   émise depuis cette page (pas de risque SSRF) — le code HTTP n'est retenu
+   que si un humain l'a saisi. */
+function lireEtatSiteOfficiel(){
+  return {
+    url: (document.getElementById("d-site-url")?.value || "").trim(),
+    etat: document.getElementById("d-site-etat")?.value || "",
+    codeHttp: (document.getElementById("d-site-code")?.value || "").trim(),
+  };
+}
+
+/* Règle factuelle unique "existence / accessibilité du site officiel",
+   réutilisée par toutes les formulations qui en dépendent (page 1, page 3,
+   priorités). Rétro-compatible : les analyses antérieures à ce contrôle (pas
+   d'URL saisie ici) retombent exactement sur l'ancien indicateur du critère
+   NAP ("Aucun site web disponible"), sans aucun changement de comportement.
+   - null           : aucune information exploitable — comportement historique.
+   - {etat:"aucun"}  : aucun site officiel connu.
+   - {etat:"accessible"|"inaccessible"|"a_confirmer", url, codeHttp} : site connu. */
+function etatSiteOfficielCourant(){
+  const saisie = lireEtatSiteOfficiel();
+  if(saisie.url){
+    const etat = ["accessible","inaccessible","a_confirmer"].includes(saisie.etat) ? saisie.etat : "a_confirmer";
+    return {etat, url:saisie.url, codeHttp:saisie.codeHttp || ""};
+  }
+  if(saisie.etat === "aucun") return {etat:"aucun", url:"", codeHttp:""};
+  return napRadioAucunSite() ? {etat:"aucun", url:"", codeHttp:""} : null;
+}
+
+function siteOfficielAbsent(){
+  const etat = etatSiteOfficielCourant();
+  return Boolean(etat && etat.etat === "aucun");
+}
+
+/* Texte factuel associé à l'état constaté. Ne jamais affirmer qu'aucun site
+   n'existe sur Internet quand une URL est connue ; ne jamais inventer de code
+   HTTP non saisi manuellement. */
+function messageEtatSiteOfficiel(etatCourant){
+  if(!etatCourant) return null;
+  if(etatCourant.etat === "aucun") return "Aucun site officiel n’est renseigné sur la fiche Google.";
+  if(etatCourant.etat === "accessible") return null;
+  if(etatCourant.etat === "inaccessible"){
+    return etatCourant.codeHttp
+      ? `Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur serveur ${etatCourant.codeHttp}.`
+      : "Un site officiel est bien associé à l’entreprise, mais il était inaccessible lors de notre contrôle.";
+  }
+  return "Un site officiel est renseigné, mais sa cohérence avec la fiche reste à confirmer.";
+}
+
+function ouvrirSiteOfficielDetecte(){
+  const raw = (document.getElementById("d-site-url")?.value || "").trim();
+  if(!raw) return;
+  const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  window.open(url, "_blank", "noopener");
+}
+
+function majAffichageSiteOfficiel(){
+  const wrap = document.getElementById("d-site-code-wrap");
+  if(wrap) wrap.hidden = document.getElementById("d-site-etat")?.value !== "inaccessible";
+}
+majAffichageSiteOfficiel();
 
 function joinFr(items){
   const list = items.filter(Boolean);
@@ -5218,16 +5300,18 @@ function checklistHtml(){
       const p = lirePoints(cr.id);
       const nonApplicable = critereEstNonApplicable(cr);
       const publiclyUnverifiable = critereEstNonVerifiablePubliquement(cr);
-      const noWebsite = cr.key === "nap" && document.querySelector(`input[name="c${cr.id}"]:checked`)?.dataset.special === "no_website";
-      const statut = nonApplicable ? "not_applicable" : noWebsite ? "no_website" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
+      const napSiteStateChk = cr.key === "nap" ? etatSiteOfficielCourant() : null;
+      const noWebsite = Boolean(napSiteStateChk && napSiteStateChk.etat === "aucun");
+      const siteMessage = napSiteStateChk && napSiteStateChk.etat !== "accessible" ? messageEtatSiteOfficiel(napSiteStateChk) : null;
+      const statut = nonApplicable ? "not_applicable" : noWebsite ? "no_website" : siteMessage ? "unknown" : publiclyUnverifiable ? "unknown" : p === null ? "unknown" : p >= cr.max ? "ok" : p <= 0 ? "ko" : "warn";
       if(statut === "ok") ok++; else if(statut === "ko") ko++; else if(statut === "unknown") inconnus++; else if(statut === "no_website") sansSite++; else if(statut !== "not_applicable") warn++;
       const ic = statut === "ok" ? ["chk-ok criterion-icon--ok","✓"] : statut === "ko" ? ["chk-ko criterion-icon--critical","✕"] : statut === "unknown" || statut === "not_applicable" || statut === "no_website" ? ["chk-unknown criterion-icon--unknown","○"] : ["chk-warn criterion-icon--warning","!"];
       const label = rapportSansAvis() && cr.key === "noteMoyenne"
         ? "Aucun avis client"
         : nonApplicable
         ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)`
-        : noWebsite
-        ? "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google."
+        : siteMessage
+        ? siteMessage
         : (publiclyUnverifiable ? "Zone desservie : à confirmer — information non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
     }).join("");
@@ -5310,6 +5394,13 @@ function actionFamillePriorite(famille, item = null){
   }
   if(famille.key === "photos") return actionPhotosPriorite({...item, famille:"photos"});
   return famille.action;
+}
+
+function appliquerPrioriteSiteInaccessible(top3p, etatSiteRapport){
+  if(!etatSiteRapport || etatSiteRapport.etat !== "inaccessible") return top3p;
+  let filtre = top3p.filter(item => item.famille !== "photos" && item.critere?.key !== "nap" && item.famille !== "site_officiel");
+  if(filtre.length > 2) filtre = filtre.slice(0, 2);
+  return [{famille:"site_officiel", critere:null, siteState:etatSiteRapport}, ...filtre].slice(0, 3);
 }
 
 function selectionnerPrioritesDynamiques(candidats){
@@ -5431,6 +5522,24 @@ function beneficePriorite(item, ctx){
   return textes[item.famille] || item.pourquoi;
 }
 
+/* Règle factuelle unique de comparaison "note propre / moyenne concurrentielle",
+   partagée par toutes les formulations qui citent cette comparaison (priorités
+   gratuites et Premium, page 1, page 4). Ne jamais dire "inférieure" lorsque la
+   note propre dépasse la moyenne concurrentielle — seule la position relative
+   change de mot ; la qualité absolue de la note (seuilRassurant) est traitée
+   séparément par l'appelant.
+   - "inferieure"  : notePropre nettement en dessous de la moyenne (hors tolérance).
+   - "comparable"  : notePropre en dessous mais dans la tolérance métier existante,
+                      ou égale à la moyenne.
+   - "superieure"  : notePropre au-dessus de la moyenne concurrentielle. */
+function positionNoteFaceConcurrence(notePropre, moyenneConcurrentielle, tolerance = CONFIG.seuils.toleranceConcurrents){
+  if(!estNombre(notePropre) || !estNombre(moyenneConcurrentielle) || !(moyenneConcurrentielle > 0)) return "inconnue";
+  if(notePropre > moyenneConcurrentielle) return "superieure";
+  const seuilInferieur = moyenneConcurrentielle * (1 - tolerance);
+  if(notePropre < seuilInferieur) return "inferieure";
+  return "comparable";
+}
+
 function constatObservePriorite(item, ctx){
   const d = ctx.data, m = d.moyennesConcurrents || {};
   const volC = m.avis ?? d.concurrence?.volC;
@@ -5440,8 +5549,14 @@ function constatObservePriorite(item, ctx){
     const noteC = m.note ?? d.concurrence?.noteC;
     if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.nbAvis) === 1)
       return `Votre fiche ne présente actuellement qu'un seul avis, avec une note de ${fmtNote(d.note)}/5. Ce volume est trop faible pour refléter l'expérience globale de vos clients et peut créer un doute chez une personne qui découvre l'entreprise.`;
-    if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.note) < 4.2 && estNombre(noteC))
-      return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. En revanche, votre note de ${fmtNote(d.note)}/5 reste nettement inférieure à la moyenne concurrentielle observée de ${fmtNote(noteC)}/5.`;
+    if(estNombre(d.note) && estNombre(d.nbAvis) && Number(d.note) < 4.2 && estNombre(noteC)){
+      const positionNote = positionNoteFaceConcurrence(Number(d.note), Number(noteC));
+      if(positionNote === "inferieure")
+        return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. En revanche, votre note de ${fmtNote(d.note)}/5 reste nettement inférieure à la moyenne concurrentielle observée de ${fmtNote(noteC)}/5.`;
+      if(positionNote === "superieure")
+        return `Votre note de ${fmtNote(d.note)}/5 est légèrement supérieure à la moyenne des concurrents observés, mais elle reste sous le niveau qui rassure généralement un nouveau client.`;
+      return `Votre note de ${fmtNote(d.note)}/5 est comparable à la moyenne des concurrents observés (${fmtNote(noteC)}/5), mais elle reste sous le niveau qui rassure généralement un nouveau client.`;
+    }
     if(estNombre(d.note) && estNombre(d.nbAvis) && estNombre(volC) && Number(volC) > Number(d.nbAvis))
       return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. Ce volume doit maintenant être consolidé face à des fiches concurrentes qui affichent ${nEntier(volC)} avis en moyenne.`;
     if(estNombre(d.note) && estNombre(d.nbAvis))
@@ -5563,8 +5678,27 @@ function tempsPriorite(item){
   return t ? formatMinutes(t.minutes) : "environ 30 à 45 minutes";
 }
 
+function rendrePrioriteSiteOfficiel(item, index){
+  const impact = {label:"Impact très élevé", couleur:"#dc2626", fond:"#fef2f2"};
+  return `<section class="priority-card">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <div class="priority-kicker">Priorité n°${index + 1}</div>
+      <span class="priority-kicker" style="background:${impact.fond};color:${impact.couleur};border-color:${impact.couleur}33">${impact.label}</span>
+    </div>
+    <h2 class="priority-title">Remettre le site officiel en ligne</h2>
+    <div class="priority-flow">
+      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>Votre entreprise est bien visible sur Google, mais une personne qui clique sur votre site arrive actuellement sur une page d’erreur. Elle peut alors revenir immédiatement aux résultats Google et contacter un concurrent.</p></div>
+      <div class="priority-arrow">↓</div>
+      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site en erreur.</p></div>
+      <div class="priority-arrow">↓</div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>Faire vérifier l’hébergement, les journaux d’erreur et la configuration du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.</p><p class="priority-resultat"><b>Résultat attendu :</b> un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.</p><span class="priority-time">Délai dépendant de votre hébergeur — à traiter en priorité.</span></div>
+    </div>
+  </section>`;
+}
+
 function rendrePriorite(item, index, variante){
   if(!item) return "";
+  if(item.famille === "site_officiel") return rendrePrioriteSiteOfficiel(item, index);
   if(!critereEligiblePourNarration(item.critere, item.famille)) return "";
   const ctx = contexteRapport();
   const d = detailsPriorite(item);
@@ -5691,7 +5825,8 @@ function genererRapport(){
   priorites.sort((a,b) => b.perdu - a.perdu);
   categoriesTriees.sort((a,b) => a.pct - b.pct);
   const categoriesFortes = [...categoriesTriees].sort((a,b) => b.pct - a.pct).slice(0,2);
-  const top3f = forces.slice(0,3), top3p = selectionnerPrioritesDynamiques(priorites);
+  const top3f = forces.slice(0,3);
+  const top3p = appliquerPrioriteSiteInaccessible(selectionnerPrioritesDynamiques(priorites), etatSiteOfficielCourant());
   const restants = Math.max(priorites.length - top3p.length, 0);
   const pied = n => `<div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="${n}">Page ${n}</span></div>`;
   const salutation = contact ? `Bonjour ${contact},` : `Bonjour,`;
