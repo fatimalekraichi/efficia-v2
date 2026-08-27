@@ -430,12 +430,23 @@ export async function onRequestPost(context) {
   const normalizedWithConfirmedActivity = manualActivity
     ? { ...normalized, confirmed_activity: manualActivity }
     : normalized;
+  const competitorsJson = JSON.stringify(competitorData.concurrents);
+  const benchmark = benchmarkEngine({
+    rating: normalized.rating,
+    reviews: normalized.reviews,
+    photos_count: normalized.photos_count,
+    competitors_json: competitorsJson,
+  });
   try {
     await db.prepare(`
       UPDATE analyses
       SET nom = ?, ville = ?, place_id = ?, name = ?, rating = ?, reviews = ?,
           photos_count = ?, description_length = ?, activity = ?, search_query = ?,
           local_position = ?, competitors_json = ?, fiche_json = ?, normalized_json = ?,
+          benchmark_score = ?, avg_rating = ?, avg_reviews = ?, avg_photos = ?,
+          rating_gap = ?, reviews_gap = ?, photos_gap = ?, rating_percentile = ?,
+          reviews_percentile = ?, photos_percentile = ?, top_competitor_name = ?,
+          top_competitor_rating = ?, top_competitor_reviews = ?, benchmark_completed_at = ?,
           updated_at = ?
       WHERE analysis_id = ? AND report_type = 'free' AND status = 'awaiting_review'
     `).bind(
@@ -450,9 +461,23 @@ export async function onRequestPost(context) {
       activity || null,
       competitorData.requete || null,
       competitorData.position,
-      JSON.stringify(competitorData.concurrents),
+      competitorsJson,
       JSON.stringify(fiche),
       JSON.stringify(addSearchResultContext(normalizedWithConfirmedActivity, competitorData)),
+      benchmark.benchmark_score,
+      benchmark.avg_rating,
+      benchmark.avg_reviews,
+      benchmark.avg_photos,
+      benchmark.rating_gap,
+      benchmark.reviews_gap,
+      benchmark.photos_gap,
+      benchmark.rating_percentile,
+      benchmark.reviews_percentile,
+      benchmark.photos_percentile,
+      benchmark.top_competitor_name,
+      benchmark.top_competitor_rating,
+      benchmark.top_competitor_reviews,
+      updatedAt,
       updatedAt,
       analysisId,
     ).run();

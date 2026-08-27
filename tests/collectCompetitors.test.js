@@ -11,7 +11,13 @@ import { addSearchResultContext, collectCompetitors } from "../functions/lib/col
 
 function mockFetchOnce(payload) {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => Response.json(payload);
+  const withReviewVolumes = {
+    ...payload,
+    data: Array.isArray(payload?.data) ? payload.data.map((query) => Array.isArray(query)
+      ? query.map((place) => Object.prototype.hasOwnProperty.call(place, "reviews") ? place : { ...place, reviews:0 })
+      : query) : payload?.data,
+  };
+  globalThis.fetch = async () => Response.json(withReviewVolumes);
   return () => {
     globalThis.fetch = originalFetch;
   };
@@ -307,7 +313,7 @@ test("une recherche personnalisée est transmise au fournisseur sans être recon
   let receivedQuery = "";
   globalThis.fetch = async (input) => {
     receivedQuery = new URL(String(input)).searchParams.get("query") || "";
-    return Response.json({ data: [[{ name: "Concurrent", place_id: "other" }]] });
+    return Response.json({ data: [[{ name: "Concurrent", place_id: "other", reviews:0 }]] });
   };
   try {
     const result = await collectCompetitors({

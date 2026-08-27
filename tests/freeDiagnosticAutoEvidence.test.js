@@ -188,7 +188,7 @@ test("des benchmarks incomplets donnent À confirmer, jamais Comparable", () => 
 test("la relance recalcule les benchmarks avant de reconstruire les réponses AUTO", () => {
   const refresh = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   assert.ok(refresh.indexOf("const benchmark = benchmarkEngine") < refresh.indexOf("const state = buildFreeDiagnosticCollectionState"));
-  assert.match(html, /\["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction"\]/);
+  assert.match(html, /\["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"\]/);
 });
 
 test("chaque critère AUTO du diagnostic possède un contrat de preuve permanent", () => {

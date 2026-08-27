@@ -117,6 +117,21 @@ test("une ancienne réponse AUTO de rang ou concurrence est supprimée si la nou
   }
 });
 
+test("une ancienne réponse AUTO du volume d'avis est supprimée si trois volumes valides ne sont plus disponibles", () => {
+  const runtime = categoryRuntime({ id:15, points:5 });
+  assert.equal(runtime.context.marquerAutoAConfirmer(15, "Donnée insuffisante"), true);
+  assert.equal(runtime.radios.every((radio) => !radio.checked), true);
+  assert.equal(selectedPoints(runtime.radios), null);
+  assert.equal(runtime.sourcesCriteres.get(15), "unknown");
+});
+
+test("une réponse MANUELLE du volume d'avis reste sélectionnée", () => {
+  const runtime = categoryRuntime({ id:15, points:3, source:"manual", touched:true });
+  assert.equal(runtime.context.marquerAutoAConfirmer(15, "Donnée insuffisante"), false);
+  assert.equal(selectedPoints(runtime.radios), 3);
+  assert.equal(runtime.sourcesCriteres.get(15), "manual");
+});
+
 test("la relance unknown utilise le reset atomique et ne rappelle plus l’API par clé avec un id numérique", () => {
   const refresh = html.slice(html.indexOf("function appliquerResultatsRecherche"), html.indexOf("async function relancerAnalyseRecherche"));
   assert.match(refresh, /marquerAutoAConfirmer\(criterion\.id, "Donnée insuffisante/);

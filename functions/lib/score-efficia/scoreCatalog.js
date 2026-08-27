@@ -17,7 +17,7 @@ export const AUTO_EVIDENCE_CONTRACTS = Object.freeze({
   liensAction: "champs CTA fournisseur explicitement observés",
   nombrePhotos: "nombre de photos numérique",
   noteMoyenne: "note numérique",
-  volumeAvis: "volume propre + moyenne concurrentielle numériques",
+  volumeAvis: "volume propre + exactement trois volumes concurrents numériques",
   descriptionRemplie: "champ description observé + longueur numérique",
   servicesPresents: "champ services observé + liste fournisseur",
   classementLocal: "rang normalisé one-based + source du rang",
@@ -68,6 +68,32 @@ export function classifyCompetitiveAttractiveness({ rating, reviews, averageRati
     return { status:"ahead", optionIndex:0, ratingRatio, reviewsRatio };
   }
   return { status:"comparable", optionIndex:1, ratingRatio, reviewsRatio };
+}
+
+export function classifyReviewVolume({ reviews, competitors, tolerance = CONFIG.seuils.toleranceConcurrents } = {}) {
+  const ownReviews = asNumber(reviews);
+  const competitorReviews = (Array.isArray(competitors) ? competitors : [])
+    .map((competitor) => asNumber(competitor?.reviews))
+    .filter((value) => value !== null && value >= 0);
+  if (ownReviews === null || ownReviews < 0 || competitorReviews.length !== 3) {
+    return {
+      status:"unknown",
+      optionIndex:null,
+      ownReviews,
+      competitorReviews,
+      averageReviews:null,
+      ratio:null,
+    };
+  }
+  const averageReviews = competitorReviews.reduce((sum, value) => sum + value, 0) / 3;
+  const ratio = averageReviews === 0 ? (ownReviews > 0 ? Number.POSITIVE_INFINITY : 1) : ownReviews / averageReviews;
+  if (ownReviews > averageReviews * (1 + tolerance)) {
+    return { status:"superior", optionIndex:0, ownReviews, competitorReviews, averageReviews, ratio };
+  }
+  if (ownReviews < averageReviews * (1 - tolerance)) {
+    return { status:"inferior", optionIndex:2, ownReviews, competitorReviews, averageReviews, ratio };
+  }
+  return { status:"comparable", optionIndex:1, ownReviews, competitorReviews, averageReviews, ratio };
 }
 
 function asArray(value) {
@@ -327,13 +353,18 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
     addCriterion(criteria, optionForKey("noteMoyenne", rating >= 4.5 ? 0 : (rating >= 4 ? 1 : (rating >= 3.5 ? 2 : 3)), "observed", { value: rating }));
   }
 
-  if (reviewsCount === null) {
-    addCriterion(criteria, notVerified("volumeAvis"));
-  } else if (avgReviews !== null && avgReviews > 0) {
-    addCriterion(criteria, optionForKey("volumeAvis", reviewsCount >= avgReviews * (1 - CONFIG.seuils.toleranceConcurrents) ? 0 : (reviewsCount >= avgReviews * 0.5 ? 1 : 2), "observed", { value: reviewsCount, average: avgReviews }));
-  } else {
-    addCriterion(criteria, notVerified("volumeAvis", "unknown", { value:reviewsCount, average:null }));
-  }
+  const reviewVolume = classifyReviewVolume({ reviews:reviewsCount, competitors });
+  const reviewVolumeEvidence = {
+    value:reviewVolume.ownReviews,
+    competitorReviews:reviewVolume.competitorReviews,
+    average:reviewVolume.averageReviews,
+    ratio:reviewVolume.ratio,
+    tolerance:CONFIG.seuils.toleranceConcurrents,
+    decision:reviewVolume.status,
+  };
+  addCriterion(criteria, reviewVolume.optionIndex === null
+    ? notVerified("volumeAvis", "unknown", reviewVolumeEvidence)
+    : optionForKey("volumeAvis", reviewVolume.optionIndex, "auto", reviewVolumeEvidence));
 
   if (descriptionLength === null || !wasObserved(normalized, ["description", "description_length"])) {
     addCriterion(criteria, notVerified("descriptionRemplie"));

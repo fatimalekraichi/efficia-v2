@@ -200,8 +200,8 @@ test("analyze : la fiche analysée n'apparaît jamais dans ses propres concurren
     // Le moteur de recherche concurrentiel renvoie la fiche analysée elle-même en tête de liste
     // (cas réel observé) : elle doit être filtrée avant enregistrement.
     competitors: [
-      { name: "AS Pro Elec", place_id: "place-target" },
-      { name: "Concurrent A", place_id: "place-a" },
+      { name: "AS Pro Elec", place_id: "place-target", reviews:12 },
+      { name: "Concurrent A", place_id: "place-a", reviews:8 },
     ],
   });
 

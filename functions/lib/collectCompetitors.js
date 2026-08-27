@@ -13,7 +13,9 @@ const OUTSCRAPER_SEARCH_PATH = "/maps/search-v3";
 const DEFAULT_TIMEOUT_MS = 25000;
 
 function toNumberOrNull(v) {
-  return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+  if (v === null || v === undefined || v === "") return null;
+  const normalized = typeof v === "string" ? v.trim().replace(",", ".") : v;
+  return Number.isFinite(Number(normalized)) ? Number(normalized) : null;
 }
 
 function firstPhotoUrl(place) {
@@ -217,6 +219,44 @@ function buildIsSameBusiness({ placeIdCible, cidCible, urlCible }) {
   };
 }
 
+function normalizeIdentityText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function competitorIdentityKeys(place) {
+  const keys = [];
+  const placeId = String(place?.place_id || "").trim();
+  const cid = String(place?.cid || place?.google_id || place?.googleId || "").trim();
+  const url = normalizeUrlForComparison(place?.location_link);
+  const name = normalizeIdentityText(place?.name);
+  const address = normalizeIdentityText(place?.full_address || place?.address);
+  if (placeId) keys.push(`place:${placeId}`);
+  if (cid) keys.push(`cid:${cid}`);
+  if (url) keys.push(`url:${url}`);
+  if (name) keys.push(`name-address:${name}|${address}`);
+  return keys;
+}
+
+export function selectValidReviewCompetitors(places, limit = 3) {
+  const selected = [];
+  const seen = new Set();
+  for (const place of Array.isArray(places) ? places : []) {
+    const reviews = toNumberOrNull(place?.reviews);
+    if (reviews === null || reviews < 0) continue;
+    const identityKeys = competitorIdentityKeys(place);
+    if (identityKeys.some((key) => seen.has(key))) continue;
+    identityKeys.forEach((key) => seen.add(key));
+    selected.push(place);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
 export async function collectCompetitors({
   activite, ville, requete: requeteExplicite, placeIdCible, cidCible, urlCible, apiKey,
   timeoutMs = DEFAULT_TIMEOUT_MS, suppressSensitiveLogs = false,
@@ -314,7 +354,7 @@ export async function collectCompetitors({
     });
   }
 
-  const concurrents = afterExclusion.slice(0, 3).map(mapCompetitor);
+  const concurrents = selectValidReviewCompetitors(afterExclusion, 3).map(mapCompetitor);
 
   if (!suppressSensitiveLogs) {
     console.log("collectCompetitors:retained", {

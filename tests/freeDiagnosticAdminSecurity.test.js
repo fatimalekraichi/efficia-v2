@@ -188,14 +188,32 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
     };
     const data = query === CANONICAL_GOOGLE_URL
       ? [[target]]
-      : [[target, {
-        name: "Concurrent local",
-        place_id: "place-competitor",
-        rating: 4.8,
-        reviews: 120,
-        photos_count: 45,
-        city: "Bruxelles",
-      }]];
+      : [[target,
+        {
+          name: "Concurrent local",
+          place_id: "place-competitor",
+          rating: 4.8,
+          reviews: 120,
+          photos_count: 45,
+          city: "Bruxelles",
+        },
+        {
+          name: "Concurrent local 2",
+          place_id: "place-competitor-2",
+          rating: 4.6,
+          reviews: 90,
+          photos_count: 30,
+          city: "Bruxelles",
+        },
+        {
+          name: "Concurrent local 3",
+          place_id: "place-competitor-3",
+          rating: 4.7,
+          reviews: 100,
+          photos_count: 35,
+          city: "Bruxelles",
+        },
+      ]];
     return new Response(JSON.stringify({ data }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -263,7 +281,7 @@ test("la collecte serveur réutilise le même analysisId sans créer de commande
     const scoreDetail = calculateScoreDetail(Object.fromEntries(
       automaticCriteria.map((criterion) => [criterion.key, criterion.points]),
     ));
-    assert.equal(Math.round(scoreDetail.total), 20);
+    assert.equal(Math.round(scoreDetail.total), 17);
     assert.equal(scoreDetail.repondus, 6);
     assert.equal(scoreDetail.totalCrit, 29);
     for (const key of [
@@ -413,6 +431,8 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     assert.equal(body.scorePrefill.criteria.find((item) => item.key === "classementLocal").label, "Visible en 1re page");
     assert.equal(body.scorePrefill.criteria.find((item) => item.key === "attractiviteConcurrents").label, "Derrière");
     assert.equal(body.scorePrefill.criteria.find((item) => item.key === "liensAction").label, "Manquants");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "volumeAvis").label, "Inférieur");
+    assert.equal(body.scorePrefill.criteria.find((item) => item.key === "volumeAvis").points, 0);
     assert.equal(body.business.competitors.length, 3);
     assert.deepEqual(body.business.competitors.map((item) => item.services_count), [3, 1, 2]);
     assert.match(body.searchAnalyzedAt, /^2026-|^20\d{2}-/);
@@ -429,10 +449,10 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     assert.equal(row.local_position, 4);
     assert.equal(JSON.parse(row.competitors_json).length, 3);
     assert.equal(row.avg_rating, 4.8);
-    assert.equal(row.avg_reviews, 11);
+    assert.equal(row.avg_reviews, 10.67);
     assert.equal(row.avg_photos, 1);
     assert.equal(row.rating_gap, -3);
-    assert.equal(row.reviews_gap, -6);
+    assert.equal(row.reviews_gap, -5.67);
     assert.equal(row.photos_gap, 0);
     assert.equal(row.top_competitor_name, "Electrolux95");
     assert.deepEqual(db.sqlite.prepare("SELECT * FROM diagnostic_requests WHERE analysis_id = ?").get(ANALYSIS_ID), requestBefore);

@@ -1100,6 +1100,12 @@ GRILLE.forEach(cat => {
         <p><strong>Résultat :</strong> <span id="action-links-decision">À confirmer</span></p>
       </div>`;
     }
+    if(cr.key === "volumeAvis"){
+      html += `<div class="category-evidence" id="review-volume-evidence" aria-live="polite">
+        <p id="review-volume-summary">Données concurrentielles insuffisantes : comparaison automatique à confirmer.</p>
+        <div class="category-manual-warning" id="review-volume-manual-warning" hidden></div>
+      </div>`;
+    }
     if(cr.key === "classementLocal"){
       html += `<div class="category-evidence" id="local-rank-evidence" aria-live="polite">
         <p><strong>Position observée :</strong> <span id="local-rank-position">À confirmer</span></p>
@@ -2902,6 +2908,16 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
   setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? Math.round(Number(evidence.averageReviews) * 10) / 10 : "—"} avis`);
   setText("competitive-decision", attractiveness?.label || "À confirmer");
 
+  const reviewVolume = criteria.get("volumeAvis");
+  const reviewEvidence = reviewVolume?.evidence || {};
+  const reviewValues = Array.isArray(reviewEvidence.competitorReviews) ? reviewEvidence.competitorReviews : [];
+  const formatReviews = (value, decimals = 0) => estNombre(value)
+    ? Number(value).toLocaleString("fr-FR", {maximumFractionDigits:decimals})
+    : "—";
+  setText("review-volume-summary", estNombre(reviewEvidence.value) && reviewValues.length === 3 && estNombre(reviewEvidence.average)
+    ? `Votre fiche : ${formatReviews(reviewEvidence.value)} avis · Concurrents : ${reviewValues.map((value) => formatReviews(value)).join(", ")} · Moyenne : ${formatReviews(reviewEvidence.average, 2)} · comparaison avec une tolérance de 10 %`
+    : "Données concurrentielles insuffisantes : comparaison automatique à confirmer.");
+
   donneesAnalyse.liensAction = actionLinks;
   donneesAnalyse.statutLiensAction = actionAvailable ? "available" : "unavailable";
   donneesAnalyse.preuveRang = rank;
@@ -3186,7 +3202,8 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   actualiserPreuvesAutomatiques(business, scorePrefill);
   const refreshedCriteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
   const manualConflicts = [];
-  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction"].forEach((key) => {
+  let reviewVolumeManualConflict = false;
+  ["classementLocal", "attractiviteConcurrents", "categoriePrincipale", "categoriesSecondaires", "liensAction", "volumeAvis"].forEach((key) => {
     const criterion = GRILLE.flatMap((category) => category.criteres).find((item) => item.key === key);
     const prefill = refreshedCriteria.get(key);
     if(!criterion || !prefill) return;
@@ -3194,6 +3211,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
       const currentPoints = lirePoints(criterion.id);
       if(estNombre(prefill.points) && estNombre(currentPoints) && Number(prefill.points) !== Number(currentPoints)){
         manualConflicts.push(criterion.q);
+        if(key === "volumeAvis") reviewVolumeManualConflict = true;
       }
       return;
     }
@@ -3209,6 +3227,13 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     warning.hidden = !manualConflicts.length;
     warning.textContent = manualConflicts.length
       ? "Les nouvelles données contredisent une réponse manuelle. La réponse de l’administrateur est conservée : vérifiez-la avant de poursuivre."
+      : "";
+  }
+  const reviewWarning = document.getElementById("review-volume-manual-warning");
+  if(reviewWarning){
+    reviewWarning.hidden = !reviewVolumeManualConflict;
+    reviewWarning.textContent = reviewVolumeManualConflict
+      ? "Le nouveau calcul contredit la réponse manuelle. La réponse de l’administrateur est conservée : vérifiez-la avant de poursuivre."
       : "";
   }
   requetePersonnalisee = actualQuery !== normaliserRecherche(composerRequeteProposee());
