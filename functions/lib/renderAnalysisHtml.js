@@ -1657,7 +1657,7 @@ function freeSituationSection(model) {
       ${positionSummary(free) ? `<p class="methode-note">${safeText(positionSummary(free))}</p>` : ""}
       ${model.websiteAvailabilityNote ? `<p class="methode-note">${safeText(model.websiteAvailabilityNote)}</p>` : ""}
       ${freeMeaningBox(model)}
-      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.totalScored ?? free.criteriaSummary?.total)} critères notés et une synthèse concurrentielle non notée selon la méthode Efficia™.</p>
+      <p class="methode-note">Méthode — analyse réalisée sur l'état public de votre fiche Google Business. ${safeNumber(free.criteriaSummary?.totalScored ?? free.criteriaSummary?.total)} vérifications applicables à cette fiche ont été passées en revue selon la méthode Efficia™.</p>
       <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>
       ${footer(model, "Page 1/6")}
     </section>
@@ -1735,7 +1735,7 @@ function freeCriteriaSection(model) {
       ${header(model.vocabulary?.reportLabel)}
       <div class="chapitre">ÉTAPE 3 · CE QUE NOUS AVONS VÉRIFIÉ</div>
       <h1>Ce que nous avons analysé</h1>
-      <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${safeText(hero.businessName, "votre entreprise")} au crible de ${safeNumber(summary.totalScored ?? summary.total)} critères notés et d’une synthèse concurrentielle non notée.</p>
+      <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${safeText(hero.businessName, "votre entreprise")} au crible de ${safeNumber(summary.totalScored ?? summary.total)} vérifications applicables à cette fiche.</p>
       <div class="chk-compteur">
         <span class="count-tag status-compliant">${safeNumber(counts.compliant)} conformes</span>
         <span class="count-tag status-partial">${safeNumber(counts.partial)} à améliorer</span>
@@ -3740,6 +3740,18 @@ function styles() {
         display: block;
       }
 
+      /* La page 3 doit toujours commencer sur une nouvelle feuille physique :
+         son en-tête ne peut ainsi jamais être absorbé par un débordement de la
+         page 2. La marge et le logo restent identiques aux autres pages. */
+      .free-diagnostic .page-criteria {
+        padding-top: 13mm;
+      }
+
+      .free-diagnostic .page-criteria .doc-header {
+        min-height: 52px;
+        overflow: visible;
+      }
+
       .free-diagnostic h1,
       .free-diagnostic h2,
       .free-diagnostic h3 {
@@ -4681,6 +4693,11 @@ function styles() {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 7px;
           margin-top: 6px;
+        }
+        .free-diagnostic .page-criteria {
+          break-before: page;
+          page-break-before: always;
+          padding-top: 13mm;
         }
         .free-diagnostic .page-criteria .chk-compteur { gap: 7px; margin-top: 6px; }
         .free-diagnostic .page-criteria .count-tag { padding: 4px 10px; font-size: 10px; }

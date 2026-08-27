@@ -156,7 +156,7 @@ test("Diagnostic gratuit : exactement 6 pages et les 6 étapes attendues", async
 
 test("Diagnostic gratuit v5 : la synthèse concurrentielle est informative et factuelle", async () => {
   const documentModel = await buildDocumentModel("free");
-  documentModel.freeDiagnostic.criteriaSummary.totalScored = 28;
+  documentModel.freeDiagnostic.criteriaSummary.totalScored = 20;
   documentModel.freeDiagnostic.criteriaSummary.totalInformational = 1;
   documentModel.freeDiagnostic.criteriaSummary.summaries = [{
     key: "attractiviteConcurrents",
@@ -165,7 +165,7 @@ test("Diagnostic gratuit v5 : la synthèse concurrentielle est informative et fa
     evidence: { rating: 1.8, reviews: 5, averageRating: 4.8, averageReviews: 10.6666666667 },
   }];
   const rendered = renderFreeDiagnosticHtml(documentModel);
-  assert.match(rendered, /28 critères notés et d’une synthèse concurrentielle non notée/);
+  assert.match(rendered, /20 vérifications applicables à cette fiche/);
   assert.match(rendered, /Confiance visible face aux concurrents/);
   assert.match(rendered, /1,8\/5 et 5 avis/);
   assert.match(rendered, /4,8\/5 et 10,67 avis/);

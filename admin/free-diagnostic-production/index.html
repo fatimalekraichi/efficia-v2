@@ -6,6 +6,7 @@
 <title>Score Efficia™ AUTO — Analyse automatique Google Business</title>
 <meta name="robots" content="noindex, nofollow">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+<script src="/js/score-efficia-core.js?v=1"></script>
 <!-- ============================================================
      SCORE EFFICIA™ — VERSION AUTOMATISÉE (API Google Places)
 
@@ -253,6 +254,8 @@
   .teaser-more{margin-top:10px;font-size:.76rem;color:#5b6b81;font-style:italic}
   /* — Compact : page 3/priorités courtes — */
   .page-action .chapitre{margin:12px 0 5px}
+  .page-action{padding-top:13mm}
+  .page-action .rapport-header{min-height:53px;overflow:visible}
   .page-action .rapport-title{font-size:1.38rem;margin-bottom:6px}
   .page-action .rapport-subtitle{font-size:.8rem;line-height:1.43}
   .page-action .chk-grid{gap:8px;margin-top:8px}
@@ -529,6 +532,7 @@
     .bloc-item,.barre-cat,.offer-card,.concurrence-box,.meaning-box,.indice-card,.fact,.projection-grid,.effort-grid,.signature-bloc,.enjeu-bloc,.facts-grid,.indices-grid,.bench-row,.bench-table,.chk-rubrique,.identite-bandeau,.priority-card,.priority-step,.paid-audit-box{break-inside:avoid;page-break-inside:avoid}
     #formulaire{display:none!important}
     h1,h2,h3{break-after:avoid;page-break-after:avoid}
+    .page-action{break-before:page;page-break-before:always;padding-top:13mm}
   }
 </style>
 <style>
@@ -2425,45 +2429,24 @@ function detecterProfilSecteur(place, activite){
 }
 
 function calculScoreDetail(){
-  const profil = obtenirProfilActif();
-  let total = 0, poidsPrisEnCompte = 0, repondus = 0, totalCrit = 0;
-  const categories = [];
-  GRILLE.forEach(cat => {
-    let brut = 0, maxEvalue = 0, repondusCat = 0, nonVerifiesCat = 0;
-    const criteresNotes = cat.criteres.filter(critereEstNote);
-    const maximumBrutHistorique = cat.criteres.reduce((s, cr) => s + Number(cr.max || 0), 0);
-    const maximumBrutNote = criteresNotes.reduce((s, cr) => s + Number(cr.max || 0), 0);
-    criteresNotes.forEach(cr => {
-      totalCrit++;
-      const p = lirePoints(cr.id);
-      if(p !== null){
-        brut += p;
-        maxEvalue += cr.max;
-        repondus++;
-        repondusCat++;
-      } else {
-        nonVerifiesCat++;
-      }
-    });
-    const poidsProfil = profil[cat.key] ?? cat.pts;
-    const capacitePct = maximumBrutHistorique > 0 ? maximumBrutNote / maximumBrutHistorique : 0;
-    const maximumEffectifCategorie = capacitePct * poidsProfil;
-    const pctReponses = maxEvalue ? brut / maxEvalue : null;
-    const pct = pctReponses === null ? null : pctReponses * capacitePct;
-    const pointsPonderesBruts = pctReponses === null ? null : pctReponses * maximumEffectifCategorie;
-    if(pctReponses !== null){
-      total += pointsPonderesBruts;
-      poidsPrisEnCompte += maximumEffectifCategorie;
-    }
-    categories.push({cat, brut, maxEvalue, pct, capacitePct, poidsProfil, pointsPonderesBruts, maximumEffectifCategorie, repondusCat, nonVerifiesCat});
+  const moteur = globalThis.EfficiaScoreCore;
+  if(!moteur) throw new Error("score_efficia_core_unavailable");
+  const answers = Object.fromEntries(GRILLE.flatMap(cat => cat.criteres.map(cr => [
+    cr.key,
+    critereEstNote(cr) && critereEstMasque(cr) ? 0 : lirePoints(cr.id)
+  ])));
+  return moteur.calculateScoreDetail({
+    grid:GRILLE,
+    sectors:CONFIG.secteurs,
+    answers,
+    profileKey:profilActif || "default",
+    scoringVersion:scoringVersionActif,
+    legacyScoringVersion:LEGACY_SCORING_VERSION
   });
-  const facteurNormalisation = poidsPrisEnCompte > 0 ? 100 / poidsPrisEnCompte : 0;
-  const scoreNormalise = Math.min(100, Math.max(0, total * facteurNormalisation));
-  categories.forEach(c => {
-    c.pointsPonderes = c.pointsPonderesBruts === null ? null : c.pointsPonderesBruts * facteurNormalisation;
-    c.maximumEffectifNormalise = c.maximumEffectifCategorie * facteurNormalisation;
-  });
-  return {total:Number.isFinite(scoreNormalise) ? scoreNormalise : 0, repondus, totalCrit, categories, profil, maximumEffectifProfil:poidsPrisEnCompte, facteurNormalisation};
+}
+
+function scoreEstProvisoire(detail = calculScoreDetail()){
+  return localisationNonVerifiablePubliquement() || detail.repondus < detail.totalCrit;
 }
 
 function listerElementsRestantsPourFinalisation(){
@@ -2529,7 +2512,7 @@ function calc(){
   const detail = calculScoreDetail();
   const {total, repondus, totalCrit} = detail;
   const elementsRestants = listerElementsRestantsPourFinalisation();
-  document.getElementById("score-provisoire").hidden = !localisationNonVerifiablePubliquement();
+  document.getElementById("score-provisoire").hidden = !(localisationNonVerifiablePubliquement() || repondus < totalCrit);
   if(!collecteDiagnosticValidee){
     document.getElementById("score-live").textContent = "—";
     document.getElementById("compteur-restant").textContent = "analyse non lancée";
@@ -3747,6 +3730,7 @@ function restaurerLocalisation(source = {}){
 }
 
 function payloadBrouillonD1(){
+  const detail = calculScoreDetail();
   return {
     questionnaireVersion:QUESTIONNAIRE_VERSION,
     photoPresence:conditionPhotos(),
@@ -3757,7 +3741,14 @@ function payloadBrouillonD1(){
     fields:champsBrouillonD1(),
     profileKey:profilActif,
     responses:collecterReponses(),
-    observedData:donneesAnalyse
+    observedData:donneesAnalyse,
+    scoreSnapshot:{
+      score:Math.round(detail.total),
+      scoringVersion:scoringVersionActif,
+      provisional:scoreEstProvisoire(detail),
+      answeredCriteria:detail.repondus,
+      scoredCriteria:detail.totalCrit
+    }
   };
 }
 
@@ -4220,8 +4211,12 @@ function scoreGaugeHtml(score){
 }
 
 function mentionScoreProvisoireHtml(className = "methode-note"){
-  if(!localisationNonVerifiablePubliquement()) return "";
-  return `<p class="${className}">Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.<br>Zone desservie : à confirmer — information non vérifiable publiquement.</p>`;
+  const detail = calculScoreDetail();
+  if(!scoreEstProvisoire(detail)) return "";
+  const locationNote = localisationNonVerifiablePubliquement()
+    ? "<br>Zone desservie : à confirmer — information non vérifiable publiquement."
+    : "";
+  return `<p class="${className}">Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.${locationNote}</p>`;
 }
 
 function potentielScoreHtml(scoreActuel, scoreProjete){
@@ -5253,6 +5248,14 @@ function checklistHtml(){
   return {html:compteur + `<div class="chk-grid">${rubriques}</div>${legende}`, ok, warn, ko, inconnus};
 }
 
+function compterCriteresApplicablesRapport(){
+  return GRILLE.reduce((total, cat) => total + cat.criteres.filter(cr => {
+    if(!critereEstNote(cr) || critereEstMasque(cr) || critereEstNonApplicable(cr)) return false;
+    if(rapportSansAvis() && REVIEW_DEPENDENT_KEYS.includes(cr.key)) return false;
+    return true;
+  }).length, 0);
+}
+
 /* Un critère est considéré comme déjà établi par le diagnostic gratuit
    quand il est noté au maximum des points possibles. */
 function critereConfirmeMax(key){
@@ -5657,7 +5660,7 @@ function genererRapport(){
   const ville = document.getElementById("p-ville").value || "";
   const contact = document.getElementById("p-contact").value;
   const dateStr = new Date().toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
-  const nbControles = GRILLE.reduce((s, cat) => s + cat.criteres.filter(critereEstNote).length, 0);
+  const nbControles = compterCriteresApplicablesRapport();
   const auditPaymentUrl = resolvePaymentUrl(AUDIT_PAYMENT_URL, "audit");
   const packPaymentUrl = resolvePaymentUrl(PACK_PAYMENT_URL, "visibility");
 
@@ -5790,7 +5793,7 @@ function genererRapport(){
     ${mentionScoreProvisoireHtml()}
     ${indicesHtml}
     ${significationBloc}
-    <p class="methode-note"><strong>Méthode</strong> — analyse réalisée le ${dateStr} sur l'état public de votre fiche Google Business${estTexte(donneesAnalyse.requeteTestee) ? `, recherche testée en navigation neutre : « ${libelleRechercheRapport(donneesAnalyse.requeteTestee)} »` : ""}. ${nbControles} critères passés en revue selon la méthode Efficia™.${benchTable ? "" : " Par rigueur, aucune comparaison concurrentielle n'est affichée : les données publiques des fiches concurrentes n'étaient pas assez fiables au moment de l'analyse."}</p>
+    <p class="methode-note"><strong>Méthode</strong> — analyse réalisée le ${dateStr} sur l'état public de votre fiche Google Business${estTexte(donneesAnalyse.requeteTestee) ? `, recherche testée en navigation neutre : « ${libelleRechercheRapport(donneesAnalyse.requeteTestee)} »` : ""}. ${nbControles} vérifications applicables à cette fiche ont été passées en revue selon la méthode Efficia™.${benchTable ? "" : " Par rigueur, aucune comparaison concurrentielle n'est affichée : les données publiques des fiches concurrentes n'étaient pas assez fiables au moment de l'analyse."}</p>
     <div class="next-hint">Page suivante : comprendre d'où vient ce score <b>→</b></div>
     ${pied(1)}
   </div>
@@ -5811,7 +5814,7 @@ function genererRapport(){
     ${rapportHeaderHtml("Diagnostic Efficia™")}
     <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div>
     <h1 class="rapport-title">Ce que nous avons analysé</h1>
-    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${entreprise} au crible de ${nbControles} vérifications — les mêmes que fait ${personaSecteur(activite)}, sans s'en rendre compte, avant de choisir qui appeler pour ${secteurActiviteNaturel(activite)}${ville ? ", autour de " + ville : ""}.</p>
+    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${entreprise} au crible de ${nbControles} vérifications applicables à cette fiche — les mêmes que fait ${personaSecteur(activite)}, sans s'en rendre compte, avant de choisir qui appeler pour ${secteurActiviteNaturel(activite)}${ville ? ", autour de " + ville : ""}.</p>
     ${checklist.html}
     <p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client qui consulte votre fiche, compare les informations disponibles et observe les entreprises concurrentes.${checklist.inconnus ? ` ${phraseElementsAConfirmer(checklist.inconnus)} ${checklist.inconnus > 1 ? "Ils ne sont" : "Il n'est"} vérifiable${checklist.inconnus > 1 ? "s" : ""} que depuis l'intérieur du compte Google Business : ${checklist.inconnus > 1 ? "ils restent" : "il reste"} donc volontairement à confirmer, plutôt que présenté comme un défaut.` : ""}</p>
     <p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps. Nous avons isolé les trois actions les plus susceptibles d'améliorer rapidement la clarté et la crédibilité de votre fiche.</p>

@@ -12,6 +12,7 @@ import {
   isPubliclyUnverifiableLocation,
   normalizeQuestionnaireConditions,
 } from "./questionnaireRules.js";
+import "../../../js/score-efficia-core.js";
 
 export const CRITERE_IDS = Object.fromEntries(
   GRILLE.flatMap((categorie) => categorie.criteres.map((critere) => [critere.key, critere.key])),
@@ -95,105 +96,30 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
     }
   }
 
+  const provisional = isPubliclyUnverifiableLocation(conditions)
+    || criteria.some((criterion) => criterion.scored && criterion.points === null);
+
   return {
     scoringVersion,
     questionnaireVersion: manualReview.questionnaireVersion || QUESTIONNAIRE_VERSION,
     conditions,
-    provisional: isPubliclyUnverifiableLocation(conditions),
+    provisional,
     profileKey: manualReview.profileKey || "default",
     answers,
     criteria,
   };
 }
 
-function bounded(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION) {
   const scoringVersion = resolveScoringVersion(requestedScoringVersion);
-  const profil = CONFIG.secteurs[profileKey] || CONFIG.secteurs.default;
-  let total = 0;
-  let poidsPrisEnCompte = 0;
-  let repondus = 0;
-  let totalCrit = 0;
-  const categories = [];
-
-  GRILLE.forEach((cat) => {
-    let brut = 0;
-    let maxEvalue = 0;
-    let repondusCat = 0;
-    let nonVerifiesCat = 0;
-
-    const historicalRawMax = cat.criteres.reduce((sum, criterion) => sum + criterion.max, 0);
-    cat.criteres.forEach((cr) => {
-      const scored = scoringVersion === LEGACY_SCORING_VERSION || cr.scored !== false;
-      if (!scored) return;
-      totalCrit += 1;
-      // Portage fidèle de l'ancien Score Efficia (calc() : somme brute sur la
-      // grille de 100 points). Chaque critère compte son max au dénominateur,
-      // y compris NON VÉRIFIÉ : il vaut alors 0 point et ne peut jamais gonfler
-      // artificiellement le score. Aucune renormalisation sur les seuls critères
-      // renseignés.
-      maxEvalue += cr.max;
-      const points = answers[cr.key] ?? null;
-      if (points !== null) {
-        brut += points;
-        repondus += 1;
-        repondusCat += 1;
-      } else {
-        nonVerifiesCat += 1;
-      }
-    });
-
-    const poidsProfil = profil[cat.key] ?? cat.pts;
-    const legacy = scoringVersion === LEGACY_SCORING_VERSION;
-    const denominator = legacy ? maxEvalue : historicalRawMax;
-    const pct = denominator > 0 ? brut / denominator : 0;
-    const capacitePct = denominator > 0 ? maxEvalue / denominator : 0;
-    const pointsPonderesBruts = pct * poidsProfil;
-    const maximumEffectifCategorie = capacitePct * poidsProfil;
-    total += pointsPonderesBruts;
-    poidsPrisEnCompte += legacy ? poidsProfil : maximumEffectifCategorie;
-
-    categories.push({
-      key: cat.key,
-      label: cat.cat,
-      brut,
-      maxEvalue,
-      pct,
-      poidsProfil,
-      pointsPonderes: pointsPonderesBruts,
-      pointsPonderesBruts,
-      maximumEffectifCategorie,
-      historicalRawMax,
-      capacitePct,
-      repondusCat,
-      nonVerifiesCat,
-    });
-  });
-
-  const facteurNormalisation = Number.isFinite(poidsPrisEnCompte) && poidsPrisEnCompte > 0
-    ? 100 / poidsPrisEnCompte
-    : 0;
-  const scoreNormalise = bounded(total * facteurNormalisation, 0, 100);
-  if (scoringVersion !== LEGACY_SCORING_VERSION) {
-    categories.forEach((category) => {
-      category.pointsPonderes = category.pointsPonderesBruts * facteurNormalisation;
-      category.maximumEffectifNormalise = category.maximumEffectifCategorie * facteurNormalisation;
-    });
-  }
-  return {
-    total: Number.isFinite(scoreNormalise) ? scoreNormalise : 0,
-    repondus,
-    totalCrit,
-    categories,
-    profil,
-    poidsPrisEnCompte,
-    maximumEffectifProfil: poidsPrisEnCompte,
-    facteurNormalisation,
+  return globalThis.EfficiaScoreCore.calculateScoreDetail({
+    grid: GRILLE,
+    sectors: CONFIG.secteurs,
+    answers,
+    profileKey,
     scoringVersion,
-  };
+    legacyScoringVersion: LEGACY_SCORING_VERSION,
+  });
 }
 
 export function scoreCriteres(keys, answers = {}) {

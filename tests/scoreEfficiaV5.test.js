@@ -14,6 +14,8 @@ import { buildScoreCatalog, buildScorePrefill } from "../functions/lib/score-eff
 import { calculateScoreDetail, runScoreEfficia } from "../functions/lib/score-efficia/scoreEngine.js";
 import { incompleteQuestionnaireFields } from "../functions/lib/score-efficia/questionnaireRules.js";
 
+const calculateEfficiaScoreDetail = globalThis.EfficiaScoreCore.calculateScoreDetail;
+
 const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
 const premiumAdmin = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
 const serverRenderer = readFileSync(new URL("../functions/lib/renderAnalysisHtml.js", import.meta.url), "utf8");
@@ -25,13 +27,22 @@ function extractFunction(source, name, nextName) {
   return source.slice(start, end);
 }
 
-function calculateAdminScore(answers, profileKey = "default") {
+function calculateAdminScore(answersByKey, profileKey = "default") {
+  const adminGrid = GRILLE.map((category) => ({
+    ...category,
+    criteres: category.criteres.map((criterion) => ({ ...criterion, id: criterion.key })),
+  }));
   const context = {
-    GRILLE,
+    GRILLE: adminGrid,
+    CONFIG,
+    EfficiaScoreCore: { calculateScoreDetail: calculateEfficiaScoreDetail },
+    scoringVersionActif: SCORING_VERSION,
+    LEGACY_SCORING_VERSION,
+    profilActif: profileKey,
     result: null,
-    obtenirProfilActif: () => CONFIG.secteurs[profileKey] || CONFIG.secteurs.default,
     critereEstNote: (criterion) => criterion.scored !== false,
-    lirePoints: (id) => answers.get(id) ?? null,
+    critereEstMasque: () => false,
+    lirePoints: (id) => answersByKey[id] ?? null,
   };
   vm.runInNewContext(`${extractFunction(html, "calculScoreDetail", "listerElementsRestantsPourFinalisation")}\nresult = calculScoreDetail();`, context);
   return context.result;
@@ -109,23 +120,64 @@ test("le classement local ne récupère pas les 4,8 points retirés au profil Ar
 
 test("administration et serveur produisent le même score v5 sur un questionnaire complet", () => {
   const answersByKey = fullAnswers();
-  const answersById = new Map(GRILLE.flatMap((category) => category.criteres.map((criterion) => (
-    [criterion.id, answersByKey[criterion.key]]
-  ))));
-  const admin = calculateAdminScore(answersById, "artisan");
+  const admin = calculateAdminScore(answersByKey, "artisan");
   const server = calculateScoreDetail(answersByKey, "artisan", SCORING_VERSION);
   assert.equal(Math.round(admin.total), Math.round(server.total));
   assert.ok(Math.abs(admin.maximumEffectifProfil - server.maximumEffectifProfil) < 1e-9);
   assert.equal(admin.totalCrit, 28);
 });
 
-test("la divergence préexistante des questionnaires incomplets reste documentée", () => {
+test("questionnaire incomplet : administration, brouillon, aperçu et PDF partagent exactement le même score provisoire", () => {
   const localRank = GRILLE.flatMap((category) => category.criteres).find((criterion) => criterion.key === "classementLocal");
-  const admin = calculateAdminScore(new Map([[localRank.id, 6]]), "artisan");
-  const server = calculateScoreDetail({ classementLocal: 6 }, "artisan", SCORING_VERSION);
-  assert.equal(Math.round(admin.total), 100, "l’administration renormalise encore les seules réponses disponibles");
-  assert.equal(Math.round(server.total), 8, "le serveur conserve les critères manquants au dénominateur");
-  assert.notEqual(Math.round(admin.total), Math.round(server.total));
+  const admin = calculateAdminScore({ classementLocal: 6 }, "artisan");
+  const endpoint = runScoreEfficia({
+    manualReview: {
+      scoringVersion: SCORING_VERSION,
+      profileKey: "artisan",
+      criteriaReview: [{
+        key: "classementLocal",
+        question: localRank.q,
+        value: "compliant",
+        label: localRank.opts[0][0],
+        selectedOptionIndex: 0,
+        points: 6,
+        source: "manual",
+      }],
+    },
+  });
+  const adminScore = Math.round(admin.total);
+  const savedScore = adminScore;
+  const previewScore = endpoint.reviewedScore.roundedScore;
+  const pdfScore = endpoint.reviewedScore.roundedScore;
+  assert.equal(adminScore, 8);
+  assert.equal(adminScore, savedScore);
+  assert.equal(savedScore, previewScore);
+  assert.equal(previewScore, pdfScore);
+  assert.equal(endpoint.reviewedScore.provisional, true);
+  assert.match(html, /scoreSnapshot:\{[\s\S]*score:Math\.round\(detail\.total\)/);
+  assert.match(serverRenderer, /free\.provisional \? `<p class="methode-note">\$\{PROVISIONAL_SCORE_NOTE\}/);
+});
+
+test("le décompte applicable est dynamique et exclut la synthèse non notée", () => {
+  const hidden = new Set([
+    "nomConforme",
+    "photoRecente", "varietePhotos", "qualitePhotos",
+    "qualiteReponsesAvis",
+    "descriptionQualite", "servicesDecrits",
+    "rythmePublication",
+  ]);
+  const context = {
+    GRILLE,
+    result: null,
+    critereEstNote: (criterion) => criterion.scored !== false,
+    critereEstMasque: (criterion) => hidden.has(criterion.key),
+    critereEstNonApplicable: () => false,
+    rapportSansAvis: () => false,
+    REVIEW_DEPENDENT_KEYS: [],
+  };
+  vm.runInNewContext(`${extractFunction(html, "compterCriteresApplicablesRapport", "critereConfirmeMax")}\nresult = compterCriteresApplicablesRapport();`, context);
+  assert.equal(context.result, 20);
+  assert.match(html, /\$\{nbControles\} vérifications applicables à cette fiche/);
 });
 
 test("v4 explicite conserve le moteur historique et une analyse sans version reste historique", () => {
@@ -167,7 +219,7 @@ test("catalogue v5 : 28 critères notés, une synthèse sans radios et nouveau l
   assert.match(html, /data-informational-criterion="attractiviteConcurrents"/);
   assert.match(html, /data-legacy-attractiveness-options hidden/);
   assert.match(premiumAdmin, /data-informational-criterion/);
-  assert.match(serverRenderer, /28 critères notés[^\n"]+synthèse concurrentielle non notée/);
+  assert.match(serverRenderer, /vérifications applicables à cette fiche/);
   assert.match(serverRenderer, /\.free-diagnostic \.page-criteria \.chk-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(serverRenderer, /\/96|\/95[,.][26]/);
 });

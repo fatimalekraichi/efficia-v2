@@ -75,7 +75,7 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
     reponseZoneDesserte: () => state.serviceArea,
     critereEstMasque: (criterion) => hidden.includes(criterion.key),
     critereEstNonApplicable: (criterion) => nonApplicable.includes(criterion.key),
-    calculScoreDetail: () => ({ total: 42, repondus: 0, totalCrit: 29 }),
+    calculScoreDetail: () => ({ total: 42, repondus: 29, totalCrit: 29 }),
     mettreAJourIndicateursInternes() {},
     sauvegarderDiagnostic() {},
     statut(message, type) { status.textContent = message; status.className = type; },

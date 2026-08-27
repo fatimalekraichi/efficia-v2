@@ -40,9 +40,9 @@ function pageFixture({ business, unknown = false, longLabels = false }) {
   const unknownSuffix = unknown ? " 3 éléments restent à confirmer. Ils ne sont vérifiables que depuis l'intérieur du compte Google Business : ils restent donc volontairement à confirmer, plutôt que présenté comme un défaut." : "";
 
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action">
-    <div class="rapport-header"><div class="rapport-logo" style="height:52px">Efficia Digital</div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
+    <div class="rapport-header"><div class="rapport-logo"><svg role="img" aria-label="Efficia Digital" viewBox="0 0 340 104"><rect width="340" height="104" fill="#fff"></rect><text x="8" y="64" font-size="34" fill="#0f3186">Efficia Digital</text></svg></div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
     <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Ce que nous avons analysé</h1>
-    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 28 critères notés et d’une synthèse concurrentielle non notée.</p>
+    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 20 vérifications applicables à cette fiche.</p>
     <div class="chk-compteur"><span>✓ 15 éléments conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
     <div class="chk-grid">${cards}</div>
     <div class="chk-legend"><strong>Légende</strong> — ✓ conforme&nbsp;&nbsp;·&nbsp;&nbsp;! à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;✕ prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;○ à confirmer manuellement.</div>
@@ -56,10 +56,11 @@ function pageFixture({ business, unknown = false, longLabels = false }) {
       const content = [...page.children].filter((element) => !element.classList.contains("pied"));
       const contentBottom = Math.max(...content.map((element) => element.offsetTop + element.offsetHeight));
       const rect = (element) => { const value = element.getBoundingClientRect(); return { top:value.top, right:value.right, bottom:value.bottom, left:value.left }; };
+      const pageRect = rect(page); const header = rect(page.querySelector(".rapport-header")); const logo = rect(page.querySelector(".rapport-logo svg"));
       const next = rect(page.querySelector(".next-hint")); const counter = rect(page.querySelector(".pagination-rapport"));
       const overlaps = next.left < counter.right && next.right > counter.left && next.top < counter.bottom && next.bottom > counter.top;
       const clipped = content.some((element) => element.getBoundingClientRect().bottom > page.getBoundingClientRect().bottom + 0.5);
-      const result = { contentBottom, footerTop:footer.offsetTop, safetyLimit:footer.offsetTop - 12, footerBottom:rect(footer).bottom, pageBottom:rect(page).bottom, overlaps, clipped, exportAlert:contentBottom > footer.offsetTop - 12 };
+      const result = { contentBottom, footerTop:footer.offsetTop, safetyLimit:footer.offsetTop - 12, footerBottom:rect(footer).bottom, pageBottom:pageRect.bottom, pageLeft:pageRect.left, pageRight:pageRect.right, headerTop:header.top, logoTop:logo.top, logoRight:logo.right, logoBottom:logo.bottom, topInset:header.top-pageRect.top, overlaps, clipped, exportAlert:contentBottom > footer.offsetTop - 12 };
       document.querySelector("#layout-result").textContent = JSON.stringify(result);
     });
   <\/script></body></html>`;
@@ -88,12 +89,16 @@ test("page 3 : les scénarios variables restent au-dessus du footer sans coupe n
     for (const scenario of scenarios) {
       const htmlPath = join(directory, `${scenario.name}.html`);
       writeFileSync(htmlPath, pageFixture(scenario));
-      const output = execFileSync(chrome, ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
+      const output = execFileSync(chrome, ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
       const encoded = output.match(/<output id="layout-result">([^<]+)<\/output>/u)?.[1];
       assert.ok(encoded, `${scenario.name}: mesures DOM absentes`);
       const layout = JSON.parse(encoded.replaceAll("&quot;", '"'));
       assert.ok(layout.contentBottom <= layout.safetyLimit, `${scenario.name}: contenu ${layout.contentBottom} > limite ${layout.safetyLimit}`);
       assert.ok(layout.footerBottom <= layout.pageBottom + 0.5, `${scenario.name}: footer hors page`);
+      assert.ok(layout.topInset >= 48, `${scenario.name}: marge haute insuffisante (${layout.topInset}px)`);
+      assert.ok(layout.logoTop >= layout.headerTop - 0.5, `${scenario.name}: logo coupé en haut`);
+      assert.ok(layout.logoRight <= layout.pageRight + 0.5, `${scenario.name}: logo coupé à droite`);
+      assert.ok(layout.logoBottom < layout.pageBottom, `${scenario.name}: logo coupé en bas`);
       assert.equal(layout.overlaps, false, `${scenario.name}: compteur et indication se chevauchent`);
       assert.equal(layout.clipped, false, `${scenario.name}: bloc coupé ou masqué`);
       assert.equal(layout.exportAlert, false, `${scenario.name}: l'alerte d'export serait affichée`);
