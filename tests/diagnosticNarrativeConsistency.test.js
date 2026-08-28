@@ -613,6 +613,44 @@ test("Avis 5 : aucun avis -> branche dédiée rapportSansAvis, jamais la logique
   assert.match(resultat, /premiers avis authentiques/i);
 });
 
+test("Avis 11 : aucun avis — constat et conséquence business utilisent le texte exact requis, sans aucune critique de récence", () => {
+  // Corrige les deux maladresses éditoriales "aucun avis" (consequenceReputation) :
+  // avant ce correctif, le champ "Ce qu'il peut penser" affirmait "sans aucun avis
+  // récent" alors qu'il n'existe précisément AUCUN avis — laissant entendre que des
+  // avis plus anciens pourraient exister. Le texte ne doit jamais mentionner la
+  // récence dans ce cas : il n'y a rien dont la récence puisse être jugée.
+  const context = createFullPriorityHarness({ sansAvis: true });
+  const ctx = { data: {} };
+  const constat = context.constatObservePriorite(REPUTATION_ITEM, ctx);
+  const consequence = context.consequenceBusinessPriorite(REPUTATION_ITEM, ctx);
+  const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
+  assert.equal(constat, "Votre fiche ne présente actuellement aucun avis client.");
+  assert.equal(consequence, "Sans avis client visible, un prospect ne dispose d'aucun retour d'expérience pour se rassurer avant de vous contacter.");
+  assert.match(premierPas, /premiers avis authentiques/i);
+  assert.match(resultat, /premiers avis authentiques/i);
+  for (const texte of [constat, consequence, premierPas, resultat]) {
+    assert.doesNotMatch(texte, /avis récent|avis plus récent/i, texte);
+  }
+});
+
+test("Avis 12 : contraste permanent — 'aucun avis' (récence hors-sujet) reste distinct d'avis existants mais anciens (récence autorisée)", () => {
+  // "Aucun avis" : la récence n'a pas de sens à évoquer (rien à dater).
+  const sansAvis = createFullPriorityHarness({ sansAvis: true });
+  const consequenceSansAvis = sansAvis.consequenceBusinessPriorite(REPUTATION_ITEM, { data: {} });
+  assert.doesNotMatch(consequenceSansAvis, /récen/i);
+  assert.doesNotMatch(consequenceSansAvis, /avis récent|avis plus récent/i);
+
+  // "Avis existants mais anciens" : des avis existent (recenceAvis insuffisant,
+  // nbAvis > 0) — la formulation peut alors signaler l'absence de récence, mais
+  // doit rester construite sur un volume d'avis réellement observé.
+  const avisAnciens = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "insuffisant" } });
+  const ctxAnciens = { data: { note: 3.4, nbAvis: 15, moyennesConcurrents: { avis: 10 } } };
+  const resultatAnciens = avisAnciens.resultatAttenduPriorite(REPUTATION_ITEM, ctxAnciens);
+  assert.match(resultatAnciens, /avis plus récents/i);
+  assert.notEqual(consequenceSansAvis, avisAnciens.consequenceBusinessPriorite(REPUTATION_ITEM, ctxAnciens));
+});
+
 test("Avis 6 : avis récents conformes -> jamais de formulation de manque de récence (recommandation + résultat)", () => {
   const scenarios = [
     { recenceAvis: "conforme", tauxReponseAvis: "conforme", note: 4.9, nbAvis: 25 },
@@ -852,4 +890,79 @@ test("Infos 24 : cas réel MK Elec Saint-Léger (score 45/100, PDF de référenc
     context.resultatAttenduPriorite(INFOS_ITEM, { data: {} }),
   ].join(" ");
   assert.doesNotMatch(allTexts, /\bhoraires\b|\btéléphone\b|\bsite web\b|zone desservie|cohérence|\badresse\b/i);
+});
+
+/* ---------------------------------------------------------------------- */
+/* 12) Description absente — jamais "sur votre fiche...sur votre fiche    */
+/* Google" ; description présente -> jamais recommandée comme absente     */
+/* ---------------------------------------------------------------------- */
+const OFFRE_ITEM = { famille: "offre" };
+const REPETITION_FICHE = /sur votre fiche[\s\S]{0,80}sur votre fiche google/i;
+
+test("Offre 1 : description absente -> texte exact requis, sans répétition 'sur votre fiche...sur votre fiche Google'", () => {
+  const context = createFullPriorityHarness();
+  const ctx = { data: { descriptionLongueur: 0 }, recherche: "", entreprise: "" };
+  const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
+  assert.match(texte, /^Sur votre fiche, aucune description n’est visible\./);
+  assert.doesNotMatch(texte, REPETITION_FICHE);
+  assert.doesNotMatch(texte, /sur votre fiche google/i);
+  const occurrences = (texte.match(/sur votre fiche/gi) || []).length;
+  assert.equal(occurrences, 1, texte);
+});
+
+test("Offre 2 : description absente + services absents -> même garde-fou de non-répétition, texte combiné cohérent", () => {
+  const context = createFullPriorityHarness();
+  const ctx = { data: { descriptionLongueur: 0, nbServices: 0 }, recherche: "électricien Neufchâteau", entreprise: "Computelec" };
+  const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
+  // Le fragment "services" utilise une apostrophe droite dans le code source
+  // existant ("n'est détaillé") — non réécrit ici, seule la répétition
+  // "sur votre fiche...sur votre fiche Google" était dans le périmètre du correctif.
+  assert.match(texte, /^Sur votre fiche, aucune description n’est visible et aucun service n'est détaillé\./);
+  assert.doesNotMatch(texte, REPETITION_FICHE);
+  assert.doesNotMatch(texte, /sur votre fiche google/i);
+});
+
+test("Offre 3 : description présente et complète -> jamais présentée comme absente ni recommandée à tort", () => {
+  const context = createFullPriorityHarness();
+  const ctx = { data: { descriptionLongueur: 650, nbServices: 5 }, recherche: "", entreprise: "" };
+  const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
+  assert.doesNotMatch(texte, /aucune description n’est visible/i);
+  assert.doesNotMatch(texte, REPETITION_FICHE);
+});
+
+test("Offre 4 : description courte (non vide) -> formulation de brièveté, jamais confondue avec l'absence", () => {
+  const context = createFullPriorityHarness();
+  const ctx = { data: { descriptionLongueur: 120 }, recherche: "", entreprise: "" };
+  const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
+  assert.match(texte, /trop courte/i);
+  assert.doesNotMatch(texte, /aucune description n’est visible/i);
+  assert.doesNotMatch(texte, REPETITION_FICHE);
+});
+
+/* ---------------------------------------------------------------------- */
+/* 13) Aperçu administrateur et PDF : source unique de rendu               */
+/*                                                                          */
+/* Les deux corrections éditoriales (avis / description) ci-dessus         */
+/* couvrent constatObservePriorite() et consequenceReputation(), qui       */
+/* alimentent rendrePriorite() — la seule fonction qui construit les       */
+/* cartes de priorités. "Aperçu avant impression" (apercuImpression) et    */
+/* le PDF (telechargerPDF / telechargerPDFNatif) appellent tous deux       */
+/* genererRapport(), puis capturent ce même DOM avec html2canvas : il      */
+/* n'existe pas de second chemin de génération de texte pour le PDF.       */
+/* ---------------------------------------------------------------------- */
+test("rendu — l'aperçu admin et le PDF partagent la même génération de rapport (aucun chemin narratif distinct)", () => {
+  assert.match(html, /async function apercuImpression\(\)\{[\s\S]*?genererRapport\(\)/);
+  assert.match(html, /async function telechargerPDF\(\)\{[\s\S]*?genererRapport\(\)/);
+  assert.match(html, /async function telechargerPDFNatif\(filename\)\{[\s\S]*?genererRapport\(\)|function telechargerPDFNatif/);
+
+  // telechargerPDF() est la dernière fonction déclarée dans le fichier (elle
+  // est suivie directement de la fermeture </script></body></html>) : la
+  // borne de fin est donc la fin du script, pas une autre déclaration de fonction.
+  const pdfBlock = sliceBetween(html, "async function telechargerPDF(){", "\n</script>");
+  // La capture PDF (html2canvas) ne doit reconstruire aucun texte narratif :
+  // elle capture le DOM déjà produit par genererRapport() -> rendrePriorite().
+  for (const fn of ["constatObservePriorite", "consequenceBusinessPriorite", "consequenceReputation", "rendrePriorite"]) {
+    assert.doesNotMatch(pdfBlock, new RegExp(fn), `telechargerPDF ne doit pas appeler ${fn} directement`);
+  }
+  assert.match(pdfBlock, /html2canvasFn\(page/);
 });

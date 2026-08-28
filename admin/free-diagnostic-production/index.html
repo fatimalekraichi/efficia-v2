@@ -5870,7 +5870,7 @@ function constatObservePriorite(item, ctx){
     const servicesTxt = estNombre(d.nbServices) ? (d.nbServices === 0 ? "aucun service n'est détaillé" : `seulement ${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""} listé${d.nbServices > 1 ? "s" : ""}`) : "";
     if(descVide || descCourte || servicesTxt){
       const morceaux = [];
-      if(descVide) morceaux.push("aucune description n’est visible sur votre fiche Google");
+      if(descVide) morceaux.push("aucune description n’est visible");
       else if(descCourte) morceaux.push("la description est présente, mais reste trop courte pour présenter clairement l’activité");
       if(servicesTxt) morceaux.push(servicesTxt);
       const nomEcho = rq && ctx.entreprise && rq.split(" ").some(w => w.length >= 4 && ctx.entreprise.toLowerCase().includes(w.toLowerCase()));
@@ -5909,7 +5909,7 @@ function constatObservePriorite(item, ctx){
      qu'affirmation. */
 function consequenceReputation(ctx){
   if(rapportSansAvis())
-    return "Il peut hésiter à vous contacter : sans aucun avis récent, il ne dispose d'aucun élément pour se rassurer avant d'appeler.";
+    return "Sans avis client visible, un prospect ne dispose d'aucun retour d'expérience pour se rassurer avant de vous contacter.";
 
   const d = ctx.data || {};
   const m = d.moyennesConcurrents || {};
