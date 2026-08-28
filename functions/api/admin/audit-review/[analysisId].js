@@ -10,6 +10,27 @@ import { buildDocumentModelFromAnalysis } from "../../../lib/documentModelFromAn
 import { resolveReportCity } from "../../../lib/auditComposition.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../../lib/auditQuestionnaireSnapshots.js";
+import { evaluateGeographicAnchorReadiness } from "../../../lib/geographicAnchor.js";
+
+// Mission "ancrage géographique automatique" (Point 3, revue) — cette
+// approbation manuelle (branche non-Premium de approveAnalysis) fixe
+// analyses.status = 'approved' directement, sans jamais passer par
+// finalizeQuestionnaireSnapshot. Normalement, seul le Premium emprunte ce
+// chemin (le diagnostic gratuit n'est jamais redirigé ici sauf après
+// transfert Premium, où l'analyse devient elle-même Premium) ; mais rien
+// n'empêche un client d'appeler directement PATCH .../audit-review/{id}
+// avec action=approve sur l'identifiant d'un diagnostic gratuit. Par
+// défense en profondeur, cette branche applique donc la même règle que la
+// finalisation (audit-snapshots/[analysisId].js) plutôt que de supposer que
+// l'UI seule empêchera cet appel.
+const GEOGRAPHIC_ANCHOR_APPROVAL_MESSAGES = {
+  GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS:
+    "La zone géographique utilisée pour la dernière recherche n\u2019a pas pu être confirmée. Relancez l\u2019analyse avant d\u2019approuver le diagnostic.",
+  GEOGRAPHIC_ANCHOR_STALE:
+    "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l\u2019analyse avant d\u2019approuver le diagnostic.",
+  SEARCH_QUERY_STALE:
+    "La requête affichée diffère de la dernière recherche analysée. Relancez l\u2019analyse avant d\u2019approuver le diagnostic.",
+};
 
 async function readPayload(request) {
   try {
@@ -363,7 +384,9 @@ async function approveAnalysis(db, analysisId) {
     console.error(JSON.stringify({ message: "audit approval refused", reference, analysis_id: analysisId, error: "INCOMPLETE_QUESTIONNAIRE" }));
     return jsonResponse({ success: false, error: "INCOMPLETE_QUESTIONNAIRE", reference }, 409);
   }
-  const fullAnalysis = row?.report_type === "premium" ? await loadAnalysisById(db, analysisId) : null;
+  const fullAnalysis = (row?.report_type === "premium" || row?.report_type === "free")
+    ? await loadAnalysisById(db, analysisId)
+    : null;
   const executionPlan = fullAnalysis ? buildDocumentModelFromAnalysis(fullAnalysis).executionPlan : null;
   const executionIssues = row?.report_type === "premium" ? executionPlanApprovalIssues(executionPlan, manualReview?.executionPlan) : [];
   if (executionIssues.length) {
@@ -392,6 +415,27 @@ async function approveAnalysis(db, analysisId) {
     }
     snapshotCreated = finalization.created;
   } else {
+    if (row.report_type === "free") {
+      const readiness = evaluateGeographicAnchorReadiness({
+        normalized: fullAnalysis?.business?.normalized || {},
+        fiche: fullAnalysis?.business?.fiche || {},
+        business: fullAnalysis?.business || {},
+        benchmarkAverages: fullAnalysis?.benchmark?.averages || {},
+      });
+      if (!readiness.ok) {
+        console.error("audit-review: approbation refusée (ancrage géographique)", {
+          phase: "geographic_anchor_finalization",
+          analysis_id: analysisId,
+          code: readiness.code,
+        });
+        return jsonResponse({
+          success: false,
+          error: readiness.code,
+          message: GEOGRAPHIC_ANCHOR_APPROVAL_MESSAGES[readiness.code]
+            || "La zone géographique de cette analyse doit être reconfirmée avant d\u2019approuver le diagnostic.",
+        }, 409, { "Cache-Control": "no-store" });
+      }
+    }
     await db.prepare(`
       UPDATE analyses
       SET status = 'approved', approved_at = ?, updated_at = ?

@@ -259,6 +259,13 @@ export function selectValidReviewCompetitors(places, limit = 3) {
 
 export async function collectCompetitors({
   activite, ville, requete: requeteExplicite, placeIdCible, cidCible, urlCible, apiKey,
+  // Ancrage géographique automatique (mission "ancrage géographique") :
+  // coordinates ("latitude,longitude", paramètre officiel Outscraper) et
+  // region (code pays ISO 2 lettres) — jamais dérivés ici, toujours résolus
+  // en amont par geographicAnchor.js à partir de données déjà vérifiées
+  // côté serveur. Optionnels : quand absents, le comportement est identique
+  // à avant cette mission (aucune régression sur les appels existants).
+  coordinates = "", region = "",
   timeoutMs = DEFAULT_TIMEOUT_MS, suppressSensitiveLogs = false,
 } = {}) {
   const activiteTrim = (activite || "").trim();
@@ -280,6 +287,20 @@ export async function collectCompetitors({
   url.searchParams.set("organizationsPerQueryLimit", "10");
   url.searchParams.set("async", "false");
   url.searchParams.set("language", "fr");
+  // Ancrage géographique : paramètres officiels Outscraper (voir doc
+  // https://docs.outscraper.com/endpoints/google-maps-search/ — "coordinates"
+  // au format "latitude,longitude", "region" au format ISO 2 lettres).
+  // Validation stricte avant envoi : une valeur malformée n'est jamais
+  // transmise telle quelle, ni utilisée pour deviner autre chose ; la
+  // requête `query` n'est elle-même jamais modifiée par cet ancrage.
+  const coordinatesTrim = String(coordinates || "").trim();
+  const anchorCoordinatesUsed = /^-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?$/.test(coordinatesTrim)
+    ? coordinatesTrim
+    : null;
+  if (anchorCoordinatesUsed) url.searchParams.set("coordinates", anchorCoordinatesUsed);
+  const regionTrim = String(region || "").trim().toUpperCase();
+  const anchorRegionUsed = /^[A-Z]{2}$/.test(regionTrim) ? regionTrim : null;
+  if (anchorRegionUsed) url.searchParams.set("region", anchorRegionUsed);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -372,6 +393,12 @@ export async function collectCompetitors({
     sponsoredResultsExcluded: sponsoredResults.length,
     targetObservation,
     rankEvidence,
+    // Séparation obligatoire (mission "ancrage géographique") : l'ancrage
+    // réellement transmis au fournisseur, distinct de `requete` (jamais
+    // modifiée par cet ancrage) — permet à l'appelant de tracer/afficher ce
+    // qui a réellement été utilisé sans jamais le mélanger à la recherche
+    // affichée à l'administrateur.
+    anchorUsed: { coordinates: anchorCoordinatesUsed, region: anchorRegionUsed },
   };
 }
 

@@ -127,8 +127,8 @@ function markAnalysisCollected(db, analysisId = ANALYSIS_ID) {
     SET nom = 'Maison Test', ville = 'Bruxelles', place_id = 'place-target', name = 'Maison Test',
         rating = 4.7, reviews = 82, photos_count = 31, description_length = 20,
         activity = 'Pâtisserie', competitors_json = '[]',
-        fiche_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie"}',
-        normalized_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie","observed_fields":[]}'
+        fiche_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie","postal_code":"1000","country":"Belgique","country_code":"BE"}',
+        normalized_json = '{"name":"Maison Test","place_id":"place-target","city":"Bruxelles","category":"Pâtisserie","observed_fields":[],"postal_code":"1000","country":"Belgique","country_code":"BE"}'
     WHERE analysis_id = ?
   `).run(analysisId);
 }
@@ -377,8 +377,8 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
   db.sqlite.prepare(`
     UPDATE analyses SET nom = 'Bivert Alain', name = 'Bivert Alain', ville = 'Attert',
       rating = 1.8, reviews = 5, photos_count = 1,
-      fiche_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité"}',
-      normalized_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité","observed_fields":["category"]}',
+      fiche_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité","postal_code":"6717","country":"Belgique","country_code":"BE"}',
+      normalized_json = '{"name":"Bivert Alain","place_id":"place-target","city":"Attert","category":"Fournisseur d’électricité","observed_fields":["category"],"postal_code":"6717","country":"Belgique","country_code":"BE"}',
       search_query = 'Fournisseur d’électricité Attert', local_position = 8,
       competitors_json = '[{"name":"Ancien concurrent","rating":3.1,"reviews":8,"photos_count":2}]',
       avg_rating = 3.1, avg_reviews = 8, avg_photos = 2

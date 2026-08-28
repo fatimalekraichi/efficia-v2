@@ -104,8 +104,13 @@ function seedManualMetadataPending(db, analysisId, { creationSource = "duplicate
 // recherche (refresh_search) soit acceptée — indépendamment de la porte
 // d'autorisation admin_manual / duplicate_manual testée ici même.
 function markInitialCollection(db, analysisId = ANALYSIS_ID, { companyName = "Maison Test", city = "Bruxelles" } = {}) {
-  const fiche = JSON.stringify({ name: companyName, place_id: "place-target", city, category: "Boulangerie" });
-  const normalized = JSON.stringify({ name: companyName, place_id: "place-target", city, category: "Boulangerie", observed_fields: [] });
+  // Mission "ancrage géographique" : postal_code/country/country_code sont
+  // désormais capturés dès l'identification initiale (collectFiche.js) —
+  // ce repli reflète ce qu'une vraie collecte fournirait, pour que la
+  // relance de recherche testée ici reste possible (voir geographicAnchor.js).
+  const geo = { postal_code: "1000", country: "Belgique", country_code: "BE" };
+  const fiche = JSON.stringify({ name: companyName, place_id: "place-target", city, category: "Boulangerie", ...geo });
+  const normalized = JSON.stringify({ name: companyName, place_id: "place-target", city, category: "Boulangerie", observed_fields: [], ...geo });
   db.sqlite.prepare(`
     UPDATE analyses
     SET name = ?, place_id = 'place-target', rating = 4.5, reviews = 40, photos_count = 12,

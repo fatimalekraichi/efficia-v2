@@ -7,6 +7,7 @@ import { buildScorePrefill } from "./score-efficia/scoreCatalog.js";
 import { resolveScoringVersion } from "./score-efficia/scoreConfig.js";
 import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
 import { normalizeStoredActionLinkEvidence } from "./actionLinkEvidence.js";
+import { evaluateGeographicAnchorReadiness } from "./geographicAnchor.js";
 
 /**
  * Recherche la commande et la tâche liées à une analyse.
@@ -192,6 +193,29 @@ export function buildFreeDiagnosticCollectionState(analysis) {
       sponsoredResultsExcluded: numberOrNull(business.sponsoredResultsExcluded) ?? 0,
       searchQuery: firstNonEmpty(business.searchQuery),
       searchAnalyzedAt: firstNonEmpty(analysis?.timestamps?.updatedAt),
+      // Ancrage géographique automatique (mission "ancrage géographique") :
+      // évaluation unique et partagée (evaluateGeographicAnchorReadiness,
+      // geographicAnchor.js) — la même que celle utilisée côté serveur pour
+      // bloquer la finalisation (confirm_finalization). Distingue :
+      //  - aucun résultat concurrentiel existant -> jamais présenté comme
+      //    périmé (fonctionnement normal de la première analyse) ;
+      //  - des résultats existent mais aucun ancrage n'a jamais été
+      //    mémorisé (fiche antérieure à cette mission) -> périmé ;
+      //  - un ancrage mémorisé qui ne correspond plus à l'état actuel de la
+      //    fiche -> périmé. Seul le libellé humain est exposé au
+      //    navigateur — jamais les coordonnées brutes.
+      ...(() => {
+        const readiness = evaluateGeographicAnchorReadiness({
+          normalized, fiche, business,
+          benchmarkAverages: analysis?.benchmark?.averages || {},
+        });
+        return {
+          geographicAnchor: readiness.persisted,
+          geographicAnchorLive: readiness.live,
+          geographicAnchorStale: !readiness.ok,
+          geographicAnchorIssue: readiness.ok ? null : readiness.code,
+        };
+      })(),
       competitors: (Array.isArray(business.competitors) ? business.competitors : []).map((competitor) => ({
         name: firstNonEmpty(competitor?.name),
         rating: numberOrNull(competitor?.rating),

@@ -450,6 +450,16 @@ function mapPlace(place) {
     // si Outscraper ne les renvoie pas, ces champs restent vides.
     city: place.city || "",
     borough: place.borough || place.county || "",
+    // Ancrage géographique fiable (mission "ancrage géographique automatique") :
+    // latitude/longitude/postal_code/country/country_code sont des champs
+    // Outscraper documentés (dictionnaire Google Maps) jusqu'ici jamais extraits.
+    // Capturés tels quels, jamais recalculés ni devinés — si Outscraper ne les
+    // renvoie pas, ces champs restent vides/null et ne servent à rien inventer.
+    latitude: toNumberOrNull(place.latitude),
+    longitude: toNumberOrNull(place.longitude),
+    postal_code: place.postal_code || "",
+    country: place.country || "",
+    country_code: place.country_code || "",
     observed_fields,
     action_links_status: actionLinkEvidence.availability,
     action_links: actionLinkEvidence.links,

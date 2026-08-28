@@ -693,6 +693,10 @@
         <p class="recherche-etat" id="etat-recherche-analysee" aria-live="polite"></p>
       </div>
       <p class="recherche-alerte" id="alerte-recherche-perimee" role="alert" hidden>La recherche a été modifiée. Relancez l’analyse avant de générer le diagnostic.</p>
+      <p class="recherche-etat" id="zone-geo-derniere" aria-live="polite" hidden></p>
+      <p class="recherche-etat" id="zone-geo-detectee" aria-live="polite" hidden></p>
+      <p class="recherche-alerte" id="alerte-zone-geo-manquante" role="alert" hidden>La zone géographique n’a pas pu être déterminée automatiquement. Vérifiez la fiche avant de relancer l’analyse.</p>
+      <p class="recherche-alerte" id="alerte-zone-geo-perimee" role="alert" hidden></p>
       <h3 style="font-size:.95rem;margin:18px 0 8px">Top 3 concurrents sur la recherche testée <span style="font-weight:400;color:var(--gris);font-size:.82rem">(au moins le 1er ; noms affichés dans le rapport)</span></h3>
       <div class="conc-grid entete"><span>Nom de la fiche concurrente</span><span>Note</span><span>Avis</span><span>Photos</span><span>Services</span><span>Publis</span></div>
       <div class="conc-grid"><input type="text" id="dc-nom-1" placeholder="Nom"><input type="text" id="dc-note-1" placeholder="Note"><input type="text" id="dc-avis-1" placeholder="Avis"><input type="text" id="dc-photos-1" placeholder="Photos"><input type="text" id="dc-services-1" placeholder="Services"><input type="text" id="dc-pubs-1" placeholder="Publications"></div>
@@ -2781,6 +2785,22 @@ const TYPES_GENERIQUES = ["point_of_interest","establishment","store","food","he
 function statut(msg, type){ const s = document.getElementById("statut"); s.className = type; s.innerHTML = msg; }
 
 const MESSAGE_RECHERCHE_PERIMEE = "La recherche a été modifiée. Relancez l’analyse avant de générer le diagnostic.";
+// "L’ancrage analysé" (figé lors de la dernière recherche réussie) diverge de
+// "l’ancrage actuellement détecté" (recalculé côté serveur à chaque lecture,
+// voir freeDiagnosticProductionLink.js) : jamais présenté comme à jour tant
+// qu’une nouvelle recherche n’a pas confirmé la zone. Trois formulations
+// distinctes, jamais interchangeables (mission "ancrage géographique
+// automatique", Point 4) : une nouvelle zone détectée n'est pas la même
+// situation qu'une zone qui ne peut plus être vérifiée, ni qu'une zone
+// jamais confirmée pour des résultats hérités d'avant cette mission.
+const MESSAGE_ZONE_GEO_PERIMEE = "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l’analyse pour la confirmer.";
+const MESSAGE_ZONE_GEO_NON_VERIFIABLE = "La zone géographique actuelle ne peut plus être vérifiée automatiquement. Vérifiez la fiche puis relancez l’analyse.";
+const MESSAGE_ZONE_GEO_JAMAIS_CONFIRMEE = "La zone géographique utilisée pour les résultats affichés n’a jamais été confirmée. Relancez l’analyse pour la vérifier.";
+function messageZoneGeoPerimee(){
+  if(donneesAnalyse.zoneGeographiqueIssue === "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS") return MESSAGE_ZONE_GEO_JAMAIS_CONFIRMEE;
+  if(donneesAnalyse.zoneGeographiqueIssue === "GEOGRAPHIC_ANCHOR_STALE" && !donneesAnalyse.zoneGeographiqueLive) return MESSAGE_ZONE_GEO_NON_VERIFIABLE;
+  return MESSAGE_ZONE_GEO_PERIMEE;
+}
 let relanceRechercheEnCours = false;
 let requetePersonnalisee = false;
 const criteresTouchesManuellement = new Set();
@@ -2799,13 +2819,28 @@ function rechercheEstPerimee(){
   return requete !== normaliserRecherche(donneesAnalyse.derniereRequeteAnalysee)
     || activite !== normaliserRecherche(donneesAnalyse.derniereActiviteAnalysee);
 }
+// Ancrage géographique automatique : périmé quand le serveur détecte que
+// l'ancrage réellement utilisé pour produire position/concurrents actuels
+// (geographicAnchorStale, voir freeDiagnosticProductionLink.js) ne
+// correspond plus à ce que la fiche indiquerait aujourd'hui — jamais
+// recalculé côté client, jamais deviné : uniquement le verdict serveur.
+function zoneGeographiqueEstPerimee(){
+  return Boolean(collecteDiagnosticValidee) && Boolean(donneesAnalyse.zoneGeographiqueStale);
+}
 function mettreAJourEtatRecherche(){
-  const stale = rechercheEstPerimee();
+  const staleRequete = rechercheEstPerimee();
+  const staleZone = zoneGeographiqueEstPerimee();
+  const stale = staleRequete || staleZone;
   const alert = document.getElementById("alerte-recherche-perimee");
+  const zoneAlert = document.getElementById("alerte-zone-geo-perimee");
   const card = document.getElementById("carte-donnees-observees");
   const state = document.getElementById("etat-recherche-analysee");
   const refresh = document.getElementById("btn-relancer-recherche");
-  if(alert) alert.hidden = !stale;
+  if(alert) alert.hidden = !staleRequete;
+  if(zoneAlert){
+    zoneAlert.hidden = !staleZone;
+    zoneAlert.textContent = staleZone ? messageZoneGeoPerimee() : "";
+  }
   card?.classList.toggle("recherche-perimee", stale);
   document.querySelectorAll("[data-report-generation]").forEach((button) => { button.disabled = stale; });
   if(refresh) refresh.disabled = relanceRechercheEnCours || modeLectureSeule() || !normaliserRecherche(document.getElementById("d-requete")?.value);
@@ -2819,6 +2854,83 @@ function mettreAJourEtatRecherche(){
     state.textContent = "Aucune recherche analysée.";
   }
   return stale;
+}
+
+// Ancrage géographique automatique (mission "ancrage géographique") :
+// affichage discret, en lecture seule — jamais un champ modifiable par
+// l'administrateur, jamais utilisé pour composer la recherche affichée.
+//
+// Point 4 (revue) : quatre à cinq états distincts, jamais mélangés — en
+// particulier, jamais "Zone automatiquement détectée : <ancienne zone>"
+// affiché en même temps qu'un avertissement disant que la zone actuelle est
+// absente ou différente (c'était le défaut exact signalé).
+//   1. Ancrage analysé toujours à jour (pas périmé, ancrage mémorisé) :
+//      "Zone utilisée pour la dernière analyse : <libellé>", aucun avertissement.
+//   2. Nouvelle zone détectée, différente et vérifiable (GEOGRAPHIC_ANCHOR_STALE,
+//      ancrage actuel résolvable) : "Dernière zone analysée : <ancien>" PUIS
+//      "Zone actuellement détectée : <nouveau>" PUIS l'avertissement de relance.
+//   3. Zone actuelle non vérifiable mais une ancienne analyse existe
+//      (GEOGRAPHIC_ANCHOR_STALE, ancrage actuel non résolvable) :
+//      "Dernière zone analysée : <ancien>" PUIS un avertissement disant que
+//      la zone actuelle ne peut pas être confirmée — jamais de "nouvelle
+//      zone" inventée.
+//   4. Aucune analyse concurrentielle encore effectuée (pas périmé, aucun
+//      ancrage mémorisé) : "Zone automatiquement détectée : <libellé actuel>",
+//      comportement normal, jamais présenté comme périmé.
+//   5. Résultats hérités sans ancrage jamais mémorisé
+//      (GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS) : aucune "dernière
+//      zone" à afficher (elle n'a jamais été enregistrée), la zone
+//      actuellement détectée reste indiquée à titre informatif si
+//      disponible, avec un avertissement dédié — jamais "Zone utilisée pour
+//      la dernière analyse", qui laisserait croire que c'est confirmé.
+function actualiserZoneGeographique(business = {}){
+  const persisted = business.geographicAnchor && typeof business.geographicAnchor === "object" ? business.geographicAnchor : null;
+  const live = business.geographicAnchorLive && typeof business.geographicAnchorLive === "object" ? business.geographicAnchorLive : null;
+  const issue = business.geographicAnchorIssue || null;
+  const persistedLabel = persisted ? String(persisted.label || "").trim() : "";
+  const liveLabel = live ? String(live.label || "").trim() : "";
+  const stale = Boolean(business.geographicAnchorStale);
+
+  const derniere = document.getElementById("zone-geo-derniere");
+  const detectee = document.getElementById("zone-geo-detectee");
+
+  if(!stale && persistedLabel){
+    // État 1.
+    if(derniere){ derniere.hidden = true; derniere.textContent = ""; }
+    if(detectee){ detectee.hidden = false; detectee.textContent = `Zone utilisée pour la dernière analyse : ${persistedLabel}`; }
+  }else if(!stale){
+    // État 4.
+    if(derniere){ derniere.hidden = true; derniere.textContent = ""; }
+    if(detectee){
+      detectee.hidden = !liveLabel;
+      detectee.textContent = liveLabel ? `Zone automatiquement détectée : ${liveLabel}` : "";
+    }
+  }else if(issue === "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS"){
+    // État 5.
+    if(derniere){ derniere.hidden = true; derniere.textContent = ""; }
+    if(detectee){
+      detectee.hidden = !liveLabel;
+      detectee.textContent = liveLabel ? `Zone actuellement détectée : ${liveLabel}` : "";
+    }
+  }else if(liveLabel){
+    // État 2.
+    if(derniere){ derniere.hidden = !persistedLabel; derniere.textContent = persistedLabel ? `Dernière zone analysée : ${persistedLabel}` : ""; }
+    if(detectee){ detectee.hidden = false; detectee.textContent = `Zone actuellement détectée : ${liveLabel}`; }
+  }else{
+    // État 3.
+    if(derniere){ derniere.hidden = !persistedLabel; derniere.textContent = persistedLabel ? `Dernière zone analysée : ${persistedLabel}` : ""; }
+    if(detectee){ detectee.hidden = true; detectee.textContent = ""; }
+  }
+
+  donneesAnalyse.zoneGeographique = persistedLabel ? persisted : null;
+  // "Ancrage analysé" vs "ancrage actuellement détecté" (voir
+  // freeDiagnosticProductionLink.js::geographicAnchorStale) : mémorisés ici
+  // pour que mettreAJourEtatRecherche()/messageZoneGeoPerimee() choisissent
+  // le bon avertissement et bloquent la génération tant que la zone n'a pas
+  // été reconfirmée par une nouvelle recherche.
+  donneesAnalyse.zoneGeographiqueLive = liveLabel ? live : null;
+  donneesAnalyse.zoneGeographiqueStale = stale;
+  donneesAnalyse.zoneGeographiqueIssue = issue;
 }
 function proposerRequeteDepuisActivite(){
   const input = document.getElementById("d-requete");
@@ -3103,6 +3215,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   preRemplirDonneesObservees();
   actualiserPreuvesCategories(business);
   actualiserPreuvesAutomatiques(business, scorePrefill);
+  actualiserZoneGeographique(business);
   requetePersonnalisee = normaliserRecherche(business.searchQuery) !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   appliquerPreRemplissageDiagnosticGratuit(scorePrefill);
@@ -3149,8 +3262,9 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null, zoneGeographique:null, zoneGeographiqueStale:false};
   requetePersonnalisee = false;
+  actualiserZoneGeographique({});
   mettreAJourEtatRecherche();
   majConditionsQuestionnaire();
   calc();
@@ -3274,6 +3388,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     });
   }
   donneesAnalyse = next;
+  actualiserZoneGeographique(business);
   actualiserPreuvesCategories(business);
   actualiserPreuvesAutomatiques(business, scorePrefill);
   const refreshedCriteria = new Map((scorePrefill?.criteria || []).map((criterion) => [criterion.key, criterion]));
@@ -3333,6 +3448,8 @@ async function relancerAnalyseRecherche(){
   const initialLabel = button?.textContent || "Relancer l’analyse sur cette recherche";
   relanceRechercheEnCours = true;
   if(button){ button.disabled = true; button.textContent = "Analyse en cours…"; }
+  const zoneAlert = document.getElementById("alerte-zone-geo-manquante");
+  if(zoneAlert) zoneAlert.hidden = true;
   mettreAJourEtatRecherche();
   statut("Nouvelle analyse de la recherche en cours…", "info");
   try{
@@ -3345,11 +3462,19 @@ async function relancerAnalyseRecherche(){
     if(response.status === 401){ window.location.href = "/admin-login"; return; }
     const data = await response.json().catch(() => ({}));
     if(!response.ok || !data.success || data.operation !== "refresh_search" || data.analysisId !== analysisId || data.reportType !== "free"){
-      throw new Error(String(data.message || "La nouvelle analyse n’a pas pu être terminée."));
+      const failure = new Error(String(data.message || "La nouvelle analyse n’a pas pu être terminée."));
+      failure.code = data.error || null;
+      throw failure;
     }
     appliquerResultatsRecherche(data.business, data.scorePrefill, data.searchAnalyzedAt, searchQuery);
     statut(`Analyse mise à jour sur « ${escapeHtml(searchQuery)} ».`, "info");
   }catch(error){
+    // Échec fournisseur ou ancrage indisponible : les anciennes données
+    // (position, concurrents, moyennes, zone détectée) restent inchangées —
+    // aucune écriture partielle n'a eu lieu côté serveur (voir
+    // refreshSearchAnalysis dans free-diagnostic-collect). L'état "périmée"
+    // est maintenu par mettreAJourEtatRecherche() ci-dessous.
+    if(error?.code === "GEOGRAPHIC_ANCHOR_UNAVAILABLE" && zoneAlert) zoneAlert.hidden = false;
     mettreAJourEtatRecherche();
     statut(`${escapeHtml(error?.message || "La nouvelle analyse n’a pas pu être terminée.")} Les résultats précédents sont conservés et restent signalés comme périmés.`, "erreur");
   }finally{
@@ -3932,17 +4057,41 @@ async function restaurerBrouillonD1(){
   if(readonly) verrouillerQuestionnaireLectureSeule(draft);
 }
 
+// Mission "ancrage géographique automatique" (Point 3, revue) — le PDF
+// gratuit est généré 100% côté navigateur (html2canvas + jsPDF), aucun
+// octet ne transite par le serveur : cet appel, exécuté juste après, est le
+// seul point d'écriture serveur qui enregistre le diagnostic comme
+// terminé (analyses.status = 'pdf_generated'), condition également requise
+// pour le transfert Premium manuel. Le serveur (audit-snapshots, action
+// "finalize") refuse cette écriture — avec un code explicite, jamais une
+// simple désactivation de bouton côté JavaScript — si la zone géographique
+// qui a produit les résultats affichés n'est plus confirmée à jour.
+// `displayedSearchQuery` transmet la requête actuellement affichée : sans
+// elle, le serveur ne peut pas détecter une requête modifiée mais jamais
+// réanalysée (voir SEARCH_QUERY_STALE dans evaluateGeographicAnchorReadiness).
+const MESSAGES_ECHEC_FINALISATION_ANCRAGE = {
+  GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS: "La zone géographique de la dernière recherche n’a pas pu être confirmée. Relancez l’analyse puis régénérez le PDF.",
+  GEOGRAPHIC_ANCHOR_STALE: "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l’analyse puis régénérez le PDF.",
+  SEARCH_QUERY_STALE: "La requête affichée diffère de la dernière recherche analysée. Relancez l’analyse puis régénérez le PDF.",
+};
+
 async function finaliserBrouillonD1ApresPDF(pdfFilename){
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
+  const displayedSearchQuery = normaliserRecherche(document.getElementById("d-requete")?.value);
   const response = await fetch(`/api/admin/audit-snapshots/${encodeURIComponent(analysisId)}`, {
     method:"POST",
     credentials:"same-origin",
     headers:{"Content-Type":"application/json","Accept":"application/json"},
-    body:JSON.stringify({action:"finalize", pdfFilename})
+    body:JSON.stringify({action:"finalize", pdfFilename, displayedSearchQuery})
   }).catch(() => null);
   if(!response?.ok){
-    statut("PDF téléchargé, mais le snapshot final n’a pas pu être confirmé. Le brouillon est conservé.", "erreur");
+    const data = await response?.json().catch(() => null);
+    statut(
+      (data?.error && MESSAGES_ECHEC_FINALISATION_ANCRAGE[data.error])
+        || "PDF téléchargé, mais le snapshot final n’a pas pu être confirmé. Le brouillon est conservé.",
+      "erreur",
+    );
     return false;
   }
   return true;
@@ -6469,7 +6618,11 @@ async function apercuImpression(){
 
 function questionnairePretPourFinalisation(){
   if(typeof mettreAJourEtatRecherche === "function" && mettreAJourEtatRecherche()){
-    statut(MESSAGE_RECHERCHE_PERIMEE, "erreur");
+    // Le message affiché reflète la cause réelle du blocage : requête
+    // modifiée non réanalysée, ou zone géographique détectée qui a divergé
+    // de celle utilisée pour produire les résultats actuellement affichés
+    // (jamais les deux messages génériques mélangés).
+    statut(zoneGeographiqueEstPerimee() && !rechercheEstPerimee() ? messageZoneGeoPerimee() : MESSAGE_RECHERCHE_PERIMEE, "erreur");
     document.getElementById("d-requete")?.focus({preventScroll:true});
     document.getElementById("carte-donnees-observees")?.scrollIntoView({behavior:"smooth", block:"center"});
     return false;

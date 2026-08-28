@@ -141,6 +141,24 @@ async function apiContext(db, analysisId, { authenticated = true, method = "GET"
   };
 }
 
+// Mission "ancrage géographique automatique" (Point 3, revue) — construit
+// l'état "résultats concurrentiels déjà présents" d'une analyse gratuite,
+// pour les tests de blocage serveur de la finalisation ci-dessous.
+function seedFreeCompetitiveState(db, analysisId, {
+  fiche = {}, normalized = {}, searchQuery = "", localPosition = null,
+  competitors = [], avgRating = null, avgReviews = null, avgPhotos = null,
+} = {}) {
+  db.sqlite.prepare(`
+    UPDATE analyses
+    SET fiche_json = ?, normalized_json = ?, search_query = ?, local_position = ?,
+        competitors_json = ?, avg_rating = ?, avg_reviews = ?, avg_photos = ?
+    WHERE analysis_id = ?
+  `).run(
+    JSON.stringify(fiche), JSON.stringify(normalized), searchQuery || null, localPosition,
+    JSON.stringify(competitors), avgRating, avgReviews, avgPhotos, analysisId,
+  );
+}
+
 test("aperçu et PDF conservent le brouillon puis figent un snapshot idempotent", async () => {
   const db = new LocalD1();
   seedAnalysis(db, FREE_ID, "free");
@@ -562,6 +580,174 @@ test("consultation, finalisation et duplication exigent une session admin et sig
   }));
   assert.equal(invalidDuplication.status, 400);
   assert.equal((await invalidDuplication.json()).error, "INVALID_IDEMPOTENCY_KEY");
+});
+
+// --- Point 3 (revue) : le blocage de la finalisation d'un diagnostic ---
+// --- gratuit à l'ancrage géographique périmé/absent/divergent ne doit ---
+// --- JAMAIS dépendre uniquement d'un bouton désactivé côté navigateur : ---
+// --- ces tests appellent directement le VRAI endpoint HTTP ---
+// --- (onRequestPost de audit-snapshots/[analysisId].js, action ---
+// --- "finalize"), sans passer par l'interface, pour prouver qu'un ---
+// --- client contournant l'UI ne peut pas finaliser (donc ne peut pas ---
+// --- faire passer analyses.status à 'pdf_generated', ce qui est aussi ---
+// --- la seule condition d'éligibilité au transfert Premium manuel — voir ---
+// --- functions/api/admin/audit-premium-transfers.js) un diagnostic dont ---
+// --- la zone géographique n'est pas confirmée à jour. Chaque cas de ---
+// --- refus vérifie explicitement l'absence d'écriture partielle : ni ---
+// --- snapshot créé, ni changement de statut.
+
+test("Point 3a. finalisation refusée (contournement direct de l’endpoint) quand des résultats concurrentiels existent sans geographic_anchor mémorisé", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, FREE_ID, "free");
+  seedDraft(db, FREE_ID, "free", {
+    questionnaireVersion: "score-efficia-questionnaire-v2",
+    reponses: { horaires: { points: 1 } },
+  });
+  seedFreeCompetitiveState(db, FREE_ID, {
+    fiche: { name: "Ancienne Fiche", city: "Bruxelles" },
+    // Fiche antérieure à la mission "ancrage géographique" : des résultats
+    // existent (requête, position, concurrent) mais aucun geographic_anchor
+    // n'a jamais été mémorisé pour eux.
+    normalized: { name: "Ancienne Fiche", city: "Bruxelles" },
+    searchQuery: "Plombier Bruxelles",
+    localPosition: 4,
+    competitors: [{ name: "Concurrent", rating: 4.2, reviews: 10 }],
+  });
+  const response = await mutateSnapshot(await apiContext(db, FREE_ID, {
+    method: "POST",
+    body: { action: "finalize", pdfFilename: "bypass.pdf" },
+  }));
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS");
+  assert.match(body.message, /zone géographique/);
+  assert.equal(
+    db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(FREE_ID).count,
+    0,
+  );
+  assert.equal(db.sqlite.prepare("SELECT status FROM analyses WHERE analysis_id = ?").get(FREE_ID).status, "approved");
+});
+
+test("Point 3b. finalisation refusée quand l’ancrage mémorisé diverge de celui recalculé à partir de la fiche actuelle", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, FREE_ID, "free");
+  seedDraft(db, FREE_ID, "free", { questionnaireVersion: "score-efficia-questionnaire-v2", reponses: {} });
+  seedFreeCompetitiveState(db, FREE_ID, {
+    fiche: { name: "Computelec", city: "Neufchâteau", postal_code: "6840", country: "Belgique", country_code: "BE" },
+    normalized: {
+      name: "Computelec", city: "Neufchâteau",
+      // La fiche a depuis été corrigée (nouveau code postal / pays) sans
+      // qu'une relance de recherche n'ait encore eu lieu : l'ancrage
+      // mémorisé (région BE) ne correspond plus à l'état actuel (région FR).
+      postal_code: "88300", country: "France", country_code: "FR",
+      geographic_anchor: {
+        tier: 3, source: "server_address_data", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+      },
+    },
+    searchQuery: "Électricien Neufchâteau",
+    localPosition: 2,
+    competitors: [{ name: "Concurrent", rating: 4.1, reviews: 8 }],
+  });
+  const response = await mutateSnapshot(await apiContext(db, FREE_ID, {
+    method: "POST",
+    body: { action: "finalize", pdfFilename: "bypass.pdf" },
+  }));
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "GEOGRAPHIC_ANCHOR_STALE");
+  assert.equal(
+    db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(FREE_ID).count,
+    0,
+  );
+  assert.equal(db.sqlite.prepare("SELECT status FROM analyses WHERE analysis_id = ?").get(FREE_ID).status, "approved");
+});
+
+test("Point 3c. finalisation refusée quand la requête affichée diffère de la dernière recherche réellement analysée", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, FREE_ID, "free");
+  seedDraft(db, FREE_ID, "free", { questionnaireVersion: "score-efficia-questionnaire-v2", reponses: {} });
+  const geo = { name: "Computelec", city: "Neufchâteau", postal_code: "6840", country: "Belgique", country_code: "BE" };
+  seedFreeCompetitiveState(db, FREE_ID, {
+    fiche: geo,
+    normalized: {
+      ...geo,
+      geographic_anchor: {
+        tier: 3, source: "server_address_data", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+      },
+    },
+    searchQuery: "Électricien Neufchâteau",
+    localPosition: 2,
+    competitors: [{ name: "Concurrent", rating: 4.1, reviews: 8 }],
+  });
+  const response = await mutateSnapshot(await apiContext(db, FREE_ID, {
+    method: "POST",
+    body: { action: "finalize", pdfFilename: "bypass.pdf", displayedSearchQuery: "Plombier Neufchâteau" },
+  }));
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "SEARCH_QUERY_STALE");
+  assert.equal(
+    db.sqlite.prepare("SELECT COUNT(*) AS count FROM audit_questionnaire_snapshots WHERE analysis_id = ?").get(FREE_ID).count,
+    0,
+  );
+  assert.equal(db.sqlite.prepare("SELECT status FROM analyses WHERE analysis_id = ?").get(FREE_ID).status, "approved");
+});
+
+test("Point 3d. un diagnostic gratuit dont l’ancrage est à jour se finalise normalement (aucun faux positif)", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, FREE_ID, "free");
+  seedDraft(db, FREE_ID, "free", { questionnaireVersion: "score-efficia-questionnaire-v2", reponses: {} });
+  const geo = { name: "Computelec", city: "Neufchâteau", postal_code: "6840", country: "Belgique", country_code: "BE" };
+  seedFreeCompetitiveState(db, FREE_ID, {
+    fiche: geo,
+    normalized: {
+      ...geo,
+      geographic_anchor: {
+        tier: 3, source: "server_address_data", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+      },
+    },
+    searchQuery: "Électricien Neufchâteau",
+    localPosition: 2,
+    competitors: [{ name: "Concurrent", rating: 4.1, reviews: 8 }],
+  });
+  const response = await mutateSnapshot(await apiContext(db, FREE_ID, {
+    method: "POST",
+    body: { action: "finalize", pdfFilename: "ok.pdf", displayedSearchQuery: "Électricien Neufchâteau" },
+  }));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(db.sqlite.prepare("SELECT status FROM analyses WHERE analysis_id = ?").get(FREE_ID).status, "pdf_generated");
+});
+
+test("Point 3e. le Premium n’est jamais soumis à la règle d’ancrage géographique du diagnostic gratuit, même avec des résultats sans ancrage", async () => {
+  const db = new LocalD1();
+  const premiumId = "snapshot-premium-geo-bypass";
+  seedAnalysis(db, premiumId, "premium");
+  seedDraft(db, premiumId, "premium", completePremiumV4Answers());
+  // Même situation qui bloquerait un diagnostic GRATUIT (Point 3a) :
+  // résultats concurrentiels présents, aucun geographic_anchor mémorisé.
+  // Cette recherche concurrentielle ancrée automatiquement n'existe que
+  // pour le diagnostic gratuit — le Premium ne doit jamais en hériter.
+  seedFreeCompetitiveState(db, premiumId, {
+    fiche: { name: "Entreprise Premium", city: "Bruxelles" },
+    normalized: { name: "Entreprise Premium", city: "Bruxelles" },
+    searchQuery: "Plombier Bruxelles",
+    localPosition: 4,
+    competitors: [{ name: "Concurrent", rating: 4.2, reviews: 10 }],
+  });
+  const response = await mutateSnapshot(await apiContext(db, premiumId, {
+    method: "POST",
+    body: { action: "finalize", pdfFilename: "premium.pdf" },
+  }));
+  const body = await response.json();
+  assert.ok(
+    !["GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS", "GEOGRAPHIC_ANCHOR_STALE", "SEARCH_QUERY_STALE"].includes(body.error),
+    `le Premium ne doit jamais recevoir une erreur d'ancrage géographique (reçu: ${body.error})`,
+  );
 });
 
 test("le tableau de bord sépare les audits terminés et expose Consulter/Dupliquer en lecture seule", () => {

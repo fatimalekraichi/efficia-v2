@@ -5,6 +5,9 @@ import { addSearchResultContext, collectCompetitors } from "../../../lib/collect
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
 import { isManualCreationSource, loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
 import { benchmarkEngine } from "../../../lib/benchmarkEngine.js";
+import {
+  buildGeographicAnchorRecord, evaluateGeographicAnchorReadiness, resolveGeographicAnchor,
+} from "../../../lib/geographicAnchor.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
 
@@ -42,6 +45,13 @@ function normalizeFiche(fiche = {}) {
     address: normalizeText(fiche.address),
     city: normalizeText(fiche.city),
     borough: normalizeText(fiche.borough),
+    // Ancrage géographique automatique : champs additifs capturés depuis la
+    // fiche Outscraper (voir collectFiche.js), jamais recalculés ici.
+    latitude: numberOrNull(fiche.latitude),
+    longitude: numberOrNull(fiche.longitude),
+    postal_code: normalizeText(fiche.postal_code),
+    country: normalizeText(fiche.country),
+    country_code: normalizeText(fiche.country_code),
     observed_fields: Array.isArray(fiche.observed_fields) ? fiche.observed_fields : [],
     action_links_status: fiche.action_links_status === "available" ? "available" : "unavailable",
     action_links: Array.isArray(fiche.action_links) ? fiche.action_links : [],
@@ -122,9 +132,31 @@ function mergeCategoryObservation(base, observation, confirmedActivity) {
   return next;
 }
 
+function geographicAnchorUnavailableFailure() {
+  return jsonResponse({
+    success: false,
+    error: "GEOGRAPHIC_ANCHOR_UNAVAILABLE",
+    message: "La zone géographique n’a pas pu être déterminée automatiquement. Vérifiez la fiche avant de relancer l’analyse.",
+  }, 409, { "Cache-Control": "no-store" });
+}
+
 async function refreshSearchAnalysis({ context, db, analysis, analysisId, payload }) {
   const normalized = analysis.business?.normalized || {};
   const fiche = analysis.business?.fiche || {};
+  // Ancrage géographique automatique (mission "ancrage géographique") :
+  // résolu ici, uniquement à partir de données déjà vérifiées côté
+  // serveur (normalized/fiche) — jamais depuis le payload client. En
+  // l’absence d’ancrage fiable, on n’appelle jamais le fournisseur avec une
+  // recherche ambiguë : on s’arrête ici, sans toucher aux anciennes
+  // données (aucune écriture DB avant ce point).
+  const anchor = resolveGeographicAnchor({ normalized, fiche });
+  if (!anchor.ok) {
+    console.error("free-diagnostic-collect: geographic anchor unavailable", {
+      phase: "geographic_anchor",
+      analysis_id: analysisId,
+    });
+    return geographicAnchorUnavailableFailure();
+  }
   const result = await collectCompetitors({
     requete: payload.searchQuery,
     activite: payload.activity,
@@ -132,6 +164,8 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     placeIdCible: analysis.business?.placeId || normalized.place_id || fiche.place_id,
     cidCible: normalized.cid || fiche.cid,
     urlCible: normalized.location_link || fiche.location_link,
+    coordinates: anchor.coordinates,
+    region: anchor.region,
     apiKey: context.env.OUTSCRAPER_API_KEY,
     suppressSensitiveLogs: true,
   });
@@ -153,7 +187,21 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   const updatedAt = new Date().toISOString();
   const normalizedWithCategories = mergeCategoryObservation(normalized, result.targetObservation, payload.activity);
   const ficheWithCategories = mergeCategoryObservation(fiche, result.targetObservation, payload.activity);
-  const normalizedWithContext = addSearchResultContext(normalizedWithCategories, result);
+  // Séparation obligatoire : l’ancrage réellement utilisé est tracé à part,
+  // distinct de `result.requete` (requête affichée/saisie par l’administrateur,
+  // jamais modifiée par cet ancrage — voir collectCompetitors.js).
+  // "L'ancrage analysé" (mémorisé) est distinct de "l'ancrage actuellement
+  // détecté" (recalculé à la volée par buildFreeDiagnosticCollectionState à
+  // partir de l'état courant de la fiche) : on fige ici un instantané complet
+  // — coordonnées incluses, jamais exposées au navigateur telles quelles —
+  // pour que toute divergence future (fiche mise à jour autrement) puisse
+  // être détectée sans jamais présenter une ancienne analyse comme
+  // correspondant à de nouvelles coordonnées.
+  const normalizedWithAnchor = {
+    ...normalizedWithCategories,
+    geographic_anchor: buildGeographicAnchorRecord(anchor, updatedAt),
+  };
+  const normalizedWithContext = addSearchResultContext(normalizedWithAnchor, result);
   const state = buildFreeDiagnosticCollectionState({
     ...analysis,
     business: {
@@ -408,6 +456,22 @@ export async function onRequestPost(context) {
     || usableText(normalized.type)
     || manualActivity;
 
+  // Source commune (mission "ancrage géographique") : la collecte
+  // automatique initiale utilise exactement le même résolveur et les mêmes
+  // paramètres que la relance (refreshSearchAnalysis ci-dessus) — jamais une
+  // seconde implémentation divergente. Comme pour la relance, `activity`
+  // (jamais réécrite) n'est pas modifiée par cet ancrage. À la différence de
+  // la relance (déclenchée par une saisie libre de l'administrateur, donc
+  // strictement bloquée sans ancrage fiable), l'identification initiale
+  // reste ici purement automatique : en l'absence d'ancrage résolu, elle
+  // continue avec le comportement déjà en vigueur (recherche par
+  // activité+ville, sans coordinates/region) plutôt que d'empêcher la
+  // création du diagnostic — mais aucun `geographic_anchor` n'est alors
+  // mémorisé, ce qui signale correctement (voir Point 1 / hasExistingCompetitiveResults)
+  // que les résultats obtenus devront être reconfirmés par une relance.
+  const initialAnchor = resolveGeographicAnchor({ normalized, fiche });
+  const updatedAt = new Date().toISOString();
+
   let competitorData = { requete: "", position: null, concurrents: [] };
   if (activity && city) {
     const competitorResult = await collectCompetitors({
@@ -416,6 +480,8 @@ export async function onRequestPost(context) {
       placeIdCible: normalized.place_id,
       cidCible: normalized.cid,
       urlCible: normalized.location_link,
+      coordinates: initialAnchor.coordinates,
+      region: initialAnchor.region,
       apiKey: context.env.OUTSCRAPER_API_KEY,
       suppressSensitiveLogs: true,
     });
@@ -431,10 +497,17 @@ export async function onRequestPost(context) {
     }
   }
 
-  const updatedAt = new Date().toISOString();
-  const normalizedWithConfirmedActivity = manualActivity
-    ? { ...normalized, confirmed_activity: manualActivity }
-    : normalized;
+  const normalizedWithConfirmedActivity = {
+    ...normalized,
+    ...(manualActivity ? { confirmed_activity: manualActivity } : {}),
+    // Ancrage mémorisé uniquement quand une recherche a réellement été
+    // lancée avec cet ancrage (activity && city && competitorResult.ok) —
+    // jamais persisté "au cas où", jamais pour une recherche qui n'a pas eu
+    // lieu ou a échoué.
+    ...(initialAnchor.ok && competitorData.requete
+      ? { geographic_anchor: buildGeographicAnchorRecord(initialAnchor, updatedAt) }
+      : {}),
+  };
   const competitorsJson = JSON.stringify(competitorData.concurrents);
   const benchmark = benchmarkEngine({
     rating: normalized.rating,
@@ -529,4 +602,7 @@ export function onRequest(context) {
   return jsonResponse({ success: false, error: "METHOD_NOT_ALLOWED" }, 405);
 }
 
-export const __test__ = { normalizeFiche, usableText, isCollectedFiche, mergeCategoryObservation };
+export const __test__ = {
+  normalizeFiche, usableText, isCollectedFiche, mergeCategoryObservation,
+  geographicAnchorUnavailableFailure,
+};
