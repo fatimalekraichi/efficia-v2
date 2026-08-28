@@ -1,5 +1,14 @@
 const MANUAL_SOURCES = new Set(["admin_manual", "duplicate_manual"]);
 
+// Source unique de vérité pour "cette métadonnée de création vient-elle
+// d'une création manuelle admin (directe ou par duplication) ?". Tout
+// endpoint qui doit autoriser les deux origines de la même façon (ex.
+// free-diagnostic-collect pour les brouillons gratuits dupliqués) doit
+// réutiliser cette fonction plutôt que de recopier la liste des sources.
+export function isManualCreationSource(creationSource) {
+  return MANUAL_SOURCES.has(creationSource);
+}
+
 export const manualBillingStatus = (auditType) => (
   auditType === "premium" ? "manual_unpaid" : "not_applicable"
 );

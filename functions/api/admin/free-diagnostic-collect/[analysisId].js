@@ -3,7 +3,7 @@ import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrd
 import { collectFiche } from "../../../lib/collectFiche.js";
 import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
-import { loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
+import { isManualCreationSource, loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
 import { benchmarkEngine } from "../../../lib/benchmarkEngine.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
@@ -287,7 +287,12 @@ export async function onRequestPost(context) {
     LIMIT 1
   `).bind(analysisId).first();
   const manualMetadata = diagnosticRequest ? null : await loadManualAuditMetadata(db, analysisId);
-  const isManualFree = manualMetadata?.creation_source === "admin_manual"
+  // Accepte les brouillons gratuits créés manuellement par un admin
+  // (admin_manual) ET ceux créés par duplication d'un questionnaire déjà
+  // finalisé (duplicate_manual) — les deux sont des créations manuelles
+  // légitimes au sens de auditCreationMetadata.js. Ne jamais recopier ici
+  // la liste des sources : passer par isManualCreationSource().
+  const isManualFree = isManualCreationSource(manualMetadata?.creation_source)
     && manualMetadata?.audit_type === "free";
   if (!diagnosticRequest && !isManualFree) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_REQUEST_REQUIRED" }, 403);
