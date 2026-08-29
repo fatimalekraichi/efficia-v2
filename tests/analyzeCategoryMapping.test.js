@@ -58,6 +58,22 @@ function mockOutscraper({ fiche, competitors = [] }) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     const parsed = new URL(url);
+    // Mission "étendre le correctif d'ancrage géographique à
+    // /api/analyze" — geocoding du centre de la localité (hôte distinct,
+    // voir localityGeocoder.js), appelé avant la recherche concurrentielle
+    // dès que la fiche porte une localité identifiable (country_code).
+    // Répond avec succès en échoutant les mêmes ville/code postal/pays que
+    // la fiche mockée, pour que ces tests (centrés sur le mapping de
+    // catégorie, pas sur le geocoding) ne soient jamais bloqués par le
+    // nouvel ancrage.
+    if (parsed.hostname === "api.outscraper.com") {
+      return Response.json({
+        data: [[{
+          latitude: 49.1193, longitude: 6.1757,
+          city: fiche.city, postal_code: fiche.postal_code, country_code: fiche.country_code,
+        }]],
+      });
+    }
     // collectFiche.js demande désormais plusieurs candidats (Objectif 2,
     // mission "corriger les deux problèmes critiques" — score de confiance)
     // via organizationsPerQueryLimit=5, tandis que collectCompetitors.js
@@ -82,6 +98,9 @@ test("analyze : le nom de l'entreprise envoyé comme \"activite\" (Mode 2 du for
       category: "Électricien",
       type: "electrician",
       city: "Metz",
+      postal_code: "57000",
+      country: "France",
+      country_code: "FR",
     },
     competitors: [{ name: "Concurrent A", place_id: "place-a" }],
   });
@@ -119,6 +138,9 @@ test("analyze : une activité réellement saisie par l'admin (différente du nom
       place_id: "place-target",
       category: "Électricien",
       city: "Metz",
+      postal_code: "57000",
+      country: "France",
+      country_code: "FR",
     },
     competitors: [],
   });
@@ -145,6 +167,9 @@ test("analyze : sans activité saisie, la catégorie Google détectée est utili
       place_id: "place-target",
       category: "Électricien",
       city: "Metz",
+      postal_code: "57000",
+      country: "France",
+      country_code: "FR",
     },
     competitors: [],
   });
@@ -170,6 +195,9 @@ test("analyze : le placeholder générique \"entreprise locale\" (posé par admi
       place_id: "place-target",
       category: "Électricien",
       city: "Metz",
+      postal_code: "57000",
+      country: "France",
+      country_code: "FR",
     },
     competitors: [],
   });
@@ -196,6 +224,9 @@ test("analyze : la fiche analysée n'apparaît jamais dans ses propres concurren
       place_id: "place-target",
       category: "Électricien",
       city: "Metz",
+      postal_code: "57000",
+      country: "France",
+      country_code: "FR",
     },
     // Le moteur de recherche concurrentiel renvoie la fiche analysée elle-même en tête de liste
     // (cas réel observé) : elle doit être filtrée avant enregistrement.

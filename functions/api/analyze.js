@@ -19,6 +19,21 @@ import {
 } from "../lib/diagnosticRequests.js";
 import { verifyConnectorToken } from "./_auth.js";
 import { SCORING_VERSION } from "../lib/score-efficia/scoreConfig.js";
+// Correctif (revue "étendre le correctif d'ancrage géographique à
+// /api/analyze") — cette route est le VÉRITABLE point d'entrée de la
+// création manuelle d'un diagnostic gratuit ou Premium depuis le
+// back-office (bouton « Nouvel audit » -> admin/audits.js -> ici, étape
+// "observation" du pipeline), distinct de free-diagnostic-collect/
+// [analysisId].js qui ne gère que les relances (refresh_search) et la
+// collecte initiale du parcours public (diagnostic_requests). Avant ce
+// correctif, la toute première recherche concurrentielle déclenchée par
+// « Créer le diagnostic gratuit » n'utilisait AUCUN ancrage géographique
+// (ni coordonnées, ni region) : ni le bug d'origine (coordonnées de
+// l'entreprise), ni sa correction (centre géocodé de la localité) —
+// simplement aucune protection du tout. Ce module utilise désormais
+// EXACTEMENT le même résolveur partagé que free-diagnostic-collect/
+// [analysisId].js — jamais une seconde implémentation divergente.
+import { resolveGeographicAnchor, buildGeographicAnchorRecord } from "../lib/geographicAnchor.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -266,12 +281,36 @@ export async function onRequestPost(context) {
     });
   }
 
+  // Ancrage géographique — point de mesure du classement local, jamais
+  // l'entreprise analysée elle-même (voir geographicAnchor.js). `fiche` (la
+  // fiche brute renvoyée par collectFiche(), avant normaliserFiche() qui ne
+  // recopie pas postal_code/country/country_code) porte les champs de
+  // localité réels ; `resolveGeographicAnchorLocality` retombe dessus
+  // automatiquement si `normalized` ne les a pas — mêmes règles que
+  // free-diagnostic-collect/[analysisId].js, jamais une variante.
+  const geoAnchor = await resolveGeographicAnchor({ normalized, fiche, apiKey: env.OUTSCRAPER_API_KEY });
+
+  // Correctif — requete par défaut vide (jamais pré-remplie avec
+  // "<activité> <ville>" avant que la recherche n'ait réellement eu lieu) :
+  // même règle conservatrice que free-diagnostic-collect/[analysisId].js.
+  // Sans cela, un ancrage indisponible ou un échec fournisseur laisserait
+  // malgré tout une "recherche testée" enregistrée en base alors qu'aucun
+  // appel concurrentiel n'a eu lieu — une donnée de classement trompeuse.
   let competitorData = {
-    requete: resolvedActivite && resolvedVille ? `${resolvedActivite} ${resolvedVille}` : "",
+    requete: "",
     position: null,
     concurrents: [],
   };
-  if (resolvedActivite && resolvedVille) {
+  // Correctif — recherche concurrentielle strictement bloquée sans ancrage
+  // fiable, exactement comme la relance et la collecte initiale de
+  // free-diagnostic-collect/[analysisId].js : jamais un appel « à
+  // l'aveugle » (sans coordinates/region), jamais un repli sur les
+  // coordonnées de l'entreprise. L'identification de la fiche reste
+  // néanmoins enregistrée ci-dessous (utile pour la validation manuelle et
+  // une relance ultérieure, elle-même bloquée tant que le centre de la
+  // localité n'est pas confirmé) — seule la recherche concurrentielle est
+  // omise.
+  if (resolvedActivite && resolvedVille && geoAnchor.ok) {
     if (!diagnosticRequest) {
       console.log("analyze:calling-competitors", { activite: resolvedActivite, ville: resolvedVille });
     }
@@ -284,6 +323,11 @@ export async function onRequestPost(context) {
       placeIdCible: normalized.place_id,
       cidCible: normalized.cid,
       urlCible: normalized.location_link,
+      // Point neutre de la localité — jamais les coordonnées de
+      // l'entreprise analysée, jamais un simple paramètre "region" en
+      // repli (ce repli n'existe plus, voir localityGeocoder.js).
+      coordinates: geoAnchor.coordinates,
+      region: geoAnchor.region,
       apiKey: env.OUTSCRAPER_API_KEY,
       suppressSensitiveLogs: Boolean(diagnosticRequest),
     });
@@ -299,6 +343,10 @@ export async function onRequestPost(context) {
     } else {
       console.error("analyze: collecte concurrents échouée", competitorsResult.code, competitorsResult.error);
     }
+  } else if (resolvedActivite && resolvedVille && !geoAnchor.ok) {
+    console.error("analyze: ancrage géographique indisponible, recherche concurrentielle omise", {
+      code: geoAnchor.code,
+    });
   }
 
   // 3) Enregistrement en D1.
@@ -307,7 +355,18 @@ export async function onRequestPost(context) {
   const storedNom = nom || normalized.name || googleBusinessUrl;
   const storedVille = resolvedVille || VILLE_PLACEHOLDER;
   const query = observationQuery || googleBusinessUrl || `${storedNom} ${storedVille}`;
-  const normalizedForStorage = addSearchResultContext(normalized, competitorData);
+  // Ancrage mémorisé uniquement quand une recherche a réellement été lancée
+  // avec ce centre géocodé (geoAnchor.ok && competitorData.requete) —
+  // jamais persisté "au cas où", jamais pour une recherche qui n'a pas eu
+  // lieu ou a échoué (même règle que free-diagnostic-collect/
+  // [analysisId].js::normalizedWithConfirmedActivity).
+  const normalizedWithAnchor = {
+    ...normalized,
+    ...(geoAnchor.ok && competitorData.requete
+      ? { geographic_anchor: buildGeographicAnchorRecord(geoAnchor, now) }
+      : {}),
+  };
+  const normalizedForStorage = addSearchResultContext(normalizedWithAnchor, competitorData);
 
   if (![storedNom, storedVille, query].every((value) => typeof value === "string" && value.trim())) {
     return jsonError("INSUFFICIENT_BUSINESS_DATA", "Insufficient business data for storage.", 422);
