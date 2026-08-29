@@ -79,6 +79,12 @@ export function buildBusinessContext(analysis = {}) {
     position: reviewed.localPosition ?? business.localPosition ?? null,
     position_kind: reviewed.positionKind || business.positionKind || "observed",
     sponsored_results_excluded: reviewed.sponsoredResultsExcluded ?? business.sponsoredResultsExcluded ?? 0,
+    // Mission "corriger la méthode d'ancrage géographique" — la ville du
+    // centre de localité réellement utilisé pour mesurer le classement
+    // (jamais l'entreprise elle-même, voir geographicAnchor.js) : persistée
+    // avec l'analyse (normalized.geographic_anchor.locality.city), jamais
+    // recalculée ici.
+    search_locality_city: normalized.geographic_anchor?.locality?.city || null,
   };
 }
 

@@ -137,6 +137,11 @@ function buildFreeDiagnostic(bundle, scoreContext = {}) {
     testedQuery: firstDefined(business.search_query, business.searchQuery),
     positionKind: business.position_kind === "organic" ? "organic" : "observed",
     sponsoredResultsExcluded: n(business.sponsored_results_excluded) ?? 0,
+    // Mission "corriger la méthode d'ancrage géographique" — ville du centre
+    // de localité réellement utilisé pour mesurer ce classement (jamais
+    // l'entreprise elle-même). Absent -> aucune mention ajoutée (voir
+    // positionSummary, renderAnalysisHtml.js), jamais une ville inventée.
+    searchLocalityCity: firstDefined(business.search_locality_city, business.searchLocalityCity),
     priorities: freeSelections.priorities.map((item) => buildFreePriorityCard(item, scoreContext)),
   };
 }
@@ -249,6 +254,7 @@ export function buildNarrativeModel(bundle = {}, selections = {}, depth = resolv
       testedQuery: firstDefined(business.search_query, business.searchQuery),
       positionKind: business.position_kind === "organic" ? "organic" : "observed",
       sponsoredResultsExcluded: n(business.sponsored_results_excluded) ?? 0,
+      searchLocalityCity: firstDefined(business.search_locality_city, business.searchLocalityCity),
     },
     // Point 3 du plan : score par domaine, déjà calculé par le Score Efficia
     // (scoreEngine.js) et déjà mis en forme par buildDomains() ci-dessus —

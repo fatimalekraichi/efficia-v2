@@ -143,13 +143,17 @@ function geographicAnchorUnavailableFailure() {
 async function refreshSearchAnalysis({ context, db, analysis, analysisId, payload }) {
   const normalized = analysis.business?.normalized || {};
   const fiche = analysis.business?.fiche || {};
-  // Ancrage géographique automatique (mission "ancrage géographique") :
+  // Ancrage géographique automatique (mission "ancrage géographique",
+  // corrigée pour ne plus jamais mesurer depuis les coordonnées de
+  // l'entreprise analysée — voir geographicAnchor.js/localityGeocoder.js) :
   // résolu ici, uniquement à partir de données déjà vérifiées côté
   // serveur (normalized/fiche) — jamais depuis le payload client. En
-  // l’absence d’ancrage fiable, on n’appelle jamais le fournisseur avec une
-  // recherche ambiguë : on s’arrête ici, sans toucher aux anciennes
-  // données (aucune écriture DB avant ce point).
-  const anchor = resolveGeographicAnchor({ normalized, fiche });
+  // l’absence d’ancrage fiable (localité inconnue ou centre de localité non
+  // géocodable), on n’appelle jamais le fournisseur avec une recherche
+  // ambiguë ni avec les coordonnées de l'entreprise en secours : on s’arrête
+  // ici, sans toucher aux anciennes données (aucune écriture DB avant ce
+  // point).
+  const anchor = await resolveGeographicAnchor({ normalized, fiche, apiKey: context.env.OUTSCRAPER_API_KEY });
   if (!anchor.ok) {
     console.error("free-diagnostic-collect: geographic anchor unavailable", {
       phase: "geographic_anchor",
@@ -460,20 +464,29 @@ export async function onRequestPost(context) {
   // automatique initiale utilise exactement le même résolveur et les mêmes
   // paramètres que la relance (refreshSearchAnalysis ci-dessus) — jamais une
   // seconde implémentation divergente. Comme pour la relance, `activity`
-  // (jamais réécrite) n'est pas modifiée par cet ancrage. À la différence de
-  // la relance (déclenchée par une saisie libre de l'administrateur, donc
-  // strictement bloquée sans ancrage fiable), l'identification initiale
-  // reste ici purement automatique : en l'absence d'ancrage résolu, elle
-  // continue avec le comportement déjà en vigueur (recherche par
-  // activité+ville, sans coordinates/region) plutôt que d'empêcher la
-  // création du diagnostic — mais aucun `geographic_anchor` n'est alors
-  // mémorisé, ce qui signale correctement (voir Point 1 / hasExistingCompetitiveResults)
-  // que les résultats obtenus devront être reconfirmés par une relance.
-  const initialAnchor = resolveGeographicAnchor({ normalized, fiche });
+  // (jamais réécrite) n'est pas modifiée par cet ancrage.
+  //
+  // Correctif (revue "corriger la méthode d'ancrage géographique", point 1) :
+  // la recherche concurrentielle initiale est désormais strictement bloquée
+  // en l'absence d'ancrage fiable, exactement comme la relance — plus
+  // jamais de recherche "à l'aveugle" ni, a fortiori, un repli sur les
+  // coordonnées de l'entreprise analysée ou sur un simple paramètre
+  // "region" (ce repli n'existe structurellement plus, voir
+  // geographicAnchor.js/localityGeocoder.js). Sans ancrage résolu,
+  // l'identification de la fiche reste créée (utile pour la validation
+  // manuelle), mais aucun appel concurrentiel n'a lieu, aucune position ni
+  // aucun concurrent n'est écrit, et aucun `geographic_anchor` n'est
+  // mémorisé — ce qui signale correctement (voir Point 1 /
+  // hasExistingCompetitiveResults) que la recherche devra être (re)lancée
+  // via une relance, elle-même bloquée tant que le centre de la localité
+  // n'est pas confirmé, et que la finalisation
+  // (GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS) reste bloquée tant que
+  // cette relance n'a pas eu lieu.
+  const initialAnchor = await resolveGeographicAnchor({ normalized, fiche, apiKey: context.env.OUTSCRAPER_API_KEY });
   const updatedAt = new Date().toISOString();
 
   let competitorData = { requete: "", position: null, concurrents: [] };
-  if (activity && city) {
+  if (activity && city && initialAnchor.ok) {
     const competitorResult = await collectCompetitors({
       activite: activity,
       ville: city,

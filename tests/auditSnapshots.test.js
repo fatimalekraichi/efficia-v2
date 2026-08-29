@@ -641,8 +641,10 @@ test("Point 3b. finalisation refusée quand l’ancrage mémorisé diverge de ce
       // mémorisé (région BE) ne correspond plus à l'état actuel (région FR).
       postal_code: "88300", country: "France", country_code: "FR",
       geographic_anchor: {
-        tier: 3, source: "server_address_data", region: "BE",
-        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+        tier: 2, source: "region_only", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null,
+        locality: { city: "Neufchâteau", postalCode: "6840", country: "Belgique", countryCode: "BE" },
+        resolvedAt: "2026-08-20T10:00:00.000Z",
       },
     },
     searchQuery: "Électricien Neufchâteau",
@@ -673,8 +675,10 @@ test("Point 3c. finalisation refusée quand la requête affichée diffère de la
     normalized: {
       ...geo,
       geographic_anchor: {
-        tier: 3, source: "server_address_data", region: "BE",
-        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+        tier: 2, source: "region_only", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null,
+        locality: { city: "Neufchâteau", postalCode: "6840", country: "Belgique", countryCode: "BE" },
+        resolvedAt: "2026-08-20T10:00:00.000Z",
       },
     },
     searchQuery: "Électricien Neufchâteau",
@@ -705,8 +709,10 @@ test("Point 3d. un diagnostic gratuit dont l’ancrage est à jour se finalise n
     normalized: {
       ...geo,
       geographic_anchor: {
-        tier: 3, source: "server_address_data", region: "BE",
-        label: "6840 Neufchâteau, Belgique", coordinates: null, resolvedAt: "2026-08-20T10:00:00.000Z",
+        tier: 2, source: "region_only", region: "BE",
+        label: "6840 Neufchâteau, Belgique", coordinates: null,
+        locality: { city: "Neufchâteau", postalCode: "6840", country: "Belgique", countryCode: "BE" },
+        resolvedAt: "2026-08-20T10:00:00.000Z",
       },
     },
     searchQuery: "Électricien Neufchâteau",

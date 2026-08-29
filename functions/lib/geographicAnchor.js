@@ -1,25 +1,42 @@
-// Résolution de l'ancrage géographique automatique (mission "ancrage
-// géographique automatique de la recherche concurrentielle du diagnostic
-// gratuit"). Objectif : permettre à l'administrateur de saisir une requête
-// simple ("Électricien Neufchâteau") sans jamais ajouter manuellement le
-// code postal ou le pays — le backend construit l'ancrage à partir des
-// données déjà vérifiées côté serveur, selon un ordre de priorité strict.
+// Résolution de l'ancrage géographique automatique de la recherche
+// concurrentielle du diagnostic gratuit. Objectif : permettre à
+// l'administratrice de saisir une requête simple ("Électricien
+// Neufchâteau") sans jamais ajouter manuellement le code postal ou le pays
+// — le backend construit l'ancrage à partir des données déjà vérifiées côté
+// serveur.
 //
-// Ordre de priorité (jamais modifié, jamais contourné) :
-//  1. coordonnées extraites du location_link Google Maps déjà connu ;
-//  2. coordonnées structurées déjà renvoyées lors de l'identification
-//     initiale de la fiche (latitude/longitude Outscraper bruts) ;
-//  3. pays déjà connu (postal_code/adresse/pays serveur) — utilisé comme
-//     paramètre "region" Outscraper (aucune coordonnée n'est déduite d'une
-//     adresse : ce serait inventer une localisation) ;
-//  4. aucun ancrage fiable disponible -> avertissement, jamais une recherche
-//     lancée silencieusement à l'aveugle.
+// Correctif (cas réel Computelec, position automatique 3e alors qu'une
+// recherche manuelle affiche 7e) : la version précédente de ce module
+// mesurait le classement depuis les coordonnées EXACTES de l'entreprise
+// analysée (épingle de son propre location_link, ou latitude/longitude
+// captées à son identification) — un classement local Google dépendant
+// fortement de la distance au point de recherche, cela favorisait
+// mécaniquement l'entreprise analysée face à ses concurrents. Ce module ne
+// dérive plus JAMAIS le point de mesure de l'entreprise analysée : il
+// détermine d'abord l'identité de sa LOCALITÉ (ville/code postal/pays, une
+// notion partagée par toute entreprise de cette localité), puis délègue à
+// localityGeocoder.js la résolution du centre géographique neutre de cette
+// localité — jamais une adresse ni des coordonnées propres à une fiche.
 //
-// Les coordonnées/pays utilisés ici proviennent uniquement de champs déjà
-// capturés et stockés côté serveur (normalized_json / fiche_json) — jamais
-// d'une valeur transmise par le navigateur.
+// Deux étapes bien séparées :
+//  1. resolveGeographicAnchorLocality (SYNCHRONE, pure) — l'IDENTITÉ de la
+//     localité (région/code postal/ville/libellé), déterminée uniquement à
+//     partir de champs déjà capturés côté serveur (normalized_json /
+//     fiche_json) — jamais une coordonnée, jamais une valeur transmise par
+//     le navigateur. Utilisée aussi pour la détection de péremption
+//     (evaluateGeographicAnchorReadiness), qui ne doit jamais dépendre d'un
+//     appel réseau.
+//  2. resolveGeographicAnchor (ASYNCHRONE) — à partir de cette identité,
+//     résout le POINT neutre (coordonnées) via geocoding de la localité
+//     (jamais de l'entreprise). AUCUN repli : si le geocoding échoue, est
+//     indisponible, ou renvoie un résultat qui ne valide pas strictement
+//     (voir localityGeocoder.js::validateLocalityMatch), l'ancrage entier
+//     est refusé (ok:false) — jamais un repli vers un simple paramètre
+//     "region" seul, et jamais vers les coordonnées de l'entreprise. Si
+//     même l'identité de la localité est inconnue -> aucun ancrage fiable,
+//     jamais une recherche lancée à l'aveugle.
 
-import { extractCoordinatesFromLocationLink } from "./googleMapsUrl.js";
+import { resolveLocalityCenter } from "./localityGeocoder.js";
 
 // Table de correspondance volontairement restreinte : uniquement les pays
 // pour lesquels Outscraper documente déjà `country` en toutes lettres sans
@@ -42,7 +59,7 @@ const COUNTRY_NAME_TO_CODE = {
 function normalizeKey(value) {
   return String(value || "")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase();
 }
@@ -69,73 +86,99 @@ function buildLabel({ postalCode, city, countryName, countryCode }) {
   return label || null;
 }
 
-function isValidCoordinatePair(lat, lng) {
-  return Number.isFinite(lat) && lat >= -90 && lat <= 90
-    && Number.isFinite(lng) && lng >= -180 && lng <= 180;
-}
-
 /**
- * Résout l'ancrage géographique à utiliser pour la recherche concurrentielle,
- * à partir des seules données déjà vérifiées côté serveur (normalized/fiche).
- * Ne lève jamais d'exception ; renvoie { ok:false } quand aucun ancrage
- * fiable n'est disponible plutôt que d'inventer une localisation.
+ * Résout uniquement l'IDENTITÉ de la localité de l'entreprise analysée —
+ * jamais une coordonnée, jamais l'adresse précise, jamais un appel réseau.
+ * Base commune à la résolution complète de l'ancrage (ci-dessous) et à la
+ * détection de péremption (evaluateGeographicAnchorReadiness), qui doit
+ * rester synchrone.
  */
-export function resolveGeographicAnchor({ normalized = {}, fiche = {} } = {}) {
+export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {} } = {}) {
   const region = resolveRegionCode(normalized) || resolveRegionCode(fiche) || null;
   const postalCode = firstNonEmpty(normalized?.postal_code, fiche?.postal_code);
   const city = firstNonEmpty(normalized?.city, fiche?.city, normalized?.borough, fiche?.borough);
   const countryName = firstNonEmpty(normalized?.country, fiche?.country);
   const label = buildLabel({ postalCode, city, countryName, countryCode: region });
 
-  // Priorité 1 : coordonnées présentes dans le location_link Google Maps.
-  const locationLink = firstNonEmpty(normalized?.location_link, fiche?.location_link);
-  const fromLink = locationLink ? extractCoordinatesFromLocationLink(locationLink) : null;
-  if (fromLink && isValidCoordinatePair(fromLink.lat, fromLink.lng)) {
+  // Une localité fiable exige au minimum une VILLE et un PAYS reconnu — un
+  // code postal seul, ou une ville sans pays, ne permet ni de désambiguïser
+  // les homonymes (Neufchâteau Belgique/France) ni de géocoder sans deviner.
+  if (!region || !city) {
+    return { ok: false, region: null, postalCode: "", city: "", countryName: "", label: null };
+  }
+  return { ok: true, region, postalCode, city, countryName, label };
+}
+
+function isSameLocality(a, b) {
+  if (!a?.ok || !b?.ok) return a?.ok === b?.ok;
+  return a.region === b.region
+    && normalizeKey(a.city) === normalizeKey(b.city)
+    && String(a.postalCode || "").trim() === String(b.postalCode || "").trim();
+}
+
+// Codes exposés à l'appelant (free-diagnostic-collect/[analysisId].js) pour
+// journalisation/diagnostic — n'affecte jamais le message affiché à
+// l'administratrice (toujours le même message générique bloquant, voir
+// geographicAnchorUnavailableFailure()) ni le comportement (toujours
+// ok:false, jamais un repli).
+export const GEOGRAPHIC_ANCHOR_ERROR = Object.freeze({
+  LOCALITY_UNKNOWN: "GEOGRAPHIC_ANCHOR_LOCALITY_UNKNOWN",
+  CENTER_UNAVAILABLE: "GEOGRAPHIC_ANCHOR_CENTER_UNAVAILABLE",
+});
+
+/**
+ * Résout l'ancrage géographique complet à utiliser pour la recherche
+ * concurrentielle : identité de la localité (voir
+ * resolveGeographicAnchorLocality) PUIS point neutre (coordonnées) mesuré
+ * au centre de cette localité — jamais aux coordonnées de l'entreprise
+ * analysée. Ne lève jamais d'exception ; renvoie { ok:false } quand aucun
+ * ancrage fiable n'est disponible plutôt que d'inventer une localisation.
+ *
+ * Correctif (revue 2026-08-29) — AUCUN repli "region seul" : si le
+ * geocoding de la localité échoue, est indisponible, ou renvoie un résultat
+ * qui ne valide pas strictement (ville/code postal/pays incohérents,
+ * coordonnées absentes — voir localityGeocoder.js::validateLocalityMatch),
+ * l'ancrage entier est refusé (ok:false). L'appelant ne doit alors JAMAIS
+ * lancer collectCompetitors, ni écrire une position/des concurrents/des
+ * moyennes, ni marquer l'analyse comme actualisée ; la finalisation reste
+ * bloquée tant qu'aucun ancrage fiable n'a été obtenu.
+ */
+export async function resolveGeographicAnchor({ normalized = {}, fiche = {}, apiKey, timeoutMs } = {}) {
+  const locality = resolveGeographicAnchorLocality({ normalized, fiche });
+  if (!locality.ok) {
     return {
-      ok: true,
-      tier: 1,
-      source: fromLink.source,
-      coordinates: `${fromLink.lat},${fromLink.lng}`,
-      region,
-      label,
+      ok: false, code: GEOGRAPHIC_ANCHOR_ERROR.LOCALITY_UNKNOWN,
+      tier: 0, source: "none", coordinates: null, region: null, label: null, locality: null,
     };
   }
 
-  // Priorité 2 : coordonnées structurées déjà renvoyées à l'identification
-  // initiale. Comparaison stricte sur Number.isFinite (jamais une coercition
-  // Number(null)/Number(undefined) qui vaudrait 0 — "Null Island" ne doit
-  // jamais être traitée comme une coordonnée réelle).
-  const rawLat = Number.isFinite(normalized?.latitude) ? normalized.latitude
-    : (Number.isFinite(fiche?.latitude) ? fiche.latitude : null);
-  const rawLng = Number.isFinite(normalized?.longitude) ? normalized.longitude
-    : (Number.isFinite(fiche?.longitude) ? fiche.longitude : null);
-  if (rawLat !== null && rawLng !== null && isValidCoordinatePair(rawLat, rawLng)) {
+  // Seule source du point de mesure : le centre géocodé de la localité —
+  // jamais une coordonnée propre à l'entreprise analysée, jamais un simple
+  // paramètre "region" en repli (voir localityGeocoder.js).
+  const center = await resolveLocalityCenter({
+    postalCode: locality.postalCode,
+    city: locality.city,
+    countryName: locality.countryName,
+    countryCode: locality.region,
+    apiKey,
+    ...(timeoutMs ? { timeoutMs } : {}),
+  });
+  if (!center.ok) {
     return {
-      ok: true,
-      tier: 2,
-      source: "initial_identification",
-      coordinates: `${rawLat},${rawLng}`,
-      region,
-      label,
+      ok: false, code: GEOGRAPHIC_ANCHOR_ERROR.CENTER_UNAVAILABLE, centerErrorCode: center.code,
+      tier: 0, source: "none", coordinates: null, region: locality.region, label: locality.label, locality: null,
     };
   }
 
-  // Priorité 3 : adresse / code postal / pays déjà disponibles côté serveur.
-  // On n'a alors aucune coordonnée fiable : seul le paramètre "region"
-  // (pays) est transmis à Outscraper, jamais une coordonnée déduite.
-  if (region && (postalCode || city)) {
-    return {
-      ok: true,
-      tier: 3,
-      source: "server_address_data",
-      coordinates: null,
-      region,
-      label,
-    };
-  }
-
-  // Priorité 4 : aucun ancrage fiable — jamais d'invention.
-  return { ok: false, tier: 0, source: "none", coordinates: null, region: null, label: null };
+  return {
+    ok: true,
+    tier: 1,
+    source: center.source,
+    coordinates: `${center.lat},${center.lng}`,
+    region: locality.region,
+    label: locality.label,
+    locality: { city: locality.city, postalCode: locality.postalCode, country: locality.countryName, countryCode: locality.region },
+  };
 }
 
 // Instantané persistable (normalized_json.geographic_anchor) construit à
@@ -143,7 +186,10 @@ export function resolveGeographicAnchor({ normalized = {}, fiche = {} } = {}) {
 // initiale ET par la relance de recherche (source commune, jamais deux
 // implémentations divergentes). N'est jamais construit pour un ancrage non
 // résolu : l'absence de la clé signifie sans ambiguïté "aucun ancrage
-// n'a été utilisé pour la dernière recherche effectuée".
+// n'a été utilisé pour la dernière recherche effectuée". Persiste, comme
+// exigé, la localité utilisée, le pays, le point géographique neutre, la
+// source de ce point et l'horodatage de la recherche — jamais la requête
+// visible elle-même (déjà persistée séparément, voir business.searchQuery).
 export function buildGeographicAnchorRecord(anchor, resolvedAt) {
   if (!anchor?.ok) return null;
   return {
@@ -152,6 +198,7 @@ export function buildGeographicAnchorRecord(anchor, resolvedAt) {
     region: anchor.region,
     label: anchor.label,
     coordinates: anchor.coordinates,
+    locality: anchor.locality || null,
     resolvedAt,
   };
 }
@@ -164,7 +211,7 @@ export function buildGeographicAnchorRecord(anchor, resolvedAt) {
 // Number(null) vaut 0 (donc "fini") : un champ explicitement NULL en base
 // (jamais analysé) ne doit jamais être confondu avec une position/moyenne
 // réelle de 0 — même bug de coercition que celui déjà corrigé dans
-// resolveGeographicAnchor (voir plus haut), ici pour les résultats
+// resolveGeographicAnchorLocality (voir plus haut), ici pour les résultats
 // concurrentiels plutôt que pour les coordonnées.
 function isFiniteNumericValue(value) {
   return value !== null && value !== undefined && Number.isFinite(Number(value));
@@ -186,17 +233,23 @@ function normalizeQueryForComparison(value) {
 // Évaluation unique de l'état de l'ancrage géographique — utilisée à la
 // fois pour l'affichage (freeDiagnosticProductionLink.js) et pour le
 // blocage serveur de la finalisation/génération PDF
-// (free-diagnostic-collect/[analysisId].js, opération confirm_finalization).
-// Ne modifie jamais rien ; se contente d'évaluer l'état à partir des
-// données déjà persistées + de l'état live recalculé.
+// (free-diagnostic-collect/[analysisId].js, audit-review/[analysisId].js,
+// audit-snapshots/[analysisId].js). Reste volontairement SYNCHRONE (compare
+// l'IDENTITÉ de la localité, jamais le point géocodé — voir
+// resolveGeographicAnchorLocality) : ne modifie jamais rien, ne lance jamais
+// d'appel réseau ; se contente d'évaluer l'état à partir des données déjà
+// persistées + de l'identité de localité live recalculée. Une variation
+// mineure du point géocodé d'un appel à l'autre pour une même localité
+// (non garanti par un fournisseur externe) ne doit jamais être interprétée
+// comme une péremption : seule une localité réellement différente l'est.
 //   - GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS : des résultats
 //     concurrentiels existent déjà mais aucun ancrage n'a jamais été
 //     mémorisé pour eux (fiche antérieure à cette mission, ou recherche
 //     initiale effectuée sans ancrage résolu) — jamais présenté comme "à
 //     jour".
-//   - GEOGRAPHIC_ANCHOR_STALE : un ancrage a été mémorisé, mais l'état
-//     actuel de la fiche ne correspond plus à celui qui a produit les
-//     résultats actuellement affichés (region/coordinates/tier divergents).
+//   - GEOGRAPHIC_ANCHOR_STALE : un ancrage a été mémorisé, mais la localité
+//     actuelle de la fiche ne correspond plus à celle qui a produit les
+//     résultats actuellement affichés (région/ville/code postal divergents).
 //   - SEARCH_QUERY_STALE : la requête actuellement affichée à
 //     l'administrateur diffère de la dernière requête réellement analysée
 //     (fourni uniquement quand `displayedSearchQuery` est renseigné — ce
@@ -212,20 +265,25 @@ export function evaluateGeographicAnchorReadiness({
       region: firstNonEmpty(persistedRaw.region) || null,
       label: firstNonEmpty(persistedRaw.label) || null,
       coordinates: firstNonEmpty(persistedRaw.coordinates) || null,
+      locality: persistedRaw.locality && typeof persistedRaw.locality === "object" ? persistedRaw.locality : null,
     }
     : null;
   const resultsExist = hasExistingCompetitiveResults(business, benchmarkAverages);
-  const live = resolveGeographicAnchor({ normalized, fiche });
-  const liveDisplay = live.ok ? { tier: live.tier, source: live.source, region: live.region, label: live.label } : null;
+  const live = resolveGeographicAnchorLocality({ normalized, fiche });
+  const liveDisplay = live.ok ? { region: live.region, label: live.label } : null;
 
   if (resultsExist && !persisted) {
     return { ok: false, code: "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS", persisted, live: liveDisplay };
   }
 
   if (persisted) {
-    const drifted = (persisted.region || null) !== (live.ok ? live.region : null)
-      || (persisted.coordinates || null) !== (live.ok ? live.coordinates : null)
-      || persisted.tier !== (live.ok ? live.tier : 0);
+    const persistedLocality = {
+      ok: true,
+      region: persisted.region,
+      city: persisted.locality?.city || "",
+      postalCode: persisted.locality?.postalCode || "",
+    };
+    const drifted = !isSameLocality(persistedLocality, live.ok ? { ok: true, region: live.region, city: live.city, postalCode: live.postalCode } : { ok: false });
     if (drifted) {
       return { ok: false, code: "GEOGRAPHIC_ANCHOR_STALE", persisted, live: liveDisplay };
     }
@@ -240,4 +298,4 @@ export function evaluateGeographicAnchorReadiness({
   return { ok: true, code: null, persisted, live: liveDisplay };
 }
 
-export const __test__ = { resolveRegionCode, buildLabel, COUNTRY_NAME_TO_CODE };
+export const __test__ = { resolveRegionCode, buildLabel, COUNTRY_NAME_TO_CODE, isSameLocality };

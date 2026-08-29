@@ -150,15 +150,50 @@ function refreshBody(overrides = {}) {
   };
 }
 
-// Capture la requête réellement envoyée au fournisseur (URL complète, donc
-// les paramètres query/coordinates/region) tout en simulant une réponse
-// Outscraper réaliste où Computelec apparaît en 9e position (cas réel).
-function installProviderFixtureCapturingRequest(onRequest) {
+// Correctif "corriger la méthode d'ancrage géographique" — le point neutre
+// (centre de la localité Neufchâteau/6840/Belgique, résolu par geocoding)
+// est délibérément DIFFÉRENT de l'épingle propre à Computelec
+// (49.816779999999994,5.449034, voir COMPUTELEC_LOCATION_LINK) : la preuve
+// même que le classement n'est plus mesuré depuis l'entreprise analysée.
+const NEUFCHATEAU_BE_CENTER = {
+  lat: 49.8419, lng: 5.4342, city: "Neufchâteau", postalCode: "6840", countryCode: "BE",
+};
+
+// Réponse de geocoding réaliste — doit inclure city/postal_code/country_code
+// pour satisfaire la validation stricte de resolveLocalityCenter
+// (localityGeocoder.js) : un point sans ces champs cohérents avec la
+// localité attendue est désormais rejeté (plus de repli silencieux).
+function geocodingResponseFor(center) {
+  return Response.json({
+    data: [[{
+      latitude: center.lat, longitude: center.lng,
+      city: center.city, postal_code: center.postalCode, country_code: center.countryCode,
+    }]],
+  });
+}
+
+// L'endpoint réel de geocoding (https://api.outscraper.com/geocoding) est
+// sur un hôte différent de celui de la recherche concurrentielle
+// (api.app.outscraper.com/maps/search-v3) — voir localityGeocoder.js. Le
+// routage des fixtures se fait donc par hostname, jamais par pathname.
+function isGeocodingRequest(url) {
+  return url.hostname === "api.outscraper.com";
+}
+
+// Capture la requête réellement envoyée au fournisseur pour la recherche
+// concurrentielle (URL complète, donc les paramètres query/coordinates/
+// region) — jamais celle du geocoding préalable (voir resolveLocalityCenter,
+// localityGeocoder.js), qui répond séparément avec le centre neutre de la
+// localité — tout en simulant une réponse Outscraper réaliste où Computelec
+// apparaît en 9e position (cas réel).
+function installProviderFixtureCapturingRequest(onRequest, { center = NEUFCHATEAU_BE_CENTER } = {}) {
   const originalFetch = globalThis.fetch;
   const before = Array.from({ length: 8 }, (_, index) => ({
     name: `Concurrent BE ${index + 1}`, place_id: `place-be-${index}`, rating: 4.1, reviews: 12, city: "Neufchâteau",
   }));
   globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return geocodingResponseFor(center);
     onRequest(String(input));
     return Response.json({
       data: [[
@@ -170,9 +205,20 @@ function installProviderFixtureCapturingRequest(onRequest) {
   return () => { globalThis.fetch = originalFetch; };
 }
 
-function installFailingProviderFixture() {
+// Simule un échec du FOURNISSEUR DE RECHERCHE (search-v3) une fois
+// l'ancrage géographique déjà résolu avec succès — le geocoding (hôte
+// distinct) continue de répondre correctement, pour isoler précisément le
+// cas "l'ancrage est connu, mais Outscraper échoue ensuite sur la
+// recherche concurrentielle elle-même" (test 9), distinct du cas "le
+// geocoding lui-même échoue" (couvert par tests/localityGeocoder.test.js
+// et tests/geographicAnchor.test.js).
+function installFailingProviderFixture({ center = NEUFCHATEAU_BE_CENTER } = {}) {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response("provider-down", { status: 500 });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return geocodingResponseFor(center);
+    return new Response("provider-down", { status: 500 });
+  };
   return () => { globalThis.fetch = originalFetch; };
 }
 
@@ -219,7 +265,12 @@ test("2. Computelec est ancrée automatiquement à Neufchâteau 6840, Belgique",
     assert.equal(body.business.geographicAnchor.tier, 1);
     assert.equal(body.business.geographicAnchor.region, "BE");
     const params = new URL(capturedUrl).searchParams;
-    assert.equal(params.get("coordinates"), "49.816779999999994,5.449034");
+    // Le centre neutre de Neufchâteau (geocoding de la localité) — jamais
+    // l'épingle propre à Computelec (49.816779999999994,5.449034) : c'est la
+    // preuve directe du correctif "corriger la méthode d'ancrage
+    // géographique" (l'entreprise analysée n'est plus jamais le point de mesure).
+    assert.equal(params.get("coordinates"), "49.8419,5.4342");
+    assert.notEqual(params.get("coordinates"), "49.816779999999994,5.449034");
     assert.equal(params.get("region"), "BE");
   } finally {
     restoreFetch();
@@ -259,10 +310,11 @@ function seedDiagnosticRequest(db, analysisId = ANALYSIS_ID, {
 // L'Appel A renvoie une fiche géo-riche (location_link Google Maps réel de
 // Computelec, code postal, pays) : c'est cette fiche fraîchement identifiée
 // — jamais un ancrage saisi ou deviné — qui doit ensuite alimenter l'Appel B.
-function installInitialCollectionProviderFixture(onCompetitorRequest) {
+function installInitialCollectionProviderFixture(onCompetitorRequest, { center = NEUFCHATEAU_BE_CENTER } = {}) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return geocodingResponseFor(center);
     const query = url.searchParams.get("query") || "";
     if (query === "Computelec Neufchâteau") {
       return Response.json({
@@ -310,7 +362,12 @@ test("2bis. la collecte automatique INITIALE (pas une relance) résout aussi l�
     assert.notEqual(capturedCompetitorUrl, "");
     const params = new URL(capturedCompetitorUrl).searchParams;
     assert.equal(params.get("query"), "Électricien Neufchâteau");
-    assert.equal(params.get("coordinates"), "49.816779999999994,5.449034");
+    // Le centre neutre de Neufchâteau (geocoding de la localité) — jamais
+    // l'épingle propre à Computelec (49.816779999999994,5.449034) : c'est la
+    // preuve directe du correctif "corriger la méthode d'ancrage
+    // géographique" (l'entreprise analysée n'est plus jamais le point de mesure).
+    assert.equal(params.get("coordinates"), "49.8419,5.4342");
+    assert.notEqual(params.get("coordinates"), "49.816779999999994,5.449034");
     assert.equal(params.get("region"), "BE");
     assert.doesNotMatch(params.get("query"), /6840|Belgique|Belgium/);
 
@@ -454,6 +511,43 @@ test("8bis. un code postal seul, sans pays reconnaissable, reste bloqué (jamais
   assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
 });
 
+// --- 8ter. Localité connue MAIS geocoding en échec : distinct de 8/8bis ---
+// (localité totalement inconnue) — ici ville/code postal/pays sont bien
+// identifiés côté serveur, mais le point neutre lui-même ne peut pas être
+// obtenu (fournisseur de geocoding en erreur). Preuve directe qu'il n'existe
+// plus AUCUN repli (ni "region seul", ni coordonnées de l'entreprise) :
+// zéro appel à la recherche concurrentielle, zéro écriture DB, blocage net.
+test("8ter. localité connue mais geocoding du centre en échec : bloqué, aucun appel à la recherche concurrentielle, aucune écriture DB", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db);
+  seedManualMetadata(db, ANALYSIS_ID);
+  marksInitialCollection(db, ANALYSIS_ID, {
+    geo: { locationLink: COMPUTELEC_LOCATION_LINK, postalCode: "6840", country: "Belgique", countryCode: "BE" },
+  });
+  const beforeAnalysis = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID);
+  let competitorSearchCalled = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return new Response("geocoding-down", { status: 500 });
+    competitorSearchCalled = true;
+    return Response.json({ data: [[]] });
+  };
+  try {
+    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
+    assert.equal(
+      competitorSearchCalled, false,
+      "la localité étant connue mais le centre geocodé indisponible, la recherche concurrentielle ne doit jamais être appelée",
+    );
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID), beforeAnalysis);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // --- 9. Échec fournisseur (ancrage résolu) : aucune mise à jour partielle ---
 
 test("9. un échec fournisseur après résolution de l’ancrage ne modifie rien partiellement", async () => {
@@ -530,7 +624,12 @@ test("réel — Computelec : requête visible « Électricien Neufchâteau », r
     // Ancrage réellement utilisé : Belgique, jamais mélangé à la requête.
     const params = new URL(capturedUrl).searchParams;
     assert.equal(params.get("query"), "Électricien Neufchâteau");
-    assert.equal(params.get("coordinates"), "49.816779999999994,5.449034");
+    // Le centre neutre de Neufchâteau (geocoding de la localité) — jamais
+    // l'épingle propre à Computelec (49.816779999999994,5.449034) : c'est la
+    // preuve directe du correctif "corriger la méthode d'ancrage
+    // géographique" (l'entreprise analysée n'est plus jamais le point de mesure).
+    assert.equal(params.get("coordinates"), "49.8419,5.4342");
+    assert.notEqual(params.get("coordinates"), "49.816779999999994,5.449034");
     assert.equal(params.get("region"), "BE");
     assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
     // Position réellement obtenue (9e, fixture ci-dessus) restituée telle

@@ -154,19 +154,49 @@ function refreshBody(overrides = {}) {
   };
 }
 
+// Mission "ancrage géographique" : la relance résout d'abord le point
+// neutre de la localité (resolveLocalityCenter, hôte api.outscraper.com,
+// distinct de la recherche concurrentielle sur api.app.outscraper.com)
+// avant d'appeler le fournisseur de recherche — ces fixtures doivent donc
+// répondre avec succès à ce premier appel pour que la relance testée ici
+// (autorisation admin_manual/duplicate_manual, hors sujet du geocoding)
+// puisse réellement atteindre la recherche concurrentielle.
+function isGeocodingRequest(url) {
+  return url.hostname === "api.outscraper.com";
+}
+
+function geocodingSuccessResponse() {
+  return Response.json({
+    data: [[{ latitude: 50.8503, longitude: 4.3517, city: "Bruxelles", postal_code: "1000", country_code: "BE" }]],
+  });
+}
+
 function installSuccessfulProviderFixture() {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ data: [[
-    { name: "Maison Test", place_id: "place-target", rating: 4.5, reviews: 40, photos_count: 12, city: "Bruxelles" },
-    { name: "Concurrent A", place_id: "place-a", rating: 4.2, reviews: 30, photos_count: 8, city: "Bruxelles" },
-    { name: "Concurrent B", place_id: "place-b", rating: 4.0, reviews: 20, photos_count: 5, city: "Bruxelles" },
-  ]] });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return geocodingSuccessResponse();
+    return Response.json({ data: [[
+      { name: "Maison Test", place_id: "place-target", rating: 4.5, reviews: 40, photos_count: 12, city: "Bruxelles" },
+      { name: "Concurrent A", place_id: "place-a", rating: 4.2, reviews: 30, photos_count: 8, city: "Bruxelles" },
+      { name: "Concurrent B", place_id: "place-b", rating: 4.0, reviews: 20, photos_count: 5, city: "Bruxelles" },
+    ]] });
+  };
   return () => { globalThis.fetch = originalFetch; };
 }
 
+// Simule un échec du fournisseur de RECHERCHE une fois l'ancrage déjà
+// résolu (le geocoding, hôte distinct, continue de répondre correctement)
+// — isole l'échec testé ici (recherche concurrentielle) de tout échec de
+// geocoding, déjà couvert ailleurs (localityGeocoder.test.js,
+// freeDiagnosticGeographicAnchor.test.js).
 function installFailingProviderFixture() {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response("provider-down", { status: 500 });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return geocodingSuccessResponse();
+    return new Response("provider-down", { status: 500 });
+  };
   return () => { globalThis.fetch = originalFetch; };
 }
 

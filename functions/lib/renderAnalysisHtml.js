@@ -468,17 +468,31 @@ function organicOrdinal(value) {
   return rounded === 1 ? "1er" : `${rounded}e`;
 }
 
-function positionSummary({ position, testedQuery, positionKind, sponsoredResultsExcluded } = {}) {
+// Mission "corriger la méthode d'ancrage géographique" (point 6) : le
+// classement local est désormais mesuré depuis le centre de la localité de
+// l'entreprise, jamais depuis l'entreprise elle-même (voir
+// functions/lib/geographicAnchor.js / localityGeocoder.js) — le libellé
+// doit donc toujours préciser DEPUIS OÙ la position a été mesurée quand
+// cette ville est connue. Absente (analyses antérieures à cette mission,
+// ancrage non résolu) -> libellé inchangé, jamais une ville inventée.
+function positionObserveeLabel(searchLocalityCity) {
+  return present(searchLocalityCity)
+    ? `Position observée depuis le centre de ${String(searchLocalityCity)} lors de l’analyse`
+    : "Position observée";
+}
+
+function positionSummary({ position, testedQuery, positionKind, sponsoredResultsExcluded, searchLocalityCity } = {}) {
   const numericPosition = Number(position);
   if (!Number.isFinite(numericPosition) || numericPosition <= 0) return "";
   const query = present(testedQuery) ? ` sur « ${String(testedQuery)} »` : "";
+  const label = positionObserveeLabel(searchLocalityCity);
   if (positionKind === "organic") {
     const advertisingContext = Number(sponsoredResultsExcluded) > 0
       ? " Une annonce sponsorisée apparaît au-dessus des résultats organiques."
       : "";
-    return `Position observée : ${organicOrdinal(numericPosition)} résultat organique${query} — hors annonces sponsorisées.${advertisingContext}`;
+    return `${label} : ${organicOrdinal(numericPosition)} résultat organique${query} — hors annonces sponsorisées.${advertisingContext}`;
   }
-  return `Position observée : ${formatOrdinal(numericPosition)} position${query}.`;
+  return `${label} : ${formatOrdinal(numericPosition)} position${query}.`;
 }
 
 // Ne remplace la phrase existante (hero.rank.text, déjà écrite par Composer)

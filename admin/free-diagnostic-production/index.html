@@ -4725,7 +4725,7 @@ function indicesProspectHtml(){
   const rqObs = estTexte(dObs.requeteTestee) ? libelleRechercheRapport(dObs.requeteTestee) : "";
   const EXPLICATIONS = {
     visibilite: estNombre(dObs.position) && dObs.position > 0
-      ? `Position observée : ${libellePositionRapport(dObs)}.`
+      ? `${libellePositionObserveeRapport(dObs)} : ${libellePositionRapport(dObs)}.`
       : (estNombre(dObs.position) && dObs.position === 0
         ? `Votre fiche n'apparaît pas dans les premiers résultats${rqObs ? " sur « " + rqObs + " »" : " observés"}.`
         : "Votre présence sur les recherches locales qui comptent pour votre activité."),
@@ -4793,7 +4793,7 @@ function faitsObservesHtml(){
   if(estNombre(d.nbAvis)) facts.push(["Avis", nEntier(d.nbAvis)]);
   if(estNombre(d.nbPhotos)) facts.push(["Photos", nEntier(d.nbPhotos)]);
   if(estNombre(d.nbServices)) facts.push(["Services listés", nEntier(d.nbServices)]);
-  if(estNombre(d.position)) facts.push(["Position observée", d.position === 0 ? "Non visible" : libellePositionRapport(d, {avecRecherche:false})]);
+  if(estNombre(d.position)) facts.push([libellePositionObserveeRapport(d), d.position === 0 ? "Non visible" : libellePositionRapport(d, {avecRecherche:false})]);
   if(estTexte(d.requeteTestee)) facts.push(["Recherche testée", "« " + libelleRechercheRapport(d.requeteTestee) + " »"]);
   if(estNombre(d.concurrence?.volC)) facts.push(["Avis concurrents", nEntier(d.concurrence.volC) + " en moyenne"]);
   if(estTexte(d.dernierAvis)) facts.push(["Dernier avis", new Date(d.dernierAvis).toLocaleDateString("fr-FR")]);
@@ -4862,7 +4862,7 @@ function enrichirConstatAvecDonnees(cr, points){
   if((cr.key === "volumeAvis" || cr.key === "noteMoyenne") && estNombre(d.nbAvis)) morceaux.push(`Nombre d'avis : ${nEntier(d.nbAvis)}.`);
   if(cr.key === "volumeAvis" && concurrence && estNombre(concurrence.volC)) morceaux.push(`Moyenne des concurrents observés : ${nEntier(concurrence.volC)} avis.`);
   if(cr.key === "attractiviteConcurrents" && concurrence && estNombre(concurrence.noteC) && estNombre(concurrence.volC)) morceaux.push(`Concurrents observés : ${fmtNote(concurrence.noteC)}/5 et ${nEntier(concurrence.volC)} avis en moyenne.`);
-  if(cr.key === "classementLocal" && estNombre(d.position)) morceaux.push(`Position observée : ${d.position === 0 ? "hors des premiers résultats" : libellePositionRapport(d)}.${contexteAnnonceSponsorisee(d)}`);
+  if(cr.key === "classementLocal" && estNombre(d.position)) morceaux.push(`${libellePositionObserveeRapport(d)} : ${d.position === 0 ? "hors des premiers résultats" : libellePositionRapport(d)}.${contexteAnnonceSponsorisee(d)}`);
   if(cr.key === "nombrePhotos" && estNombre(d.nbPhotos)) morceaux.push(`Photos observées : ${nEntier(d.nbPhotos)}.`);
   if((cr.key === "servicesPresents" || cr.key === "servicesDecrits") && estNombre(d.nbServices)) morceaux.push(`Services listés : ${nEntier(d.nbServices)}.`);
   if((cr.key === "publicationRecente" || cr.key === "rythmePublication") && estNombre(d.nbPublications)) morceaux.push(`Publications visibles : ${nEntier(d.nbPublications)}.`);
@@ -5326,6 +5326,25 @@ function libellePositionRapport(d = donneesAnalyse, {avecRecherche = true} = {})
   return positionOrganiqueConfirmee(d)
     ? `${ordinalOrganique(d.position)} résultat organique${recherche} — hors annonces sponsorisées`
     : `${d.position === 1 ? "1re" : d.position + "e"} position${recherche}`;
+}
+
+// Mission "corriger la méthode d'ancrage géographique" (point 6) : le
+// classement local n'est plus mesuré depuis l'entreprise analysée mais
+// depuis le centre de sa localité (voir functions/lib/geographicAnchor.js /
+// localityGeocoder.js) — le libellé "Position observée" doit donc toujours
+// préciser explicitement DEPUIS OÙ la position a été mesurée, pour ne
+// jamais laisser croire que l'entreprise elle-même est le point de mesure.
+// `donneesAnalyse.zoneGeographique` porte l'ancrage RÉELLEMENT utilisé pour
+// la dernière recherche analysée (jamais la zone "actuellement détectée",
+// qui peut différer — voir actualiserZoneGeographique) : c'est bien cette
+// ville-là, et pas une autre, qui doit apparaître ici.
+function villeAncrageRapport(d = donneesAnalyse){
+  return estTexte(d?.zoneGeographique?.locality?.city) ? d.zoneGeographique.locality.city : "";
+}
+
+function libellePositionObserveeRapport(d = donneesAnalyse){
+  const ville = villeAncrageRapport(d);
+  return ville ? `Position observée depuis le centre de ${ville} lors de l’analyse` : "Position observée";
 }
 
 function contexteAnnonceSponsorisee(d = donneesAnalyse){
@@ -6095,11 +6114,19 @@ function consequencePhotos(item, ctx){
   const volumeSuffisant = volumeConnu && prioritePhotosPorteSurActualite(item);
   const volumeInsuffisant = volumeConnu && !volumeSuffisant;
   const actualiteInsuffisante = etatCritere("photoRecente") === "insuffisant";
+  // Zéro photo : "photoRecente" est forcé à "insuffisant" (voir lirePoints,
+  // PHOTO_DEPENDENT_KEYS) alors qu'il n'y a précisément AUCUNE photo dont la
+  // récence pourrait se juger — évoquer des "visuels qui ne sont plus
+  // récents" laisserait croire qu'il en existe. La formulation sur la
+  // récence reste utilisée uniquement à partir d'une photo (voir plus bas).
+  const aucunePhoto = estNombre(d.nbPhotos) && Number(d.nbPhotos) === 0;
 
+  if(aucunePhoto)
+    return "Sans photo visible, le client peut avoir plus de mal à se projeter et à percevoir concrètement votre activité actuelle.";
   // volume suffisant (comparable ou supérieur à la moyenne concurrentielle) + photos anciennes.
   if(volumeSuffisant && actualiteInsuffisante)
     return "Si les photos ne sont pas récentes, le client peut se demander si la fiche reflète encore l'activité actuelle.";
-  // volume insuffisant ET photos anciennes : les deux causes sont réelles, on ne confond pas l'une avec l'autre.
+  // volume insuffisant ET photos anciennes (au moins une photo existe) : les deux causes sont réelles, on ne confond pas l'une avec l'autre.
   if(volumeInsuffisant && actualiteInsuffisante)
     return "Avec trop peu de photos, et des visuels qui ne sont plus récents, le client peut avoir plus de mal à se projeter et douter que la fiche reflète l'activité actuelle.";
   // volume insuffisant, actualité correcte ou inconnue : seul le volume est en cause.

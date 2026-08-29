@@ -166,6 +166,20 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
       assert.equal(init.redirect, "manual");
       return new Response(null, { status: 302, headers: { Location: CANONICAL_GOOGLE_URL } });
     }
+    if (url.hostname === "api.outscraper.com") {
+      // Geocoding du centre neutre de la localité (resolveLocalityCenter,
+      // localityGeocoder.js) — hôte distinct de l'identification/recherche
+      // concurrentielle (api.app.outscraper.com). Répond toujours avec
+      // succès, y compris quand `fail` simule un échec fournisseur : ces
+      // tests isolent précisément l'échec de la recherche elle-même, une
+      // fois l'ancrage déjà résolu (jamais un échec de geocoding, couvert
+      // séparément par tests/localityGeocoder.test.js et
+      // tests/freeDiagnosticGeographicAnchor.test.js).
+      assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
+      return Response.json({
+        data: [[{ latitude: 50.8503, longitude: 4.3517, city: "Bruxelles", postal_code: "1000", country_code: "BE" }]],
+      });
+    }
     assert.equal(url.hostname, "api.app.outscraper.com");
     assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
     if (fail) {
@@ -186,6 +200,9 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
       category: "Pâtisserie",
       location_link: "https://www.google.com/maps/place/target",
       cid: "cid-target",
+      postal_code: "1000",
+      country: "Belgique",
+      country_code: "BE",
     };
     const data = query === CANONICAL_GOOGLE_URL
       ? [[target]]
@@ -398,8 +415,16 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
   let providerQuery = "";
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
-    providerQuery = url.searchParams.get("query") || "";
     assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
+    if (url.hostname === "api.outscraper.com") {
+      // Geocoding du centre neutre d'Attert (locality résolue depuis la
+      // fiche déjà collectée : postal_code 6717 / country_code BE) — hôte
+      // distinct de la recherche concurrentielle, appelé avant celle-ci.
+      return Response.json({
+        data: [[{ latitude: 49.7864, longitude: 5.7864, city: "Attert", postal_code: "6717", country_code: "BE" }]],
+      });
+    }
+    providerQuery = url.searchParams.get("query") || "";
     return Response.json({ data: [[
       { name:"AS pro elec", place_id:"new-1", rating:4.4, reviews:7, photos_count:0, services:["a","b","c"], posts:[1,2], sponsored:false },
       { name:"Moris Wilfried", place_id:"new-2", rating:5, reviews:5, photos_count:1, services:["a"], posts:[1], sponsored:false },
