@@ -132,15 +132,21 @@ function installRealPipelineRouter({
 
     // Geocoding du centre neutre de la localité — hôte distinct
     // (api.outscraper.com) de la recherche d'identification/concurrentielle
-    // (api.app.outscraper.com), voir localityGeocoder.js.
+    // (api.app.outscraper.com), voir localityGeocoder.js. Réponse au format
+    // PLAT officiel exact (data: [{...}], voir
+    // https://docs.outscraper.com/endpoints/geocoding/), SANS country_code —
+    // reproduction fidèle du cas réel Computelec 604d91ab en Preview : la
+    // réponse Outscraper réelle ne portait que `country`, jamais
+    // `country_code`, ce que l'ancienne validation rejetait à tort.
     if (url.hostname === "api.outscraper.com") {
       calls.geocoding += 1;
       if (!geocodingOk) return new Response("geocoding-down", { status: 500 });
       return Response.json({
-        data: [[{
+        status: "Success",
+        data: [{
           latitude: geocodingCenter.lat, longitude: geocodingCenter.lng,
-          city: fiche.city, postal_code: fiche.postal_code, country_code: fiche.country_code,
-        }]],
+          city: fiche.city, postal_code: fiche.postal_code, country: fiche.country,
+        }],
       });
     }
 
@@ -180,7 +186,7 @@ function newAuditPayload(idempotencyKey) {
   };
 }
 
-test("succès — ancrage neutre mémorisé, requête visible inchangée, coordonnées distinctes de l'épingle de Computelec", async () => {
+test("succès (contrat officiel, réponse plate sans country_code) — ancrage neutre mémorisé, requête visible inchangée, coordonnées distinctes de l'épingle de Computelec", async () => {
   const db = new LocalD1();
   const router = installRealPipelineRouter({ db, competitors: competitorsPanel() });
   try {

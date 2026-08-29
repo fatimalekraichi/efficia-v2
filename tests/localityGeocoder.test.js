@@ -7,6 +7,16 @@
 // ou une réponse incohérente avec la localité demandée bloquent
 // entièrement (ok:false), jamais une coordonnée devinée ni un simple
 // paramètre "region" en remplacement.
+//
+// Revue (2026-08-29, cas réel Computelec 604d91ab en Preview) — le contrat
+// officiel Outscraper (https://docs.outscraper.com/endpoints/geocoding/)
+// documente une réponse plate `data: [{...}]` où `country_code` N'EST PAS
+// garanti (l'exemple officiel ne comporte que `country` en toutes lettres).
+// L'ancienne validation exigeait pourtant toujours `country_code`, rejetant
+// à tort des réponses par ailleurs correctes. Les tests ci-dessous
+// reproduisent ce contrat officiel tel quel (jamais un schéma inventé), et
+// couvrent désormais aussi le format plat SANS country_code, le repli sur
+// `country` (nom), et la réponse HTTP 202 "Pending".
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -103,7 +113,7 @@ test("erreur HTTP — le fournisseur répond avec un statut d'erreur", async () 
   try {
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.REQUEST_FAILED);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.HTTP_ERROR);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -115,7 +125,7 @@ test("réponse vide — corps de réponse vide ou sans résultat exploitable", a
   try {
     const empty = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(empty.ok, false);
-    assert.equal(empty.code, LOCALITY_CENTER_ERROR.EMPTY_RESPONSE);
+    assert.equal(empty.code, LOCALITY_CENTER_ERROR.EMPTY_RESULT);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -123,7 +133,7 @@ test("réponse vide — corps de réponse vide ou sans résultat exploitable", a
   try {
     const emptyData = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(emptyData.ok, false);
-    assert.equal(emptyData.code, LOCALITY_CENTER_ERROR.EMPTY_RESPONSE);
+    assert.equal(emptyData.code, LOCALITY_CENTER_ERROR.EMPTY_RESULT);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -151,13 +161,32 @@ test("mauvais pays — country_code de la réponse différent du pays attendu, j
   try {
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("country_code absent de la réponse — jamais accepté par défaut", async () => {
+test("country_code présent mais incorrect — un nom de pays par ailleurs correct ne rattrape jamais la réponse", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    // country_code "FR" incorrect, mais country "Belgique" (correct) présent
+    // malgré tout dans la réponse : ne doit jamais sauver la validation.
+    data: [{
+      latitude: 48.3538, longitude: 5.6975, city: "Neufchâteau", postal_code: "88300",
+      country_code: "FR", country: "Belgique",
+    }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("country_code totalement absent de la réponse — jamais accepté par défaut quand country (nom) est également absent", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({
     data: [[{ latitude: 49.8419, longitude: 5.4342, city: "Neufchâteau", postal_code: "6840" }]],
@@ -165,7 +194,21 @@ test("country_code absent de la réponse — jamais accepté par défaut", async
   try {
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("country (nom) incompatible quand country_code est absent — rejeté, jamais une coïncidence supposée", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [{ latitude: 48.3538, longitude: 5.6975, city: "Neufchâteau", postal_code: "88300", country: "France" }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -179,7 +222,7 @@ test("mauvais code postal — postal_code de la réponse différent de celui att
   try {
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.POSTAL_CODE_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -193,7 +236,7 @@ test("ville incompatible — city de la réponse différente ou absente, jamais 
   try {
     const wrongCity = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(wrongCity.ok, false);
-    assert.equal(wrongCity.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(wrongCity.code, LOCALITY_CENTER_ERROR.CITY_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -203,7 +246,7 @@ test("ville incompatible — city de la réponse différente ou absente, jamais 
   try {
     const noCity = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(noCity.ok, false);
-    assert.equal(noCity.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(noCity.code, LOCALITY_CENTER_ERROR.CITY_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -221,7 +264,7 @@ test("localité homonyme (Neufchâteau France répond à une requête Neufchâte
       postalCode: "6840", city: "Neufchâteau", countryName: "Belgique", countryCode: "BE", apiKey: "k",
     });
     assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -247,6 +290,116 @@ test("succès — postal_code absent de la réponse (fournisseur ne le renvoie p
   try {
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- Contrat officiel Outscraper (https://docs.outscraper.com/endpoints/geocoding/) ---
+// Reproduit tel quel le format documenté, jamais un schéma inventé pour
+// faire passer les tests : réponse plate, `data: [{...}]` (un seul objet,
+// jamais un tableau imbriqué), `country_code` NON garanti.
+
+test("contrat officiel — réponse plate data:[{...}] SANS country_code mais avec country:\"Belgium\" correct → succès (cause réelle du blocage Computelec 604d91ab)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    status: "Success",
+    data: [{
+      query: "6840 Neufchâteau Belgique",
+      latitude: 49.8419,
+      longitude: 5.4342,
+      country: "Belgium",
+      city: "Neufchâteau",
+      postal_code: "6840",
+    }],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      postalCode: "6840", city: "Neufchâteau", countryName: "Belgium", countryCode: "BE", apiKey: "k",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.lat, 49.8419);
+    assert.equal(result.lng, 5.4342);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("contrat officiel — réponse plate data:[{...}] AVEC country_code:\"BE\" → succès", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    status: "Success",
+    data: [{
+      query: "6840 Neufchâteau Belgique",
+      latitude: 49.8419,
+      longitude: 5.4342,
+      country: "Belgium",
+      country_code: "BE",
+      city: "Neufchâteau",
+      postal_code: "6840",
+    }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, true);
+    assert.equal(result.lat, 49.8419);
+    assert.equal(result.lng, 5.4342);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("ancien format imbriqué data:[[{...}]] toujours accepté par compatibilité, mais uniquement si la validation stricte passe", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{ latitude: 49.8419, longitude: 5.4342, city: "Neufchâteau", postal_code: "6840", country_code: "BE" }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // La compatibilité ne dispense jamais de la validation stricte : un
+  // résultat imbriqué incohérent avec la localité attendue reste rejeté.
+  globalThis.fetch = async () => Response.json({
+    data: [[{ latitude: 48.3538, longitude: 5.6975, city: "Neufchâteau", postal_code: "88300", country_code: "FR" }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HTTP 202 Pending — comportement explicite et borné, jamais un succès deviné ni une nouvelle requête automatique", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = async () => {
+    callCount += 1;
+    return Response.json({ status: "Pending", results_location: "https://api.outscraper.com/requests/abc123" }, { status: 202 });
+  };
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.PENDING);
+    // Aucune nouvelle requête de geocoding : un seul appel réseau.
+    assert.equal(callCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("statut 200 avec corps {status:\"Pending\"} — également reconnu explicitement, jamais confondu avec une réponse vide", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ status: "Pending", results_location: "https://api.outscraper.com/requests/def456" });
+  try {
+    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.PENDING);
   } finally {
     globalThis.fetch = originalFetch;
   }

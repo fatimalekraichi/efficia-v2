@@ -26,6 +26,26 @@
 //     "region" transmis au fournisseur en remplacement. L'appelant
 //     (geographicAnchor.js) bloque alors entièrement la recherche.
 //
+// Revue (2026-08-29, cas réel Computelec 604d91ab — blocage en Preview) :
+// contrairement à l'hypothèse initiale, `firstResult()` traitait déjà
+// correctement le format plat officiel `data: [{...}]` documenté par
+// https://docs.outscraper.com/endpoints/geocoding/ (un objet, jamais un
+// tableau imbriqué, en première position de `data`). La cause réelle du
+// blocage était ailleurs : `validateLocalityMatch()` EXIGEAIT
+// systématiquement un `country_code` dans la réponse, alors que ce champ
+// N'EST PAS garanti par le contrat officiel (l'exemple de réponse documenté
+// ne comporte que `country`, jamais `country_code`) — une réponse par
+// ailleurs correcte (bonne ville, bon code postal, bon `country` en toutes
+// lettres) était donc rejetée à tort, faute de `country_code`. Corrigé
+// ci-dessous (validateLocalityMatch) par un repli explicite et normalisé sur
+// le nom du pays, JAMAIS un succès par défaut si les deux sont absents, et
+// JAMAIS un `country_code` incorrect rattrapé par un nom de pays correct.
+// Une réponse HTTP 202 "Pending" (traitement asynchrone, `results_location`
+// — voir contrat officiel) est également distinguée explicitement
+// désormais (LOCALITY_CENTER_ERROR.PENDING) plutôt que noyée dans un échec
+// générique "réponse vide" : voir le commentaire au point de lecture de la
+// réponse ci-dessous pour la limitation assumée sur `results_location`.
+//
 // Déterminisme (deux entreprises différentes de la même localité utilisent
 // exactement le même point) : la requête de géocodage est construite
 // UNIQUEMENT à partir de l'identité de la localité (code postal + ville +
@@ -39,15 +59,25 @@
 const OUTSCRAPER_GEOCODING_URL = "https://api.outscraper.com/geocoding";
 const DEFAULT_TIMEOUT_MS = 15000;
 
+// Codes techniques précis (mission "corriger le geocodeur de localité") —
+// un code par cause distincte, jamais un code générique unique pour
+// plusieurs causes différentes. Ne révèlent et ne dérivent jamais une clé
+// API, un en-tête d'authentification, un secret Cloudflare, ni le corps brut
+// complet d'une erreur fournisseur (voir les points de journalisation
+// ci-dessous : uniquement un statut HTTP, un nom d'erreur JS, ou une raison
+// de validation déjà connue côté serveur).
 export const LOCALITY_CENTER_ERROR = Object.freeze({
-  MISSING_LOCALITY: "LOCALITY_CENTER_MISSING_LOCALITY",
-  MISSING_API_KEY: "LOCALITY_CENTER_MISSING_API_KEY",
-  REQUEST_FAILED: "LOCALITY_CENTER_REQUEST_FAILED",
-  TIMEOUT: "LOCALITY_CENTER_TIMEOUT",
-  INVALID_RESPONSE: "LOCALITY_CENTER_INVALID_RESPONSE",
-  EMPTY_RESPONSE: "LOCALITY_CENTER_EMPTY_RESPONSE",
-  NOT_FOUND: "LOCALITY_CENTER_NOT_FOUND",
-  LOCALITY_MISMATCH: "LOCALITY_CENTER_MISMATCH",
+  MISSING_LOCALITY: "GEOCODING_MISSING_LOCALITY",
+  MISSING_API_KEY: "GEOCODING_MISSING_API_KEY",
+  HTTP_ERROR: "GEOCODING_HTTP_ERROR",
+  TIMEOUT: "GEOCODING_TIMEOUT",
+  INVALID_RESPONSE: "GEOCODING_INVALID_RESPONSE",
+  EMPTY_RESULT: "GEOCODING_EMPTY_RESULT",
+  NOT_FOUND: "GEOCODING_NOT_FOUND",
+  PENDING: "GEOCODING_PENDING",
+  COUNTRY_MISMATCH: "GEOCODING_COUNTRY_MISMATCH",
+  CITY_MISMATCH: "GEOCODING_CITY_MISMATCH",
+  POSTAL_CODE_MISMATCH: "GEOCODING_POSTAL_CODE_MISMATCH",
 });
 
 function isPlausibleLatitude(value) {
@@ -63,6 +93,20 @@ function normalizeKey(value) {
     .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase();
+}
+
+// Normalisation du NOM de pays — casse, espaces et accents uniquement (pas
+// de table de correspondance ici : la table pays->code vit dans
+// geographicAnchor.js et sert à résoudre le country_code ATTENDU en amont ;
+// ici on compare deux noms déjà en toutes lettres, celui attendu et celui
+// renvoyé par le fournisseur).
+function normalizeCountryName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function normalizePostal(value) {
@@ -112,12 +156,21 @@ function extractLatLng(result) {
 }
 
 // Validation stricte (mission "corriger la méthode d'ancrage géographique",
-// point 2) — le résultat du geocoder doit provenir SANS AMBIGUÏTÉ de la
-// localité demandée, jamais d'une entreprise ou d'une localité homonyme :
-//  - country_code de la réponse identique au pays attendu (obligatoire —
-//    aucune réponse sans country_code, ou avec un country_code différent,
-//    n'est jamais acceptée : c'est précisément ce qui distingue Neufchâteau
-//    Belgique de Neufchâteau France) ;
+// révisée le 2026-08-29 suite au blocage réel Computelec 604d91ab) — le
+// résultat du geocoder doit provenir SANS AMBIGUÏTÉ de la localité
+// demandée, jamais d'une entreprise ou d'une localité homonyme :
+//  - PAYS (obligatoire, jamais un succès par défaut si tout est absent) :
+//    · si la réponse fournit un country_code, il DOIT correspondre
+//      exactement au pays attendu — un country_code incorrect n'est JAMAIS
+//      rattrapé par un nom de pays par ailleurs correct (c'est précisément
+//      ce qui distingue Neufchâteau Belgique de Neufchâteau France) ;
+//    · country_code N'EST PAS garanti par le contrat officiel Outscraper
+//      (docs.outscraper.com/endpoints/geocoding/ — l'exemple de réponse
+//      documenté ne comporte que `country` en toutes lettres). Quand il est
+//      absent, on retombe explicitement sur `country` (nom), normalisé
+//      uniquement en casse/espaces/accents — jamais une simple
+//      inclusion/troncature ;
+//    · si country_code ET country (nom) sont tous deux absents -> rejet ;
 //  - city de la réponse compatible avec la ville attendue (obligatoire —
 //    absente ou différente -> rejet, jamais une coïncidence supposée) ;
 //  - postal_code de la réponse compatible avec le code postal attendu
@@ -126,10 +179,18 @@ function extractLatLng(result) {
 //    indéfiniment une localité par ailleurs confirmée par ville+pays, mais
 //    un code postal renvoyé ET différent de celui attendu est un rejet net.
 function validateLocalityMatch(result, expected) {
-  const responseCountry = String(result?.country_code || "").trim().toUpperCase();
-  const expectedCountry = String(expected?.countryCode || "").trim().toUpperCase();
-  if (!responseCountry || !expectedCountry || responseCountry !== expectedCountry) {
-    return { ok: false, reason: "country_code" };
+  const responseCountryCode = String(result?.country_code || "").trim().toUpperCase();
+  const expectedCountryCode = String(expected?.countryCode || "").trim().toUpperCase();
+  if (responseCountryCode) {
+    if (!expectedCountryCode || responseCountryCode !== expectedCountryCode) {
+      return { ok: false, reason: "country_code_mismatch" };
+    }
+  } else {
+    const responseCountryName = normalizeCountryName(result?.country);
+    const expectedCountryName = normalizeCountryName(expected?.countryName);
+    if (!responseCountryName || !expectedCountryName || responseCountryName !== expectedCountryName) {
+      return { ok: false, reason: "country_name_mismatch" };
+    }
   }
 
   const responseCity = normalizeKey(result?.city);
@@ -148,6 +209,17 @@ function validateLocalityMatch(result, expected) {
 
   return { ok: true };
 }
+
+// Un seul point de correspondance raison -> code technique précis, pour
+// éviter que deux causes distinctes (pays vs ville vs code postal) ne soient
+// jamais confondues sous un unique code générique "incohérent".
+const VALIDATION_REASON_TO_CODE = Object.freeze({
+  country_code_mismatch: "COUNTRY_MISMATCH",
+  country_name_mismatch: "COUNTRY_MISMATCH",
+  city_missing: "CITY_MISMATCH",
+  city_mismatch: "CITY_MISMATCH",
+  postal_code_mismatch: "POSTAL_CODE_MISMATCH",
+});
 
 /**
  * Résout le point neutre (centre géographique) d'une localité déjà
@@ -195,20 +267,41 @@ export async function resolveLocalityCenter({
       console.error("resolveLocalityCenter: délai dépassé");
       return { ok: false, code: LOCALITY_CENTER_ERROR.TIMEOUT };
     }
+    // Jamais le message brut de l'erreur réseau (peut contenir l'URL avec la
+    // clé API en clair côté certains runtimes) — uniquement son nom (ex.
+    // "TypeError"), jamais son contenu.
     console.error("resolveLocalityCenter: appel amont échoué", err && err.name);
-    return { ok: false, code: LOCALITY_CENTER_ERROR.REQUEST_FAILED };
+    return { ok: false, code: LOCALITY_CENTER_ERROR.HTTP_ERROR };
   } finally {
     clearTimeout(timeout);
   }
 
+  // HTTP 202 Accepted — traitement asynchrone en cours côté fournisseur
+  // (contrat officiel : `results_location` fourni pour interroger le
+  // résultat plus tard). Distingué explicitement d'un échec générique.
+  // Limitation assumée et documentée : ce module ne relance jamais un appel
+  // de geocoding pour la même localité, et n'interroge jamais
+  // `results_location` — implémenter un polling borné et sûr (nombre de
+  // lectures limité, délai total borné, URL HTTPS revalidée sur l'hôte et le
+  // chemin Outscraper autorisés explicitement, même authentification
+  // serveur, aucune URL de tiers suivie aveuglément) dépasse le temps
+  // d'exécution raisonnable d'une Cloudflare Pages Function et le périmètre
+  // de cette correction. Tant que ce mode n'est pas implémenté, une réponse
+  // Pending est un échec explicite et borné (jamais un succès deviné,
+  // jamais une seconde tentative automatique).
+  if (res.status === 202) {
+    console.error("resolveLocalityCenter: réponse fournisseur en attente (202 Pending)");
+    return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
+  }
+
   if (!res.ok) {
     console.error("resolveLocalityCenter: réponse amont non OK", res.status);
-    return { ok: false, code: LOCALITY_CENTER_ERROR.REQUEST_FAILED };
+    return { ok: false, code: LOCALITY_CENTER_ERROR.HTTP_ERROR };
   }
 
   if (!bodyText || !bodyText.trim()) {
     console.error("resolveLocalityCenter: réponse amont vide");
-    return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESPONSE };
+    return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESULT };
   }
 
   let payload;
@@ -219,9 +312,18 @@ export async function resolveLocalityCenter({
     return { ok: false, code: LOCALITY_CENTER_ERROR.INVALID_RESPONSE };
   }
 
+  // Défense supplémentaire : certains statuts "Pending" sont documentés côté
+  // fournisseur avec un code HTTP 200 mais un champ `status` explicite dans
+  // le corps — jamais interprété comme "aucun résultat" (EMPTY_RESULT),
+  // toujours comme PENDING.
+  if (typeof payload?.status === "string" && payload.status.trim().toLowerCase() === "pending") {
+    console.error("resolveLocalityCenter: réponse fournisseur en attente (status Pending)");
+    return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
+  }
+
   const result = firstResult(payload);
   if (!result) {
-    return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESPONSE };
+    return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESULT };
   }
 
   const point = extractLatLng(result);
@@ -229,10 +331,11 @@ export async function resolveLocalityCenter({
     return { ok: false, code: LOCALITY_CENTER_ERROR.NOT_FOUND };
   }
 
-  const validation = validateLocalityMatch(result, { city, postalCode, countryCode });
+  const validation = validateLocalityMatch(result, { city, postalCode, countryCode: regionTrim, countryName });
   if (!validation.ok) {
     console.error("resolveLocalityCenter: réponse incohérente avec la localité attendue", validation.reason);
-    return { ok: false, code: LOCALITY_CENTER_ERROR.LOCALITY_MISMATCH };
+    const specificCode = VALIDATION_REASON_TO_CODE[validation.reason];
+    return { ok: false, code: LOCALITY_CENTER_ERROR[specificCode] || LOCALITY_CENTER_ERROR.CITY_MISMATCH };
   }
 
   return {
