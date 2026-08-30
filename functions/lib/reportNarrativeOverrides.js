@@ -1,4 +1,5 @@
 import { COMPOSER_VERSION } from "./composer-engine/composerVersion.js";
+import { normalizeQuestionnaireAnswers } from "./auditQuestionnaireSnapshots.js";
 
 export const REPORT_NARRATIVE_ANOMALY_CATEGORIES = Object.freeze([
   "texte faux ou contradictoire",
@@ -37,6 +38,21 @@ const FIELD_ID_SET = new Set(REPORT_NARRATIVE_FIELD_IDS);
 const CATEGORY_SET = new Set(REPORT_NARRATIVE_ANOMALY_CATEGORIES);
 const encoder = new TextEncoder();
 
+function parseContextJson(value) {
+  if (value && typeof value === "object") return value;
+  try { return JSON.parse(value || "null"); } catch { return null; }
+}
+
+function canonicalizeContextValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeContextValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalizeContextValue(value[key])]));
+}
+
+export function serializeReportNarrativeContext(value) {
+  return JSON.stringify(canonicalizeContextValue(value));
+}
+
 export function reportNarrativeCatalog() {
   return REPORT_NARRATIVE_FIELD_IDS.map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
 }
@@ -74,7 +90,10 @@ export async function hashReportNarrativeContext(value) {
 export async function loadReportNarrativeContext(db, analysisId) {
   const row = await db.prepare(`
     SELECT
-      a.updated_at AS analysis_updated_at,
+      a.nom, a.ville, a.activity, a.rating, a.reviews, a.photos_count, a.description_length,
+      a.search_query, a.local_position, a.competitors_json, a.fiche_json, a.normalized_json,
+      a.manual_review_json, a.reviewed_observation_json, a.reviewed_benchmark_json,
+      a.score_inputs_json, a.reviewed_score_json, a.scoring_version,
       a.document_model_json,
       d.answers_json AS draft_answers_json,
       s.answers_json AS snapshot_answers_json
@@ -85,8 +104,34 @@ export async function loadReportNarrativeContext(db, analysisId) {
     LIMIT 1
   `).bind(analysisId).first();
   if (!row) return null;
-  const answersJson = row.draft_answers_json || row.snapshot_answers_json || "";
-  const contextHash = await hashReportNarrativeContext(`${row.analysis_updated_at || ""}\n${answersJson}`);
+  const questionnaire = normalizeQuestionnaireAnswers(
+    parseContextJson(row.draft_answers_json || row.snapshot_answers_json),
+  );
+  const contextHash = await hashReportNarrativeContext(serializeReportNarrativeContext({
+    business: {
+      name: row.nom || null,
+      city: row.ville || null,
+      activity: row.activity || null,
+      rating: row.rating ?? null,
+      reviews: row.reviews ?? null,
+      photosCount: row.photos_count ?? null,
+      descriptionLength: row.description_length ?? null,
+      searchQuery: row.search_query || null,
+      localPosition: row.local_position ?? null,
+      competitors: parseContextJson(row.competitors_json),
+      fiche: parseContextJson(row.fiche_json),
+      normalized: parseContextJson(row.normalized_json),
+    },
+    review: {
+      manual: parseContextJson(row.manual_review_json),
+      observation: parseContextJson(row.reviewed_observation_json),
+      benchmark: parseContextJson(row.reviewed_benchmark_json),
+      scoreInputs: parseContextJson(row.score_inputs_json),
+      reviewedScore: parseContextJson(row.reviewed_score_json),
+      scoringVersion: row.scoring_version || null,
+    },
+    questionnaire,
+  }));
   let generatorVersion = COMPOSER_VERSION;
   try {
     generatorVersion = JSON.parse(row.document_model_json || "null")?.composerVersion || COMPOSER_VERSION;
@@ -148,6 +193,22 @@ export async function markReportNarrativeOverridesForContext(db, analysisId, con
   } catch (error) {
     if (!/no such table|does not exist/i.test(String(error?.message || error))) throw error;
   }
+}
+
+export async function markReportNarrativeOverridesForCurrentContext(db, analysisId) {
+  try {
+    const existing = await db.prepare(`
+      SELECT 1 FROM report_narrative_overrides WHERE analysis_id = ? LIMIT 1
+    `).bind(analysisId).first();
+    if (!existing) return false;
+  } catch (error) {
+    if (/no such table|does not exist/i.test(String(error?.message || error))) return false;
+    throw error;
+  }
+  const context = await loadReportNarrativeContext(db, analysisId);
+  if (!context) return false;
+  await markReportNarrativeOverridesForContext(db, analysisId, context.contextHash);
+  return true;
 }
 
 function overrideMap(overrides) {

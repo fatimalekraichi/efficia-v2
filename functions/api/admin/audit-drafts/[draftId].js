@@ -4,7 +4,7 @@ import {
   normalizeQuestionnaireAnswers,
   resolveQuestionnaireVersion,
 } from "../../../lib/auditQuestionnaireSnapshots.js";
-import { hashReportNarrativeContext, markReportNarrativeOverridesForContext } from "../../../lib/reportNarrativeOverrides.js";
+import { markReportNarrativeOverridesForCurrentContext } from "../../../lib/reportNarrativeOverrides.js";
 
 const MAX_ANSWERS_BYTES = 120_000;
 const REPORT_TYPES = new Set(["free", "premium"]);
@@ -36,7 +36,7 @@ function formatDraft(row) {
 
 async function loadAnalysis(db, analysisId) {
   return db.prepare(`
-    SELECT analysis_id, report_type, updated_at
+    SELECT analysis_id, report_type
     FROM analyses
     WHERE analysis_id = ?
     LIMIT 1
@@ -105,8 +105,7 @@ export async function onRequestPut(context) {
     now,
   ).run();
 
-  const contextHash = await hashReportNarrativeContext(`${analysis.updated_at || ""}\n${answersJson}`);
-  await markReportNarrativeOverridesForContext(db, draftId, contextHash);
+  await markReportNarrativeOverridesForCurrentContext(db, draftId);
 
   const row = await db.prepare(`SELECT * FROM audit_drafts WHERE draft_id = ? LIMIT 1`).bind(draftId).first();
   return jsonResponse({ success: true, draft: formatDraft(row) });

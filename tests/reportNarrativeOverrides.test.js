@@ -17,7 +17,8 @@ import { buildEffectiveDocumentModelFromAnalysis } from "../functions/lib/docume
 import {
   REPORT_NARRATIVE_FIELDS,
   applyReportNarrativeOverrides,
-  markReportNarrativeOverridesNeedsReview,
+  markReportNarrativeOverridesForCurrentContext,
+  serializeReportNarrativeContext,
 } from "../functions/lib/reportNarrativeOverrides.js";
 import { renderFreeDiagnosticHtml } from "../functions/lib/renderAnalysisHtml.js";
 
@@ -26,9 +27,12 @@ const ANALYSIS_ID = "analysis-report-text";
 const CHROME = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const migrations = [
   "0003_analyses.sql",
+  "0004_analysis_competitors.sql",
   "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql",
+  "0009_manual_review_gate.sql",
   "0010_analysis_report_type.sql",
+  "0011_score_efficia_historical.sql",
   "0014_audit_drafts.sql",
   "0015_audit_questionnaire_snapshots.sql",
   "0018_report_narrative_overrides.sql",
@@ -100,6 +104,95 @@ function baseDocumentModel() {
   };
 }
 
+function runAdminBrowserHarness(harnessSource) {
+  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
+    .replace(
+      '<script src="/js/score-efficia-core.js?v=1"></script>',
+      `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,
+    )
+    .replace(
+      '<script src="/js/questionnaire-finalization.js"></script>',
+      `<script>${readFileSync(new URL("../js/questionnaire-finalization.js", import.meta.url), "utf8")}</script>`,
+    )
+    .replace(
+      '<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>',
+      `<script>${readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8")}</script>`,
+    );
+  const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
+  const fetchFixture = `<script>
+    window.__workflowFetchCalls = [];
+    window.fetch = async (input, options = {}) => {
+      const url = String(input);
+      window.__workflowFetchCalls.push({ url, method: options.method || "GET" });
+      const json = (body, status = 200) => new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" }
+      });
+      if (url.includes("/api/admin/free-diagnostic-context/")) return json({
+        success: true,
+        context: {
+          company: "Entreprise Test",
+          city: "Arlon",
+          activity: "Électricien",
+          scoringVersion: "score-efficia-v5",
+          collectionAvailable: false,
+          premiumAllowed: false
+        }
+      });
+      if (url.includes("/api/admin/audit-drafts/")) return json({
+        success: true,
+        draft: {
+          reportType: "free",
+          currentStep: "questionnaire",
+          updatedAt: "2026-08-30T10:00:00.000Z",
+          answers: {
+            questionnaireVersion: "score-efficia-questionnaire-v4",
+            profileKey: "default",
+            fields: {
+              "p-entreprise": "Entreprise Test",
+              "p-ville": "Arlon",
+              "p-activite": "Électricien",
+              "p-contact": "Test interne",
+              "d-requete": "Électricien Arlon"
+            },
+            observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
+            responses: {}
+          }
+        }
+      });
+      if (url.includes("/api/admin/report-text-overrides/")) return json({
+        success: true,
+        catalog: [{ id: "summary.general", label: "Synthèse générale", section: "Page 1", maxLength: 380 }],
+        overrides: [{ fieldId: "summary.general", customText: "Texte persistant après rechargement", needsReview: false }]
+      });
+      if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
+        success: false,
+        error: "SEARCH_REFRESH_FAILED",
+        message: "Fixture de relance"
+      }, 502);
+      return json({ success: false, error: "UNEXPECTED_TEST_REQUEST", url }, 500);
+    };
+  </script>`;
+  const withFetchFixture = source.replace(marker, `${fetchFixture}\n${marker}`);
+  const closingBodyIndex = withFetchFixture.lastIndexOf("</body>");
+  assert.ok(closingBodyIndex > 0, "balise body finale absente");
+  const instrumented = `${withFetchFixture.slice(0, closingBodyIndex)}<output id="workflow-browser-result"></output><script>${harnessSource}</script>${withFetchFixture.slice(closingBodyIndex)}`;
+  const directory = mkdtempSync(join(tmpdir(), "efficia-report-workflow-"));
+  try {
+    const htmlPath = join(directory, "workflow.html");
+    writeFileSync(htmlPath, instrumented);
+    const output = execFileSync(CHROME, [
+      "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=5000", "--dump-dom",
+      `${pathToFileURL(htmlPath).href}?analysisId=${ANALYSIS_ID}`,
+    ], { encoding: "utf8", maxBuffer: 8_000_000 });
+    const encoded = output.match(/<output id="workflow-browser-result">([^<]+)<\/output>/u)?.[1];
+    assert.ok(encoded, "résultat du parcours navigateur absent");
+    return JSON.parse(encoded.replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 async function setup() {
   const db = new LocalD1();
   const now = "2026-08-30T10:00:00.000Z";
@@ -151,6 +244,23 @@ async function saveSummary(db, cookie, text = "Synthèse personnalisée", extra 
       restoredFieldIds: [],
     },
   }));
+}
+
+async function saveDraft(db, cookie, responses = {}) {
+  return putDraft({
+    request: new Request(`https://local.test/api/admin/audit-drafts/${ANALYSIS_ID}`, {
+      method: "PUT",
+      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        analysisId: ANALYSIS_ID,
+        reportType: "free",
+        currentStep: "questionnaire",
+        answers: { questionnaireVersion: "score-efficia-questionnaire-v4", responses },
+      }),
+    }),
+    params: { draftId: ANALYSIS_ID },
+    env: { ADMIN_SESSION_SECRET: SECRET, ORDERS_DB: db },
+  });
 }
 
 test("sans remplacement, le modèle et le rendu restent strictement inchangés", () => {
@@ -273,6 +383,60 @@ test("les textes aux maxima autorisés restent dans leurs pages et au-dessus du 
   }
 });
 
+test("après un rechargement complet, l’éditeur s’ouvre sans génération PDF et affiche les textes persistés", { skip: !existsSync(CHROME) }, () => {
+  const result = runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const opened = await ouvrirEditeurTextesRapport();
+        const card = document.querySelector('[data-report-text-field="summary.general"]');
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          opened,
+          dialogOpen: document.getElementById("dialog-textes-rapport").open,
+          customText: card?.querySelector("[data-custom-text]")?.value || null,
+          automaticText: card?.querySelector(".report-text-auto")?.textContent || null,
+          pdfRequests: window.__workflowFetchCalls.filter(item => /\\/(?:api\\/)?(?:pdf|render)\\//.test(item.url)).length
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
+      }
+    })();
+  `);
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.opened, true);
+  assert.equal(result.dialogOpen, true);
+  assert.equal(result.customText, "Texte persistant après rechargement");
+  assert.match(result.automaticText, /Texte automatique/);
+  assert.equal(result.pdfRequests, 0);
+});
+
+test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME) }, () => {
+  const result = runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 50 && !document.getElementById("d-requete")?.value; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        document.getElementById("btn-relancer-recherche").click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          calls: window.__workflowFetchCalls.filter(item => item.url.includes("/api/admin/free-diagnostic-collect/")),
+          buttonText: document.getElementById("btn-relancer-recherche").textContent
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
+      }
+    })();
+  `);
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.calls.length, 1);
+  assert.equal(result.calls[0].method, "POST");
+  assert.match(result.calls[0].url, new RegExp(`/api/admin/free-diagnostic-collect/${ANALYSIS_ID}$`));
+  assert.equal(result.buttonText, "Relancer l’analyse sur cette recherche");
+});
+
 test("le HTML ou JavaScript personnalisé est rendu comme texte échappé", () => {
   const model = applyReportNarrativeOverrides(baseDocumentModel(), [{
     fieldId: "summary.general",
@@ -315,23 +479,44 @@ test("une régénération conserve le remplacement et la restauration réactive 
   assert.equal(effective.executiveSummary.text, "Nouvelle synthèse automatique");
 });
 
+test("le contexte narratif canonique ignore l’ordre des clés et les métadonnées de génération", async () => {
+  assert.equal(
+    serializeReportNarrativeContext({ b: 2, a: { y: 2, x: 1 } }),
+    serializeReportNarrativeContext({ a: { x: 1, y: 2 }, b: 2 }),
+  );
+  const { db, cookie } = await setup();
+  assert.equal((await saveSummary(db, cookie)).status, 200);
+  db.sqlite.prepare("UPDATE analyses SET status = 'pdf_generated', updated_at = ? WHERE analysis_id = ?")
+    .run("2026-08-30T11:00:00.000Z", ANALYSIS_ID);
+  await markReportNarrativeOverridesForCurrentContext(db, ANALYSIS_ID);
+  const body = await (await getOverrides(context(db, cookie))).json();
+  assert.equal(body.overrides[0].needsReview, false);
+  assert.equal(body.overrides[0].customText, "Synthèse personnalisée");
+});
+
+test("un rechargement et un GET identique ne marquent jamais le texte À revérifier", async () => {
+  const { db, cookie } = await setup();
+  assert.equal((await saveSummary(db, cookie)).status, 200);
+  for (let reload = 0; reload < 2; reload += 1) {
+    const body = await (await getOverrides(context(db, cookie))).json();
+    assert.equal(body.overrides[0].needsReview, false);
+    assert.equal(body.overrides[0].customText, "Synthèse personnalisée");
+  }
+});
+
+test("une sauvegarde de brouillon métier identique laisse needs_review à faux", async () => {
+  const { db, cookie } = await setup();
+  assert.equal((await saveSummary(db, cookie)).status, 200);
+  assert.equal((await saveDraft(db, cookie, {})).status, 200);
+  const body = await (await getOverrides(context(db, cookie))).json();
+  assert.equal(body.overrides[0].needsReview, false);
+  assert.equal(body.overrides[0].customText, "Synthèse personnalisée");
+});
+
 test("une modification du questionnaire conserve les textes et les marque À revérifier", async () => {
   const { db, cookie } = await setup();
   assert.equal((await saveSummary(db, cookie)).status, 200);
-  const draftResponse = await putDraft({
-    request: new Request(`https://local.test/api/admin/audit-drafts/${ANALYSIS_ID}`, {
-      method: "PUT",
-      headers: { Cookie: cookie, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        analysisId: ANALYSIS_ID,
-        reportType: "free",
-        currentStep: "questionnaire",
-        answers: { questionnaireVersion: "score-efficia-questionnaire-v4", responses: { horaires: { points: 0 } } },
-      }),
-    }),
-    params: { draftId: ANALYSIS_ID },
-    env: { ADMIN_SESSION_SECRET: SECRET, ORDERS_DB: db },
-  });
+  const draftResponse = await saveDraft(db, cookie, { horaires: { points: 0 } });
   assert.equal(draftResponse.status, 200);
   const body = await (await getOverrides(context(db, cookie))).json();
   assert.equal(body.overrides[0].customText, "Synthèse personnalisée");
@@ -341,12 +526,14 @@ test("une modification du questionnaire conserve les textes et les marque À rev
 test("une relance concurrentielle conserve les textes et les marque À revérifier", async () => {
   const { db, cookie } = await setup();
   assert.equal((await saveSummary(db, cookie)).status, 200);
-  await markReportNarrativeOverridesNeedsReview(db, ANALYSIS_ID);
+  db.sqlite.prepare("UPDATE analyses SET search_query = ? WHERE analysis_id = ?")
+    .run("électricien Bruxelles", ANALYSIS_ID);
+  await markReportNarrativeOverridesForCurrentContext(db, ANALYSIS_ID);
   const body = await (await getOverrides(context(db, cookie))).json();
   assert.equal(body.overrides[0].customText, "Synthèse personnalisée");
   assert.equal(body.overrides[0].needsReview, true);
   const refreshSource = readFileSync(new URL("../functions/api/admin/free-diagnostic-collect/[analysisId].js", import.meta.url), "utf8");
-  assert.match(refreshSource, /markReportNarrativeOverridesNeedsReview\(db, analysisId\)/);
+  assert.match(refreshSource, /markReportNarrativeOverridesForCurrentContext\(db, analysisId\)/);
 });
 
 test("la route conserve l’authentification admin et la protection same-origin", async () => {

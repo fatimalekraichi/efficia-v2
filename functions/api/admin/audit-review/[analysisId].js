@@ -11,7 +11,7 @@ import { resolveReportCity } from "../../../lib/auditComposition.js";
 import { loadAdminPremiumAuthorization } from "../../../lib/premiumAuthorization.js";
 import { finalizeQuestionnaireSnapshot, loadQuestionnaireSnapshot } from "../../../lib/auditQuestionnaireSnapshots.js";
 import { evaluateGeographicAnchorReadiness } from "../../../lib/geographicAnchor.js";
-import { markReportNarrativeOverridesNeedsReview } from "../../../lib/reportNarrativeOverrides.js";
+import { markReportNarrativeOverridesForCurrentContext } from "../../../lib/reportNarrativeOverrides.js";
 
 // Mission "ancrage géographique automatique" (Point 3, revue) — cette
 // approbation manuelle (branche non-Premium de approveAnalysis) fixe
@@ -311,7 +311,7 @@ async function saveManualReview({ context, db, analysisId, payload }) {
       now,
       analysisId,
     ).run();
-    await markReportNarrativeOverridesNeedsReview(db, analysisId);
+    await markReportNarrativeOverridesForCurrentContext(db, analysisId);
   } catch (error) {
     if (String(error?.message || error).includes("score_inputs_json")) {
       return jsonResponse({

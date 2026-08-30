@@ -11,7 +11,7 @@
 //
 // Ces tests couvrent uniquement la porte d'autorisation
 // (isManualCreationSource + isManualFree) et sa non-interférence avec les
-// autres portes existantes (session admin, statut awaiting_review, demande
+// autres portes existantes (session admin, statut compatible avec l’opération, demande
 // historique liée, atomicité en cas d'échec fournisseur).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -291,11 +291,28 @@ test("6. une analyse liée à une vraie demande historique reste acceptée sans 
   }
 });
 
-test("7. un statut différent de awaiting_review reste refusé même avec duplicate_manual", async () => {
+test("7. une relance de recherche reste possible après un premier PDF", async () => {
   const db = new LocalD1();
   seedAnalysis(db, { withRequest: false, status: "pdf_generated" });
   seedManualMetadata(db, ANALYSIS_ID, { creationSource: "duplicate_manual", auditType: "free" });
-  const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
+  markInitialCollection(db);
+  const restoreFetch = installSuccessfulProviderFixture();
+  try {
+    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.operation, "refresh_search");
+    assert.equal(body.status, "pdf_generated");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("7b. une collecte initiale reste refusée après un premier PDF", async () => {
+  const db = new LocalD1();
+  seedAnalysis(db, { withRequest: false, status: "pdf_generated" });
+  seedManualMetadata(db, ANALYSIS_ID, { creationSource: "duplicate_manual", auditType: "free" });
+  const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: { activity: "Boulangerie" } }));
   const body = await response.json();
   assert.equal(response.status, 409);
   assert.equal(body.error, "DIAGNOSTIC_NOT_AWAITING_REVIEW");

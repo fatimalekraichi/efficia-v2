@@ -12,7 +12,6 @@ import {
   isAllowedReportNarrativeField,
   loadReportNarrativeContext,
   loadReportNarrativeOverrides,
-  markReportNarrativeOverridesForContext,
   reportNarrativeCatalog,
   validateReportNarrativeCategory,
   validateReportNarrativeText,
@@ -47,8 +46,6 @@ export async function onRequestGet(context) {
   if (!isValidAnalysisId(analysisId)) return jsonResponse({ success: false, error: "INVALID_ANALYSIS_ID" }, 400);
   const db = requireOrdersDb(context.env);
   if (!await analysisExists(db, analysisId)) return jsonResponse({ success: false, error: "ANALYSIS_NOT_FOUND" }, 404);
-  const contextInfo = await loadReportNarrativeContext(db, analysisId);
-  if (contextInfo) await markReportNarrativeOverridesForContext(db, analysisId, contextInfo.contextHash);
   const overrides = await loadReportNarrativeOverrides(db, analysisId);
   return jsonResponse({ success: true, analysisId, catalog: reportNarrativeCatalog(), overrides }, 200, { "Cache-Control": "no-store" });
 }

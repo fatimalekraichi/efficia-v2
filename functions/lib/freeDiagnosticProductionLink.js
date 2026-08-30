@@ -9,6 +9,10 @@ import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
 import { normalizeStoredActionLinkEvidence } from "./actionLinkEvidence.js";
 import { evaluateGeographicAnchorReadiness } from "./geographicAnchor.js";
 
+export function isRefreshableFreeDiagnosticStatus(status) {
+  return status === "awaiting_review" || status === "pdf_generated";
+}
+
 /**
  * Recherche la commande et la tâche liées à une analyse.
  * Deux chemins possibles, sans jamais modifier le schéma D1 :

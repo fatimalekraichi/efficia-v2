@@ -4230,6 +4230,8 @@ let catalogueTextesRapport = [];
 let remplacementsTextesRapport = new Map();
 let textesAutomatiquesRapport = new Map();
 let etaitEnModeRapportAvantEdition = false;
+let initialisationContexteAdminPromise = null;
+let analysisIdContexteAdminHydrate = null;
 
 function texteAutomatiqueBrut(value){
   const container = document.createElement("div");
@@ -4334,20 +4336,40 @@ function activerInteractionsEditeurTextes(){
 }
 
 async function ouvrirEditeurTextesRapport(){
+  const analysisId = analysisIdDepuisUrl();
+  const dialog = document.getElementById("dialog-textes-rapport");
+  const list = document.getElementById("liste-textes-rapport");
   const error = document.getElementById("erreur-textes-rapport");
   if(error){ error.hidden = true; error.textContent = ""; }
-  if(!await chargerRemplacementsNarratifsRapport()){
-    statut("Les textes personnalisés n’ont pas pu être chargés.", "erreur");
-    return;
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)){
+    statut("Impossible d’ouvrir les textes de ce diagnostic.", "erreur");
+    return false;
   }
   etaitEnModeRapportAvantEdition = document.body.classList.contains("mode-rapport");
-  textesAutomatiquesRapport = new Map();
-  if(!genererRapport()) return;
-  const list = document.getElementById("liste-textes-rapport");
-  list.innerHTML = catalogueTextesRapport.map(rendreChampTexteRapport).filter(Boolean).join("")
-    || `<p>Aucun bloc narratif modifiable n’est présent dans ce rapport.</p>`;
-  activerInteractionsEditeurTextes();
-  document.getElementById("dialog-textes-rapport")?.showModal();
+  if(list) list.innerHTML = `<p role="status">Chargement des textes du diagnostic…</p>`;
+  dialog?.setAttribute("aria-busy", "true");
+  if(dialog && !dialog.open) dialog.showModal();
+  try{
+    if(initialisationContexteAdminPromise) await initialisationContexteAdminPromise;
+    if(analysisIdContexteAdminHydrate !== analysisId) throw new Error("DIAGNOSTIC_CONTEXT_NOT_LOADED");
+    if(!await chargerRemplacementsNarratifsRapport()) throw new Error("TEXT_OVERRIDES_LOAD_FAILED");
+    textesAutomatiquesRapport = new Map();
+    if(!genererRapport({exigerVersion:false})) throw new Error("REPORT_MODEL_BUILD_FAILED");
+    list.innerHTML = catalogueTextesRapport.map(rendreChampTexteRapport).filter(Boolean).join("")
+      || `<p>Aucun bloc narratif modifiable n’est présent dans ce rapport.</p>`;
+    activerInteractionsEditeurTextes();
+    return true;
+  }catch(cause){
+    if(error){
+      error.textContent = "Les textes de ce diagnostic n’ont pas pu être reconstruits. Rechargez la page puis réessayez.";
+      error.hidden = false;
+    }
+    if(list) list.innerHTML = "";
+    console.error("Ouverture de l’éditeur narratif impossible", cause);
+    return false;
+  }finally{
+    dialog?.removeAttribute("aria-busy");
+  }
 }
 
 function fermerEditeurTextesRapport(){
@@ -4418,7 +4440,7 @@ function verrouillerQuestionnaireLectureSeule(snapshot){
 }
 
 afficherProfilUtilise();
-initialiserContexteCommandeAdmin();
+initialisationContexteAdminPromise = initialiserContexteCommandeAdmin();
 if(!modeLectureSeule()){
   document.getElementById("formulaire")?.addEventListener("input", () => {
     marquerTextesPersonnalisesAReverifierLocalement();
@@ -4531,8 +4553,9 @@ async function initialiserContexteCommandeAdmin(){
     .forEach((button) => {
       button.hidden = !premiumAllowed;
       button.disabled = !premiumAllowed;
-    });
+  });
   await restaurerBrouillonD1();
+  analysisIdContexteAdminHydrate = analysisId;
 }
 
 async function verifierAutorisationAuditPremium(){
@@ -6682,12 +6705,14 @@ function detailPosteFaible(label){
   return "";
 }
 
-function genererRapport(){
+function genererRapport(options = {}){
   synchroniserDonneesManuelles();
-  const versionInfo = obtenirVersionAnalyseRapport();
-  if(!versionInfo.ok){
-    statut(versionInfo.message, "erreur");
-    return false;
+  if(options.exigerVersion !== false){
+    const versionInfo = obtenirVersionAnalyseRapport();
+    if(!versionInfo.ok){
+      statut(versionInfo.message, "erreur");
+      return false;
+    }
   }
   const detailScore = calculScoreDetail();
   const score = Math.round(detailScore.total);

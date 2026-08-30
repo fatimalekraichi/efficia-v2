@@ -2,8 +2,11 @@ import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
 import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
-import { markReportNarrativeOverridesNeedsReview } from "../../../lib/reportNarrativeOverrides.js";
-import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
+import { markReportNarrativeOverridesForCurrentContext } from "../../../lib/reportNarrativeOverrides.js";
+import {
+  buildFreeDiagnosticCollectionState,
+  isRefreshableFreeDiagnosticStatus,
+} from "../../../lib/freeDiagnosticProductionLink.js";
 import { isManualCreationSource, loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
 import { benchmarkEngine } from "../../../lib/benchmarkEngine.js";
 import {
@@ -251,7 +254,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
           reviews_percentile = ?, photos_percentile = ?, top_competitor_name = ?,
           top_competitor_rating = ?, top_competitor_reviews = ?, benchmark_completed_at = ?,
           updated_at = ?
-      WHERE analysis_id = ? AND report_type = 'free' AND status = 'awaiting_review'
+      WHERE analysis_id = ? AND report_type = 'free' AND status = ?
     `).bind(
       result.requete,
       result.position,
@@ -274,8 +277,9 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
       updatedAt,
       updatedAt,
       analysisId,
+      analysis.status,
     ).run();
-    await markReportNarrativeOverridesNeedsReview(db, analysisId);
+    await markReportNarrativeOverridesForCurrentContext(db, analysisId);
   } catch (error) {
     return technicalFailure({
       phase: "search_refresh_update",
@@ -330,7 +334,20 @@ export async function onRequestPost(context) {
   if (analysis.reportType !== "free") {
     return jsonResponse({ success: false, error: "FREE_DIAGNOSTIC_REQUIRED" }, 409);
   }
-  if (analysis.status !== "awaiting_review") {
+  let payload = {};
+  try {
+    payload = await context.request.json();
+  } catch {
+    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
+  }
+  const searchRefresh = normalizeSearchRefreshPayload(payload);
+  if (searchRefresh === false) {
+    return jsonResponse({ success: false, error: "INVALID_SEARCH_REFRESH" }, 400);
+  }
+  const allowedStatus = searchRefresh
+    ? isRefreshableFreeDiagnosticStatus(analysis.status)
+    : analysis.status === "awaiting_review";
+  if (!allowedStatus) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_NOT_AWAITING_REVIEW" }, 409);
   }
 
@@ -350,18 +367,6 @@ export async function onRequestPost(context) {
     && manualMetadata?.audit_type === "free";
   if (!diagnosticRequest && !isManualFree) {
     return jsonResponse({ success: false, error: "DIAGNOSTIC_REQUEST_REQUIRED" }, 403);
-  }
-
-
-  let payload = {};
-  try {
-    payload = await context.request.json();
-  } catch {
-    return jsonResponse({ success: false, error: "INVALID_JSON" }, 400);
-  }
-  const searchRefresh = normalizeSearchRefreshPayload(payload);
-  if (searchRefresh === false) {
-    return jsonResponse({ success: false, error: "INVALID_SEARCH_REFRESH" }, 400);
   }
   if (searchRefresh) {
     if (!buildFreeDiagnosticCollectionState(analysis)) {
@@ -574,7 +579,7 @@ export async function onRequestPost(context) {
       updatedAt,
       analysisId,
     ).run();
-    await markReportNarrativeOverridesNeedsReview(db, analysisId);
+    await markReportNarrativeOverridesForCurrentContext(db, analysisId);
   } catch (error) {
     return technicalFailure({
       phase: "analysis_update",
