@@ -557,6 +557,20 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
       zone: "Vérifier et corriger la zone desservie affichée sur la fiche.",
       position: "Identifier les écarts visibles avec les fiches mieux positionnées, puis concentrer les efforts sur le levier local le plus important."
     },
+    // Correctif ciblé (2026-08-30, micro-correction page 5) :
+    // resultatAttenduPriorite() construit désormais textes.visibilite via
+    // VISIBILITE_RESULTAT_ATTENDU[decisionVisibiliteAdmin()] (voir
+    // admin/free-diagnostic-production/index.html), et cette propriété est
+    // elle aussi évaluée pour CHAQUE appel, quelle que soit la famille
+    // réellement demandée (item.famille). Ces tests portent sur
+    // "reputation"/"infos", pas sur "visibilite" : on fournit ici le même
+    // mock neutre ("position") que ci-dessus, sans dupliquer la logique de
+    // décision réelle.
+    VISIBILITE_RESULTAT_ATTENDU: {
+      categorie: "une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.",
+      zone: "une fiche dont la zone desservie correspond mieux aux recherches locales testées.",
+      position: "une meilleure compréhension des écarts avec les fiches actuellement mises en avant, et des leviers locaux sur lesquels concentrer vos efforts."
+    },
     joinFr: (items) => {
       const list = items.filter(Boolean);
       if (!list.length) return "";

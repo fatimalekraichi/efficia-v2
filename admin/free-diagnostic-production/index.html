@@ -5464,6 +5464,18 @@ const VISIBILITE_CONSTAT = {
   zone:"La zone desservie affichée sur votre fiche mérite d'être vérifiée.",
   position:"Le classement local de votre fiche limite sa visibilité sur les recherches qui comptent."
 };
+// Correctif ciblé (2026-08-30, micro-correction page 5) : "Résultat attendu"
+// de la famille "visibilité", centralisé sur le même principe que les 4
+// tables ci-dessus. Aucune des trois formulations ne promet un meilleur
+// classement, une hausse de visibilité, un appel supplémentaire ni un
+// résultat commercial -- jamais "mieux positionnée", "meilleures chances
+// d'être vue" ni aucune garantie de classement, y compris pour le cas
+// "position" (catégorie conforme, seule la position est faible).
+const VISIBILITE_RESULTAT_ATTENDU = {
+  categorie:"une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.",
+  zone:"une fiche dont la zone desservie correspond mieux aux recherches locales testées.",
+  position:"une meilleure compréhension des écarts avec les fiches actuellement mises en avant, et des leviers locaux sur lesquels concentrer vos efforts."
+};
 
 function critereEligiblePourNarration(cr, famille = null){
   if(!cr || critereEstNonVerifiablePubliquement(cr)) return false;
@@ -6231,12 +6243,11 @@ function consequenceBusinessPriorite(item, ctx){
 }
 
 function resultatAttenduPriorite(item, ctx){
-  const rq = ctx.recherche;
   const textes = {
     reputation: rapportSansAvis()
       ? "les premiers avis authentiques apportent une preuve client visible et rassurante."
       : resultatAttenduReputation(ctx),
-    visibilite: `une fiche mieux positionnée sur les recherches testées${rq ? " comme « " + rq + " »" : ""}, avec de meilleures chances d'être vue au premier regard.`,
+    visibilite: VISIBILITE_RESULTAT_ATTENDU[decisionVisibiliteAdmin()],
     offre: localisationNonVerifiablePubliquement()
       ? "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler."
       : "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",

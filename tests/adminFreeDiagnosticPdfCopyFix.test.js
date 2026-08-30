@@ -39,6 +39,20 @@
 //     et les memes helpers) : hors du parcours du bouton "Generer le
 //     Diagnostic (gratuit)", mais corriges car la mission demande
 //     d'eliminer TOUTES les occurrences dans le moteur admin.
+//
+// Correction 3 (2026-08-30, micro-correction) : le "Resultat attendu" de la
+// carte de priorite "visibilite" (page 5, juste apres le "Votre premier
+// pas" prudent de la Correction 2) promettait un classement futur ("une
+// fiche mieux positionnee ... avec de meilleures chances d'etre vue au
+// premier regard.") de maniere identique quel que soit le cas retenu par
+// decisionVisibiliteAdmin() -- y compris quand la categorie principale est
+// prouvee inadequate, ce qui contredisait le premier pas prudent
+// ("Verifier que la categorie principale...") et le disclaimer de
+// non-garantie de classement. resultatAttenduPriorite() utilise desormais
+// VISIBILITE_RESULTAT_ATTENDU[decisionVisibiliteAdmin()], une 5e table
+// centralisee suivant le meme principe que les 4 tables VISIBILITE_* de la
+// Correction 2 : aucun des 3 cas ne promet un meilleur classement, une
+// hausse de visibilite, un appel supplementaire ni un resultat commercial.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -253,6 +267,95 @@ test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit re
 });
 
 /* ========================================================================
+   Correction 3 -- resultatAttenduPriorite(), famille "visibilite" : le
+   "Resultat attendu" affiche juste sous le "Votre premier pas" (page 5,
+   meme carte de priorite que la Correction 2 ci-dessus) ne doit jamais
+   promettre un classement futur, quel que soit le cas retenu par
+   decisionVisibiliteAdmin(). On execute le vrai code (CORE_CODE, deja
+   utilise plus haut, + le bloc reel de resultatAttenduPriorite) plutot que
+   d'ecrire un mock qui contournerait la logique corrigee.
+   ======================================================================== */
+const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function resultatAttenduInfos(){", "function microLivrablePriorite(item, ctx){");
+
+function callResultatAttenduPrioriteVisibilite(mocks = {}) {
+  const context = {
+    estNombre,
+    conditionAvis: () => "none",
+    donneesAnalyse: { nbAvis: 0 },
+    CRITERE_IDS: { categoriePrincipale: 1 },
+    trouverCritere: (id) => (id === 1 ? { max: mocks.categoryMax ?? 4 } : null),
+    lirePoints: (id) => (id === 1 ? mocks.categoryPoints ?? null : null),
+    modeLocalisation: () => mocks.zoneMode ?? "on_site",
+    reponseZoneDesserte: () => mocks.zoneReponse ?? "coherent",
+    localisationNonVerifiablePubliquement: () => false,
+  };
+  vm.runInNewContext(`${CORE_CODE}\n${RESULTAT_ATTENDU_CODE}\nglobalThis.run=resultatAttenduPriorite;`, context);
+  return context.run({ famille: "visibilite" }, {});
+}
+
+const FORBIDDEN_RANKING_PROMISE = /mieux positionnée|meilleures chances d'être vue|premier regard|garanti[re]|classement (assuré|garanti)/i;
+
+test("Resultat-attendu-fix 1 : categorie prouvee inadequate -> formulation prudente exacte, sans promesse de classement", () => {
+  const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 1, categoryMax: 4 });
+  assert.equal(resultat, "une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.");
+  assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
+});
+
+test("Resultat-attendu-fix 2 : position faible + categorie CONFORME -> aucune promesse de classement (cas 'position')", () => {
+  const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "on_site" });
+  assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
+  assert.doesNotMatch(resultat, /fiche (mieux positionnée|plus visible|en meilleure position)/i);
+});
+
+test("Resultat-attendu-fix 3 : zone desservie genuinement incorrecte (categorie conforme) -> resultat distinct, sans promesse de classement", () => {
+  const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "service_area", zoneReponse: "incoherent" });
+  assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
+});
+
+test("Resultat-attendu-fix 4 : les 3 cas (categorie/zone/position) produisent des resultats distincts, aucun ne promet de classement", () => {
+  const categorie = callResultatAttenduPrioriteVisibilite({ categoryPoints: 1, categoryMax: 4 });
+  const zone = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "service_area", zoneReponse: "incoherent" });
+  const position = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "on_site" });
+  const resultats = [categorie, zone, position];
+  assert.equal(new Set(resultats).size, 3, "les 3 cas doivent produire 3 textes distincts");
+  for (const resultat of resultats) {
+    assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE, `promesse de classement detectee dans : ${resultat}`);
+  }
+});
+
+test("Resultat-attendu-fix 5 : absence globale des expressions interdites dans le moteur admin (hors commentaires documentant le correctif)", () => {
+  const codeSansCommentaires = html.replace(/\/\/[^\n]*/g, "");
+  assert.doesNotMatch(codeSansCommentaires, /une fiche mieux positionnée sur les recherches testées/i);
+  assert.doesNotMatch(codeSansCommentaires, /avec de meilleures chances d'être vue au premier regard/i);
+});
+
+test("Resultat-attendu-fix 6 : les corrections precedentes restent intactes (aucun avis, pas de repetition de services, categorie inconnue distincte)", () => {
+  // "aucun avis client" (Correction 1, formatNoteAvisAdmin) : deja couvert par
+  // les tests Avis-fix ci-dessus ; verification structurelle complementaire.
+  assert.match(html, /aucun avis client/);
+  // Aucune des 5 tables VISIBILITE_* (les 4 de la Correction 2 + la nouvelle
+  // VISIBILITE_RESULTAT_ATTENDU) ne mentionne jamais "services" au sens de
+  // l'ancien defaut groupant categorie+services+contenu local.
+  const TABLE_NAMES = ["VISIBILITE_ACTION_LONGUE", "VISIBILITE_ACTION_COURTE", "VISIBILITE_ACTION_SOUS_TITRE", "VISIBILITE_CONSTAT", "VISIBILITE_RESULTAT_ATTENDU"];
+  for (const nom of TABLE_NAMES) {
+    const bloc = sliceBetween(html, `const ${nom} = {`, "};");
+    assert.doesNotMatch(bloc, /\bservices\b/i, `${nom} ne doit jamais mentionner "services"`);
+  }
+  // Categorie INCONNUE (points=null) reste distincte de categorie PROUVEE
+  // INADEQUATE (points=0) -- decisionVisibiliteAdmin() doit retomber sur
+  // "position", pas "categorie", donc pas la formulation categorie.
+  const resultatInconnue = callResultatAttenduPrioriteVisibilite({ categoryPoints: null, categoryMax: 4 });
+  assert.notEqual(resultatInconnue, "une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.");
+});
+
+test("Resultat-attendu-fix 7 : score / prix / nombre de pages du diagnostic gratuit restent inchanges apres cette micro-correction", () => {
+  assert.match(html, /99\s*€/);
+  assert.match(html, /349\s*€/);
+  const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
+  assert.equal(pagesCommentees.length, 6);
+});
+
+/* ========================================================================
    Integration reelle : actionFamillePriorite() -- alimente la carte
    "Votre premier pas" en page 5 du diagnostic gratuit (via
    selectionnerPrioritesDynamiques -> detailsPriorite(item).action ->
@@ -327,6 +430,7 @@ test("Structure : les emplacements 'visibilite' identifies passent tous par deci
   assert.match(html, /constat = VISIBILITE_CONSTAT\[decisionVisibiliteAdmin\(\)\];/);
   assert.match(html, /visibilite:VISIBILITE_ACTION_COURTE\[decisionVisibiliteAdmin\(\)\]/);
   assert.match(html, /return VISIBILITE_CONSTAT\[decisionVisibiliteAdmin\(\)\];/);
+  assert.match(html, /visibilite: VISIBILITE_RESULTAT_ATTENDU\[decisionVisibiliteAdmin\(\)\],/);
 });
 
 test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (hors commentaires documentant le correctif)", () => {
