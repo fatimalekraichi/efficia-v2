@@ -359,10 +359,18 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   assert.match(texts, /premiers avis authentiques/i);
   assert.doesNotMatch(texts, /note moyenne|notes faibles|avis visibles|ne semblent pas recevoir de réponse/i);
 
+  // Correctif ciblé (2026-08-30, PDF admin diagnostic gratuit) : cette
+  // recommandation ne doit plus jamais mentionner "les services et le
+  // contenu local" (défaut corrigé, voir decisionVisibiliteAdmin() dans
+  // admin/free-diagnostic-production/index.html). Dans cet état précis du
+  // harnais (catégorie principale conforme : 4/4 ; zone desservie non
+  // vérifiable publiquement, donc jamais "à corriger"), le cas retenu est
+  // "position" : ni catégorie ni zone ne sont mentionnées, formulation
+  // neutre centrée sur l'écart de classement.
   const visibilityFamily = context.api.FAMILLES_PRIORITES.find((item) => item.key === "visibilite");
   const safeVisibilityAction = context.api.actionFamillePriorite(visibilityFamily);
-  assert.doesNotMatch(safeVisibilityAction, /catégorie principale|zone desservie/i);
-  assert.match(safeVisibilityAction, /services et le contenu local/i);
+  assert.doesNotMatch(safeVisibilityAction, /catégorie principale|zone desservie|services et le contenu local/i);
+  assert.match(safeVisibilityAction, /écarts visibles|mieux positionnées/i);
   const offerPriority = selected.find((item) => item.famille === "offre");
   assert.doesNotMatch(context.api.resultatAttenduPriorite(offerPriority, reportContext), /où vous intervenez|zone/i);
 

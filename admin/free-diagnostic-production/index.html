@@ -5302,6 +5302,25 @@ function rapportSansAvis(){
     || (estNombre(donneesAnalyse?.nbAvis) && Number(donneesAnalyse.nbAvis) === 0);
 }
 
+// Correctif ciblé (2026-08-30, PDF admin diagnostic gratuit) : formatage
+// centralisé "note/avis", réutilisé partout où ce fichier affichait
+// auparavant des combinaisons brutes du type "${x}/5 et ${y} avis" sans
+// garde-fou (ex. checklistHtml(), bloc "Confiance visible face aux
+// concurrents"). Ne produit jamais —/5, --/5, null, undefined, NaN ni 0/5
+// quand la donnée est réellement absente. Réutilise estNombre() (existant,
+// ligne 2571) et rapportSansAvis() (ci-dessus) plutôt que de dupliquer leur
+// logique. Hiérarchie des cas alignée sur
+// functions/lib/renderAnalysisHtml.js::formatRatingReviewsPhrase.
+function formatNoteAvisAdmin(rating, reviews, {reviewsDigits = 0, confirmeZero = false, zeroReviewsLabel = "aucun avis client"} = {}){
+  const hasReviews = estNombre(reviews);
+  const hasRating = estNombre(rating);
+  if(confirmeZero || (hasReviews && Number(reviews) === 0)) return zeroReviewsLabel;
+  if(!hasReviews && !hasRating) return "non vérifiable";
+  if(!hasReviews) return `${Number(rating).toLocaleString("fr-FR", {maximumFractionDigits:1})}/5 (nombre d'avis non vérifiable)`;
+  if(!hasRating) return `${Number(reviews).toLocaleString("fr-FR", {maximumFractionDigits:reviewsDigits})} avis (note non communiquée)`;
+  return `${Number(rating).toLocaleString("fr-FR", {maximumFractionDigits:1})}/5 et ${Number(reviews).toLocaleString("fr-FR", {maximumFractionDigits:reviewsDigits})} avis`;
+}
+
 function rapportPositionTop3(){
   return estNombre(donneesAnalyse?.position)
     && Number(donneesAnalyse.position) >= 1
@@ -5376,10 +5395,75 @@ function categoriePrincipaleValideePourRapport(){
   return Boolean(critere) && points !== null && Number(points) >= Number(critere.max);
 }
 
+// Correctif cible (2026-08-30, PDF admin diagnostic gratuit) : variante de
+// categoriePrincipaleValideePourRapport() necessaire a decisionVisibiliteAdmin()
+// (ci-dessous) pour distinguer "categorie prouvee inadequate/approximative"
+// (critere manuel repondu avec des points < max) de "categorie non evaluee"
+// (points === null, aucune reponse manuelle) : ces deux cas doivent produire
+// des recommandations differentes (voir Cas A vs. cas neutre), alors que
+// categoriePrincipaleValideePourRapport() les confond volontairement tous
+// deux sous `false` pour son propre usage (eligibilite au rapport). Cette
+// fonction lit exactement les memes primitives (CRITERE_IDS, trouverCritere,
+// lirePoints) sans dupliquer ni contredire la logique de la fonction
+// ci-dessus : jamais a partir de la seule position faible.
+function categoriePrincipaleProuveeInadequatePourRapport(){
+  const id = CRITERE_IDS.categoriePrincipale;
+  const critere = trouverCritere(id);
+  const points = lirePoints(id);
+  return Boolean(critere) && points !== null && Number(points) < Number(critere.max);
+}
+
 function zoneDesserteDoitEtreCorrigee(){
   return ["service_area","hybrid"].includes(modeLocalisation())
     && ["partial","incoherent"].includes(reponseZoneDesserte());
 }
+
+// Correctif ciblé (2026-08-30, PDF admin diagnostic gratuit) : décision
+// centralisée pour la famille "visibilite" (position / catégorie
+// principale / zone desservie), réutilisée par TOUS les emplacements du
+// moteur admin qui produisaient auparavant des variantes divergentes de
+// "Renforcer la catégorie principale, les services et le contenu local
+// pour améliorer la cohérence de la fiche." Règles :
+//  - ne mentionne JAMAIS les services ni le contenu local (les services
+//    restent dans la famille "offre"/description — cf. actionFamillePriorite
+//    famille.key === "offre") ;
+//  - ne mentionne la catégorie que si categoriePrincipaleValideePourRapport()
+//    est faux, c'est-à-dire une preuve réelle (critère manuel) que la
+//    catégorie est inadaptée/approximative/à vérifier — jamais à partir de
+//    la seule position faible ;
+//  - ne mentionne la zone desservie que si zoneDesserteDoitEtreCorrigee()
+//    est vrai ;
+//  - à défaut des deux, formulation neutre centrée uniquement sur l'écart
+//    de classement, sans promesse de classement.
+// Si catégorie ET zone sont toutes deux en cause, la catégorie est le
+// signal le plus fort de preuve manuelle et prime (ordre : catégorie, puis
+// zone, puis position seule).
+function decisionVisibiliteAdmin(){
+  if(categoriePrincipaleProuveeInadequatePourRapport()) return "categorie";
+  if(zoneDesserteDoitEtreCorrigee()) return "zone";
+  return "position";
+}
+
+const VISIBILITE_ACTION_LONGUE = {
+  categorie:"Vérifier que la catégorie principale correspond bien à l'activité recherchée.",
+  zone:"Vérifier et corriger la zone desservie affichée sur la fiche.",
+  position:"Identifier les écarts visibles avec les fiches mieux positionnées, puis concentrer les efforts sur le levier local le plus important."
+};
+const VISIBILITE_ACTION_COURTE = {
+  categorie:"Vérifier la catégorie principale",
+  zone:"Corriger la zone desservie",
+  position:"Renforcer le classement local"
+};
+const VISIBILITE_ACTION_SOUS_TITRE = {
+  categorie:"en confirmant qu'elle correspond bien à l'activité recherchée.",
+  zone:"pour l'aligner avec les recherches locales importantes.",
+  position:"en identifiant les écarts avec les fiches mieux positionnées."
+};
+const VISIBILITE_CONSTAT = {
+  categorie:"La catégorie principale affichée sur votre fiche mérite d'être vérifiée au regard de l'activité recherchée.",
+  zone:"La zone desservie affichée sur votre fiche mérite d'être vérifiée.",
+  position:"Le classement local de votre fiche limite sa visibilité sur les recherches qui comptent."
+};
 
 function critereEligiblePourNarration(cr, famille = null){
   if(!cr || critereEstNonVerifiablePubliquement(cr)) return false;
@@ -5527,10 +5611,9 @@ function checklistHtml(){
     const items = visibleCriteria.map(cr => {
       if(!critereEstNote(cr)){
         const synthese = donneesAnalyse.syntheseConcurrence || {};
-        const valeur = (value, digits = 1) => estNombre(value)
-          ? Number(value).toLocaleString("fr-FR", {maximumFractionDigits:digits})
-          : "—";
-        return `<div class="chk-item chk-item--informational"><span class="chk-ic chk-unknown">i</span><span><strong>${LIBELLES_COURTS[cr.key] || cr.q}</strong><br>Votre fiche : ${valeur(synthese.rating)}/5 et ${valeur(synthese.reviews, 0)} avis · Concurrents : ${valeur(synthese.averageRating)}/5 et ${valeur(synthese.averageReviews, 2)} avis · ${synthese.label || "À confirmer"}</span></div>`;
+        const texteVotreFiche = formatNoteAvisAdmin(synthese.rating, synthese.reviews, {reviewsDigits:0, confirmeZero:rapportSansAvis()});
+        const texteConcurrents = formatNoteAvisAdmin(synthese.averageRating, synthese.averageReviews, {reviewsDigits:2, zeroReviewsLabel:"aucun avis"});
+        return `<div class="chk-item chk-item--informational"><span class="chk-ic chk-unknown">i</span><span><strong>${LIBELLES_COURTS[cr.key] || cr.q}</strong><br>Votre fiche : ${texteVotreFiche} · Concurrents : ${texteConcurrents} · ${synthese.label || "À confirmer"}</span></div>`;
       }
       const p = lirePoints(cr.id);
       const nonApplicable = critereEstNonApplicable(cr);
@@ -5803,13 +5886,7 @@ function actionFamillePriorite(famille, item = null){
   if(famille.key === "offre" && localisationNonVerifiablePubliquement()){
     return "Clarifier les services principaux et les raisons de vous contacter.";
   }
-  if(famille.key === "visibilite"){
-    const leviers = [];
-    if(!categoriePrincipaleValideePourRapport()) leviers.push("la catégorie principale");
-    if(zoneDesserteDoitEtreCorrigee()) leviers.push("la zone desservie");
-    leviers.push("les services et le contenu local");
-    return `Renforcer ${leviers.join(", ")} pour améliorer la cohérence de la fiche.`;
-  }
+  if(famille.key === "visibilite") return VISIBILITE_ACTION_LONGUE[decisionVisibiliteAdmin()];
   if(famille.key === "photos") return actionPhotosPriorite({...item, famille:"photos"});
   return famille.action;
 }
@@ -6030,7 +6107,7 @@ function constatObservePriorite(item, ctx){
       return `Lors de notre test${rq ? " sur « " + rq + " »" : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
     if(estNombre(d.position) && d.position > 3)
       return `Lors de la recherche testée${rq ? " « " + rq + " »" : ""}, votre fiche apparaît en ${d.position}e position, sous les trois résultats initialement mis en avant dans le Local Pack. Elle risque donc d'être moins visible lors de la première consultation.`;
-    return "Votre fiche n'est pas encore alignée avec les mots que tapent réellement les clients de votre zone : catégories, services et mots-clés locaux se répondent mal.";
+    return VISIBILITE_CONSTAT[decisionVisibiliteAdmin()];
   }
   if(item.famille === "offre"){
     const descVide = estNombre(d.descriptionLongueur) && d.descriptionLongueur === 0;
@@ -6305,7 +6382,10 @@ function planAction7Jours(priorites){
     ? ["Préparer la collecte des premiers avis", "avec un lien ou QR code simple après chaque intervention."]
     : ["Répondre aux avis existants", "et préparer un lien ou QR code pour demander un avis après chaque intervention."]);
   if(familles.has("offre")) actions.push(["Ajouter une description claire", localisationNonVerifiablePubliquement() ? "avec vos services et les cas où l'on doit vous appeler." : "avec vos services, votre zone et les cas où l'on doit vous appeler."]);
-  if(familles.has("visibilite")) actions.push([categoriePrincipaleValideePourRapport() ? "Renforcer les services et le contenu local" : "Vérifier la catégorie et les services", "pour les aligner avec les recherches locales importantes."]);
+  if(familles.has("visibilite")){
+    const casVisibilite = decisionVisibiliteAdmin();
+    actions.push([VISIBILITE_ACTION_COURTE[casVisibilite], VISIBILITE_ACTION_SOUS_TITRE[casVisibilite]]);
+  }
   if(familles.has("photos")) actions.push(["Ajouter plusieurs photos récentes", "nettes, lumineuses et utiles pour un client qui compare."]);
   if(familles.has("infos")) actions.push(["Contrôler les informations de base", "horaires, téléphone, adresse, site et attributs visibles."]);
   if(familles.has("activite")) actions.push(["Publier une actualité simple", "réalisation récente, conseil pratique ou service à mettre en avant."]);
@@ -7169,11 +7249,7 @@ function construireBlocsAuditPremium(){
       } else if(estNombre(d.position) && d.position === 0){
         constat = `Sur la recherche testée${rqTest ? ` « ${rqTest} »` : ""}, votre fiche n'apparaît pas dans les premiers résultats.`;
       } else {
-        const leviers = [];
-        if(!categoriePrincipaleValideePourRapport()) leviers.push("catégorie principale");
-        if(zoneDesserteDoitEtreCorrigee()) leviers.push("zone desservie");
-        leviers.push("services et contenu local");
-        constat = `La cohérence de votre fiche sur les ${leviers.join(", ")} limite sa visibilité sur les recherches qui comptent.`;
+        constat = VISIBILITE_CONSTAT[decisionVisibiliteAdmin()];
       }
       return {constat, explication:"La grande majorité des clics se concentre sur les trois premières fiches locales. Être plus bas — ou absent — signifie que des prospects choisissent un concurrent sans même voir votre fiche.", illustration:""};
     }
@@ -7236,7 +7312,7 @@ function construireBlocsAuditPremium(){
   push(`<section class="aud-block"><h2 class="aud-h2">Conclusion</h2><p class="aud-lead">${conclusionText}</p></section>`);
   /* ---- Vos points à récupérer : le chemin concret, action par action ---- */
   if(famList.length){
-    const actionsCourtes = {infos:"Compléter les informations essentielles", reputation:rapportSansAvis() ? "Obtenir les premiers avis authentiques" : "Renforcer la réputation (avis, réponses)", photos:"Renforcer les photos stratégiques", offre:"Optimiser la description et les services", visibilite:categoriePrincipaleValideePourRapport() ? "Renforcer les services et le contenu local" : "Optimiser la catégorie et le contenu local", activite:"Publier régulièrement"};
+    const actionsCourtes = {infos:"Compléter les informations essentielles", reputation:rapportSansAvis() ? "Obtenir les premiers avis authentiques" : "Renforcer la réputation (avis, réponses)", photos:"Renforcer les photos stratégiques", offre:"Optimiser la description et les services", visibilite:VISIBILITE_ACTION_COURTE[decisionVisibiliteAdmin()], activite:"Publier régulièrement"};
     const potentiel = Math.max(1, proj.projete - score);
     const famTop = famList.slice(0, Math.max(1, Math.min(5, potentiel)));
     const sommePerdu = famTop.reduce((x,r) => x + r.perdu, 0) || 1;

@@ -541,6 +541,22 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
     localisationNonVerifiablePubliquement: () => nonVerifiablePubliquement,
     categoriePrincipaleValideePourRapport: () => true,
     zoneDesserteDoitEtreCorrigee: () => false,
+    // Correctif ciblé (2026-08-30, PDF admin diagnostic gratuit) :
+    // recommandationPriorite() construit désormais reco.visibilite via
+    // VISIBILITE_ACTION_LONGUE[decisionVisibiliteAdmin()] (voir
+    // admin/free-diagnostic-production/index.html), et cette propriété est
+    // évaluée pour CHAQUE appel de recommandationPriorite(), quelle que soit
+    // la famille réellement demandée (item.famille). Ces tests portent sur
+    // "reputation"/"infos", pas sur "visibilite" : on fournit donc ici le
+    // même résultat neutre ("position") que produirait le vrai
+    // decisionVisibiliteAdmin() avec les mocks catégorie=conforme /
+    // zone=non-à-corriger ci-dessus, sans dupliquer sa logique de décision.
+    decisionVisibiliteAdmin: () => "position",
+    VISIBILITE_ACTION_LONGUE: {
+      categorie: "Vérifier que la catégorie principale correspond bien à l'activité recherchée.",
+      zone: "Vérifier et corriger la zone desservie affichée sur la fiche.",
+      position: "Identifier les écarts visibles avec les fiches mieux positionnées, puis concentrer les efforts sur le levier local le plus important."
+    },
     joinFr: (items) => {
       const list = items.filter(Boolean);
       if (!list.length) return "";
