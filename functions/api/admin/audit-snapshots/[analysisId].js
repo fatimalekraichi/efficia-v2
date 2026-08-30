@@ -46,6 +46,8 @@ const GEOGRAPHIC_ANCHOR_FINALIZATION_MESSAGES = {
     "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l’analyse avant de finaliser le diagnostic.",
   SEARCH_QUERY_STALE:
     "La requête affichée diffère de la dernière recherche analysée. Relancez l’analyse avant de finaliser le diagnostic.",
+  SEARCH_ZONE_STALE:
+    "La zone géographique affichée diffère de la dernière zone analysée. Relancez l’analyse avant de finaliser le diagnostic.",
 };
 
 function geographicAnchorFinalizationFailure(code) {
@@ -92,6 +94,9 @@ export async function onRequestPost(context) {
         benchmarkAverages: analysis.benchmark?.averages || {},
         displayedSearchQuery: payload?.displayedSearchQuery !== undefined
           ? normalizeText(payload.displayedSearchQuery)
+          : undefined,
+        displayedSearchZone: payload?.displayedSearchZone !== undefined
+          ? payload.displayedSearchZone
           : undefined,
       });
       if (!readiness.ok) {

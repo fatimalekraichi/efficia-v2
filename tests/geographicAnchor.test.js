@@ -120,6 +120,38 @@ test("resolveGeographicAnchorLocality : le repli fiche est utilisé uniquement q
   assert.equal(locality.region, "BE");
 });
 
+test("fallback confirmé : la zone de recherche reste distincte de l’adresse et de la zone de service", () => {
+  const locality = resolveGeographicAnchorLocality({
+    normalized: {
+      address: "12 rue de l’Entreprise, Arlon",
+      service_area: ["Belgique", "Grand-Duché de Luxembourg"],
+      city: "",
+      country_code: "",
+    },
+    fiche: {},
+    confirmedSearchZone: {
+      city: "Luxembourg",
+      countryCode: "LU",
+      countryName: "Luxembourg",
+      source: "admin_confirmed_search_zone",
+    },
+  });
+  assert.equal(locality.ok, true);
+  assert.equal(locality.city, "Luxembourg");
+  assert.equal(locality.region, "LU");
+  assert.equal(locality.label, "Luxembourg, Luxembourg");
+  assert.equal(locality.localitySource, "admin_confirmed_search_zone");
+  assert.doesNotMatch(locality.label, /Arlon|Belgique/);
+});
+
+test("fallback confirmé : une ville sans pays reste refusée, même si une adresse ou zone de service existe", () => {
+  const locality = resolveGeographicAnchorLocality({
+    normalized: { address: "Luxembourg", service_area: ["Luxembourg"] },
+    confirmedSearchZone: { city: "Luxembourg", countryCode: "" },
+  });
+  assert.equal(locality.ok, false);
+});
+
 // --- resolveGeographicAnchor (ASYNCHRONE) : point neutre mesuré au centre ---
 // --- de la localité, jamais aux coordonnées de l'entreprise analysée ---
 

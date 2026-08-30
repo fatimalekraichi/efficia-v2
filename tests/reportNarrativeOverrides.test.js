@@ -153,7 +153,9 @@ function runAdminBrowserHarness(harnessSource) {
               "p-ville": "Arlon",
               "p-activite": "Électricien",
               "p-contact": "Test interne",
-              "d-requete": "Électricien Arlon"
+              "d-requete": "Électricien Arlon",
+              "d-zone-recherche": "Arlon",
+              "d-zone-pays": "BE"
             },
             observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
             responses: {}

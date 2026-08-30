@@ -698,7 +698,18 @@
         <div><label for="d-desclen">Description (caractères)</label><input type="text" id="d-desclen" placeholder="180" inputmode="numeric"></div>
         <div><label for="d-position">Position observée (0 = non visible)</label><input type="text" id="d-position" placeholder="3" inputmode="numeric"></div>
         <div><label for="d-requete">Recherche testée</label><input type="text" id="d-requete" placeholder="électricien bruxelles"></div>
+        <div><label for="d-zone-recherche">Zone géographique utilisée pour la recherche Google</label><input type="text" id="d-zone-recherche" placeholder="Luxembourg" autocomplete="off"></div>
+        <div><label for="d-zone-pays">Pays de la zone de recherche</label><select id="d-zone-pays">
+          <option value="">— Pays à confirmer —</option>
+          <option value="BE">Belgique</option>
+          <option value="FR">France</option>
+          <option value="LU">Luxembourg</option>
+          <option value="CH">Suisse</option>
+          <option value="NL">Pays-Bas</option>
+          <option value="DE">Allemagne</option>
+        </select></div>
       </div>
+      <p class="recherche-etat" id="zone-geo-source" aria-live="polite">Source : à confirmer avant la recherche.</p>
       <div class="donnees-grid" style="margin-top:10px;border-top:1px dashed #e2e8f0;padding-top:10px">
         <div style="grid-column:1 / -1;font-size:.78rem;color:var(--gris)">État du site officiel — contrôle manuel, non noté (n'affecte pas le score)</div>
         <div><label for="d-site-url">URL détectée</label><input type="text" id="d-site-url" placeholder="https://exemple.eu" inputmode="url"></div>
@@ -2841,6 +2852,7 @@ const MESSAGE_RECHERCHE_PERIMEE = "La recherche a été modifiée. Relancez l’
 const MESSAGE_ZONE_GEO_PERIMEE = "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l’analyse pour la confirmer.";
 const MESSAGE_ZONE_GEO_NON_VERIFIABLE = "La zone géographique actuelle ne peut plus être vérifiée automatiquement. Vérifiez la fiche puis relancez l’analyse.";
 const MESSAGE_ZONE_GEO_JAMAIS_CONFIRMEE = "La zone géographique utilisée pour les résultats affichés n’a jamais été confirmée. Relancez l’analyse pour la vérifier.";
+const PAYS_ZONE_RECHERCHE = {BE:"Belgique",FR:"France",LU:"Luxembourg",CH:"Suisse",NL:"Pays-Bas",DE:"Allemagne"};
 function messageZoneGeoPerimee(){
   if(donneesAnalyse.zoneGeographiqueIssue === "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS") return MESSAGE_ZONE_GEO_JAMAIS_CONFIRMEE;
   if(donneesAnalyse.zoneGeographiqueIssue === "GEOGRAPHIC_ANCHOR_STALE" && !donneesAnalyse.zoneGeographiqueLive) return MESSAGE_ZONE_GEO_NON_VERIFIABLE;
@@ -2864,13 +2876,27 @@ function rechercheEstPerimee(){
   return requete !== normaliserRecherche(donneesAnalyse.derniereRequeteAnalysee)
     || activite !== normaliserRecherche(donneesAnalyse.derniereActiviteAnalysee);
 }
+function zoneRechercheSaisie(){
+  const city = normaliserRecherche(document.getElementById("d-zone-recherche")?.value);
+  const countryCode = normaliserRecherche(document.getElementById("d-zone-pays")?.value).toUpperCase();
+  return city && PAYS_ZONE_RECHERCHE[countryCode]
+    ? {city, countryCode, countryName:PAYS_ZONE_RECHERCHE[countryCode]}
+    : null;
+}
+function zonesRechercheIdentiques(a, b){
+  return normaliserRecherche(a?.city).localeCompare(normaliserRecherche(b?.city), "fr", {sensitivity:"base"}) === 0
+    && normaliserRecherche(a?.countryCode).toUpperCase() === normaliserRecherche(b?.countryCode).toUpperCase();
+}
 // Ancrage géographique automatique : périmé quand le serveur détecte que
 // l'ancrage réellement utilisé pour produire position/concurrents actuels
 // (geographicAnchorStale, voir freeDiagnosticProductionLink.js) ne
 // correspond plus à ce que la fiche indiquerait aujourd'hui — jamais
 // recalculé côté client, jamais deviné : uniquement le verdict serveur.
 function zoneGeographiqueEstPerimee(){
-  return Boolean(collecteDiagnosticValidee) && Boolean(donneesAnalyse.zoneGeographiqueStale);
+  if(!collecteDiagnosticValidee) return false;
+  const analyzed = donneesAnalyse.zoneGeographique?.locality || null;
+  return Boolean(donneesAnalyse.zoneGeographiqueStale)
+    || Boolean(analyzed && !zonesRechercheIdentiques(zoneRechercheSaisie(), analyzed));
 }
 function mettreAJourEtatRecherche(){
   const staleRequete = rechercheEstPerimee();
@@ -2938,6 +2964,29 @@ function actualiserZoneGeographique(business = {}){
 
   const derniere = document.getElementById("zone-geo-derniere");
   const detectee = document.getElementById("zone-geo-detectee");
+  const source = document.getElementById("zone-geo-source");
+  const zoneInput = document.getElementById("d-zone-recherche");
+  const countryInput = document.getElementById("d-zone-pays");
+  const displayedAnchor = persisted || live;
+  const displayedLocality = displayedAnchor?.locality || null;
+  if(displayedLocality){
+    if(zoneInput) zoneInput.value = displayedLocality.city || "";
+    if(countryInput) countryInput.value = displayedLocality.countryCode || displayedAnchor.region || "";
+  }else if(zoneInput && !normaliserRecherche(zoneInput.value)){
+    zoneInput.value = normaliserRecherche(document.getElementById("p-ville")?.value);
+    if(countryInput && displayedAnchor?.region) countryInput.value = displayedAnchor.region;
+  }
+  const localitySource = displayedAnchor?.localitySource || null;
+  const sourceLabels = {
+    google_business_identifier:"Données récupérées depuis l’identifiant de la fiche Google",
+    admin_confirmed_city:"Ville confirmée manuellement",
+    admin_confirmed_search_zone:"Zone de recherche confirmée",
+  };
+  if(source){
+    source.textContent = displayedAnchor
+      ? `Source : ${sourceLabels[localitySource] || "Données géographiques de la fiche Google"}.`
+      : "Source : zone et pays à confirmer avant la recherche.";
+  }
 
   if(!stale && persistedLabel){
     // État 1.
@@ -3386,7 +3435,7 @@ function calculerComparaisonsRecherche(concurrents){
   };
 }
 
-function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expectedQuery){
+function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expectedQuery, competitiveDataChanged = true){
   const actualQuery = normaliserRecherche(business?.searchQuery);
   if(!actualQuery || actualQuery !== normaliserRecherche(expectedQuery) || !Array.isArray(business?.competitors)){
     throw new Error("invalid_search_refresh_response");
@@ -3475,7 +3524,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   requetePersonnalisee = actualQuery !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   calc();
-  marquerTextesPersonnalisesAReverifierLocalement();
+  if(competitiveDataChanged) marquerTextesPersonnalisesAReverifierLocalement();
   programmerSauvegardeBrouillonD1();
 }
 
@@ -3486,8 +3535,9 @@ async function relancerAnalyseRecherche(){
   const activity = normaliserRecherche(document.getElementById("p-activite")?.value);
   const city = normaliserRecherche(document.getElementById("p-ville")?.value);
   const company = normaliserRecherche(document.getElementById("p-entreprise")?.value);
-  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId) || !searchQuery || !activity || !city || !company){
-    statut("Renseignez l’entreprise, la ville, l’activité et la recherche avant de relancer l’analyse.", "erreur");
+  const searchZone = zoneRechercheSaisie();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId) || !searchQuery || !activity || !city || !company || !searchZone){
+    statut("Renseignez l’entreprise, la ville, l’activité, la recherche, ainsi que la zone géographique et son pays avant de relancer l’analyse.", "erreur");
     return;
   }
   const button = document.getElementById("btn-relancer-recherche");
@@ -3503,7 +3553,7 @@ async function relancerAnalyseRecherche(){
       method:"POST",
       credentials:"same-origin",
       headers:{"Content-Type":"application/json","Accept":"application/json"},
-      body:JSON.stringify({operation:"refresh_search", analysisId, company, city, activity, searchQuery})
+      body:JSON.stringify({operation:"refresh_search", analysisId, company, city, activity, searchQuery, searchZone})
     });
     if(response.status === 401){ window.location.href = "/admin-login"; return; }
     const data = await response.json().catch(() => ({}));
@@ -3512,7 +3562,7 @@ async function relancerAnalyseRecherche(){
       failure.code = data.error || null;
       throw failure;
     }
-    appliquerResultatsRecherche(data.business, data.scorePrefill, data.searchAnalyzedAt, searchQuery);
+    appliquerResultatsRecherche(data.business, data.scorePrefill, data.searchAnalyzedAt, searchQuery, data.competitiveDataChanged !== false);
     statut(`Analyse mise à jour sur « ${escapeHtml(searchQuery)} ».`, "info");
   }catch(error){
     // Échec fournisseur ou ancrage indisponible : les anciennes données
@@ -3951,7 +4001,7 @@ function majEtatBrouillonD1(etat, updatedAt = null){
 }
 
 function champsBrouillonD1(){
-  const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-site-url","d-site-etat","d-site-code"];
+  const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-zone-recherche","d-zone-pays","d-site-url","d-site-etat","d-site-code"];
   return Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || ""]));
 }
 
@@ -4120,17 +4170,19 @@ const MESSAGES_ECHEC_FINALISATION_ANCRAGE = {
   GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS: "La zone géographique de la dernière recherche n’a pas pu être confirmée. Relancez l’analyse puis régénérez le PDF.",
   GEOGRAPHIC_ANCHOR_STALE: "La zone géographique détectée a changé depuis la dernière analyse de recherche. Relancez l’analyse puis régénérez le PDF.",
   SEARCH_QUERY_STALE: "La requête affichée diffère de la dernière recherche analysée. Relancez l’analyse puis régénérez le PDF.",
+  SEARCH_ZONE_STALE: "La zone géographique affichée diffère de la dernière zone analysée. Relancez l’analyse puis régénérez le PDF.",
 };
 
 async function finaliserBrouillonD1ApresPDF(pdfFilename){
   const analysisId = analysisIdDepuisUrl();
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
   const displayedSearchQuery = normaliserRecherche(document.getElementById("d-requete")?.value);
+  const displayedSearchZone = zoneRechercheSaisie();
   const response = await fetch(`/api/admin/audit-snapshots/${encodeURIComponent(analysisId)}`, {
     method:"POST",
     credentials:"same-origin",
     headers:{"Content-Type":"application/json","Accept":"application/json"},
-    body:JSON.stringify({action:"finalize", pdfFilename, displayedSearchQuery})
+    body:JSON.stringify({action:"finalize", pdfFilename, displayedSearchQuery, displayedSearchZone})
   }).catch(() => null);
   if(!response?.ok){
     const data = await response?.json().catch(() => null);
@@ -4445,12 +4497,21 @@ initialisationContexteAdminPromise = initialiserContexteCommandeAdmin();
 if(!modeLectureSeule()){
   document.getElementById("formulaire")?.addEventListener("input", (event) => {
     if(event.target?.closest?.("#dialog-textes-rapport")) return;
+    if(["d-zone-recherche","d-zone-pays"].includes(event.target?.id)){
+      programmerSauvegardeBrouillonD1();
+      return;
+    }
     marquerTextesPersonnalisesAReverifierLocalement();
     programmerSauvegardeBrouillonD1();
   });
   document.getElementById("p-activite")?.addEventListener("input", proposerRequeteDepuisActivite);
   document.getElementById("p-ville")?.addEventListener("input", proposerRequeteDepuisActivite);
   document.getElementById("d-requete")?.addEventListener("input", enregistrerPersonnalisationRequete);
+  document.getElementById("d-zone-recherche")?.addEventListener("input", mettreAJourEtatRecherche);
+  document.getElementById("d-zone-pays")?.addEventListener("change", () => {
+    mettreAJourEtatRecherche();
+    programmerSauvegardeBrouillonD1();
+  });
   document.getElementById("zone-criteres")?.addEventListener("change", (event) => {
     const match = String(event.target?.name || "").match(/^c(\d+)$/);
     if(match){

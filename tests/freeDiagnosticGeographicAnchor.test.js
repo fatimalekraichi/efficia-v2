@@ -31,6 +31,7 @@ import vm from "node:vm";
 
 import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestPost as collectDiagnostic } from "../functions/api/admin/free-diagnostic-collect/[analysisId].js";
+import { onRequestPost as finalizeSnapshot } from "../functions/api/admin/audit-snapshots/[analysisId].js";
 import { onRequestPatch as approveDiagnostic } from "../functions/api/admin/audit-review/[analysisId].js";
 import { GRILLE } from "../functions/lib/score-efficia/criteriaCatalog.js";
 
@@ -41,10 +42,15 @@ const migrations = [
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",
   "0010_analysis_report_type.sql", "0011_score_efficia_historical.sql", "0012_order_cgv_acceptance.sql",
-  "0013_diagnostic_requests.sql", "0014_audit_drafts.sql", "0016_admin_manual_audits.sql",
+  "0013_diagnostic_requests.sql", "0014_audit_drafts.sql", "0015_audit_questionnaire_snapshots.sql",
+  "0016_admin_manual_audits.sql",
+  "0018_report_narrative_overrides.sql",
 ];
 
 const COMPUTELEC_LOCATION_LINK = "https://www.google.com/maps/place/Computelec/@49.816779999999994,5.449034,14z/data=!4m8!1m2!2m1!1sComputelec!3m4!1s0x821e9402e9f2375b:0x3706196cb9aab69b!8m2!3d49.816779999999994!4d5.449034";
+const LUX_ANALYSIS_ID = "analysis-geo-anchor-lux-smart";
+const LUX_PLACE_ID = "ChIJ2ZM_U0cFwEcRJINizNSs11w";
+const LUX_LOCATION_LINK = "https://www.google.com/maps/place/lux+smart+energie/@49.815332999999995,6.133451099999999,14z/data=!4m8!1m2!2m1!1slux+smart+energie!3m4!1s0x47c00547533f93d9:0x5cd7acd4cc628324!8m2!3d49.815332999999995!4d6.133451099999999";
 
 class LocalD1 {
   constructor() {
@@ -64,6 +70,12 @@ class LocalD1 {
       run: async () => database.prepare(sql).run(...params),
     });
     return bound();
+  }
+
+  async batch(statements) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
   }
 }
 
@@ -135,6 +147,18 @@ async function context(db, analysisId = ANALYSIS_ID, { authenticated = true, bod
       ORDERS_DB: db,
       OUTSCRAPER_API_KEY: "simulated-provider-key",
     },
+  };
+}
+
+async function snapshotContext(db, analysisId, body) {
+  return {
+    request: new Request(`https://preview.local/api/admin/audit-snapshots/${analysisId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: await cookie() },
+      body: JSON.stringify(body),
+    }),
+    params: { analysisId },
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
   };
 }
 
@@ -220,6 +244,83 @@ function installFailingProviderFixture({ center = NEUFCHATEAU_BE_CENTER } = {}) 
     return new Response("provider-down", { status: 500 });
   };
   return () => { globalThis.fetch = originalFetch; };
+}
+
+function installLuxSmartFixture(counters, { recoveredLocality = false } = {}) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) {
+      counters.geocoding += 1;
+      assert.equal(url.searchParams.get("region"), "LU");
+      assert.match(url.searchParams.get("query") || "", /Luxembourg/);
+      return Response.json({
+        data: [[{ latitude: 49.6116, longitude: 6.1319, city: "Luxembourg", country_code: "LU" }]],
+      });
+    }
+    const query = url.searchParams.get("query") || "";
+    if (query === LUX_LOCATION_LINK || query === LUX_PLACE_ID) {
+      counters.identifier += 1;
+      // Reproduit les champs réellement observés en Production :
+      // coordonnées/identifiant présents, mais ville/pays structurés vides.
+      return Response.json({ data: [[{
+        name: "lux smart energie",
+        place_id: LUX_PLACE_ID,
+        category: "Électricien",
+        city: recoveredLocality ? "Luxembourg" : "",
+        country: recoveredLocality ? "Luxembourg" : "",
+        country_code: recoveredLocality ? "LU" : "",
+        latitude: 49.815332999999995,
+        longitude: 6.133451099999999,
+        location_link: LUX_LOCATION_LINK,
+      }]] });
+    }
+    counters.competitor += 1;
+    assert.equal(query, "Electricien Luxembourg");
+    assert.equal(url.searchParams.get("region"), "LU");
+    assert.equal(url.searchParams.get("coordinates"), "49.6116,6.1319");
+    return Response.json({ data: [[
+      { name: "Électricien Luxembourg 1", place_id: "lux-c1", rating: 4.8, reviews: 31, sponsored: false },
+      { name: "Électricien Luxembourg 2", place_id: "lux-c2", rating: 4.6, reviews: 18, sponsored: false },
+      { name: "Électricien Luxembourg 3", place_id: "lux-c3", rating: 4.5, reviews: 12, sponsored: false },
+      { name: "lux smart energie", place_id: LUX_PLACE_ID, rating: null, reviews: null, sponsored: false },
+    ]] });
+  };
+  return () => { globalThis.fetch = originalFetch; };
+}
+
+function seedLuxSmartProductionShape(db) {
+  seedAnalysis(db, { analysisId: LUX_ANALYSIS_ID, companyName: "Lux Smart Energie", city: "Luxembourg" });
+  seedManualMetadata(db, LUX_ANALYSIS_ID);
+  marksInitialCollection(db, LUX_ANALYSIS_ID, {
+    companyName: "lux smart energie",
+    city: "",
+    geo: {
+      locationLink: LUX_LOCATION_LINK,
+      latitude: 49.815332999999995,
+      longitude: 6.133451099999999,
+    },
+  });
+  db.sqlite.prepare(`
+    UPDATE analyses SET ville = 'Luxembourg', place_id = ?, rating = NULL, reviews = NULL,
+      search_query = NULL, local_position = NULL, competitors_json = '[]',
+      avg_rating = NULL, avg_reviews = NULL, avg_photos = NULL,
+      fiche_json = json_set(fiche_json, '$.place_id', ?),
+      normalized_json = json_set(normalized_json, '$.place_id', ?)
+    WHERE analysis_id = ?
+  `).run(LUX_PLACE_ID, LUX_PLACE_ID, LUX_PLACE_ID, LUX_ANALYSIS_ID);
+}
+
+function luxRefreshBody(overrides = {}) {
+  return refreshBody({
+    analysisId: LUX_ANALYSIS_ID,
+    company: "lux smart energie",
+    city: "Luxembourg",
+    activity: "Électricien",
+    searchQuery: "Electricien Luxembourg",
+    searchZone: { city: "Luxembourg", countryCode: "LU", countryName: "Luxembourg" },
+    ...overrides,
+  });
 }
 
 // --- 1 & 6. La requête visible/personnalisée n'est jamais réécrite ---
@@ -424,6 +525,160 @@ test("3. la requête affichée, la requête fournisseur, l’ancrage et la date 
   }
 });
 
+test("fallback confirmé — Lux Smart Energie utilise Luxembourg/LU, conserve le brouillon et remplace les résultats seulement après succès", async () => {
+  const db = new LocalD1();
+  seedLuxSmartProductionShape(db);
+  const now = "2026-08-30T18:55:00.000Z";
+  db.sqlite.prepare(`
+    INSERT INTO audit_drafts (
+      draft_id, analysis_id, status, report_type, answers_version, answers_json,
+      current_step, created_at, updated_at
+    ) VALUES ('draft-lux', ?, 'draft', 'free', 'score-efficia-questionnaire-v4',
+      '{"responses":{"nomConforme":{"points":0,"source":"manual"}}}',
+      'questionnaire', ?, ?)
+  `).run(LUX_ANALYSIS_ID, now, now);
+  db.sqlite.prepare(`
+    INSERT INTO report_narrative_overrides (
+      analysis_id, field_id, custom_text, automatic_text_snapshot, generator_version,
+      review_weekly, anomaly_category, needs_review, context_hash, created_at, updated_at
+    ) VALUES (?, 'summary.general', 'Texte personnalisé conservé', 'Texte automatique',
+      'test', 0, NULL, 0, 'ancien-contexte', ?, ?)
+  `).run(LUX_ANALYSIS_ID, now, now);
+  const draftBefore = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(LUX_ANALYSIS_ID);
+  const counters = { identifier: 0, geocoding: 0, competitor: 0 };
+  const restoreFetch = installLuxSmartFixture(counters);
+  try {
+    const response = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, { body: luxRefreshBody() }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.operation, "refresh_search");
+    assert.equal(body.business.searchQuery, "Electricien Luxembourg");
+    assert.equal(body.business.localPosition, 4);
+    assert.equal(body.business.geographicAnchor.region, "LU");
+    assert.equal(body.business.geographicAnchor.label, "Luxembourg, Luxembourg");
+    assert.equal(body.business.geographicAnchor.localitySource, "admin_confirmed_city");
+    assert.equal(body.business.geographicAnchorStale, false);
+    assert.deepEqual(counters, { identifier: 1, geocoding: 1, competitor: 1 });
+    assert.equal(body.competitiveDataChanged, true);
+
+    const persisted = db.sqlite.prepare(`
+      SELECT search_query, local_position, competitors_json, normalized_json
+      FROM analyses WHERE analysis_id = ?
+    `).get(LUX_ANALYSIS_ID);
+    const normalized = JSON.parse(persisted.normalized_json);
+    assert.equal(persisted.search_query, "Electricien Luxembourg");
+    assert.equal(persisted.local_position, 4);
+    assert.equal(JSON.parse(persisted.competitors_json).length, 3);
+    assert.deepEqual(normalized.confirmed_search_zone, {
+      city: "Luxembourg",
+      postalCode: "",
+      countryName: "Luxembourg",
+      countryCode: "LU",
+      source: "admin_confirmed_city",
+    });
+    assert.equal(normalized.geographic_anchor.coordinates, "49.6116,6.1319");
+    assert.notEqual(normalized.geographic_anchor.coordinates, "49.815332999999995,6.133451099999999");
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(LUX_ANALYSIS_ID), draftBefore);
+    const override = db.sqlite.prepare(`
+      SELECT custom_text, needs_review FROM report_narrative_overrides
+      WHERE analysis_id = ? AND field_id = 'summary.general'
+    `).get(LUX_ANALYSIS_ID);
+    assert.equal(override.custom_text, "Texte personnalisé conservé");
+    assert.equal(override.needs_review, 1);
+
+    const finalization = await finalizeSnapshot(await snapshotContext(db, LUX_ANALYSIS_ID, {
+      action: "finalize",
+      pdfFilename: "diagnostic-lux-smart.pdf",
+      displayedSearchQuery: "Electricien Luxembourg",
+      displayedSearchZone: { city: "Luxembourg", countryCode: "LU", countryName: "Luxembourg" },
+    }));
+    assert.equal(finalization.status, 200);
+    assert.equal(db.sqlite.prepare("SELECT status FROM analyses WHERE analysis_id = ?").get(LUX_ANALYSIS_ID).status, "pdf_generated");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("récupération par identifiant — une localité structurée retrouvée reste prioritaire sur le fallback manuel", async () => {
+  const db = new LocalD1();
+  seedLuxSmartProductionShape(db);
+  const counters = { identifier: 0, geocoding: 0, competitor: 0 };
+  const restoreFetch = installLuxSmartFixture(counters, { recoveredLocality: true });
+  try {
+    const response = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, {
+      body: luxRefreshBody({ searchZone: undefined }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.business.geographicAnchor.localitySource, "google_business_identifier");
+    assert.equal(body.business.geographicAnchor.region, "LU");
+    assert.deepEqual(counters, { identifier: 1, geocoding: 1, competitor: 1 });
+    const normalized = JSON.parse(db.sqlite.prepare(
+      "SELECT normalized_json FROM analyses WHERE analysis_id = ?",
+    ).get(LUX_ANALYSIS_ID).normalized_json);
+    assert.equal(normalized.city, "Luxembourg");
+    assert.equal(normalized.country_code, "LU");
+    assert.equal("confirmed_search_zone" in normalized, false);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("fallback confirmé — mêmes résultats concurrentiels : le texte personnalisé n’est pas marqué À revérifier", async () => {
+  const db = new LocalD1();
+  seedLuxSmartProductionShape(db);
+  const firstCounters = { identifier: 0, geocoding: 0, competitor: 0 };
+  let restoreFetch = installLuxSmartFixture(firstCounters);
+  try {
+    const first = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, { body: luxRefreshBody() }));
+    assert.equal(first.status, 200);
+  } finally {
+    restoreFetch();
+  }
+  const now = "2026-08-30T19:05:00.000Z";
+  db.sqlite.prepare(`
+    INSERT INTO report_narrative_overrides (
+      analysis_id, field_id, custom_text, automatic_text_snapshot, generator_version,
+      review_weekly, anomaly_category, needs_review, context_hash, created_at, updated_at
+    ) VALUES (?, 'summary.general', 'Texte stable', 'Auto', 'test', 0, NULL, 0, 'contexte', ?, ?)
+  `).run(LUX_ANALYSIS_ID, now, now);
+  const secondCounters = { identifier: 0, geocoding: 0, competitor: 0 };
+  restoreFetch = installLuxSmartFixture(secondCounters);
+  try {
+    const second = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, { body: luxRefreshBody() }));
+    const body = await second.json();
+    assert.equal(second.status, 200);
+    assert.equal(body.competitiveDataChanged, false);
+    assert.equal(db.sqlite.prepare(`
+      SELECT needs_review FROM report_narrative_overrides
+      WHERE analysis_id = ? AND field_id = 'summary.general'
+    `).get(LUX_ANALYSIS_ID).needs_review, 0);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("fallback confirmé — ville ambiguë sans pays : refus contrôlé et aucune écriture partielle", async () => {
+  const db = new LocalD1();
+  seedLuxSmartProductionShape(db);
+  const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(LUX_ANALYSIS_ID);
+  const counters = { identifier: 0, geocoding: 0, competitor: 0 };
+  const restoreFetch = installLuxSmartFixture(counters);
+  try {
+    const response = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, {
+      body: luxRefreshBody({ searchZone: { city: "Luxembourg", countryCode: "" } }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
+    assert.deepEqual(body.missing, ["searchZone.city", "searchZone.countryCode"]);
+    assert.equal(counters.competitor, 0);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(LUX_ANALYSIS_ID), before);
+  } finally {
+    restoreFetch();
+  }
+});
+
 // --- 7. Duplication duplicate_manual : l'ancrage est conservé ---
 
 test("7. un brouillon duplicate_manual copié depuis une analyse ancrée conserve l’ancrage et peut relancer sa recherche", async () => {
@@ -491,9 +746,9 @@ test("8. sans aucune donnée géographique fiable, la relance est bloquée avant
     assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
     assert.equal(
       body.message,
-      "La zone géographique n’a pas pu être déterminée automatiquement. Vérifiez la fiche avant de relancer l’analyse.",
+      "Confirmez la zone géographique utilisée pour la recherche Google et son pays avant de relancer l’analyse.",
     );
-    assert.equal(providerCalled, false, "le fournisseur ne doit jamais être appelé sans ancrage fiable");
+    assert.equal(providerCalled, true, "l’identifiant Google peut être vérifié avant le refus contrôlé");
     assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID), beforeAnalysis);
   } finally {
     globalThis.fetch = originalFetch;

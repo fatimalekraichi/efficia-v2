@@ -56,6 +56,15 @@ const COUNTRY_NAME_TO_CODE = {
   germany: "DE",
 };
 
+const COUNTRY_CODE_TO_NAME = Object.freeze({
+  BE: "Belgique",
+  FR: "France",
+  LU: "Luxembourg",
+  CH: "Suisse",
+  NL: "Pays-Bas",
+  DE: "Allemagne",
+});
+
 function normalizeKey(value) {
   return String(value || "")
     .normalize("NFD")
@@ -69,6 +78,28 @@ function resolveRegionCode(record) {
   if (/^[A-Z]{2}$/.test(explicit)) return explicit;
   const byName = COUNTRY_NAME_TO_CODE[normalizeKey(record?.country)];
   return byName || null;
+}
+
+export function normalizeConfirmedSearchZone(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const city = firstNonEmpty(value.city).slice(0, 160);
+  const postalCode = firstNonEmpty(value.postalCode, value.postal_code).slice(0, 32);
+  const explicitCode = firstNonEmpty(value.countryCode, value.country_code).toUpperCase();
+  const suppliedCountryName = firstNonEmpty(value.countryName, value.country).slice(0, 80);
+  const codeFromName = COUNTRY_NAME_TO_CODE[normalizeKey(suppliedCountryName)] || null;
+  const countryCode = /^[A-Z]{2}$/.test(explicitCode) ? explicitCode : codeFromName;
+  if (!city || !countryCode || !COUNTRY_CODE_TO_NAME[countryCode]) return null;
+  if (codeFromName && codeFromName !== countryCode) return null;
+  const countryName = COUNTRY_CODE_TO_NAME[countryCode];
+  return {
+    city,
+    postalCode,
+    countryName,
+    countryCode,
+    source: value.source === "admin_confirmed_city"
+      ? "admin_confirmed_city"
+      : "admin_confirmed_search_zone",
+  };
 }
 
 function firstNonEmpty(...values) {
@@ -93,7 +124,7 @@ function buildLabel({ postalCode, city, countryName, countryCode }) {
  * détection de péremption (evaluateGeographicAnchorReadiness), qui doit
  * rester synchrone.
  */
-export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {} } = {}) {
+export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {}, confirmedSearchZone = null } = {}) {
   const region = resolveRegionCode(normalized) || resolveRegionCode(fiche) || null;
   const postalCode = firstNonEmpty(normalized?.postal_code, fiche?.postal_code);
   const city = firstNonEmpty(normalized?.city, fiche?.city, normalized?.borough, fiche?.borough);
@@ -103,10 +134,35 @@ export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {} } 
   // Une localité fiable exige au minimum une VILLE et un PAYS reconnu — un
   // code postal seul, ou une ville sans pays, ne permet ni de désambiguïser
   // les homonymes (Neufchâteau Belgique/France) ni de géocoder sans deviner.
-  if (!region || !city) {
-    return { ok: false, region: null, postalCode: "", city: "", countryName: "", label: null };
+  if (region && city) {
+    return { ok: true, region, postalCode, city, countryName, label };
   }
-  return { ok: true, region, postalCode, city, countryName, label };
+
+  // Repli explicite uniquement : la zone de recherche confirmée est un
+  // objet distinct de l'adresse et de la zone de service de la fiche. Elle
+  // n'est acceptée qu'avec un pays non ambigu et n'est jamais construite à
+  // partir du seul libellé de ville transmis par l'ancien formulaire.
+  const confirmed = normalizeConfirmedSearchZone(
+    confirmedSearchZone || normalized?.confirmed_search_zone,
+  );
+  if (confirmed) {
+    return {
+      ok: true,
+      region: confirmed.countryCode,
+      postalCode: confirmed.postalCode,
+      city: confirmed.city,
+      countryName: confirmed.countryName,
+      label: buildLabel({
+        postalCode: confirmed.postalCode,
+        city: confirmed.city,
+        countryName: confirmed.countryName,
+        countryCode: confirmed.countryCode,
+      }),
+      localitySource: confirmed.source,
+    };
+  }
+
+  return { ok: false, region: null, postalCode: "", city: "", countryName: "", label: null };
 }
 
 function isSameLocality(a, b) {
@@ -143,8 +199,10 @@ export const GEOGRAPHIC_ANCHOR_ERROR = Object.freeze({
  * moyennes, ni marquer l'analyse comme actualisée ; la finalisation reste
  * bloquée tant qu'aucun ancrage fiable n'a été obtenu.
  */
-export async function resolveGeographicAnchor({ normalized = {}, fiche = {}, apiKey, timeoutMs } = {}) {
-  const locality = resolveGeographicAnchorLocality({ normalized, fiche });
+export async function resolveGeographicAnchor({
+  normalized = {}, fiche = {}, confirmedSearchZone = null, apiKey, timeoutMs,
+} = {}) {
+  const locality = resolveGeographicAnchorLocality({ normalized, fiche, confirmedSearchZone });
   if (!locality.ok) {
     return {
       ok: false, code: GEOGRAPHIC_ANCHOR_ERROR.LOCALITY_UNKNOWN,
@@ -174,6 +232,7 @@ export async function resolveGeographicAnchor({ normalized = {}, fiche = {}, api
     ok: true,
     tier: 1,
     source: center.source,
+    ...(locality.localitySource ? { localitySource: locality.localitySource } : {}),
     coordinates: `${center.lat},${center.lng}`,
     region: locality.region,
     label: locality.label,
@@ -195,6 +254,7 @@ export function buildGeographicAnchorRecord(anchor, resolvedAt) {
   return {
     tier: anchor.tier,
     source: anchor.source,
+    ...(anchor.localitySource ? { localitySource: anchor.localitySource } : {}),
     region: anchor.region,
     label: anchor.label,
     coordinates: anchor.coordinates,
@@ -256,6 +316,7 @@ function normalizeQueryForComparison(value) {
 //     signal n'existe que côté client, jamais reconstitué côté serveur).
 export function evaluateGeographicAnchorReadiness({
   normalized = {}, fiche = {}, business = {}, benchmarkAverages = {}, displayedSearchQuery,
+  displayedSearchZone,
 } = {}) {
   const persistedRaw = normalized?.geographic_anchor || null;
   const persisted = persistedRaw && firstNonEmpty(persistedRaw.label)
@@ -265,12 +326,25 @@ export function evaluateGeographicAnchorReadiness({
       region: firstNonEmpty(persistedRaw.region) || null,
       label: firstNonEmpty(persistedRaw.label) || null,
       coordinates: firstNonEmpty(persistedRaw.coordinates) || null,
+      localitySource: firstNonEmpty(persistedRaw.localitySource) || null,
       locality: persistedRaw.locality && typeof persistedRaw.locality === "object" ? persistedRaw.locality : null,
     }
     : null;
   const resultsExist = hasExistingCompetitiveResults(business, benchmarkAverages);
   const live = resolveGeographicAnchorLocality({ normalized, fiche });
-  const liveDisplay = live.ok ? { region: live.region, label: live.label } : null;
+  const liveDisplay = live.ok
+    ? {
+      region: live.region,
+      label: live.label,
+      localitySource: live.localitySource || null,
+      locality: {
+        city: live.city,
+        postalCode: live.postalCode,
+        country: live.countryName,
+        countryCode: live.region,
+      },
+    }
+    : null;
 
   if (resultsExist && !persisted) {
     return { ok: false, code: "GEOGRAPHIC_ANCHOR_MISSING_FOR_EXISTING_RESULTS", persisted, live: liveDisplay };
@@ -295,7 +369,20 @@ export function evaluateGeographicAnchorReadiness({
     }
   }
 
+  if (displayedSearchZone !== undefined) {
+    const displayed = normalizeConfirmedSearchZone(displayedSearchZone);
+    const analyzedCity = persisted?.locality?.city || "";
+    if (!displayed
+      || !persisted
+      || displayed.countryCode !== persisted.region
+      || normalizeKey(displayed.city) !== normalizeKey(analyzedCity)) {
+      return { ok: false, code: "SEARCH_ZONE_STALE", persisted, live: liveDisplay };
+    }
+  }
+
   return { ok: true, code: null, persisted, live: liveDisplay };
 }
 
-export const __test__ = { resolveRegionCode, buildLabel, COUNTRY_NAME_TO_CODE, isSameLocality };
+export const __test__ = {
+  resolveRegionCode, buildLabel, COUNTRY_NAME_TO_CODE, COUNTRY_CODE_TO_NAME, isSameLocality,
+};

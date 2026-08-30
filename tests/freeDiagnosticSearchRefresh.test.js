@@ -17,10 +17,15 @@ test("une recherche personnalisée n’est jamais écrasée silencieusement", ()
   assert.match(html, /requetePersonnalisee = normaliserRecherche\(input\?\.value\) !== normaliserRecherche\(composerRequeteProposee\(\)\)/);
 });
 
-test("la relance envoie exactement identité, ville, activité et recherche au backend admin", () => {
-  assert.match(html, /JSON\.stringify\(\{operation:"refresh_search", analysisId, company, city, activity, searchQuery\}\)/);
+test("la relance envoie identité, ville, activité, recherche et zone géographique confirmée au backend admin", () => {
+  assert.match(html, /JSON\.stringify\(\{operation:"refresh_search", analysisId, company, city, activity, searchQuery, searchZone\}\)/);
   assert.match(route, /payload\?\.operation !== "refresh_search"/);
   assert.match(route, /requete: payload\.searchQuery/);
+  assert.match(html, /id="d-zone-recherche"/);
+  assert.match(html, /id="d-zone-pays"/);
+  assert.match(html, /Zone géographique utilisée pour la recherche Google/);
+  assert.match(html, /Source : \$\{sourceLabels\[localitySource\]/);
+  assert.match(html, /champsBrouillonD1\(\)[\s\S]*"d-zone-recherche","d-zone-pays"/);
 });
 
 test("la position et les trois concurrents proviennent exclusivement de la réponse serveur", () => {
@@ -44,7 +49,7 @@ test("la demande historique et les réponses manuelles ne sont pas remplacées p
 });
 
 test("la catégorie Google observée reste distincte de l’activité confirmée", () => {
-  assert.match(route, /normalizedWithCategories = mergeCategoryObservation\(normalized, result\.targetObservation, payload\.activity\)/);
+  assert.match(route, /normalizedWithCategories = mergeCategoryObservation\(resolvedNormalized, result\.targetObservation, payload\.activity\)/);
   const refreshSql = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   assert.doesNotMatch(refreshSql, /SET[^`]*activity\s*=/);
 });
@@ -71,6 +76,12 @@ test("un échec conserve les résultats précédents et maintient l’état pér
 test("le double clic est neutralisé côté client", () => {
   assert.match(html, /async function relancerAnalyseRecherche\(\)\{\s*if\(relanceRechercheEnCours\) return/);
   assert.match(html, /relanceRechercheEnCours = true/);
+});
+
+test("une zone affichée différente de la zone analysée bloque aussi la génération", () => {
+  assert.match(html, /function zoneGeographiqueEstPerimee\(\)[\s\S]*zonesRechercheIdentiques/);
+  assert.match(html, /displayedSearchZone = zoneRechercheSaisie\(\)/);
+  assert.match(html, /JSON\.stringify\(\{action:"finalize", pdfFilename, displayedSearchQuery, displayedSearchZone\}\)/);
 });
 
 test("aucun secret fournisseur n’est exposé au navigateur", () => {
