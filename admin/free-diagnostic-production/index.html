@@ -4443,7 +4443,8 @@ function verrouillerQuestionnaireLectureSeule(snapshot){
 afficherProfilUtilise();
 initialisationContexteAdminPromise = initialiserContexteCommandeAdmin();
 if(!modeLectureSeule()){
-  document.getElementById("formulaire")?.addEventListener("input", () => {
+  document.getElementById("formulaire")?.addEventListener("input", (event) => {
+    if(event.target?.closest?.("#dialog-textes-rapport")) return;
     marquerTextesPersonnalisesAReverifierLocalement();
     programmerSauvegardeBrouillonD1();
   });

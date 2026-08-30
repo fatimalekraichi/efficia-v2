@@ -392,13 +392,20 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
         }
         const opened = await ouvrirEditeurTextesRapport();
         const card = document.querySelector('[data-report-text-field="summary.general"]');
+        window.__workflowFetchCalls.length = 0;
+        const customText = card?.querySelector("[data-custom-text]");
+        customText.value = "Texte persistant après rechargement";
+        customText.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 1400));
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({
           opened,
           dialogOpen: document.getElementById("dialog-textes-rapport").open,
-          customText: card?.querySelector("[data-custom-text]")?.value || null,
+          customText: customText?.value || null,
           automaticText: card?.querySelector(".report-text-auto")?.textContent || null,
           reviewBadgeDisplay: getComputedStyle(card?.querySelector("[data-review-badge]")).display,
-          pdfRequests: window.__workflowFetchCalls.filter(item => /\\/(?:api\\/)?(?:pdf|render)\\//.test(item.url)).length
+          pdfRequests: window.__workflowFetchCalls.filter(item => /\\/(?:api\\/)?(?:pdf|render)\\//.test(item.url)).length,
+          draftWrites: window.__workflowFetchCalls.filter(item => item.method === "PUT" && item.url.includes("/api/admin/audit-drafts/")).length,
+          pageReviewWarning: !document.getElementById("alerte-textes-personnalises").hidden
         });
       } catch (error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
@@ -412,6 +419,8 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
   assert.match(result.automaticText, /Texte automatique/);
   assert.equal(result.reviewBadgeDisplay, "none");
   assert.equal(result.pdfRequests, 0);
+  assert.equal(result.draftWrites, 0);
+  assert.equal(result.pageReviewWarning, false);
 });
 
 test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME) }, () => {
