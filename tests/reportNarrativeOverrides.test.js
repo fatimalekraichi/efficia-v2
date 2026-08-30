@@ -397,6 +397,7 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
           dialogOpen: document.getElementById("dialog-textes-rapport").open,
           customText: card?.querySelector("[data-custom-text]")?.value || null,
           automaticText: card?.querySelector(".report-text-auto")?.textContent || null,
+          reviewBadgeDisplay: getComputedStyle(card?.querySelector("[data-review-badge]")).display,
           pdfRequests: window.__workflowFetchCalls.filter(item => /\\/(?:api\\/)?(?:pdf|render)\\//.test(item.url)).length
         });
       } catch (error) {
@@ -409,6 +410,7 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
   assert.equal(result.dialogOpen, true);
   assert.equal(result.customText, "Texte persistant après rechargement");
   assert.match(result.automaticText, /Texte automatique/);
+  assert.equal(result.reviewBadgeDisplay, "none");
   assert.equal(result.pdfRequests, 0);
 });
 
