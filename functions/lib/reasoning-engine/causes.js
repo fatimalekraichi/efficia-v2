@@ -74,13 +74,24 @@ export const causes = {
       "Vos catégories donnent déjà à Google une lecture claire de votre activité principale.",
       "Le cadrage de vos catégories aide déjà à relier votre fiche aux recherches utiles.",
     ],
+    // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) :
+    // ce tableau n'est mobilisé QUE par le signal "categories" de type
+    // weakness (inadéquation avérée de la catégorie principale, cf.
+    // knowledgeRules.js WEAK_CATEGORY_MATCH) — jamais par la simple absence
+    // de catégories secondaires (opportunity, ci-dessous), d'où un texte
+    // centré sur l'écart catégorie/activité et non sur "vos services".
     weakness: [
-      "Vos catégories donnent à Google une compréhension encore perfectible de vos services principaux et secondaires.",
-      "Le cadrage de vos catégories peut être affiné pour mieux relier votre fiche aux recherches réellement utiles.",
+      "La catégorie actuellement observée sur votre fiche correspond de façon imparfaite à l'activité identifiée lors de l'analyse.",
+      "Un écart a été constaté entre l'activité confirmée et la catégorie affichée sur votre fiche Google.",
     ],
     opportunity: [
       "Vos catégories sont présentes, mais elles peuvent encore être précisées pour couvrir davantage d'intentions pertinentes.",
-      "La structure de vos catégories peut être optimisée pour mieux refléter vos services recherchés.",
+      // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) : cette phrase
+      // mentionnait "vos services recherchés", chevauchant le territoire
+      // exclusif de la priorité clarté/conversion (signal "description").
+      // La visibilité locale reste concentrée sur la correspondance
+      // catégorie/recherche, jamais sur la présentation des prestations.
+      "La structure de vos catégories peut être optimisée pour mieux correspondre aux recherches locales de vos clients.",
     ],
   },
 };

@@ -161,12 +161,20 @@ export const businessImpacts = {
         "Vos catégories rendent votre activité plus lisible pour les prospects qualifiés.",
         "Ce cadrage aide le client à comprendre rapidement si votre fiche correspond à son besoin.",
       ],
+      // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) :
+      // idem causes.js — uniquement le cas d'inadéquation avérée de la
+      // catégorie principale (signal categories, type weakness), jamais
+      // "vos services" qui reste le territoire exclusif de "description".
       weakness: [
-        "Des catégories imprécises peuvent attirer moins de visiteurs réellement qualifiés.",
-        "Un mauvais cadrage peut empêcher certains prospects de comprendre rapidement l'étendue de vos services.",
+        "Une catégorie qui ne correspond pas précisément à l'activité peut réduire la pertinence des mises en relation avec des prospects qualifiés.",
+        "Ce type d'écart peut amener votre fiche à apparaître pour des recherches moins pertinentes que prévu.",
       ],
       opportunity: [
-        "Des catégories plus précises peuvent attirer des recherches mieux alignées avec vos services.",
+        // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) : "alignées
+        // avec vos services" chevauchait le territoire exclusif de la
+        // priorité clarté/conversion (signal "description"). La visibilité
+        // locale reste concentrée sur l'adéquation catégorie/recherche.
+        "Des catégories plus précises peuvent attirer des recherches mieux alignées avec votre activité réelle.",
         "Un meilleur cadrage peut rendre votre fiche plus pertinente pour les prospects qualifiés.",
       ],
     },

@@ -65,6 +65,13 @@ export const KNOWLEDGE_MESSAGES = {
   OPP_CATEGORIES: [
     "Aucune catégorie secondaire n'est renseignée : vous passez à côté de recherches où vous pourriez apparaître.",
   ],
+  // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) :
+  // uniquement produit quand business.category_relevance === "poor" (preuve
+  // établie lors de la relecture), jamais à partir de la seule position.
+  WEAK_CATEGORY_MATCH: [
+    "La catégorie actuellement affichée correspond de façon imparfaite à l'activité identifiée lors de l'analyse.",
+    "Un écart a été constaté entre l'activité confirmée et la catégorie observée sur votre fiche Google.",
+  ],
   OPP_REVIEWS_FLOW: [
     "Votre réputation est correcte mais peut être consolidée par un flux d'avis plus régulier.",
   ],

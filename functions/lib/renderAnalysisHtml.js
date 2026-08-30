@@ -79,6 +79,51 @@ function safeNumber(value, fallback = "Non disponible") {
   return escapeHtml(Number.isInteger(parsed) ? parsed : parsed.toFixed(1));
 }
 
+// Correctif générique (2026-08-30, retour terrain diagnostic gratuit — diagnostic gratuit,
+// bloc "Confiance visible face aux concurrents", page 3) : `Number(null)`
+// vaut 0 en JavaScript, donc l'ancienne composition (`${compactNumber(rating)}
+// /5 et ${compactNumber(reviews, 0)} avis`) affichait "0/5 et 0 avis" aussi
+// bien pour une fiche dont le volume d'avis est confirmé à zéro que pour une
+// fiche dont ce volume n'a simplement jamais été vérifié — deux réalités
+// différentes présentées de façon identique et trompeuse. Cette fonction
+// distingue explicitement les trois cas possibles (aucun avis confirmé /
+// volume inconnu / note absente alors que des avis existent) sans jamais
+// transformer une absence de donnée en "aucun avis" ni produire de valeur
+// cassée ("--", "null", "undefined"). Générique : aucune donnée d'entreprise
+// n'est codée en dur, applicable à n'importe quelle fiche.
+function isKnownNumber(value) {
+  if (value === null || value === undefined || value === "") return false;
+  return Number.isFinite(Number(value));
+}
+
+function formatNumberFr(value, digits) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits }).format(Number(value));
+}
+
+function formatRatingReviewsPhrase(rating, reviews, { reviewsDigits = 0, zeroReviewsLabel = "aucun avis" } = {}) {
+  const hasReviews = isKnownNumber(reviews);
+  const hasRating = isKnownNumber(rating);
+
+  // Volume d'avis confirmé à zéro : jamais de "0/5", jamais de "0 avis" —
+  // il n'existe tout simplement aucune note ni aucun avis à afficher.
+  if (hasReviews && Number(reviews) === 0) return zeroReviewsLabel;
+
+  // Ni note ni volume d'avis connus : formulation neutre, jamais "aucun avis"
+  // (on ne sait pas s'il y en a ou non, ce n'est pas la même chose).
+  if (!hasReviews && !hasRating) return "non vérifiable";
+
+  // Note connue mais volume d'avis non vérifiable : on affiche la note sans
+  // inventer un nombre d'avis.
+  if (!hasReviews) return `${formatNumberFr(rating, 1)}/5 (nombre d'avis non vérifiable)`;
+
+  // Avis présents (>0) mais note moyenne absente : on affiche le volume sans
+  // inventer de note.
+  if (!hasRating) return `${formatNumberFr(reviews, reviewsDigits)} avis (note non communiquée)`;
+
+  // Cas nominal : note et volume d'avis tous deux connus.
+  return `${formatNumberFr(rating, 1)}/5 et ${formatNumberFr(reviews, reviewsDigits)} avis`;
+}
+
 // Mission "dernières corrections de qualité avant la bêta", objectif 4 —
 // pour un artisan (électricien, plombier, chauffagiste...), "vos clients"
 // désigne souvent des personnes qui n'ont PAS ENCORE choisi l'entreprise
@@ -1737,12 +1782,6 @@ function freeCriteriaSection(model) {
   const notVerifiedCount = counts.not_verified || 0;
   const competitiveSummary = (summary.summaries || []).find((item) => item.key === "attractiviteConcurrents");
   const competitiveEvidence = competitiveSummary?.evidence || {};
-  const compactNumber = (value, digits = 1) => {
-    const number = Number(value);
-    return Number.isFinite(number)
-      ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits }).format(number)
-      : "—";
-  };
 
   return `
     <section class="page page-criteria" data-free-page="3">
@@ -1763,8 +1802,8 @@ function freeCriteriaSection(model) {
       </div>
       <div class="competitive-summary">
         <h3>Confiance visible face aux concurrents</h3>
-        <p><strong>Votre fiche :</strong> ${safeText(`${compactNumber(competitiveEvidence.rating)}/5 et ${compactNumber(competitiveEvidence.reviews, 0)} avis`)}</p>
-        <p><strong>Moyenne des concurrents :</strong> ${safeText(`${compactNumber(competitiveEvidence.averageRating)}/5 et ${compactNumber(competitiveEvidence.averageReviews, 2)} avis`)}</p>
+        <p><strong>Votre fiche :</strong> ${safeText(formatRatingReviewsPhrase(competitiveEvidence.rating, competitiveEvidence.reviews, { reviewsDigits: 0, zeroReviewsLabel: "aucun avis client" }))}</p>
+        <p><strong>Moyenne des concurrents :</strong> ${safeText(formatRatingReviewsPhrase(competitiveEvidence.averageRating, competitiveEvidence.averageReviews, { reviewsDigits: 2, zeroReviewsLabel: "aucun avis" }))}</p>
         <p><strong>Confiance visible :</strong> ${safeText(competitiveSummary?.label || "À confirmer")}</p>
       </div>
       <div class="chk-legend">Légende — <span class="chk-ok">✓</span> conforme&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-warn">!</span> à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-ko">✕</span> prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;<span class="chk-unknown">○</span> à confirmer manuellement.</div>

@@ -227,6 +227,27 @@ export const KNOWLEDGE_RULES = [
     when: (input) => n(input.business?.secondary_categories) === 0,
     magnitude: () => 1,
   },
+  // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) :
+  // seule une preuve établie sur la CATÉGORIE PRINCIPALE (relecture manuelle
+  // categoryRelevance = "poor" — jamais une simple position locale faible)
+  // peut produire une recommandation de vérification de catégorie. "poor"
+  // est le seul statut qui correspond à une inadéquation constatée ;
+  // "acceptable"/"strong" (catégorie conforme ou précise) et "unknown"
+  // (aucune preuve disponible) ne déclenchent jamais ce signal. Priorité
+  // (base_weight) volontairement supérieure à OPP_CATEGORIES : quand les
+  // deux conditions sont réunies, le constat le plus étayé (catégorie
+  // principale inadaptée) prime sur la simple absence de catégories
+  // secondaires.
+  {
+    id: "WEAK_CATEGORY_MATCH",
+    type: "weakness",
+    signal: "categories",
+    base_weight: 8,
+    min_confidence: "indicative",
+    message_group: "WEAK_CATEGORY_MATCH",
+    when: (input) => input.business?.category_relevance === "poor",
+    magnitude: () => 1,
+  },
   {
     id: "OPP_REVIEWS_FLOW",
     type: "opportunity",

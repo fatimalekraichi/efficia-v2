@@ -98,9 +98,20 @@ function websiteAvailabilityNote(scoreContext = {}) {
 function buildFreePriorityCard(item, scoreContext = {}) {
   const logic = item.logic || {};
   const descriptionAbsent = item.signal === "description" && Number(item.evidence?.value) === 0;
-  const firstAction = item.signal === "description" && scoreContext.locationConfirmation
-    ? "Rédiger une description claire de vos services et de vos différenciants."
-    : buildFirstAction(item.signal);
+  // Correctif générique (2026-08-30, retour terrain diagnostic gratuit) :
+  // la recommandation "vérifier la catégorie principale" ne doit apparaître
+  // que si le signal categories provient réellement d'une inadéquation
+  // avérée de la catégorie principale (finding WEAK_CATEGORY_MATCH, cf.
+  // knowledgeRules.js — condition business.category_relevance === "poor"),
+  // jamais pour la simple absence de catégories secondaires (finding
+  // OPP_CATEGORIES, qui garde le libellé par défaut de firstActionTemplates)
+  // et jamais pour le signal "position" seul.
+  const categoryMismatchEvidenced = item.signal === "categories" && item.id === "WEAK_CATEGORY_MATCH";
+  const firstAction = categoryMismatchEvidenced
+    ? "Vérifier que la catégorie principale correspond bien à l'activité recherchée."
+    : (item.signal === "description" && scoreContext.locationConfirmation
+      ? "Rédiger une description claire de vos services et de vos différenciants."
+      : buildFirstAction(item.signal));
   return {
     rank: item.rank,
     id: item.id,

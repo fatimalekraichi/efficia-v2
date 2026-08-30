@@ -12,6 +12,7 @@ const EXPECTED_RESULT_BY_SIGNAL = {
   photos: "Une galerie plus actuelle peut mieux démontrer une activité active aujourd'hui.",
   position: "Une meilleure position peut vous rendre visible avant qu'un prospect ne contacte une fiche concurrente.",
   description: "Une description plus claire peut aider un prospect à comprendre l'offre avant même d'appeler.",
+  categories: "Des catégories mieux ajustées peuvent aider votre fiche à apparaître sur davantage de recherches locales pertinentes.",
 };
 
 const DEFAULT_EXPECTED_RESULT = "Ce point traité peut renforcer la clarté et la confiance perçues par un prospect.";
