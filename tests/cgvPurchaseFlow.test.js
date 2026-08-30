@@ -321,7 +321,7 @@ test("la migration CGV historique reste inchangée et la migration suivante est 
     "3f73ac365c4a5d59d77c740c005327745385172c0fbde992c77a2a5fefe5d7e2",
   );
   assert.deepEqual(
-    migrationFiles.filter((file) => file.endsWith(".sql")).slice(-6),
+    migrationFiles.filter((file) => file.endsWith(".sql")).slice(-7),
     [
       "0012_order_cgv_acceptance.sql",
       "0013_diagnostic_requests.sql",
@@ -329,6 +329,7 @@ test("la migration CGV historique reste inchangée et la migration suivante est 
       "0015_audit_questionnaire_snapshots.sql",
       "0016_admin_manual_audits.sql",
       "0017_free_to_manual_premium.sql",
+      "0018_report_narrative_overrides.sql",
     ],
   );
 });

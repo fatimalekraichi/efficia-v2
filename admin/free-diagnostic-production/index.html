@@ -122,6 +122,30 @@
   .transfert-dialog__actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
   .transfert-dialog__error{color:#b91c1c!important;font-weight:800}
   @media(max-width:520px){.transfert-dialog__card{padding:22px 18px}.transfert-dialog__details{grid-template-columns:1fr}.transfert-dialog__actions{flex-direction:column-reverse}.transfert-dialog__actions .btn{width:100%}}
+  .report-text-dialog{width:min(96vw,920px);max-height:92vh;padding:0;border:0;border-radius:22px;box-shadow:0 28px 90px rgba(15,23,42,.34)}
+  .report-text-dialog::backdrop{background:rgba(15,23,42,.6);backdrop-filter:blur(3px)}
+  .report-text-dialog__card{padding:26px;display:grid;gap:16px}
+  .report-text-dialog__head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px}
+  .report-text-dialog__head h2{margin:0 0 5px;color:#0b1526}
+  .report-text-dialog__head p{margin:0;color:#64748b;font-size:.86rem;line-height:1.5}
+  .report-text-dialog__list{display:grid;gap:14px;max-height:62vh;overflow:auto;padding-right:6px}
+  .report-text-field{border:1px solid #dbe4f0;border-radius:16px;padding:16px;background:#fff}
+  .report-text-field__head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
+  .report-text-field__head strong{display:block;color:#0b1526}
+  .report-text-field__section{display:block;color:#64748b;font-size:.72rem;margin-top:2px}
+  .report-text-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .report-text-badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:.64rem;font-weight:850;background:#dbeafe;color:#1d4ed8}
+  .report-text-badge--review{background:#fef3c7;color:#92400e}
+  .report-text-auto{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:#f8fafc;color:#475569;font-size:.78rem;line-height:1.45;white-space:pre-wrap}
+  .report-text-field textarea{width:100%;min-height:96px;resize:vertical;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font:inherit;line-height:1.45}
+  .report-text-field textarea:focus{outline:2px solid #bfdbfe;border-color:#2563eb}
+  .report-text-field__meta{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:7px;color:#64748b;font-size:.72rem}
+  .report-text-field__controls{display:grid;grid-template-columns:1fr minmax(210px,.7fr);gap:10px;margin-top:12px;align-items:end}
+  .report-text-field__controls label{font-size:.76rem;color:#334155}
+  .report-text-field__controls select{width:100%;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#fff}
+  .report-text-dialog__actions{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #e2e8f0;padding-top:16px}
+  .report-text-alert{margin:10px 0 0;padding:10px 12px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;color:#92400e;font-size:.82rem;font-weight:750}
+  @media(max-width:680px){.report-text-dialog__card{padding:20px 15px}.report-text-field__controls{grid-template-columns:1fr}.report-text-dialog__actions{flex-direction:column-reverse}.report-text-dialog__actions .btn{width:100%}}
   .btn-mini{border:1px solid var(--bord);background:#fff;color:var(--encre);font-weight:700;border-radius:8px;padding:9px 12px;cursor:pointer}
   .btn-mini:hover{border-color:var(--bleu);color:var(--bleu);background:var(--fond2)}
   @media (max-width:640px){
@@ -613,9 +637,11 @@
       <button class="btn btn-blanc" id="btn-pdf" data-report-generation onclick="telechargerPDF()">Générer le Diagnostic (gratuit)</button>
       <button class="btn btn-vert" id="btn-audit-premium" data-premium-action onclick="telechargerAuditPremium()" hidden disabled>★ Générer l'Audit Premium (99 €)</button>
       <button class="btn btn-blanc" id="btn-apercu" data-report-generation onclick="apercuImpression()">Aperçu avant impression</button>
+      <button class="btn btn-blanc" id="btn-textes-rapport" type="button" onclick="ouvrirEditeurTextesRapport()">✏️ Modifier les textes du rapport</button>
       <button class="btn btn-blanc" id="btn-brouillon-d1" onclick="enregistrerBrouillonD1(true)" type="button">Enregistrer le brouillon</button>
     </div>
     <p id="statut-brouillon-d1" class="brouillon-etat" data-state="dirty" role="status" aria-live="polite">Modifications non enregistrées</p>
+    <p id="alerte-textes-personnalises" class="report-text-alert" role="alert" hidden>Certaines données ont changé. Vérifiez les textes personnalisés avant de générer le rapport.</p>
   </div>
 
   <div class="conteneur">
@@ -735,6 +761,24 @@
       <button class="btn btn-vert" id="confirmer-transfert-premium" value="default" type="button" onclick="confirmerTransfertPremium()">Créer le Premium et reprendre les réponses</button>
     </div>
   </form>
+</dialog>
+
+<dialog class="report-text-dialog" id="dialog-textes-rapport" aria-labelledby="titre-textes-rapport">
+  <div class="report-text-dialog__card">
+    <div class="report-text-dialog__head">
+      <div>
+        <h2 id="titre-textes-rapport">Modifier les textes du rapport</h2>
+        <p>Seuls les blocs narratifs listés ci-dessous peuvent être remplacés. Le score, les faits et les réponses restent verrouillés.</p>
+      </div>
+      <button class="btn-mini" type="button" onclick="fermerEditeurTextesRapport()" aria-label="Fermer">Fermer</button>
+    </div>
+    <p class="transfert-dialog__error" id="erreur-textes-rapport" role="alert" hidden></p>
+    <div class="report-text-dialog__list" id="liste-textes-rapport"></div>
+    <div class="report-text-dialog__actions">
+      <button class="btn btn-blanc" type="button" onclick="fermerEditeurTextesRapport()">Annuler</button>
+      <button class="btn btn-vert" id="enregistrer-textes-rapport" type="button" onclick="enregistrerTextesRapport()">Enregistrer les modifications</button>
+    </div>
+  </div>
 </dialog>
 
 <script>
@@ -3430,6 +3474,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   requetePersonnalisee = actualQuery !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   calc();
+  marquerTextesPersonnalisesAReverifierLocalement();
   programmerSauvegardeBrouillonD1();
 }
 
@@ -4054,6 +4099,7 @@ async function restaurerBrouillonD1(){
   requetePersonnalisee = normaliserRecherche(document.getElementById("d-requete")?.value) !== normaliserRecherche(composerRequeteProposee());
   mettreAJourEtatRecherche();
   majEtatBrouillonD1("saved", draft.updatedAt || draft.finalizedAt);
+  await chargerRemplacementsNarratifsRapport();
   if(readonly) verrouillerQuestionnaireLectureSeule(draft);
 }
 
@@ -4171,6 +4217,195 @@ async function confirmerTransfertPremium(){
   }
 }
 
+const CATEGORIES_ANOMALIES_TEXTES = [
+  "texte faux ou contradictoire",
+  "texte trop générique",
+  "mauvaise adaptation au secteur",
+  "problème de ton",
+  "répétition",
+  "problème de mise en page",
+  "autre"
+];
+let catalogueTextesRapport = [];
+let remplacementsTextesRapport = new Map();
+let textesAutomatiquesRapport = new Map();
+let etaitEnModeRapportAvantEdition = false;
+
+function texteAutomatiqueBrut(value){
+  const container = document.createElement("div");
+  container.innerHTML = String(value ?? "").replace(/<br\s*\/?>/gi, "\n");
+  return String(container.textContent || "").replace(/\u00a0/g, " ").trim();
+}
+
+function enregistrerTexteAutomatiqueRapport(fieldId, automaticText){
+  textesAutomatiquesRapport.set(fieldId, texteAutomatiqueBrut(automaticText));
+}
+
+function texteEffectifRapport(fieldId, automaticText){
+  enregistrerTexteAutomatiqueRapport(fieldId, automaticText);
+  const custom = remplacementsTextesRapport.get(fieldId)?.customText;
+  return typeof custom === "string" && custom.trim()
+    ? escapeHtml(custom.trim()).replace(/\r?\n/g, "<br>")
+    : automaticText;
+}
+
+function majAlerteTextesPersonnalises(){
+  const warning = document.getElementById("alerte-textes-personnalises");
+  if(!warning) return;
+  warning.hidden = ![...remplacementsTextesRapport.values()].some(item => item.needsReview === true);
+}
+
+function marquerTextesPersonnalisesAReverifierLocalement(){
+  if(!remplacementsTextesRapport.size) return;
+  remplacementsTextesRapport = new Map([...remplacementsTextesRapport].map(([fieldId, item]) => [
+    fieldId,
+    {...item, needsReview:true}
+  ]));
+  majAlerteTextesPersonnalises();
+}
+
+async function chargerRemplacementsNarratifsRapport(){
+  const analysisId = analysisIdDepuisUrl();
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(analysisId)) return false;
+  const response = await fetch(`/api/admin/report-text-overrides/${encodeURIComponent(analysisId)}`, {
+    credentials:"same-origin",
+    headers:{"Accept":"application/json"}
+  }).catch(() => null);
+  if(response?.status === 401){ window.location.href = "/admin-login"; return false; }
+  if(!response?.ok) return false;
+  const data = await response.json().catch(() => ({}));
+  if(!data.success || !Array.isArray(data.catalog) || !Array.isArray(data.overrides)) return false;
+  catalogueTextesRapport = data.catalog;
+  remplacementsTextesRapport = new Map(data.overrides.map(item => [item.fieldId, item]));
+  majAlerteTextesPersonnalises();
+  return true;
+}
+
+function optionsCategoriesAnomalies(selected){
+  return CATEGORIES_ANOMALIES_TEXTES.map(category => `<option value="${escapeHtml(category)}"${selected === category ? " selected" : ""}>${escapeHtml(category)}</option>`).join("");
+}
+
+function rendreChampTexteRapport(field){
+  const automaticText = textesAutomatiquesRapport.get(field.id);
+  if(typeof automaticText !== "string" || !automaticText.trim()) return "";
+  const override = remplacementsTextesRapport.get(field.id) || null;
+  const customText = override?.customText || "";
+  const category = override?.anomalyCategory || "autre";
+  return `<section class="report-text-field" data-report-text-field="${escapeHtml(field.id)}" data-had-override="${override ? "true" : "false"}">
+    <div class="report-text-field__head">
+      <div><strong>${escapeHtml(field.label)}</strong><span class="report-text-field__section">${escapeHtml(field.section)}</span></div>
+      <div class="report-text-badges">
+        <span class="report-text-badge" data-custom-badge${override ? "" : " hidden"}>Texte personnalisé</span>
+        <span class="report-text-badge report-text-badge--review" data-review-badge${override?.needsReview ? "" : " hidden"}>À revérifier</span>
+      </div>
+    </div>
+    <p class="report-text-auto"><strong>Texte automatique</strong><br>${escapeHtml(automaticText)}</p>
+    <label>Texte personnalisé
+      <textarea maxlength="${Number(field.maxLength)}" data-custom-text placeholder="Laisser vide pour utiliser le texte automatique">${escapeHtml(customText)}</textarea>
+    </label>
+    <div class="report-text-field__meta">
+      <button class="btn-mini" type="button" data-restore-text>Restaurer le texte automatique</button>
+      <span><span data-character-count>${Array.from(customText).length}</span>/${Number(field.maxLength)} caractères</span>
+    </div>
+    <div class="report-text-field__controls">
+      <label><input type="checkbox" data-weekly-review${override?.weeklyReview ? " checked" : ""}> Ajouter aux problèmes à examiner cette semaine</label>
+      <label>Catégorie d’anomalie<select data-anomaly-category>${optionsCategoriesAnomalies(category)}</select></label>
+    </div>
+  </section>`;
+}
+
+function activerInteractionsEditeurTextes(){
+  document.querySelectorAll("[data-report-text-field]").forEach(card => {
+    const textarea = card.querySelector("[data-custom-text]");
+    const count = card.querySelector("[data-character-count]");
+    const badge = card.querySelector("[data-custom-badge]");
+    textarea?.addEventListener("input", () => {
+      if(count) count.textContent = Array.from(textarea.value).length;
+      if(badge) badge.hidden = !textarea.value.trim();
+      card.dataset.restore = "false";
+    });
+    card.querySelector("[data-restore-text]")?.addEventListener("click", () => {
+      textarea.value = "";
+      if(count) count.textContent = "0";
+      if(badge) badge.hidden = true;
+      card.dataset.restore = "true";
+    });
+  });
+}
+
+async function ouvrirEditeurTextesRapport(){
+  const error = document.getElementById("erreur-textes-rapport");
+  if(error){ error.hidden = true; error.textContent = ""; }
+  if(!await chargerRemplacementsNarratifsRapport()){
+    statut("Les textes personnalisés n’ont pas pu être chargés.", "erreur");
+    return;
+  }
+  etaitEnModeRapportAvantEdition = document.body.classList.contains("mode-rapport");
+  textesAutomatiquesRapport = new Map();
+  if(!genererRapport()) return;
+  const list = document.getElementById("liste-textes-rapport");
+  list.innerHTML = catalogueTextesRapport.map(rendreChampTexteRapport).filter(Boolean).join("")
+    || `<p>Aucun bloc narratif modifiable n’est présent dans ce rapport.</p>`;
+  activerInteractionsEditeurTextes();
+  document.getElementById("dialog-textes-rapport")?.showModal();
+}
+
+function fermerEditeurTextesRapport(){
+  document.getElementById("dialog-textes-rapport")?.close();
+  if(!etaitEnModeRapportAvantEdition) document.body.classList.remove("mode-rapport");
+}
+
+async function enregistrerTextesRapport(){
+  const analysisId = analysisIdDepuisUrl();
+  const button = document.getElementById("enregistrer-textes-rapport");
+  const error = document.getElementById("erreur-textes-rapport");
+  const overrides = [];
+  const restoredFieldIds = [];
+  document.querySelectorAll("[data-report-text-field]").forEach(card => {
+    const fieldId = card.dataset.reportTextField;
+    const text = card.querySelector("[data-custom-text]")?.value.trim() || "";
+    if(text){
+      overrides.push({
+        fieldId,
+        text,
+        automaticText:textesAutomatiquesRapport.get(fieldId) || "",
+        weeklyReview:Boolean(card.querySelector("[data-weekly-review]")?.checked),
+        anomalyCategory:card.querySelector("[data-anomaly-category]")?.value || "autre"
+      });
+    }else if(card.dataset.hadOverride === "true" || card.dataset.restore === "true"){
+      restoredFieldIds.push(fieldId);
+    }
+  });
+  if(button){ button.disabled = true; button.textContent = "Enregistrement…"; }
+  if(error){ error.hidden = true; error.textContent = ""; }
+  try{
+    const response = await fetch(`/api/admin/report-text-overrides/${encodeURIComponent(analysisId)}`, {
+      method:"PUT",
+      credentials:"same-origin",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({analysisId, overrides, restoredFieldIds})
+    });
+    if(response.status === 401){ window.location.href = "/admin-login"; return; }
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok || !data.success) throw new Error(data.error || "TEXT_OVERRIDE_SAVE_FAILED");
+    catalogueTextesRapport = data.catalog;
+    remplacementsTextesRapport = new Map(data.overrides.map(item => [item.fieldId, item]));
+    majAlerteTextesPersonnalises();
+    genererRapport();
+    fermerEditeurTextesRapport();
+    statut("Textes du rapport enregistrés.", "info");
+  }catch(cause){
+    if(error){
+      error.textContent = cause?.message === "TEXT_TOO_LONG"
+        ? "Un texte dépasse la longueur autorisée."
+        : "Les textes n’ont pas pu être enregistrés.";
+      error.hidden = false;
+    }
+  }finally{
+    if(button){ button.disabled = false; button.textContent = "Enregistrer les modifications"; }
+  }
+}
+
 function verrouillerQuestionnaireLectureSeule(snapshot){
   document.body.dataset.readOnly = "true";
   document.querySelectorAll("#formulaire input, #formulaire select, #formulaire textarea, #formulaire button, .score-actions button, [data-premium-action]")
@@ -4185,13 +4420,17 @@ function verrouillerQuestionnaireLectureSeule(snapshot){
 afficherProfilUtilise();
 initialiserContexteCommandeAdmin();
 if(!modeLectureSeule()){
-  document.getElementById("formulaire")?.addEventListener("input", programmerSauvegardeBrouillonD1);
+  document.getElementById("formulaire")?.addEventListener("input", () => {
+    marquerTextesPersonnalisesAReverifierLocalement();
+    programmerSauvegardeBrouillonD1();
+  });
   document.getElementById("p-activite")?.addEventListener("input", proposerRequeteDepuisActivite);
   document.getElementById("p-ville")?.addEventListener("input", proposerRequeteDepuisActivite);
   document.getElementById("d-requete")?.addEventListener("input", enregistrerPersonnalisationRequete);
   document.getElementById("zone-criteres")?.addEventListener("change", (event) => {
     const match = String(event.target?.name || "").match(/^c(\d+)$/);
     if(match){
+      marquerTextesPersonnalisesAReverifierLocalement();
       const id = Number(match[1]);
       criteresTouchesManuellement.add(id);
       sourcesCriteres.set(id, "manual");
@@ -5012,7 +5251,10 @@ function felicitationsBloc(forces){
 }
 
 function forcesCompactesHtml(forces){
-  const lignes = forces.slice(0,2).map(f => forceChiffree(f.cr)).filter(Boolean);
+  const lignes = forces.slice(0,2).map((f, index) => {
+    const automaticText = forceChiffree(f.cr);
+    return automaticText ? texteEffectifRapport(`strength.${index + 1}`, automaticText) : "";
+  }).filter(Boolean);
   if(!lignes.length) return "";
   return `<div class="meaning-box" style="margin:12px 0">
     <h3>Ce qui joue déjà en votre faveur</h3>
@@ -6327,6 +6569,12 @@ function rendrePrioriteSiteOfficiel(item, index){
     }
   };
   const contenu = CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.etat] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible;
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
+  const rank = index + 1;
+  const observation = effectiveText(`priority.${rank}.observation`, contenu.observation);
+  const impactProspect = effectiveText(`priority.${rank}.impact`, contenu.client);
+  const firstAction = effectiveText(`priority.${rank}.first_action`, contenu.action);
+  const expectedResult = effectiveText(`priority.${rank}.expected_result`, contenu.resultat);
   return `<section class="priority-card">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <div class="priority-kicker">Priorité n°${index + 1}</div>
@@ -6334,11 +6582,11 @@ function rendrePrioriteSiteOfficiel(item, index){
     </div>
     <h2 class="priority-title">${contenu.titre}</h2>
     <div class="priority-flow">
-      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${contenu.observation}</p></div>
+      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observation}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>${contenu.client}</p></div>
+      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>${impactProspect}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${contenu.action}</p><p class="priority-resultat"><b>Résultat attendu :</b> ${contenu.resultat}</p><span class="priority-time">${contenu.delai}</span></div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${firstAction}</p><p class="priority-resultat"><b>Résultat attendu :</b> ${expectedResult}</p><span class="priority-time">${contenu.delai}</span></div>
     </div>
   </section>`;
 }
@@ -6353,6 +6601,12 @@ function rendrePriorite(item, index, variante){
   const observe = constatObservePriorite(item, ctx);
   const prospect = consequenceBusinessPriorite(item, ctx);
   const resultat = resultatAttenduPriorite(item, ctx);
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
+  const rank = index + 1;
+  const observeEffectif = effectiveText(`priority.${rank}.observation`, observe);
+  const prospectEffectif = effectiveText(`priority.${rank}.impact`, prospect);
+  const actionEffective = effectiveText(`priority.${rank}.first_action`, d.action);
+  const resultatEffectif = resultat ? effectiveText(`priority.${rank}.expected_result`, resultat) : "";
   return `<section class="priority-card">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <div class="priority-kicker">Priorité n°${index + 1}</div>
@@ -6360,11 +6614,11 @@ function rendrePriorite(item, index, variante){
     </div>
     <h2 class="priority-title">${titrePriorite(item)}</h2>
     <div class="priority-flow">
-      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observe}</p></div>
+      <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observeEffectif}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu'il peut penser</div><p>${prospect}</p></div>
+      <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu'il peut penser</div><p>${prospectEffectif}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${d.action}</p>${resultat ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultat}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span>${index === 0 ? microLivrablePriorite(item, ctx) : ""}</div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${actionEffective}</p>${resultatEffectif ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultatEffectif}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span>${index === 0 ? microLivrablePriorite(item, ctx) : ""}</div>
     </div>
   </section>`;
 }
@@ -6512,6 +6766,12 @@ function genererRapport(){
   const resumePerso = resumePersonnalise(score, axeInfo);
   const significationBloc = significationV2(forces, priorites) || signification;
   const texteIntroConsultant = texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete:proj.projete, priorites:top3p});
+  const texteIntroEffectif = texteEffectifRapport("summary.general", texteIntroConsultant);
+  const syntheseFaiblessesEffectif = texteEffectifRapport("weaknesses.summary", phraseTransitionPage2(categoriesTriees));
+  const conclusionCommercialeEffectif = texteEffectifRapport(
+    "conclusion.commercial",
+    `Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${entreprise}.`
+  );
   const checklist = checklistHtml();
   const elementsRestants = elementsIndeterminesPage5(checklist);
   const benchTable = benchmarkTableHtml();
@@ -6571,7 +6831,7 @@ function genererRapport(){
       <div>
         <span class="score-level"><i style="background:${bande.couleur}"></i>${bande.nom}</span>
         <div class="score-direct">${phraseScore.texte}</div>
-        <p class="hero-analysis-text">${texteIntroConsultant}</p>
+        <p class="hero-analysis-text">${texteIntroEffectif}</p>
         <p class="score-scope-note">Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.</p>
       </div>
     </div>
@@ -6589,7 +6849,7 @@ function genererRapport(){
     <div class="chapitre">Étape 2 · Pourquoi ce score</div>
     <h1 class="rapport-title">Pourquoi obtenez-vous ce score ?</h1>
     ${benchmarkBloc}
-    <p class="rapport-subtitle" style="margin-top:8px">${phraseTransitionPage2(categoriesTriees)}</p>
+    <p class="rapport-subtitle" style="margin-top:8px">${syntheseFaiblessesEffectif}</p>
     <div class="next-hint">Page suivante : le détail des points analysés <b>→</b></div>
     ${pied(2)}
   </div>
@@ -6642,7 +6902,7 @@ function genererRapport(){
     ${rapportHeaderHtml("Prochaines étapes")}
     <div class="chapitre">Étape 6 · Passer à l'action</div>
     <h1 class="rapport-title">Deux façons d'améliorer votre fiche</h1>
-    <p class="rapport-subtitle">Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${entreprise}.</p>
+    <p class="rapport-subtitle">${conclusionCommercialeEffectif}</p>
     ${projectionBloc}
     ${effortBloc}
     <div class="choice-note">Le Pack permet de prendre en charge les priorités détectées, sans que vous ayez à modifier la fiche vous-même.</div>
@@ -6731,6 +6991,7 @@ async function apercuImpression(){
     statut("Le questionnaire n’a pas pu être sauvegardé. L’aperçu n’a pas été ouvert.", "erreur");
     return;
   }
+  if(typeof chargerRemplacementsNarratifsRapport === "function") await chargerRemplacementsNarratifsRapport();
   if(genererRapport()) window.print();
 }
 
@@ -7480,6 +7741,7 @@ async function telechargerPDF(){
     statut("Le questionnaire n’a pas pu être sauvegardé. Le PDF n’a pas été généré.", "erreur");
     return;
   }
+  if(typeof chargerRemplacementsNarratifsRapport === "function") await chargerRemplacementsNarratifsRapport();
   await chargerLogoRapportDataUrl();
   if(!genererRapport()) return;
   const filename = nomFichierDiagnosticPDF();

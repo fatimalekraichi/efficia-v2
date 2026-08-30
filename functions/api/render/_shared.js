@@ -7,7 +7,7 @@ import {
   verifyAnalysisRequest,
 } from "../analysis/_shared.js";
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
-import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
+import { buildEffectiveDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
 import { addPdfPrintStyles, addPreviewToolbar, buildAuditPdfFilename, buildControlPdfTitle } from "../../lib/pdfRenderer.js";
 import { requirePremiumAnalysisAuthorization } from "../../lib/premiumAuthorization.js";
 import { applyReportCommercialPolicy, resolveReportCommercialPolicy } from "../../lib/reportCommercialPolicy.js";
@@ -51,6 +51,13 @@ function generationInProgressResponse() {
   }, 202);
 }
 
+async function buildEffectiveDocumentModel(db, analysis, authorizationType) {
+  return applyReportCommercialPolicy(
+    await buildEffectiveDocumentModelFromAnalysis(db, analysis),
+    resolveReportCommercialPolicy(analysis.reportType, authorizationType),
+  );
+}
+
 export async function renderAnalysisById(context, analysisId) {
   const verified = await verifyAnalysisRequest(context);
   if (!verified.ok) return verified.response;
@@ -82,10 +89,7 @@ export async function renderAnalysisById(context, analysisId) {
     return generationInProgressResponse();
   }
 
-  const documentModel = applyReportCommercialPolicy(
-    buildDocumentModelFromAnalysis(analysis),
-    resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
-  );
+  const documentModel = await buildEffectiveDocumentModel(verified.db, analysis, premiumAuthorization.authorizationType);
   const html = addPreviewToolbar(
     addPdfPrintStyles(renderAnalysisHtml(documentModel)),
     analysis.analysisId,
@@ -124,10 +128,7 @@ export async function renderLatestAnalysis(context) {
     return generationInProgressResponse();
   }
 
-  const documentModel = applyReportCommercialPolicy(
-    buildDocumentModelFromAnalysis(analysis),
-    resolveReportCommercialPolicy(analysis.reportType, premiumAuthorization.authorizationType),
-  );
+  const documentModel = await buildEffectiveDocumentModel(verified.db, analysis, premiumAuthorization.authorizationType);
   const html = addPreviewToolbar(
     addPdfPrintStyles(renderAnalysisHtml(documentModel)),
     analysis.analysisId,
@@ -138,3 +139,4 @@ export async function renderLatestAnalysis(context) {
 }
 
 export { CORS_HEADERS };
+export const __test__ = { buildEffectiveDocumentModel };

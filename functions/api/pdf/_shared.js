@@ -7,7 +7,7 @@ import {
   verifyAnalysisRequest,
 } from "../analysis/_shared.js";
 import { renderAnalysisHtml } from "../../lib/renderAnalysisHtml.js";
-import { buildDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
+import { buildEffectiveDocumentModelFromAnalysis } from "../../lib/documentModelFromAnalysis.js";
 import {
   buildAuditPdfFilename,
   renderPdfWithCloudflareBrowserRun,
@@ -103,7 +103,7 @@ async function renderAnalysisPdf(context, db, analysis, authorizationType = null
   }
 
   const documentModel = applyReportCommercialPolicy(
-    buildDocumentModelFromAnalysis(analysis),
+    await buildEffectiveDocumentModelFromAnalysis(db, analysis),
     resolveReportCommercialPolicy(analysis.reportType, authorizationType),
   );
   const html = renderAnalysisHtml(documentModel);
@@ -201,7 +201,7 @@ export async function renderFreeDiagnosticPdfById(context, analysisId) {
     }, 409);
   }
 
-  const documentModel = buildDocumentModelFromAnalysis(analysis);
+  const documentModel = await buildEffectiveDocumentModelFromAnalysis(verified.db, analysis);
   const html = renderAnalysisHtml(documentModel);
   const result = await renderFreeDiagnosticPdf({ html, env: context.env });
   if (!result.ok) return pdfErrorResponse(result);

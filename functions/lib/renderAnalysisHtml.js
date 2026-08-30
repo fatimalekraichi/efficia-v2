@@ -1743,12 +1743,13 @@ function freeDomainRow(domain) {
 function freeScoreExplanationSection(model) {
   const free = model.freeDiagnostic || {};
   const domains = free.domains || [];
+  const automaticSummary = "Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.";
   return `
     <section class="page" data-free-page="2">
       ${header(model.vocabulary?.reportLabel)}
       <div class="chapitre">ÉTAPE 2 · POURQUOI CE SCORE</div>
       <h1>Pourquoi obtenez-vous ce score&nbsp;?</h1>
-      <p class="rapport-subtitle">Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
+      <p class="rapport-subtitle">${safeText(free.weaknessesSummary, automaticSummary)}</p>
       <div class="domain-list">
         ${domains.length ? domains.map(freeDomainRow).join("") : `<p class="empty">Répartition par domaine non disponible.</p>`}
       </div>
@@ -1947,12 +1948,13 @@ function freeActionSection(model) {
   const hero = model.hero || {};
   const free = model.freeDiagnostic || {};
   const showProjection = Number.isFinite(free.projectedScore) && free.projectedScore > (Number(hero.score) || 0) + 2;
+  const automaticConclusion = `Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${hero.businessName || "votre entreprise"}.`;
   return `
     <section class="page final-page page-offers" data-free-page="6">
       ${header(model.vocabulary?.reportLabel)}
       <div class="chapitre">ÉTAPE 6 · PASSER À L'ACTION</div>
       <h1>Deux façons d'améliorer votre fiche</h1>
-      <p class="rapport-subtitle">Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${safeText(hero.businessName, "votre entreprise")}.</p>
+      <p class="rapport-subtitle">${safeText(free.commercialConclusion, automaticConclusion)}</p>
       ${showProjection ? `
         <div class="projection-grid">
           <div class="proj-col"><span>Votre score aujourd'hui</span><strong>${safeNumber(hero.score)}/100</strong></div>

@@ -2,6 +2,7 @@ import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
 import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
+import { markReportNarrativeOverridesNeedsReview } from "../../../lib/reportNarrativeOverrides.js";
 import { buildFreeDiagnosticCollectionState } from "../../../lib/freeDiagnosticProductionLink.js";
 import { isManualCreationSource, loadManualAuditMetadata } from "../../../lib/auditCreationMetadata.js";
 import { benchmarkEngine } from "../../../lib/benchmarkEngine.js";
@@ -274,6 +275,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
       updatedAt,
       analysisId,
     ).run();
+    await markReportNarrativeOverridesNeedsReview(db, analysisId);
   } catch (error) {
     return technicalFailure({
       phase: "search_refresh_update",
@@ -572,6 +574,7 @@ export async function onRequestPost(context) {
       updatedAt,
       analysisId,
     ).run();
+    await markReportNarrativeOverridesNeedsReview(db, analysisId);
   } catch (error) {
     return technicalFailure({
       phase: "analysis_update",
