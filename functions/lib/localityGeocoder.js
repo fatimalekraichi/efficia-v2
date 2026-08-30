@@ -57,7 +57,9 @@
 // full_address/borough/street/postal_code/country_code/city/state/
 // plus_code/latitude/longitude/...). Host et chemin exacts, jamais déduits.
 const OUTSCRAPER_GEOCODING_URL = "https://api.outscraper.com/geocoding";
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 45000;
+const DEFAULT_PENDING_POLL_DELAYS_MS = Object.freeze([750, 1500, 3000, 5000, 7500, 10000]);
+const OUTSCRAPER_REQUEST_RESULTS_ORIGIN = "https://api.outscraper.com";
 
 // Codes techniques précis (mission "corriger le geocodeur de localité") —
 // un code par cause distincte, jamais un code générique unique pour
@@ -138,6 +140,84 @@ function firstResult(payload) {
     return firstQuery.find((item) => item && typeof item === "object") || null;
   }
   return firstQuery && typeof firstQuery === "object" ? firstQuery : null;
+}
+
+function pendingRequestId(payload) {
+  if (String(payload?.status || "").trim().toLowerCase() !== "pending") return null;
+  const id = String(payload?.id || "").trim();
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{7,127}$/.test(id) ? id : null;
+}
+
+function requestResultsUrl(requestId) {
+  const id = String(requestId || "").trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{7,127}$/.test(id)) return null;
+  const url = new URL(`/requests/${encodeURIComponent(id)}`, OUTSCRAPER_REQUEST_RESULTS_ORIGIN);
+  return url.toString();
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+async function fetchOutscraperJson({ url, key, timeoutMs }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-API-KEY": key, "Accept": "application/json" },
+      signal: controller.signal,
+    });
+    const bodyText = await response.text();
+    let payload = null;
+    let parseError = false;
+    if (bodyText && bodyText.trim()) {
+      try {
+        payload = JSON.parse(bodyText);
+      } catch {
+        parseError = true;
+      }
+    }
+    return { ok: true, response, payload, bodyText, parseError };
+  } catch (error) {
+    return {
+      ok: false,
+      code: error?.name === "AbortError" ? LOCALITY_CENTER_ERROR.TIMEOUT : LOCALITY_CENTER_ERROR.HTTP_ERROR,
+      errorName: error?.name || null,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function pollPendingResult({ payload, key, deadline, pollDelaysMs }) {
+  const requestId = pendingRequestId(payload);
+  const url = requestResultsUrl(requestId);
+  // Ne jamais suivre directement `results_location` : même si le fournisseur
+  // le documente, la réponse amont ne doit pas pouvoir transformer le Worker
+  // en client HTTP arbitraire. L'URL est reconstruite sur l'origine officielle
+  // et le chemin /requests/<id>, à partir d'un identifiant strictement validé.
+  if (!url) return { ok: false, code: LOCALITY_CENTER_ERROR.INVALID_RESPONSE };
+
+  for (const delayMs of pollDelaysMs) {
+    const beforeWait = deadline - Date.now();
+    if (beforeWait <= 0) return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
+    await wait(Math.min(Math.max(0, Number(delayMs) || 0), beforeWait));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
+
+    const polled = await fetchOutscraperJson({ url, key, timeoutMs: remaining });
+    if (!polled.ok) return polled;
+    if (polled.response.status === 202 || pendingRequestId(polled.payload)) continue;
+    if (!polled.response.ok) return { ok: false, code: LOCALITY_CENTER_ERROR.HTTP_ERROR };
+    if (!polled.bodyText || !polled.bodyText.trim()) return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESULT };
+    if (polled.parseError) return { ok: false, code: LOCALITY_CENTER_ERROR.INVALID_RESPONSE };
+    if (String(polled.payload?.status || "").trim().toLowerCase() === "failure") {
+      return { ok: false, code: LOCALITY_CENTER_ERROR.NOT_FOUND };
+    }
+    return { ok: true, payload: polled.payload };
+  }
+  return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
 }
 
 function extractLatLng(result) {
@@ -233,6 +313,7 @@ const VALIDATION_REASON_TO_CODE = Object.freeze({
  */
 export async function resolveLocalityCenter({
   postalCode, city, countryName, countryCode, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS,
+  pendingPollDelaysMs = DEFAULT_PENDING_POLL_DELAYS_MS,
 } = {}) {
   const cityTrim = String(city || "").trim();
   const regionTrim = String(countryCode || "").trim().toUpperCase();
@@ -251,47 +332,43 @@ export async function resolveLocalityCenter({
   url.searchParams.set("query", query);
   url.searchParams.set("region", regionTrim);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let res;
-  let bodyText;
-  try {
-    res = await fetch(url.toString(), {
-      method: "GET",
-      headers: { "X-API-KEY": key, "Accept": "application/json" },
-      signal: controller.signal,
-    });
-    bodyText = await res.text();
-  } catch (err) {
-    if (err?.name === "AbortError") {
+  const deadline = Date.now() + Math.max(1, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
+  const initial = await fetchOutscraperJson({ url: url.toString(), key, timeoutMs: deadline - Date.now() });
+  if (!initial.ok) {
+    if (initial.code === LOCALITY_CENTER_ERROR.TIMEOUT) {
       console.error("resolveLocalityCenter: délai dépassé");
       return { ok: false, code: LOCALITY_CENTER_ERROR.TIMEOUT };
     }
     // Jamais le message brut de l'erreur réseau (peut contenir l'URL avec la
     // clé API en clair côté certains runtimes) — uniquement son nom (ex.
     // "TypeError"), jamais son contenu.
-    console.error("resolveLocalityCenter: appel amont échoué", err && err.name);
-    return { ok: false, code: LOCALITY_CENTER_ERROR.HTTP_ERROR };
-  } finally {
-    clearTimeout(timeout);
+    console.error("resolveLocalityCenter: appel amont échoué", initial.errorName);
+    return { ok: false, code: initial.code || LOCALITY_CENTER_ERROR.HTTP_ERROR };
   }
+  let res = initial.response;
+  let bodyText = initial.bodyText;
+  let payload = initial.payload;
 
-  // HTTP 202 Accepted — traitement asynchrone en cours côté fournisseur
-  // (contrat officiel : `results_location` fourni pour interroger le
-  // résultat plus tard). Distingué explicitement d'un échec générique.
-  // Limitation assumée et documentée : ce module ne relance jamais un appel
-  // de geocoding pour la même localité, et n'interroge jamais
-  // `results_location` — implémenter un polling borné et sûr (nombre de
-  // lectures limité, délai total borné, URL HTTPS revalidée sur l'hôte et le
-  // chemin Outscraper autorisés explicitement, même authentification
-  // serveur, aucune URL de tiers suivie aveuglément) dépasse le temps
-  // d'exécution raisonnable d'une Cloudflare Pages Function et le périmètre
-  // de cette correction. Tant que ce mode n'est pas implémenté, une réponse
-  // Pending est un échec explicite et borné (jamais un succès deviné,
-  // jamais une seconde tentative automatique).
-  if (res.status === 202) {
-    console.error("resolveLocalityCenter: réponse fournisseur en attente (202 Pending)");
-    return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
+  // Le contrat officiel autorise HTTP 202 (ou status:"Pending") et fournit
+  // un identifiant de tâche. La relance utilisateur reste une seule requête
+  // vers notre endpoint ; le serveur attend le résultat géographique par un
+  // polling borné, sans jamais suivre l'URL amont ni persister un état
+  // partiel. Tant que le résultat complet n'est pas reçu et validé, aucune
+  // recherche concurrentielle n'est marquée réussie.
+  if (res.status === 202 || pendingRequestId(payload)) {
+    const polled = await pollPendingResult({
+      payload,
+      key,
+      deadline,
+      pollDelaysMs: Array.isArray(pendingPollDelaysMs) ? pendingPollDelaysMs : DEFAULT_PENDING_POLL_DELAYS_MS,
+    });
+    if (!polled.ok) {
+      console.error("resolveLocalityCenter: résultat fournisseur en attente ou indisponible", polled.code);
+      return { ok: false, code: polled.code };
+    }
+    payload = polled.payload;
+    res = { ok: true, status: 200 };
+    bodyText = JSON.stringify(payload);
   }
 
   if (!res.ok) {
@@ -303,22 +380,9 @@ export async function resolveLocalityCenter({
     console.error("resolveLocalityCenter: réponse amont vide");
     return { ok: false, code: LOCALITY_CENTER_ERROR.EMPTY_RESULT };
   }
-
-  let payload;
-  try {
-    payload = JSON.parse(bodyText);
-  } catch {
+  if (initial.parseError) {
     console.error("resolveLocalityCenter: réponse amont non JSON");
     return { ok: false, code: LOCALITY_CENTER_ERROR.INVALID_RESPONSE };
-  }
-
-  // Défense supplémentaire : certains statuts "Pending" sont documentés côté
-  // fournisseur avec un code HTTP 200 mais un champ `status` explicite dans
-  // le corps — jamais interprété comme "aucun résultat" (EMPTY_RESULT),
-  // toujours comme PENDING.
-  if (typeof payload?.status === "string" && payload.status.trim().toLowerCase() === "pending") {
-    console.error("resolveLocalityCenter: réponse fournisseur en attente (status Pending)");
-    return { ok: false, code: LOCALITY_CENTER_ERROR.PENDING };
   }
 
   const result = firstResult(payload);
@@ -347,4 +411,7 @@ export async function resolveLocalityCenter({
   };
 }
 
-export const __test__ = { buildLocalityGeocodingQuery, extractLatLng, firstResult, validateLocalityMatch };
+export const __test__ = {
+  buildLocalityGeocodingQuery, extractLatLng, firstResult, validateLocalityMatch,
+  pendingRequestId, requestResultsUrl,
+};

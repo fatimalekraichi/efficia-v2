@@ -375,31 +375,124 @@ test("ancien format imbriqué data:[[{...}]] toujours accepté par compatibilit�
   }
 });
 
-test("HTTP 202 Pending — comportement explicite et borné, jamais un succès deviné ni une nouvelle requête automatique", async () => {
+test("HTTP 202 Pending — relit le résultat officiel de façon bornée puis valide strictement Luxembourg", async () => {
   const originalFetch = globalThis.fetch;
-  let callCount = 0;
-  globalThis.fetch = async () => {
-    callCount += 1;
-    return Response.json({ status: "Pending", results_location: "https://api.outscraper.com/requests/abc123" }, { status: 202 });
+  const calls = [];
+  const requestId = "12345678-abcd-4abc-8abc-1234567890ab";
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), headers: init.headers });
+    if (calls.length === 1) {
+      return Response.json({
+        id: requestId,
+        status: "Pending",
+        // Cette URL amont est volontairement hostile : elle ne doit jamais
+        // être suivie. Le client reconstruit lui-même l'endpoint officiel.
+        results_location: "https://example.invalid/private",
+      }, { status: 202 });
+    }
+    return Response.json({
+      id: requestId,
+      status: "Success",
+      data: [{
+        query: "Luxembourg Luxembourg",
+        latitude: 49.6116,
+        longitude: 6.1319,
+        country: "Luxembourg",
+        country_code: "LU",
+        city: "Luxembourg",
+      }],
+    });
   };
   try {
-    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
-    assert.equal(result.ok, false);
-    assert.equal(result.code, LOCALITY_CENTER_ERROR.PENDING);
-    // Aucune nouvelle requête de geocoding : un seul appel réseau.
-    assert.equal(callCount, 1);
+    const result = await resolveLocalityCenter({
+      city: "Luxembourg", countryName: "Luxembourg", countryCode: "LU", apiKey: "k",
+      pendingPollDelaysMs: [0],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.lat, 49.6116);
+    assert.equal(result.lng, 6.1319);
+    assert.equal(calls.length, 2);
+    assert.equal(new URL(calls[1].url).origin, "https://api.outscraper.com");
+    assert.equal(new URL(calls[1].url).pathname, `/requests/${requestId}`);
+    assert.equal(calls[1].headers["X-API-KEY"], "k");
+    assert.equal(calls.some(({ url }) => url.startsWith("https://example.invalid")), false);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("statut 200 avec corps {status:\"Pending\"} — également reconnu explicitement, jamais confondu avec une réponse vide", async () => {
+test("HTTP 202 Pending persistant — abandon borné sans succès deviné", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ status: "Pending", results_location: "https://api.outscraper.com/requests/def456" });
+  let callCount = 0;
+  globalThis.fetch = async () => {
+    callCount += 1;
+    return Response.json({
+      id: "12345678-abcd-4abc-8abc-1234567890ab",
+      status: "Pending",
+      results_location: "https://api.outscraper.cloud/requests/12345678-abcd-4abc-8abc-1234567890ab",
+    }, { status: 202 });
+  };
   try {
-    const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
+    const result = await resolveLocalityCenter({
+      ...NEUFCHATEAU_BE, apiKey: "k", pendingPollDelaysMs: [0, 0, 0],
+    });
     assert.equal(result.ok, false);
     assert.equal(result.code, LOCALITY_CENTER_ERROR.PENDING);
+    assert.equal(callCount, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("statut 200 Pending — utilise le même polling officiel puis accepte le résultat complet", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = async () => {
+    callCount += 1;
+    if (callCount < 3) {
+      return Response.json({
+        id: "87654321-dcba-4cba-8cba-0987654321fe",
+        status: "Pending",
+        results_location: "https://api.outscraper.cloud/requests/87654321-dcba-4cba-8cba-0987654321fe",
+      });
+    }
+    return Response.json({
+      id: "87654321-dcba-4cba-8cba-0987654321fe",
+      status: "Success",
+      data: [{
+        latitude: 49.8419, longitude: 5.4342, city: "Neufchâteau", postal_code: "6840", country_code: "BE",
+      }],
+    });
+  };
+  try {
+    const result = await resolveLocalityCenter({
+      ...NEUFCHATEAU_BE, apiKey: "k", pendingPollDelaysMs: [0, 0],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(callCount, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Pending sans identifiant exploitable — refus contrôlé et aucune URL results_location suivie", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = async () => {
+    callCount += 1;
+    return Response.json({
+      id: "../secret",
+      status: "Pending",
+      results_location: "https://example.invalid/private",
+    }, { status: 202 });
+  };
+  try {
+    const result = await resolveLocalityCenter({
+      ...NEUFCHATEAU_BE, apiKey: "k", pendingPollDelaysMs: [0],
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.INVALID_RESPONSE);
+    assert.equal(callCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
