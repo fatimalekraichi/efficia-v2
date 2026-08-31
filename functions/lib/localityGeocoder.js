@@ -119,8 +119,22 @@ function normalizePostal(value) {
 // countryName — jamais une adresse, un nom d'entreprise ou un identifiant.
 // Le même triplet (postalCode, city, countryName) produit toujours
 // exactement la même chaîne, quelle que soit l'entreprise analysée.
-export function buildLocalityGeocodingQuery({ postalCode, city, countryName } = {}) {
-  return [postalCode, city, countryName]
+export function buildLocalityGeocodingQuery({ postalCode, city, countryName, countryCode } = {}) {
+  // Cas réel Lux Smart Energie : "Luxembourg Luxembourg" est ambigu pour
+  // le géocodeur (le pays est renvoyé sans centre de ville exploitable),
+  // tandis que son libellé géographique officiel non ambigu
+  // "Luxembourg City Luxembourg" renvoie bien le centre de la même ville.
+  // Cet alias est limité à la requête technique du fournisseur : la zone
+  // confirmée, affichée et persistée reste strictement "Luxembourg / LU",
+  // et la réponse doit toujours repasser la validation ville+pays ci-dessous.
+  const cityKey = normalizeKey(city);
+  const countryKey = normalizeKey(countryName);
+  const providerCity = String(countryCode || "").trim().toUpperCase() === "LU"
+    && cityKey === "luxembourg"
+    && countryKey === "luxembourg"
+    ? "Luxembourg City"
+    : city;
+  return [postalCode, providerCity, countryName]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .join(" ");
@@ -317,7 +331,7 @@ export async function resolveLocalityCenter({
 } = {}) {
   const cityTrim = String(city || "").trim();
   const regionTrim = String(countryCode || "").trim().toUpperCase();
-  const query = buildLocalityGeocodingQuery({ postalCode, city, countryName });
+  const query = buildLocalityGeocodingQuery({ postalCode, city, countryName, countryCode });
   if (!query || !cityTrim || !/^[A-Z]{2}$/.test(regionTrim)) {
     return { ok: false, code: LOCALITY_CENTER_ERROR.MISSING_LOCALITY };
   }

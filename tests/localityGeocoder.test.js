@@ -32,6 +32,10 @@ test("buildLocalityGeocodingQuery combine postalCode/city/countryName, jamais un
     "6840 Neufchâteau Belgique",
   );
   assert.equal(buildLocalityGeocodingQuery({ city: "Bruxelles" }), "Bruxelles");
+  assert.equal(
+    buildLocalityGeocodingQuery({ city: "Luxembourg", countryName: "Luxembourg", countryCode: "LU" }),
+    "Luxembourg City Luxembourg",
+  );
   assert.equal(buildLocalityGeocodingQuery({}), "");
 });
 
@@ -412,6 +416,7 @@ test("HTTP 202 Pending — relit le résultat officiel de façon bornée puis va
     assert.equal(result.lat, 49.6116);
     assert.equal(result.lng, 6.1319);
     assert.equal(calls.length, 2);
+    assert.equal(new URL(calls[0].url).searchParams.get("query"), "Luxembourg City Luxembourg");
     assert.equal(new URL(calls[1].url).origin, "https://api.outscraper.com");
     assert.equal(new URL(calls[1].url).pathname, `/requests/${requestId}`);
     assert.equal(calls[1].headers["X-API-KEY"], "k");

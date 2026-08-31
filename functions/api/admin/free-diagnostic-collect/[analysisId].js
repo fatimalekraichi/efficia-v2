@@ -287,7 +287,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     console.error("free-diagnostic-collect: geographic anchor unavailable", {
       phase: "geographic_anchor",
       analysis_id: analysisId,
-      reason: anchor.code || null,
+      reason: anchor.centerErrorCode || anchor.code || null,
     });
     return geographicAnchorUnavailableFailure({
       confirmedSearchZoneProvided: payload.confirmedSearchZoneProvided,
