@@ -518,19 +518,19 @@
   .page-hero .methode-note{margin-top:5px;padding-top:4px;font-size:.64rem;line-height:1.32}
   .page-hero .next-hint{margin-top:5px}
   /* — Compact : page 5 (plan) — */
-  .page-plan .chapitre{margin:14px 0 5px}
-  .page-plan .priority-card{padding:14px 16px;margin-top:6px}
+  .page-plan .chapitre{margin:10px 0 4px}
+  .page-plan .priority-card{padding:11px 14px;margin-top:5px}
   .page-plan .priority-lead{font-size:.8rem;margin-bottom:9px}
-  .page-plan .priority-step{padding:9px 12px}
-  .page-plan .priority-step p{font-size:.76rem;line-height:1.45}
+  .page-plan .priority-step{padding:7px 11px}
+  .page-plan .priority-step p{font-size:.76rem;line-height:1.42}
   .page-plan .priority-step--action p{font-size:.82rem}
   .page-plan .priority-arrow{padding:1px 0;font-size:.75rem}
-  .page-plan .priority-resultat{font-size:.72rem;margin-top:5px}
+  .page-plan .priority-resultat{font-size:.72rem;margin-top:4px}
   .page-plan .benefit-grid{margin-top:8px;gap:8px}
-  .page-plan .paid-audit-box{margin-top:11px;padding:14px 16px}
+  .page-plan .paid-audit-box{margin-top:8px;padding:11px 14px}
   .page-plan .teaser-grid{gap:5px 18px;margin-top:8px}
   .page-plan .teaser-more{margin-top:8px}
-  .page-plan .next-hint{margin-top:8px}
+  .page-plan .next-hint{margin-top:6px}
   /* — Compact : page benchmark — */
   .page-benchmark .rapport-title{font-size:1.46rem;margin:0 0 6px}
   .page-benchmark .chapitre{margin:14px 0 5px}
@@ -4340,12 +4340,26 @@ function optionsCategoriesAnomalies(selected){
   return CATEGORIES_ANOMALIES_TEXTES.map(category => `<option value="${escapeHtml(category)}"${selected === category ? " selected" : ""}>${escapeHtml(category)}</option>`).join("");
 }
 
+function longueurTexteNarratif(value){ return Array.from(String(value || "")).length; }
+
+function limiteTexteNarratif(field, automaticText, customText = ""){
+  const minimum = Number(field?.minimumMaxLength ?? field?.maxLength ?? 400);
+  const ratio = Number(field?.headroomRatio ?? .25);
+  const margeMinimum = Number(field?.minimumHeadroom ?? 50);
+  const longueurAutomatique = longueurTexteNarratif(String(automaticText || "").trim());
+  const marge = Math.max(Math.ceil(longueurAutomatique * ratio), margeMinimum);
+  // La dernière valeur protège également une personnalisation historique plus
+  // longue que l'ancien plafond : elle doit pouvoir être relue et réenregistrée.
+  return Math.max(minimum, longueurAutomatique + marge, longueurTexteNarratif(String(customText || "").trim()));
+}
+
 function rendreChampTexteRapport(field){
   const automaticText = textesAutomatiquesRapport.get(field.id);
   if(typeof automaticText !== "string" || !automaticText.trim()) return "";
   const override = remplacementsTextesRapport.get(field.id) || null;
   const customText = override?.customText || "";
   const category = override?.anomalyCategory || "autre";
+  const maxLength = limiteTexteNarratif(field, automaticText, customText);
   return `<section class="report-text-field" data-report-text-field="${escapeHtml(field.id)}" data-had-override="${override ? "true" : "false"}">
     <div class="report-text-field__head">
       <div><strong>${escapeHtml(field.label)}</strong><span class="report-text-field__section">${escapeHtml(field.section)}</span></div>
@@ -4354,13 +4368,13 @@ function rendreChampTexteRapport(field){
         <span class="report-text-badge report-text-badge--review" data-review-badge${override?.needsReview ? "" : " hidden"}>À revérifier</span>
       </div>
     </div>
-    <p class="report-text-auto"><strong>Texte automatique</strong><br>${escapeHtml(automaticText)}</p>
+    <p class="report-text-auto"><strong>Texte automatique</strong><br><span data-automatic-text>${escapeHtml(automaticText)}</span></p>
     <label>Texte personnalisé
-      <textarea maxlength="${Number(field.maxLength)}" data-custom-text placeholder="Laisser vide pour utiliser le texte automatique">${escapeHtml(customText)}</textarea>
+      <textarea maxlength="${maxLength}" data-custom-text placeholder="Laisser vide pour utiliser le texte automatique">${escapeHtml(customText)}</textarea>
     </label>
     <div class="report-text-field__meta">
-      <button class="btn-mini" type="button" data-restore-text>Restaurer le texte automatique</button>
-      <span><span data-character-count>${Array.from(customText).length}</span>/${Number(field.maxLength)} caractères</span>
+      <span><button class="btn-mini" type="button" data-copy-automatic-text>Copier le texte automatique</button> <button class="btn-mini" type="button" data-restore-text>Supprimer la personnalisation</button></span>
+      <span><span data-character-count>${longueurTexteNarratif(customText)}</span>/<span data-character-limit>${maxLength}</span> caractères</span>
     </div>
     <div class="report-text-field__controls">
       <label><input type="checkbox" data-weekly-review${override?.weeklyReview ? " checked" : ""}> Ajouter aux problèmes à examiner cette semaine</label>
@@ -4375,9 +4389,14 @@ function activerInteractionsEditeurTextes(){
     const count = card.querySelector("[data-character-count]");
     const badge = card.querySelector("[data-custom-badge]");
     textarea?.addEventListener("input", () => {
-      if(count) count.textContent = Array.from(textarea.value).length;
+      if(count) count.textContent = longueurTexteNarratif(textarea.value);
       if(badge) badge.hidden = !textarea.value.trim();
       card.dataset.restore = "false";
+    });
+    card.querySelector("[data-copy-automatic-text]")?.addEventListener("click", () => {
+      const automaticText = card.querySelector("[data-automatic-text]")?.textContent || "";
+      textarea.value = automaticText;
+      textarea.dispatchEvent(new Event("input", {bubbles:true}));
     });
     card.querySelector("[data-restore-text]")?.addEventListener("click", () => {
       textarea.value = "";
@@ -4436,10 +4455,16 @@ async function enregistrerTextesRapport(){
   const error = document.getElementById("erreur-textes-rapport");
   const overrides = [];
   const restoredFieldIds = [];
+  let localValidationError = "";
   document.querySelectorAll("[data-report-text-field]").forEach(card => {
     const fieldId = card.dataset.reportTextField;
     const text = card.querySelector("[data-custom-text]")?.value.trim() || "";
     if(text){
+      const maxLength = Number(card.querySelector("[data-custom-text]")?.maxLength || 0);
+      if(maxLength > 0 && longueurTexteNarratif(text) > maxLength){
+        localValidationError = `Un texte dépasse la longueur autorisée (${maxLength} caractères).`;
+        return;
+      }
       overrides.push({
         fieldId,
         text,
@@ -4451,6 +4476,10 @@ async function enregistrerTextesRapport(){
       restoredFieldIds.push(fieldId);
     }
   });
+  if(localValidationError){
+    if(error){ error.textContent = localValidationError; error.hidden = false; }
+    return;
+  }
   if(button){ button.disabled = true; button.textContent = "Enregistrement…"; }
   if(error){ error.hidden = true; error.textContent = ""; }
   try{

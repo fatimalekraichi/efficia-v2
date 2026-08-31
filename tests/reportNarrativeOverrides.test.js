@@ -15,9 +15,11 @@ import {
 } from "../functions/api/admin/report-text-overrides/[analysisId].js";
 import { buildEffectiveDocumentModelFromAnalysis } from "../functions/lib/documentModelFromAnalysis.js";
 import {
+  REPORT_NARRATIVE_LIMIT_POLICY,
   REPORT_NARRATIVE_FIELDS,
   applyReportNarrativeOverrides,
   markReportNarrativeOverridesForCurrentContext,
+  reportNarrativeTextMaxLength,
   serializeReportNarrativeContext,
 } from "../functions/lib/reportNarrativeOverrides.js";
 import { renderFreeDiagnosticHtml } from "../functions/lib/renderAnalysisHtml.js";
@@ -102,6 +104,25 @@ function baseDocumentModel() {
     },
     footer: {},
   };
+}
+
+const LONGEST_AUTOMATIC_NARRATIVE_TEXTS = Object.freeze({
+  "summary.general": `Bonjour ${"C".repeat(100)},\nLa fiche Google de ${"E".repeat(41)} ne donne pas encore à un client qui la découvre suffisamment de raisons de lui faire confiance. Aujourd'hui, un prospect qui compare des entreprises de ${"V".repeat(120)} découvre une note de 1,8/5 sur 999999 avis, peu de preuves visuelles et un site officiel encore très peu renseigné. Ces éléments ne suffisent pas à évaluer la qualité globale de votre travail, mais ils peuvent créer un doute au moment de choisir une entreprise comme la vôtre autour de ${"V".repeat(120)}. La situation n'est pas figée. Trois actions ciblées peuvent déjà rendre la fiche plus claire, plus rassurante et plus convaincante.`,
+  "weaknesses.summary": "Votre score n'est pas diminué par un seul défaut majeur. Il résulte surtout de plusieurs signaux incomplets qui, mis ensemble, rendent le choix moins évident pour un nouveau client.",
+  "strength.1": `Position 1 sur « ${"R".repeat(55)} » — votre fiche figure dans le top 3 organique, hors annonces sponsorisées.`,
+  "strength.2": `Position 1 sur « ${"R".repeat(55)} » — votre fiche figure dans le top 3 organique, hors annonces sponsorisées.`,
+  "priority.observation": "Votre entreprise est bien visible sur Google, mais une personne qui clique sur votre site arrive actuellement sur une page d’erreur. Elle peut alors revenir immédiatement aux résultats Google et contacter un concurrent.",
+  "priority.impact": "Il peut se demander si le site est encore en construction ou si les informations présentées sont à jour, puis revenir aux résultats Google pour contacter un concurrent.",
+  "priority.first_action": "Remplacer le contenu par défaut ou inachevé par une présentation claire de l’entreprise, les services proposés, la zone d’intervention et les coordonnées de contact.",
+  "priority.expected_result": "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+  "conclusion.commercial": `Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${"E".repeat(180)}.`,
+});
+
+function longestAutomaticText(fieldId) {
+  if (fieldId.startsWith("priority.")) {
+    return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[`priority.${fieldId.split(".").at(-1)}`];
+  }
+  return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[fieldId];
 }
 
 function runAdminBrowserHarness(harnessSource) {
@@ -317,17 +338,19 @@ test("la liste blanche serveur refuse score, faits et structures inattendues", a
   assert.equal((await unexpected.json()).error, "INVALID_PAYLOAD_STRUCTURE");
 });
 
-test("une longueur excessive est rejetée et les maxima autorisés sont bornés pour le PDF", async () => {
+test("la limite centralisée ajoute la marge requise à chaque texte automatique et refuse seulement le dépassement réel", async () => {
   const { db, cookie } = await setup();
-  const max = REPORT_NARRATIVE_FIELDS["priority.1.observation"].maxLength;
+  const fieldId = "priority.1.observation";
+  const automaticText = longestAutomaticText(fieldId);
+  const max = reportNarrativeTextMaxLength(fieldId, automaticText);
   const response = await putOverrides(context(db, cookie, {
     method: "PUT",
     body: {
       analysisId: ANALYSIS_ID,
       overrides: [{
-        fieldId: "priority.1.observation",
+        fieldId,
         text: "x".repeat(max + 1),
-        automaticText: "Observation automatique 1",
+        automaticText,
         weeklyReview: false,
         anomalyCategory: "autre",
       }],
@@ -336,20 +359,47 @@ test("une longueur excessive est rejetée et les maxima autorisés sont bornés 
   }));
   assert.equal(response.status, 413);
   assert.equal((await response.json()).error, "TEXT_TOO_LONG");
-  assert.ok(Object.values(REPORT_NARRATIVE_FIELDS).every((field) => field.maxLength <= 520));
+  assert.ok(max >= automaticText.length + Math.max(Math.ceil(automaticText.length * .25), 50));
+  assert.equal(REPORT_NARRATIVE_LIMIT_POLICY.minimumMaxLength, 400);
 });
 
-test("les textes aux maxima autorisés restent dans leurs pages et au-dessus du footer", { skip: !existsSync(CHROME) }, () => {
-  const textAtLimit = (field) => {
-    const seed = `OVR-${field.id} formulation claire et lisible. `;
-    return seed.repeat(Math.ceil(field.maxLength / seed.length)).slice(0, field.maxLength);
-  };
-  const overrides = Object.values(REPORT_NARRATIVE_FIELDS).map((field) => ({
-    fieldId: field.id,
-    customText: textAtLimit(field),
+test("chaque bloc éditable accepte, persiste et recharge son texte automatique le plus long avec une marge supplémentaire", async () => {
+  const { db, cookie } = await setup();
+  const overrides = Object.keys(REPORT_NARRATIVE_FIELDS).map((fieldId) => {
+    const automaticText = longestAutomaticText(fieldId);
+    const maxLength = reportNarrativeTextMaxLength(fieldId, automaticText);
+    const text = `${automaticText} +`;
+    assert.ok(text.length <= maxLength, `${fieldId} doit accepter un texte légèrement plus long que l'automatique`);
+    assert.ok(maxLength >= automaticText.length + Math.max(Math.ceil(automaticText.length * .25), 50), fieldId);
+    return { fieldId, text, automaticText, weeklyReview: false, anomalyCategory: "autre" };
+  });
+  const saved = await putOverrides(context(db, cookie, {
+    method: "PUT",
+    body: { analysisId: ANALYSIS_ID, overrides, restoredFieldIds: [] },
   }));
-  const report = renderFreeDiagnosticHtml(applyReportNarrativeOverrides(baseDocumentModel(), overrides));
-  const instrumented = report.replace("</body>", `<output id="override-layout-result"></output><script>
+  assert.equal(saved.status, 200);
+  const reloaded = await (await getOverrides(context(db, cookie))).json();
+  assert.equal(reloaded.overrides.length, Object.keys(REPORT_NARRATIVE_FIELDS).length);
+  for (const override of overrides) {
+    const persisted = reloaded.overrides.find((item) => item.fieldId === override.fieldId);
+    assert.equal(persisted?.customText, override.text, `${override.fieldId} doit être identique après rechargement`);
+    assert.equal(persisted?.automaticText, override.automaticText, `${override.fieldId} doit conserver son instantané automatique`);
+  }
+});
+
+test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME) }, () => {
+  const scenarios = [
+    ["summary.general", "page 1"],
+    ["priority.1.observation", "page 4"],
+    ["priority.3.first_action", "page 5"],
+  ];
+  for (const [fieldId, pageLabel] of scenarios) {
+    const automaticText = longestAutomaticText(fieldId);
+    const maxLength = reportNarrativeTextMaxLength(fieldId, automaticText);
+    const seed = `OVR-${fieldId} formulation claire et lisible. `;
+    const customText = seed.repeat(Math.ceil(maxLength / seed.length)).slice(0, maxLength);
+    const report = renderFreeDiagnosticHtml(applyReportNarrativeOverrides(baseDocumentModel(), [{ fieldId, customText }]));
+    const instrumented = report.replace("</body>", `<output id="override-layout-result"></output><script>
     addEventListener("load", () => {
       const pages = [...document.querySelectorAll(".page")];
       const editable = [...document.querySelectorAll("p, li")].filter((element) => element.textContent.includes("OVR-"));
@@ -369,19 +419,20 @@ test("les textes aux maxima autorisés restent dans leurs pages et au-dessus du 
       document.querySelector("#override-layout-result").textContent = JSON.stringify({ pageCount:pages.length, editableCount:editable.length, outside });
     });
   <\/script></body>`);
-  const directory = mkdtempSync(join(tmpdir(), "efficia-report-overrides-layout-"));
-  try {
-    const htmlPath = join(directory, "maxima.html");
-    writeFileSync(htmlPath, instrumented);
-    const output = execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
-    const encoded = output.match(/<output id="override-layout-result">([^<]+)<\/output>/u)?.[1];
-    assert.ok(encoded, "mesures DOM absentes");
-    const layout = JSON.parse(encoded.replaceAll("&quot;", '"'));
-    assert.equal(layout.pageCount, 6);
-    assert.ok(layout.editableCount >= 15, `seulement ${layout.editableCount} blocs personnalisés mesurés`);
-    assert.deepEqual(layout.outside, []);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
+    const directory = mkdtempSync(join(tmpdir(), "efficia-report-overrides-layout-"));
+    try {
+      const htmlPath = join(directory, "maxima.html");
+      writeFileSync(htmlPath, instrumented);
+      const output = execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
+      const encoded = output.match(/<output id="override-layout-result">([^<]+)<\/output>/u)?.[1];
+      assert.ok(encoded, `${pageLabel} : mesures DOM absentes`);
+      const layout = JSON.parse(encoded.replaceAll("&quot;", '"'));
+      assert.equal(layout.pageCount, 6, pageLabel);
+      assert.ok(layout.editableCount >= 1, `${pageLabel} : bloc personnalisé introuvable dans le PDF`);
+      assert.deepEqual(layout.outside, [], pageLabel);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 });
 
@@ -568,7 +619,8 @@ test("le back-office expose uniquement l’éditeur narratif et l’avertissemen
   const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
   assert.match(html, /✏️ Modifier les textes du rapport/);
   assert.match(html, /Certaines données ont changé\. Vérifiez les textes personnalisés avant de générer le rapport\./);
-  assert.match(html, /Restaurer le texte automatique/);
+  assert.match(html, /Copier le texte automatique/);
+  assert.match(html, /Supprimer la personnalisation/);
   assert.match(html, /Ajouter aux problèmes à examiner cette semaine/);
   assert.doesNotMatch(html, /data-report-text-field="score|data-report-text-field="rating|data-report-text-field="reviews/);
 });

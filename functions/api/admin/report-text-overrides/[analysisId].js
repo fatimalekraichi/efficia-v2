@@ -9,6 +9,7 @@ import {
 } from "../../../admin/_shared.js";
 import {
   REPORT_NARRATIVE_FIELD_IDS,
+  REPORT_NARRATIVE_LIMIT_POLICY,
   isAllowedReportNarrativeField,
   loadReportNarrativeContext,
   loadReportNarrativeOverrides,
@@ -17,7 +18,6 @@ import {
   validateReportNarrativeText,
 } from "../../../lib/reportNarrativeOverrides.js";
 
-const MAX_AUTOMATIC_SNAPSHOT_LENGTH = 2_000;
 const ALLOWED_PAYLOAD_KEYS = new Set(["analysisId", "overrides", "restoredFieldIds"]);
 const ALLOWED_OVERRIDE_KEYS = new Set(["fieldId", "text", "automaticText", "weeklyReview", "anomalyCategory"]);
 
@@ -74,11 +74,11 @@ export async function onRequestPut(context) {
     const fieldId = normalizeText(item.fieldId);
     if (seen.has(fieldId)) return jsonResponse({ success: false, error: "DUPLICATE_FIELD_ID" }, 400);
     seen.add(fieldId);
-    const text = validateReportNarrativeText(fieldId, item.text);
-    if (!text.ok) return invalidOverrideResponse(text.error, { fieldId, maxLength: text.maxLength, length: text.length });
-    if (typeof item.automaticText !== "string" || Array.from(item.automaticText).length > MAX_AUTOMATIC_SNAPSHOT_LENGTH) {
+    if (typeof item.automaticText !== "string" || Array.from(item.automaticText).length > REPORT_NARRATIVE_LIMIT_POLICY.maximumAutomaticSnapshotLength) {
       return jsonResponse({ success: false, error: "INVALID_AUTOMATIC_TEXT", fieldId }, 400);
     }
+    const text = validateReportNarrativeText(fieldId, item.text, item.automaticText);
+    if (!text.ok) return invalidOverrideResponse(text.error, { fieldId, maxLength: text.maxLength, length: text.length });
     if (typeof item.weeklyReview !== "boolean") return jsonResponse({ success: false, error: "INVALID_WEEKLY_REVIEW", fieldId }, 400);
     const category = validateReportNarrativeCategory(item.anomalyCategory, item.weeklyReview);
     if (!category.ok) return invalidOverrideResponse(category.error, { fieldId });

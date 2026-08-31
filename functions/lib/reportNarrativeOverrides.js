@@ -11,25 +11,43 @@ export const REPORT_NARRATIVE_ANOMALY_CATEGORIES = Object.freeze([
   "autre",
 ]);
 
+/*
+ * Les textes automatiques sont produits côté navigateur à partir des données
+ * de la fiche. Une limite par libellé (90, 110, etc.) finissait donc par être
+ * plus courte que certaines branches parfaitement valides du générateur.
+ *
+ * La règle est volontairement unique : chaque champ dispose d'un plancher
+ * éditorial de 400 caractères et, dès que le texte automatique est plus long,
+ * sa limite devient sa longueur + max(25 %, 50 caractères). L'API applique la
+ * même fonction que l'éditeur ; aucun des deux ne tronque une valeur.
+ */
+export const REPORT_NARRATIVE_LIMIT_POLICY = Object.freeze({
+  minimumMaxLength: 400,
+  headroomRatio: 0.25,
+  minimumHeadroom: 50,
+  maximumAutomaticSnapshotLength: 4_000,
+});
+
 const fields = [
-  ["summary.general", "Synthèse générale", "Page 1 · Votre situation", 380],
-  ["weaknesses.summary", "Synthèse des faiblesses", "Page 2 · Pourquoi ce score", 180],
-  ["strength.1", "Point fort 1", "Page 4 · Vos priorités", 120],
-  ["strength.2", "Point fort 2", "Page 4 · Vos priorités", 120],
+  ["summary.general", "Synthèse générale", "Page 1 · Votre situation"],
+  ["weaknesses.summary", "Synthèse des faiblesses", "Page 2 · Pourquoi ce score"],
+  ["strength.1", "Point fort 1", "Page 4 · Vos priorités"],
+  ["strength.2", "Point fort 2", "Page 4 · Vos priorités"],
   ...[1, 2, 3].flatMap((rank) => [
-    [`priority.${rank}.observation`, `Priorité ${rank} · Constat`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre", 90],
-    [`priority.${rank}.impact`, `Priorité ${rank} · Impact prospect`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre", 110],
-    [`priority.${rank}.first_action`, `Priorité ${rank} · Première action`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre", 100],
-    [`priority.${rank}.expected_result`, `Priorité ${rank} · Résultat attendu`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre", 60],
+    [`priority.${rank}.observation`, `Priorité ${rank} · Constat`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
+    [`priority.${rank}.impact`, `Priorité ${rank} · Impact prospect`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
+    [`priority.${rank}.first_action`, `Priorité ${rank} · Première action`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
+    [`priority.${rank}.expected_result`, `Priorité ${rank} · Résultat attendu`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
   ]),
-  ["conclusion.commercial", "Conclusion commerciale", "Page 6 · Passer à l’action", 100],
+  ["conclusion.commercial", "Conclusion commerciale", "Page 6 · Passer à l’action"],
 ];
 
-export const REPORT_NARRATIVE_FIELDS = Object.freeze(Object.fromEntries(fields.map(([id, label, section, maxLength]) => [id, Object.freeze({
+export const REPORT_NARRATIVE_FIELDS = Object.freeze(Object.fromEntries(fields.map(([id, label, section]) => [id, Object.freeze({
   id,
   label,
   section,
-  maxLength,
+  maxLength: REPORT_NARRATIVE_LIMIT_POLICY.minimumMaxLength,
+  ...REPORT_NARRATIVE_LIMIT_POLICY,
 })])));
 
 export const REPORT_NARRATIVE_FIELD_IDS = Object.freeze(Object.keys(REPORT_NARRATIVE_FIELDS));
@@ -61,13 +79,27 @@ export function isAllowedReportNarrativeField(fieldId) {
   return typeof fieldId === "string" && FIELD_ID_SET.has(fieldId);
 }
 
-export function validateReportNarrativeText(fieldId, value) {
+export function countReportNarrativeCharacters(value) {
+  return Array.from(String(value || "")).length;
+}
+
+export function reportNarrativeTextMaxLength(fieldId, automaticText = "") {
+  if (!isAllowedReportNarrativeField(fieldId)) return null;
+  const automaticLength = countReportNarrativeCharacters(String(automaticText).trim());
+  const headroom = Math.max(
+    Math.ceil(automaticLength * REPORT_NARRATIVE_LIMIT_POLICY.headroomRatio),
+    REPORT_NARRATIVE_LIMIT_POLICY.minimumHeadroom,
+  );
+  return Math.max(REPORT_NARRATIVE_FIELDS[fieldId].minimumMaxLength, automaticLength + headroom);
+}
+
+export function validateReportNarrativeText(fieldId, value, automaticText = "") {
   if (!isAllowedReportNarrativeField(fieldId)) return { ok: false, error: "UNAUTHORIZED_FIELD_ID" };
   if (typeof value !== "string") return { ok: false, error: "INVALID_TEXT_TYPE" };
   const text = value.trim();
   if (!text) return { ok: false, error: "EMPTY_CUSTOM_TEXT" };
-  const length = Array.from(text).length;
-  const maxLength = REPORT_NARRATIVE_FIELDS[fieldId].maxLength;
+  const length = countReportNarrativeCharacters(text);
+  const maxLength = reportNarrativeTextMaxLength(fieldId, automaticText);
   if (length > maxLength) return { ok: false, error: "TEXT_TOO_LONG", maxLength, length };
   return { ok: true, text, length, maxLength };
 }
