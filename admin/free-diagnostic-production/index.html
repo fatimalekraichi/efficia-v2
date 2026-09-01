@@ -5889,17 +5889,18 @@ function benchmarkLignes(){
   const d = donneesAnalyse, m = d.moyennesConcurrents || {};
   const api = d.concurrence; // moyennes note/avis issues de l'API si pas de saisie manuelle
   const lignes = [];
-  const push = (label, vous, top3, formatV, sensPositif) => {
+  const push = (label, vous, top3, formatV, sensPositif, statutForce = null) => {
     if(!estNombre(vous) || !estNombre(top3)) return;
     const v = Number(vous), t = Number(top3);
     const avantage = sensPositif(v, t);
     const prioritaire = !avantage && (label === "Note moyenne" ? t - v >= 0.35 : t > Math.max(v * 1.6, v + 4));
-    lignes.push({label, vous:formatV(vous), top3:formatV(top3), statut: avantage ? "Avantage" : prioritaire ? "Prioritaire" : "À renforcer"});
+    lignes.push({label, vous:formatV(vous), top3:formatV(top3), statut: statutForce || (avantage ? "Avantage" : prioritaire ? "Prioritaire" : "À renforcer")});
   };
+  const statutPhotos = (v, t) => v < t ? "À renforcer" : v === t ? "Dans la moyenne" : "Avantage";
   const entier = v => String(nEntier(v));
   push("Note moyenne", d.note, m.note ?? api?.noteC, fmtNote, (v,t) => v >= t - 0.05);
   push("Nombre d'avis", d.nbAvis, m.avis ?? api?.volC, entier, (v,t) => v >= t);
-  push("Photos", d.nbPhotos, m.photos, entier, (v,t) => v >= t);
+  push("Photos", d.nbPhotos, m.photos, entier, (v,t) => v > t, statutPhotos(Number(d.nbPhotos), Number(m.photos)));
   push("Services listés", d.nbServices, m.services, entier, (v,t) => v >= t);
   push("Publications", d.nbPublications, m.pubs, entier, (v,t) => v >= t);
   return lignes;
@@ -5912,7 +5913,7 @@ function benchmarkTableHtml(){
   return `<div class="bench-table">
     <div class="bench-row entete"><span>Critère</span><span>Vous</span><span>${libelle}</span><span></span></div>
     ${lignes.map(l => `<div class="bench-row"><span>${l.label}</span><strong>${l.vous}</strong><span>${l.top3}</span>
-      <span class="bench-ecart" style="${l.statut === "Avantage" ? "background:#ecfdf5;color:#059669" : l.statut === "Prioritaire" ? "background:#fef2f2;color:#dc2626" : "background:#fffbeb;color:#d97706"}">${l.statut}</span></div>`).join("")}
+      <span class="bench-ecart" style="${l.statut === "Avantage" ? "background:#ecfdf5;color:#059669" : l.statut === "Dans la moyenne" ? "background:#eff6ff;color:#2563eb" : l.statut === "Prioritaire" ? "background:#fef2f2;color:#dc2626" : "background:#fffbeb;color:#d97706"}">${l.statut}</span></div>`).join("")}
   </div>`;
 }
 function ecartsExpliquesHtml(){
@@ -6617,24 +6618,26 @@ function resultatAttenduPriorite(item, ctx){
 
 /* Petit résultat concret et immédiatement exploitable, réservé à la priorité
    n°1 uniquement — jamais un livrable complet de l'Audit payant. */
-function microLivrablePriorite(item, ctx){
+function microLivrablePriorite(item, ctx, rank){
   const d = ctx.data;
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
+  const example = text => effectiveText(`priority.${rank}.action_example`, text);
   if(item.famille === "reputation"){
     if(rapportSansAvis()){
-      return `<div class="priority-sample"><b>Message type pour demander un avis</b>« Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup. »</div>`;
+      return `<div class="priority-sample"><b>Message type pour demander un avis</b>« ${example("Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup.")} »</div>`;
     }
     if(estNombre(d.note) && Number(d.note) < 4){
-      return `<div class="priority-sample"><b>Structure de réponse à un avis</b>« Bonjour [Prénom], merci d'avoir partagé votre expérience. Nous sommes désolés qu'elle n'ait pas répondu à vos attentes. Nous souhaitons comprendre précisément ce qui s'est passé et vous invitons à nous contacter directement afin d'en discuter. »</div>`;
+      return `<div class="priority-sample"><b>Structure de réponse à un avis</b>« ${example("Bonjour [Prénom], merci d’avoir pris le temps de partager votre expérience. Votre retour est important pour nous. [Ajoutez ensuite une réponse personnelle liée à son commentaire.]")} »</div>`;
     }
     return "";
   }
   if(item.famille === "offre"){
     const nomEntreprise = nomCourtRapport(ctx.entreprise, 24) || "Nous";
     const zone = ctx.ville ? ` (${ctx.ville})` : "";
-    return `<div class="priority-sample"><b>Amorce de description à compléter</b>« ${majusculeInitiale(nomEntreprise)}${zone} : [votre service principal]. »</div>`;
+    return `<div class="priority-sample"><b>Amorce de description à compléter</b>« ${example(`${majusculeInitiale(nomEntreprise)}${zone} : [votre service principal].`)} »</div>`;
   }
   if(item.famille === "photos"){
-    return `<div class="priority-sample"><b>Pour vos prochaines photos</b>Commencez par une photo de la devanture ou de l'équipe : c'est souvent la plus consultée.</div>`;
+    return `<div class="priority-sample"><b>Pour vos prochaines photos</b>${example("Commencez par une photo de la devanture ou de l'équipe : c'est souvent la plus consultée.")}</div>`;
   }
   return "";
 }
@@ -6686,6 +6689,7 @@ function rendrePrioriteSiteOfficiel(item, index){
   const contenu = CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.etat] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible;
   const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
   const rank = index + 1;
+  const title = effectiveText(`priority.${rank}.title`, contenu.titre);
   const observation = effectiveText(`priority.${rank}.observation`, contenu.observation);
   const impactProspect = effectiveText(`priority.${rank}.impact`, contenu.client);
   const firstAction = effectiveText(`priority.${rank}.first_action`, contenu.action);
@@ -6695,7 +6699,7 @@ function rendrePrioriteSiteOfficiel(item, index){
       <div class="priority-kicker">Priorité n°${index + 1}</div>
       <span class="priority-kicker" style="background:${impact.fond};color:${impact.couleur};border-color:${impact.couleur}33">${impact.label}</span>
     </div>
-    <h2 class="priority-title">${contenu.titre}</h2>
+    <h2 class="priority-title">${title}</h2>
     <div class="priority-flow">
       <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observation}</p></div>
       <div class="priority-arrow">↓</div>
@@ -6718,6 +6722,7 @@ function rendrePriorite(item, index, variante){
   const resultat = resultatAttenduPriorite(item, ctx);
   const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
   const rank = index + 1;
+  const title = effectiveText(`priority.${rank}.title`, titrePriorite(item));
   const observeEffectif = effectiveText(`priority.${rank}.observation`, observe);
   const prospectEffectif = effectiveText(`priority.${rank}.impact`, prospect);
   const actionEffective = effectiveText(`priority.${rank}.first_action`, d.action);
@@ -6727,13 +6732,13 @@ function rendrePriorite(item, index, variante){
       <div class="priority-kicker">Priorité n°${index + 1}</div>
       <span class="priority-kicker" style="background:${impact.fond};color:${impact.couleur};border-color:${impact.couleur}33">${impact.label}</span>
     </div>
-    <h2 class="priority-title">${titrePriorite(item)}</h2>
+    <h2 class="priority-title">${title}</h2>
     <div class="priority-flow">
       <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>${observeEffectif}</p></div>
       <div class="priority-arrow">↓</div>
       <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu'il peut penser</div><p>${prospectEffectif}</p></div>
       <div class="priority-arrow">↓</div>
-      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${actionEffective}</p>${resultatEffectif ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultatEffectif}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span>${index === 0 ? microLivrablePriorite(item, ctx) : ""}</div>
+      <div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>${actionEffective}</p>${resultatEffectif ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${resultatEffectif}</p>` : ""}<span class="priority-time">Temps estimé : ${tempsPriorite(item)}</span>${index === 0 ? microLivrablePriorite(item, ctx, rank) : ""}</div>
     </div>
   </section>`;
 }

@@ -16,6 +16,7 @@ import {
 import { buildEffectiveDocumentModelFromAnalysis } from "../functions/lib/documentModelFromAnalysis.js";
 import {
   REPORT_NARRATIVE_LIMIT_POLICY,
+  REPORT_NARRATIVE_TITLE_LIMIT_POLICY,
   REPORT_NARRATIVE_FIELDS,
   applyReportNarrativeOverrides,
   markReportNarrativeOverridesForCurrentContext,
@@ -115,6 +116,8 @@ const LONGEST_AUTOMATIC_NARRATIVE_TEXTS = Object.freeze({
   "priority.impact": "Il peut se demander si le site est encore en construction ou si les informations présentées sont à jour, puis revenir aux résultats Google pour contacter un concurrent.",
   "priority.first_action": "Remplacer le contenu par défaut ou inachevé par une présentation claire de l’entreprise, les services proposés, la zone d’intervention et les coordonnées de contact.",
   "priority.expected_result": "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+  "priority.title": `Priorité détaillée pour ${"T".repeat(85)}`,
+  "priority.action_example": "Bonjour [Prénom], merci d’avoir pris le temps de partager votre expérience. Votre retour est important pour nous. [Ajoutez ensuite une réponse personnelle liée à son commentaire.]",
   "conclusion.commercial": `Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${"E".repeat(180)}.`,
 });
 
@@ -363,6 +366,14 @@ test("la limite centralisée ajoute la marge requise à chaque texte automatique
   assert.equal(REPORT_NARRATIVE_LIMIT_POLICY.minimumMaxLength, 400);
 });
 
+test("les titres des trois priorités suivent leur plafond éditorial dédié", () => {
+  const automaticTitle = longestAutomaticText("priority.1.title");
+  const maxLength = reportNarrativeTextMaxLength("priority.1.title", automaticTitle);
+  assert.equal(REPORT_NARRATIVE_FIELDS["priority.1.title"].minimumMaxLength, 120);
+  assert.equal(REPORT_NARRATIVE_TITLE_LIMIT_POLICY.minimumHeadroom, 25);
+  assert.equal(maxLength, Math.max(120, automaticTitle.length + Math.max(Math.ceil(automaticTitle.length * .25), 25)));
+});
+
 test("chaque bloc éditable accepte, persiste et recharge son texte automatique le plus long avec une marge supplémentaire", async () => {
   const { db, cookie } = await setup();
   const overrides = Object.keys(REPORT_NARRATIVE_FIELDS).map((fieldId) => {
@@ -370,7 +381,8 @@ test("chaque bloc éditable accepte, persiste et recharge son texte automatique 
     const maxLength = reportNarrativeTextMaxLength(fieldId, automaticText);
     const text = `${automaticText} +`;
     assert.ok(text.length <= maxLength, `${fieldId} doit accepter un texte légèrement plus long que l'automatique`);
-    assert.ok(maxLength >= automaticText.length + Math.max(Math.ceil(automaticText.length * .25), 50), fieldId);
+    const field = REPORT_NARRATIVE_FIELDS[fieldId];
+    assert.ok(maxLength >= automaticText.length + Math.max(Math.ceil(automaticText.length * field.headroomRatio), field.minimumHeadroom), fieldId);
     return { fieldId, text, automaticText, weeklyReview: false, anomalyCategory: "autre" };
   });
   const saved = await putOverrides(context(db, cookie, {
@@ -387,10 +399,80 @@ test("chaque bloc éditable accepte, persiste et recharge son texte automatique 
   }
 });
 
+test("les titres personnalisés des trois priorités sont persistés, utilisés dans le PDF et restaurables", async () => {
+  const { db, cookie, documentModel } = await setup();
+  const overrides = [1, 2, 3].map((rank) => ({
+    fieldId: `priority.${rank}.title`,
+    text: `Titre personnalisé prioritaire ${rank}`,
+    automaticText: `Titre automatique prioritaire ${rank}`,
+    weeklyReview: false,
+    anomalyCategory: "autre",
+  }));
+  const saved = await putOverrides(context(db, cookie, {
+    method: "PUT",
+    body: { analysisId: ANALYSIS_ID, overrides, restoredFieldIds: [] },
+  }));
+  assert.equal(saved.status, 200);
+  const reloaded = await (await getOverrides(context(db, cookie))).json();
+  assert.deepEqual(reloaded.overrides.map((item) => item.fieldId), overrides.map((item) => item.fieldId));
+
+  const effective = await buildEffectiveDocumentModelFromAnalysis(db, { analysisId: ANALYSIS_ID, documentModel });
+  assert.deepEqual(effective.freeDiagnostic.priorities.map((item) => item.title), overrides.map((item) => item.text));
+  assert.match(renderFreeDiagnosticHtml(effective), /Titre personnalisé prioritaire 1/);
+
+  const restored = await putOverrides(context(db, cookie, {
+    method: "PUT",
+    body: { analysisId: ANALYSIS_ID, overrides: [], restoredFieldIds: ["priority.2.title"] },
+  }));
+  assert.equal(restored.status, 200);
+  const newerAutomatic = {
+    ...documentModel,
+    freeDiagnostic: {
+      ...documentModel.freeDiagnostic,
+      priorities: documentModel.freeDiagnostic.priorities.map((item) => ({ ...item })),
+    },
+  };
+  newerAutomatic.freeDiagnostic.priorities[1].title = "Titre automatique courant";
+  const restoredModel = await buildEffectiveDocumentModelFromAnalysis(db, { analysisId: ANALYSIS_ID, documentModel: newerAutomatic });
+  assert.equal(restoredModel.freeDiagnostic.priorities[0].title, "Titre personnalisé prioritaire 1");
+  assert.equal(restoredModel.freeDiagnostic.priorities[1].title, "Titre automatique courant");
+  assert.equal(applyReportNarrativeOverrides(documentModel, []).freeDiagnostic.priorities[2].title, "Priorité 3");
+});
+
+test("le modèle de réponse aux avis universel reste éditable et ne présume pas un avis négatif", () => {
+  const universal = LONGEST_AUTOMATIC_NARRATIVE_TEXTS["priority.action_example"];
+  const model = applyReportNarrativeOverrides(baseDocumentModel(), [{
+    fieldId: "priority.1.action_example",
+    customText: universal,
+  }]);
+  const html = renderFreeDiagnosticHtml(model);
+  assert.match(html, /Bonjour \[Prénom\], merci d’avoir pris le temps de partager votre expérience/);
+  assert.match(html, /Exemple ou aide d’action/);
+  const adminSource = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  assert.match(adminSource, /Votre retour est important pour nous/);
+  assert.doesNotMatch(adminSource, /Nous sommes désolés qu'elle n'ait pas répondu à vos attentes/);
+});
+
+test("le benchmark photos affiche Dans la moyenne à l'égalité exacte", () => {
+  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  const match = source.match(/function benchmarkLignes\(\)\{[\s\S]*?\n\}\nfunction benchmarkTableHtml/u);
+  assert.ok(match, "benchmarkLignes doit rester une fonction isolée testable");
+  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${match[0].replace(/\nfunction benchmarkTableHtml$/u, "")}\nreturn benchmarkLignes();`);
+  const lignes = factory(
+    (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
+    (value) => Math.round(Number(value)),
+    (value) => String(value),
+    { nbPhotos: 19, moyennesConcurrents: { photos: 19 }, concurrence: null },
+  );
+  assert.equal(lignes.find((item) => item.label === "Photos")?.statut, "Dans la moyenne");
+});
+
 test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME) }, () => {
   const scenarios = [
     ["summary.general", "page 1"],
+    ["priority.1.title", "page 4 titre"],
     ["priority.1.observation", "page 4"],
+    ["priority.3.title", "page 5 titre"],
     ["priority.3.first_action", "page 5"],
   ];
   for (const [fieldId, pageLabel] of scenarios) {

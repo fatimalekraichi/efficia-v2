@@ -28,26 +28,34 @@ export const REPORT_NARRATIVE_LIMIT_POLICY = Object.freeze({
   maximumAutomaticSnapshotLength: 4_000,
 });
 
+export const REPORT_NARRATIVE_TITLE_LIMIT_POLICY = Object.freeze({
+  minimumMaxLength: 120,
+  headroomRatio: 0.25,
+  minimumHeadroom: 25,
+});
+
 const fields = [
   ["summary.general", "Synthèse générale", "Page 1 · Votre situation"],
   ["weaknesses.summary", "Synthèse des faiblesses", "Page 2 · Pourquoi ce score"],
   ["strength.1", "Point fort 1", "Page 4 · Vos priorités"],
   ["strength.2", "Point fort 2", "Page 4 · Vos priorités"],
   ...[1, 2, 3].flatMap((rank) => [
+    [`priority.${rank}.title`, `Priorité ${rank} · Titre`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre", REPORT_NARRATIVE_TITLE_LIMIT_POLICY],
     [`priority.${rank}.observation`, `Priorité ${rank} · Constat`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
     [`priority.${rank}.impact`, `Priorité ${rank} · Impact prospect`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
     [`priority.${rank}.first_action`, `Priorité ${rank} · Première action`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
     [`priority.${rank}.expected_result`, `Priorité ${rank} · Résultat attendu`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
+    [`priority.${rank}.action_example`, `Priorité ${rank} · Exemple ou aide d’action`, rank < 3 ? "Page 4 · Vos priorités" : "Page 5 · Comment les résoudre"],
   ]),
   ["conclusion.commercial", "Conclusion commerciale", "Page 6 · Passer à l’action"],
 ];
 
-export const REPORT_NARRATIVE_FIELDS = Object.freeze(Object.fromEntries(fields.map(([id, label, section]) => [id, Object.freeze({
+export const REPORT_NARRATIVE_FIELDS = Object.freeze(Object.fromEntries(fields.map(([id, label, section, policy = REPORT_NARRATIVE_LIMIT_POLICY]) => [id, Object.freeze({
   id,
   label,
   section,
-  maxLength: REPORT_NARRATIVE_LIMIT_POLICY.minimumMaxLength,
-  ...REPORT_NARRATIVE_LIMIT_POLICY,
+  maxLength: policy.minimumMaxLength,
+  ...policy,
 })])));
 
 export const REPORT_NARRATIVE_FIELD_IDS = Object.freeze(Object.keys(REPORT_NARRATIVE_FIELDS));
@@ -85,12 +93,13 @@ export function countReportNarrativeCharacters(value) {
 
 export function reportNarrativeTextMaxLength(fieldId, automaticText = "") {
   if (!isAllowedReportNarrativeField(fieldId)) return null;
+  const field = REPORT_NARRATIVE_FIELDS[fieldId];
   const automaticLength = countReportNarrativeCharacters(String(automaticText).trim());
   const headroom = Math.max(
-    Math.ceil(automaticLength * REPORT_NARRATIVE_LIMIT_POLICY.headroomRatio),
-    REPORT_NARRATIVE_LIMIT_POLICY.minimumHeadroom,
+    Math.ceil(automaticLength * field.headroomRatio),
+    field.minimumHeadroom,
   );
-  return Math.max(REPORT_NARRATIVE_FIELDS[fieldId].minimumMaxLength, automaticLength + headroom);
+  return Math.max(field.minimumMaxLength, automaticLength + headroom);
 }
 
 export function validateReportNarrativeText(fieldId, value, automaticText = "") {
@@ -272,10 +281,12 @@ export function applyReportNarrativeOverrides(documentModel = {}, overrides = []
     const priority = model.freeDiagnostic.priorities[index];
     if (!priority) continue;
     const rank = index + 1;
+    if (values.has(`priority.${rank}.title`)) priority.title = values.get(`priority.${rank}.title`);
     if (values.has(`priority.${rank}.observation`)) priority.observed = values.get(`priority.${rank}.observation`);
     if (values.has(`priority.${rank}.impact`)) priority.prospectView = values.get(`priority.${rank}.impact`);
     if (values.has(`priority.${rank}.first_action`)) priority.firstAction = values.get(`priority.${rank}.first_action`);
     if (values.has(`priority.${rank}.expected_result`)) priority.expectedResult = values.get(`priority.${rank}.expected_result`);
+    if (values.has(`priority.${rank}.action_example`)) priority.actionExample = values.get(`priority.${rank}.action_example`);
   }
   if (values.has("conclusion.commercial")) model.freeDiagnostic.commercialConclusion = values.get("conclusion.commercial");
   return model;

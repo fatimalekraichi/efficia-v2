@@ -1818,6 +1818,11 @@ function freeCriteriaSection(model) {
 // Cartes de priorité — reprend rendrePriorite() : priority-kicker,
 // priority-title, priority-flow (Observation → Ce que voit votre client →
 // Action immédiate + résultat attendu + temps estimé).
+function freePriorityActionExample(item) {
+  if (!present(item?.actionExample)) return "";
+  return `<div class="priority-sample"><b>Exemple ou aide d’action</b><p>${safeText(item.actionExample)}</p></div>`;
+}
+
 function freePriorityCard(item) {
   return `
     <article class="priority-card">
@@ -1842,6 +1847,7 @@ function freePriorityCard(item) {
           <p>${safeText(item.firstAction)}</p>
           ${present(item.expectedResult) ? `<p class="priority-resultat"><b>Résultat attendu :</b> ${safeText(item.expectedResult)}</p>` : ""}
           <span class="priority-time">Temps estimé : ${safeText(item.estimatedTime)}</span>
+          ${freePriorityActionExample(item)}
         </div>
       </div>
     </article>
@@ -4313,6 +4319,7 @@ function styles() {
         line-height: 1.2;
         letter-spacing: -0.02em;
         color: var(--ink);
+        overflow-wrap: anywhere;
       }
 
       .free-diagnostic .page-benefits .priority-title {
@@ -4412,6 +4419,25 @@ function styles() {
       .free-diagnostic .page-benefits .priority-time {
         margin-top: 6px;
       }
+
+      .free-diagnostic .priority-sample {
+        margin-top: 7px;
+        padding: 7px 9px;
+        border: 1px solid #dbeafe;
+        border-radius: 9px;
+        background: #f8fbff;
+        color: var(--ink);
+        font-size: 10px;
+        line-height: 1.35;
+      }
+
+      .free-diagnostic .priority-sample b {
+        display: block;
+        margin-bottom: 2px;
+        color: #1d4ed8;
+      }
+
+      .free-diagnostic .priority-sample p { margin: 0; }
 
       /* — Page 5 : bénéfices + rappel des limites, repris de .benefit-grid/  */
       /*   .benefit-card et .paid-audit-box/.teaser-grid/.teaser-more.        */
