@@ -122,9 +122,11 @@ test("Avis-fix 4 : avis + note nominal -> '4,3/5 et 12 avis'", () => {
   assert.equal(ctx.formatNoteAvisAdmin(4.3, 12), "4,3/5 et 12 avis");
 });
 
-test("Avis-fix 5 : comparatif concurrents disponible reste independant (2 decimales)", () => {
+test("Avis-fix 5 : comparatif concurrents de la page 3 est arrondi narrativement", () => {
   const ctx = createVisibiliteHarness({});
-  assert.equal(ctx.formatNoteAvisAdmin(4, 2.33, { reviewsDigits: 2 }), "4/5 et 2,33 avis");
+  const average = 30.67;
+  assert.equal(ctx.formatNoteAvisAdmin(5, average, { reviewsApproximate: true }), "5,0/5 et environ 31 avis");
+  assert.equal(average, 30.67, "la valeur concurrentielle interne reste exacte");
 });
 
 test("Avis-fix 6 : concurrents absents -> pas de ponctuation cassee, jamais '-/5'", () => {
@@ -141,7 +143,7 @@ test("Avis-fix 7 : absence globale de -/5, --/5, null, undefined, NaN, 0/5 sur t
     ctx.formatNoteAvisAdmin(null, null),
     ctx.formatNoteAvisAdmin(null, 12),
     ctx.formatNoteAvisAdmin(4.3, 12),
-    ctx.formatNoteAvisAdmin(4, 2.33, { reviewsDigits: 2 }),
+    ctx.formatNoteAvisAdmin(4, 2.33, { reviewsApproximate: true }),
     ctx.formatNoteAvisAdmin(0, 0, { confirmeZero: true }),
     ctx.formatNoteAvisAdmin(undefined, undefined),
   ];
@@ -176,7 +178,23 @@ test("Avis-fix (integration checklistHtml) : fiche sans avis confirme + concurre
     sansAvis: true,
   });
   assert.equal(texteVotreFiche, "aucun avis client");
-  assert.equal(texteConcurrents, "4/5 et 2,33 avis");
+  assert.equal(texteConcurrents, "4,0/5 et environ 2 avis");
+});
+
+test("Avis-fix (integration checklistHtml) : 30,67 avis concurrents deviennent environ 31 avis", () => {
+  const averageReviews = 30.67;
+  const { texteVotreFiche, texteConcurrents } = renderConfianceConcurrents({
+    syntheseConcurrence: { rating: 1, reviews: 1, averageRating: 5, averageReviews },
+  });
+  assert.equal(texteVotreFiche, "1,0/5 et 1 avis");
+  assert.equal(texteConcurrents, "5,0/5 et environ 31 avis");
+  assert.equal(averageReviews, 30.67, "l’arrondi ne modifie jamais la moyenne utilisée par le calcul");
+});
+
+test("Avis-fix : les preuves concurrentielles du renderer gratuit n’affichent plus une moyenne décimale", () => {
+  assert.match(html, /environ \$\{Math\.round\(Number\(evidence\.averageReviews\)\)\}/u);
+  assert.match(html, /Moyenne : environ \$\{formatReviews\(reviewEvidence\.average\)\}/u);
+  assert.doesNotMatch(html, /averageReviews\) \* 10\) \/ 10/u);
 });
 
 test("Avis-fix (integration checklistHtml) : concurrents non disponibles -> 'aucun avis', jamais '-/5'", () => {
@@ -448,6 +466,7 @@ test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (ho
    que les 6 pages sont composees avant tout appel a pdf.save().
    ======================================================================== */
 test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 6 pages, puis pdf.save()", async () => {
+  const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
   let composed = 0;
   let canvasCalls = 0;
@@ -501,7 +520,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     alert: () => assert.fail("aucune alerte attendue"),
     console,
   };
-  vm.runInNewContext(`${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
   assert.equal(canvasCalls, 6);

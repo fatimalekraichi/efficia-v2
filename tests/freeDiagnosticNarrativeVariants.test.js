@@ -65,7 +65,7 @@ test("graine narrative : des entreprises de la même branche disposent de varian
   assert.ok(selected.size >= 3, `variantes obtenues : ${[...selected].join(", ")}`);
 });
 
-test("introduction réelle : salutation fiable, stabilité, portée du diagnostic et absence de placeholders", () => {
+test("introduction réelle : salutation fiable, stabilité et absence de placeholders", () => {
   const context = createNarrativeHarness({
     analysisId: "bd8dca89-4f76-49b2-b783-d3a599d5a60d",
     enterprise: "Électricité Exemple",
@@ -86,9 +86,75 @@ test("introduction réelle : salutation fiable, stabilité, portée du diagnosti
   assert.match(withoutContact, /^Bonjour,/u);
   assert.match(withContact, /^Bonjour Léa,/u);
   for (const text of [withoutContact, withContact, build("", 86)]) {
-    assert.match(text, /présentation|présente|porte (?:uniquement|sur)|mesure/u);
     assert.doesNotMatch(text, /\{(?:Prénom|Entreprise|Ville|Métier)\}|undefined|null/iu);
   }
+});
+
+test("toutes les variantes d’introduction laissent l’avertissement qualité au seul bloc gris", () => {
+  const context = createNarrativeHarness({ enterprise: "VL ÉLEC" });
+  const forbidden = /qualité (?:de votre travail|réelle de votre travail|de vos prestations)|savoir-faire|sans remettre en cause|ne porte pas de jugement|ne permettent pas de juger/iu;
+  for (const score of [44, 65, 86]) {
+    for (let index = 0; index < 3; index += 1) {
+      context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[index];
+      const text = context.texteConsultantPage1({
+        contact: "",
+        entreprise: "VL ÉLEC",
+        activite: "Électricien",
+        ville: "Bertrix",
+        score,
+        scoreProjete: score,
+        priorites: [{}, {}, {}],
+      });
+      assert.doesNotMatch(text, forbidden, `${score}/${index}: ${text}`);
+      assert.doesNotMatch(text, /\s{2,}|\.\s*\./u, `${score}/${index}: ponctuation invalide`);
+    }
+  }
+  const scopeNote = "Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.";
+  assert.equal(source.split(scopeNote).length - 1, 1, "l’avertissement gris demeure unique");
+});
+
+test("introduction VL ÉLEC : la variante concernée remplace la répétition par le manque de repères", () => {
+  const context = createNarrativeHarness({ enterprise: "VL ÉLEC" });
+  context.personaSecteur = () => "un client";
+  context.signauxActuelsPage1 = () => ["une note de 1,0/5 basée sur un seul avis et peu de preuves visuelles"];
+  context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[2];
+  const text = context.texteConsultantPage1({
+    contact: "",
+    entreprise: "VL ÉLEC",
+    activite: "Électricien",
+    ville: "Bertrix",
+    score: 44,
+    scoreProjete: 44,
+    priorites: [{}, {}, {}],
+  });
+  assert.equal(text, "Bonjour,<br>La présentation visible de VL ÉLEC ne permet pas encore à un nouveau prospect de comprendre et de vérifier l'essentiel avec confiance. Aujourd'hui, un client de Bertrix découvre une note de 1,0/5 basée sur un seul avis et peu de preuves visuelles. Ce manque de repères peut ralentir un premier contact. La situation n'est pas figée. Trois actions ciblées peuvent déjà rendre la fiche plus claire, plus rassurante et plus convaincante.");
+});
+
+test("Conversion : les contacts présents ne sont jamais décrits comme absents lorsque l’offre ou les liens d’action manquent", () => {
+  const code = between("function conversionSousScoreEstIncomplet(d = donneesAnalyse){", "function indicesProspectHtml(){");
+  const context = { estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) };
+  vm.runInNewContext(`${code}\nglobalThis.result=conversionSousScoreEstIncomplet;`, context);
+  const business = {
+    descriptionLongueur: 0,
+    nbServices: 0,
+    statutLiensAction: "available",
+    liensAction: [],
+    telephone: "+32 000 00 00 00",
+    siteWeb: "https://example.test",
+  };
+  assert.equal(context.result(business), true);
+  assert.match(source, /Description, services et liens d’action : plusieurs éléments permettant de comprendre l’offre et de faciliter la prise de contact sont absents ou non renseignés\./u);
+  assert.doesNotMatch(source, /Description, services, liens de contact/u);
+});
+
+test("conclusion page 2 : une note de 1,0/5 utilise la formulation universelle", () => {
+  const code = between("function phraseTransitionPage2(categoriesTriees){", "/* ============ PAGE 3 : CHECKLIST DES POINTS ANALYSÉS ============ */");
+  const context = {};
+  vm.runInNewContext(`${code}\nglobalThis.result=phraseTransitionPage2;`, context);
+  const expected = "Votre score ne s’explique pas uniquement par un seul point. Plusieurs signaux incomplets s’ajoutent et rendent le choix moins évident pour un nouveau client.";
+  assert.equal(context.result([{ pct: 0, cat: { cat: "Avis" } }]), expected);
+  assert.equal(context.result([{ pct: 0, cat: { cat: "Avis" } }, { pct: 0, cat: { cat: "Contenu" } }]), expected);
+  assert.doesNotMatch(source, /pas diminué par un seul défaut majeur/u);
 });
 
 test("moyenne d'avis : l'arrondi n'est qu'un affichage narratif et conserve les notes indépendantes", () => {

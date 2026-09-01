@@ -3167,7 +3167,7 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
   const evidence = attractiveness?.evidence || {};
   const displayRating = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(1).replace(".", ",") : "—";
   setText("competitive-business", `${displayRating(evidence.rating)}/5 · ${Number.isFinite(Number(evidence.reviews)) ? Number(evidence.reviews) : "—"} avis`);
-  setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? Math.round(Number(evidence.averageReviews) * 10) / 10 : "—"} avis`);
+  setText("competitive-average", `${displayRating(evidence.averageRating)}/5 · ${Number.isFinite(Number(evidence.averageReviews)) ? `environ ${Math.round(Number(evidence.averageReviews))}` : "—"} avis`);
   // Garde-fou de version — NE JAMAIS afficher la conclusion "Contrastée" (v5,
   // basée sur synthesisStatus) pour une analyse v4 ou historique sans version :
   // scoringVersionActif est déjà résolu correctement en amont (avec repli v4
@@ -3196,7 +3196,7 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
     ? Number(value).toLocaleString("fr-FR", {maximumFractionDigits:decimals})
     : "—";
   setText("review-volume-summary", estNombre(reviewEvidence.value) && reviewValues.length === 3 && estNombre(reviewEvidence.average)
-    ? `Votre fiche : ${formatReviews(reviewEvidence.value)} avis · Concurrents : ${reviewValues.map((value) => formatReviews(value)).join(", ")} · Moyenne : ${formatReviews(reviewEvidence.average, 2)} · comparaison avec une tolérance de 10 %`
+    ? `Votre fiche : ${formatReviews(reviewEvidence.value)} avis · Concurrents : ${reviewValues.map((value) => formatReviews(value)).join(", ")} · Moyenne : environ ${formatReviews(reviewEvidence.average)} · comparaison avec une tolérance de 10 %`
     : "Données concurrentielles insuffisantes : comparaison automatique à confirmer.");
 
   donneesAnalyse.liensAction = actionLinks;
@@ -5068,9 +5068,9 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
       ? `Aujourd'hui, ${persona}${lieu} découvre ${joinFr(signaux)}.`
       : `Aujourd'hui, votre fiche laisse encore plusieurs informations importantes à préciser.`;
     projection = choisirVarianteNarrative("summary.general.projection", "score_under_50", [
-      ` Ces éléments peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}. Ce diagnostic évalue la présentation visible de votre fiche, et non la qualité de votre travail.`,
-      ` Ces signaux peuvent freiner la décision de contact. Ils ne permettent pas de juger votre travail : le diagnostic porte uniquement sur la présentation publique de votre fiche.`,
-      ` Ils peuvent ralentir un premier contact sans remettre en cause votre savoir-faire. Le diagnostic mesure la façon dont votre fiche se présente, pas la qualité de vos prestations.`
+      ` Ces éléments peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}.`,
+      " Ces signaux peuvent freiner la décision de contact.",
+      " Ce manque de repères peut ralentir un premier contact."
     ]);
   } else if(score < 80){
     ouverture = choisirVarianteNarrative("summary.general.opening", "score_50_to_79", [
@@ -5082,9 +5082,9 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
       ? `Mais aujourd'hui, ${persona}${lieu} remarque encore ${joinFr(signaux)}.`
       : `Mais certains éléments restent incomplets aux yeux d'un prospect qui compare plusieurs fiches.`;
     projection = choisirVarianteNarrative("summary.general.projection", "score_50_to_79", [
-      " Ces signaux peuvent freiner la décision de contact, sans remettre en cause le sérieux de votre travail. Le diagnostic évalue la présentation de la fiche, pas la qualité de vos prestations.",
-      " Ils peuvent laisser une hésitation avant l'appel. Cette analyse porte sur ce que montre la fiche Google, et non sur la qualité réelle de votre travail.",
-      " Ils réduisent la clarté perçue au premier regard. Le diagnostic mesure la présentation publique de votre fiche, sans juger votre savoir-faire."
+      " Ces signaux peuvent freiner la décision de contact.",
+      " Ils peuvent laisser une hésitation avant l'appel.",
+      " Ils réduisent la clarté perçue au premier regard."
     ]);
   } else {
     ouverture = choisirVarianteNarrative("summary.general.opening", "score_80_plus", [
@@ -5096,9 +5096,9 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
       ? `Quelques détails restent à ajuster, notamment ${joinFr(signaux)}.`
       : "Quelques ajustements fins peuvent encore la rendre plus convaincante.";
     projection = choisirVarianteNarrative("summary.general.projection", "score_80_plus", [
-      " Rien d'alarmant : il s'agit surtout de finitions. Le diagnostic évalue la présentation visible de la fiche, et non la qualité de votre travail.",
-      " Ces ajustements concernent surtout la lisibilité au premier regard ; ils ne portent pas de jugement sur la qualité de vos prestations.",
-      " L'enjeu est d'affiner ce qu'un prospect voit avant de vous contacter, sans remettre en question votre savoir-faire."
+      " Rien d'alarmant : il s'agit surtout de finitions.",
+      " Ces ajustements concernent surtout la lisibilité au premier regard.",
+      " L'enjeu est d'affiner ce qu'un prospect voit avant de vous contacter."
     ]);
   }
   return `${bonjour}<br>${ouverture} ${constat}${projection}${positionPhrase}${suite}`;
@@ -5166,6 +5166,17 @@ function indicesProspect(){
   };
 }
 
+function conversionSousScoreEstIncomplet(d = donneesAnalyse){
+  const descriptionIncomplete = estNombre(d?.descriptionLongueur)
+    && Number(d.descriptionLongueur) < 400;
+  const servicesAbsents = estNombre(d?.nbServices)
+    && Number(d.nbServices) === 0;
+  const liensActionAbsents = d?.statutLiensAction === "available"
+    && Array.isArray(d?.liensAction)
+    && !d.liensAction.some((lien) => lien?.status === "direct");
+  return descriptionIncomplete || servicesAbsents || liensActionAbsents;
+}
+
 function indicesProspectHtml(){
   const idx = indicesProspect();
   const dObs = donneesAnalyse;
@@ -5179,8 +5190,8 @@ function indicesProspectHtml(){
     confiance: estNombre(dObs.note) && estNombre(dObs.nbAvis)
       ? `Observé sur votre fiche : ${fmtNote(dObs.note)}/5 sur ${nEntier(dObs.nbAvis)} avis.`
       : "Ce que votre fiche montre pour rassurer un prospect au premier regard.",
-    conversion: (estNombre(dObs.descriptionLongueur) && dObs.descriptionLongueur === 0) || (estNombre(dObs.nbServices) && dObs.nbServices === 0)
-      ? "Description, services, liens de contact : les champs qui transforment une visite en appel sont vides ou non renseignés."
+    conversion: conversionSousScoreEstIncomplet(dObs)
+      ? "Description, services et liens d’action : plusieurs éléments permettant de comprendre l’offre et de faciliter la prise de contact sont absents ou non renseignés."
       : "La clarté de votre offre et la facilité du premier contact."
   };
   const styleIndice = v => {
@@ -5761,14 +5772,19 @@ function rapportSansAvis(){
 // ligne 2571) et rapportSansAvis() (ci-dessus) plutôt que de dupliquer leur
 // logique. Hiérarchie des cas alignée sur
 // functions/lib/renderAnalysisHtml.js::formatRatingReviewsPhrase.
-function formatNoteAvisAdmin(rating, reviews, {reviewsDigits = 0, confirmeZero = false, zeroReviewsLabel = "aucun avis client"} = {}){
+function formatNoteAvisAdmin(rating, reviews, {reviewsDigits = 0, reviewsApproximate = false, confirmeZero = false, zeroReviewsLabel = "aucun avis client"} = {}){
   const hasReviews = estNombre(reviews);
   const hasRating = estNombre(rating);
+  const texteNote = () => Number(rating).toLocaleString("fr-FR", {minimumFractionDigits:1, maximumFractionDigits:1});
+  const texteAvis = () => {
+    const value = reviewsApproximate ? Math.round(Number(reviews)) : Number(reviews);
+    return `${reviewsApproximate ? "environ " : ""}${value.toLocaleString("fr-FR", {maximumFractionDigits:reviewsDigits})} avis`;
+  };
   if(confirmeZero || (hasReviews && Number(reviews) === 0)) return zeroReviewsLabel;
   if(!hasReviews && !hasRating) return "non vérifiable";
-  if(!hasReviews) return `${Number(rating).toLocaleString("fr-FR", {maximumFractionDigits:1})}/5 (nombre d'avis non vérifiable)`;
-  if(!hasRating) return `${Number(reviews).toLocaleString("fr-FR", {maximumFractionDigits:reviewsDigits})} avis (note non communiquée)`;
-  return `${Number(rating).toLocaleString("fr-FR", {maximumFractionDigits:1})}/5 et ${Number(reviews).toLocaleString("fr-FR", {maximumFractionDigits:reviewsDigits})} avis`;
+  if(!hasReviews) return `${texteNote()}/5 (nombre d'avis non vérifiable)`;
+  if(!hasRating) return `${texteAvis()} (note non communiquée)`;
+  return `${texteNote()}/5 et ${texteAvis()}`;
 }
 
 function rapportPositionTop3(){
@@ -6049,14 +6065,7 @@ function ecartsExpliquesHtml(){
 const PHRASE_PEDAGOGIE_PAGE2 = "Un client compare rarement une seule fiche : il en ouvre plusieurs en quelques secondes et retient celle qui le rassure le plus vite. Le Score Efficia™ mesure cette capacité à informer, rassurer et faciliter le contact.";
 
 function phraseTransitionPage2(categoriesTriees){
-  const majeures = categoriesTriees.filter(c => c.pct < 40);
-  if(majeures.length >= 2){
-    return "Votre score n'est pas diminué par un seul défaut majeur. Il résulte surtout de plusieurs signaux incomplets qui, mis ensemble, rendent le choix moins évident pour un nouveau client.";
-  }
-  if(majeures.length === 1){
-    return `Votre score est surtout tiré vers le bas par un seul poste : ${majeures[0].cat.cat.toLowerCase()}. Le reste de la fiche tient déjà mieux la comparaison.`;
-  }
-  return "Votre score reste globalement homogène : les points restants relèvent surtout d'ajustements de finition plutôt que d'un problème de fond.";
+  return "Votre score ne s’explique pas uniquement par un seul point. Plusieurs signaux incomplets s’ajoutent et rendent le choix moins évident pour un nouveau client.";
 }
 
 /* ============ PAGE 3 : CHECKLIST DES POINTS ANALYSÉS ============ */
@@ -6083,7 +6092,7 @@ function checklistHtml(){
       if(!critereEstNote(cr)){
         const synthese = donneesAnalyse.syntheseConcurrence || {};
         const texteVotreFiche = formatNoteAvisAdmin(synthese.rating, synthese.reviews, {reviewsDigits:0, confirmeZero:rapportSansAvis()});
-        const texteConcurrents = formatNoteAvisAdmin(synthese.averageRating, synthese.averageReviews, {reviewsDigits:2, zeroReviewsLabel:"aucun avis"});
+        const texteConcurrents = formatNoteAvisAdmin(synthese.averageRating, synthese.averageReviews, {reviewsApproximate:true, zeroReviewsLabel:"aucun avis"});
         return `<div class="chk-item chk-item--informational"><span class="chk-ic chk-unknown">i</span><span><strong>${LIBELLES_COURTS[cr.key] || cr.q}</strong><br>Votre fiche : ${texteVotreFiche} · Concurrents : ${texteConcurrents} · ${synthese.label || "À confirmer"}</span></div>`;
       }
       const p = lirePoints(cr.id);
