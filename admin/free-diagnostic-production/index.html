@@ -5896,7 +5896,15 @@ function benchmarkLignes(){
     const prioritaire = !avantage && (label === "Note moyenne" ? t - v >= 0.35 : t > Math.max(v * 1.6, v + 4));
     lignes.push({label, vous:formatV(vous), top3:formatV(top3), statut: statutForce || (avantage ? "Avantage" : prioritaire ? "Prioritaire" : "À renforcer")});
   };
-  const statutPhotos = (v, t) => v < t ? "À renforcer" : v === t ? "Dans la moyenne" : "Avantage";
+  // La ligne PDF affiche les deux volumes comme des nombres entiers. Le badge
+  // doit comparer exactement ces mêmes valeurs visibles : sinon une moyenne
+  // brute de 19,33 est imprimée « 19 » tout en classant à tort 19 comme
+  // inférieur. Aucun score ni critère n'est concerné par cette présentation.
+  const statutPhotos = (v, t) => {
+    const photosFiche = nEntier(v);
+    const moyenneAffichee = nEntier(t);
+    return photosFiche < moyenneAffichee ? "À renforcer" : photosFiche === moyenneAffichee ? "Dans la moyenne" : "Avantage";
+  };
   const entier = v => String(nEntier(v));
   push("Note moyenne", d.note, m.note ?? api?.noteC, fmtNote, (v,t) => v >= t - 0.05);
   push("Nombre d'avis", d.nbAvis, m.avis ?? api?.volC, entier, (v,t) => v >= t);
