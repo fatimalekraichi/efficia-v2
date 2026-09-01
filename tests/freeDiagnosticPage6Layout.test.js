@@ -298,12 +298,25 @@ test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, s
 // l'absence de Chrome. Il ne dépend d'aucun paquet npm supplémentaire — le
 // projet n'a aucune dépendance déclarée et cette suite le respecte.
 const CDN_PROBE_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+const HTML2CANVAS_CDN_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 
 async function cdnReachable() {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(CDN_PROBE_URL, { method: "HEAD", signal: controller.signal });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function html2canvasReachable() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(HTML2CANVAS_CDN_URL, { method: "HEAD", signal: controller.signal });
     clearTimeout(timeout);
     return res.ok;
   } catch {
@@ -395,4 +408,132 @@ test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) 
     await server?.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+// Le défaut historique ne vient pas du DOM : il apparaît pendant la capture
+// html2canvas de certaines pages éloignées du long rapport. Cette fixture
+// reproduit six pages A4 avec le vrai logo PNG et vérifie à la fois la
+// géométrie du DOM source, celle du clone html2canvas et le canvas capturé.
+const LOGO_PNG_DATA_URL = `data:image/png;base64,${readFileSync(join(projectRoot, "assets", "logo", "logo-efficia-digital.png")).toString("base64")}`;
+
+function sixPagesLogoFixture() {
+  const pages = Array.from({ length: 6 }, (_, index) => {
+    const page = index + 1;
+    return `<section class="page page-logo-test page-${page}">
+      <header class="rapport-header report-header"><div class="rapport-logo report-logo-wrap"><img class="report-logo" src="${LOGO_PNG_DATA_URL}" alt="Efficia Digital"></div><span class="rap-etiquette">Diagnostic Efficia™</span></header>
+      <div class="chapitre">Étape ${page} · Vérification</div><h1 class="rapport-title">Page ${page}</h1>
+      <p class="rapport-subtitle">Contenu de contrôle du diagnostic gratuit.</p>
+      <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page ${page}/6</span></div>
+    </section>`;
+  }).join("\n");
+  return `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${css}</style>
+  <main id="rapport-contenu">${pages}</main><output id="logo-layout-result"></output>
+  <script src="${HTML2CANVAS_CDN_URL}"></script><script>
+    async function waitForImages(container) {
+      const images = [...container.querySelectorAll("img")];
+      await Promise.all(images.map(async (img) => {
+        if (!img.complete) await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; });
+        if (typeof img.decode === "function") { try { await img.decode(); } catch (_) {} }
+      }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    function captureOptions(pageIndex, clones) {
+      return { scale: 1, useCORS: true, allowTaint: false, backgroundColor: "#ffffff", onclone(doc) {
+        const page = doc.querySelectorAll("#rapport-contenu .page")[pageIndex];
+        const pageRect = page.getBoundingClientRect(); const image = page.querySelector(".rapport-logo img"); const logo = image.getBoundingClientRect();
+        const header = page.querySelector(".rapport-header").getBoundingClientRect();
+        const captureLogo = doc.createElement("span");
+        captureLogo.style.cssText = "display:block;flex:0 0 auto;width:" + logo.width + "px;height:" + logo.height + "px;background-image:url(\\\"" + image.currentSrc + "\\\");background-repeat:no-repeat;background-position:center;background-size:contain";
+        image.replaceWith(captureLogo);
+        const replacement = captureLogo.getBoundingClientRect();
+        clones.push({ page: pageIndex + 1, pageTop: pageRect.top, logoTop: replacement.top - pageRect.top, logoBottom: replacement.bottom - pageRect.top, logoWidth: replacement.width, logoHeight: replacement.height, headerTop: header.top - pageRect.top, headerOverflow: getComputedStyle(page.querySelector(".rapport-header")).overflow });
+      }};
+    }
+    function countInk(context, x, y, width, height) {
+      const pixels = context.getImageData(x, y, width, height).data;
+      let count = 0;
+      for (let index = 0; index < pixels.length; index += 4) if (pixels[index] < 235 || pixels[index + 1] < 235 || pixels[index + 2] < 235) count += 1;
+      return count;
+    }
+    addEventListener("load", async () => {
+      try {
+        const pages = [...document.querySelectorAll("#rapport-contenu .page")];
+        await waitForImages(document.querySelector("#rapport-contenu"));
+        const source = pages.map((page, index) => { const pageRect = page.getBoundingClientRect(); const logo = page.querySelector(".rapport-logo img").getBoundingClientRect(); const header = page.querySelector(".rapport-header").getBoundingClientRect(); return { page: index + 1, logoTop: logo.top - pageRect.top, logoBottom: logo.bottom - pageRect.top, logoWidth: logo.width, logoHeight: logo.height, headerTop: header.top - pageRect.top, headerOverflow: getComputedStyle(page.querySelector(".rapport-header")).overflow }; });
+        const clones = [], canvases = [];
+        for (const [index, page] of pages.entries()) {
+          const canvas = await window.html2canvas(page, captureOptions(index, clones));
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          canvases.push({ page: index + 1, width: canvas.width, height: canvas.height, topInk: countInk(context, 90, 5, 500, 38), logoInk: countInk(context, 90, 48, 500, 70) });
+        }
+        document.querySelector("#logo-layout-result").textContent = JSON.stringify({ pageCount: pages.length, source, clones, canvases });
+      } catch (error) { document.querySelector("#logo-layout-result").textContent = JSON.stringify({ error: String(error && error.message || error) }); }
+    });
+  <\/script></html>`;
+}
+
+test("logo du diagnostic gratuit : les six pages gardent une marge haute dans le DOM et le canvas html2canvas", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
+  if (!(await html2canvasReachable())) {
+    t.skip("CDN html2canvas injoignable depuis cet environnement");
+    return;
+  }
+  const directory = mkdtempSync(join(tmpdir(), "efficia-free-logo-layout-"));
+  let server;
+  try {
+    server = await serveTemporaryDirectory(directory);
+    writeFileSync(join(directory, "six-pages-logo.html"), sixPagesLogoFixture());
+    const result = JSON.parse(await collectPageResultWithIsolatedChrome({
+      chrome,
+      url: server.url("six-pages-logo.html"),
+      profileDir: join(directory, "chrome-profile"),
+      phase: "logo rapport gratuit / six pages",
+      timeout: 35_000,
+      selector: "#logo-layout-result",
+    }));
+    assert.equal(result.error, undefined, `capture html2canvas en échec : ${result.error}`);
+    assert.equal(result.pageCount, 6, "le rapport doit contenir exactement six pages");
+    assert.equal(result.source.length, 6);
+    assert.equal(result.clones.length, 6);
+    assert.equal(result.canvases.length, 6);
+    const headerTops = result.source.map((entry) => entry.headerTop);
+    for (const entry of result.source) {
+      assert.ok(entry.logoTop > 0, `page ${entry.page}: logo collé ou coupé par le haut (${entry.logoTop}px)`);
+      assert.ok(entry.logoBottom > entry.logoTop, `page ${entry.page}: hauteur logo nulle`);
+      assert.ok(entry.logoWidth > 0 && entry.logoHeight > 0, `page ${entry.page}: dimensions logo invalides`);
+      assert.equal(entry.headerOverflow, "visible", `page ${entry.page}: header susceptible de couper le logo`);
+      assert.ok(Math.abs(entry.headerTop - headerTops[0]) <= 0.5, `page ${entry.page}: header décalé par rapport à la page 1`);
+    }
+    for (const entry of result.clones) {
+      const source = result.source[entry.page - 1];
+      assert.ok(entry.pageTop >= 0, `page ${entry.page}: position clone invalide`);
+      assert.ok(entry.logoTop > 0 && entry.logoBottom > entry.logoTop, `page ${entry.page}: logo coupé dans le clone`);
+      assert.ok(entry.logoWidth > 0 && entry.logoHeight > 0, `page ${entry.page}: logo absent du clone`);
+      assert.equal(entry.headerOverflow, "visible", `page ${entry.page}: header du clone masque le logo`);
+      assert.ok(Math.abs(entry.logoTop - source.logoTop) <= 0.5, `page ${entry.page}: logo décalé entre DOM et clone`);
+      assert.ok(Math.abs(entry.headerTop - source.headerTop) <= 0.5, `page ${entry.page}: header décalé entre DOM et clone`);
+    }
+    for (const entry of result.canvases) {
+      assert.ok(entry.width > 0 && entry.height > 0, `page ${entry.page}: canvas vide`);
+      assert.equal(entry.topInk, 0, `page ${entry.page}: contenu rasterisé avant la marge haute`);
+      assert.ok(entry.logoInk > 0, `page ${entry.page}: logo absent du canvas`);
+    }
+  } finally {
+    await server?.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("le renderer gratuit stabilise seulement le clone html2canvas de son logo", () => {
+  assert.match(generator, /function optionsCapturePdfDiagnostic\(\)/u);
+  assert.match(generator, /clonedDoc\.querySelectorAll\("#rapport-contenu \.rapport-logo img"\)/u);
+  assert.match(generator, /logoCapture\.style\.backgroundImage/u);
+  assert.match(generator, /img\.replaceWith\(logoCapture\)/u);
+  const freeRenderer = generator.slice(generator.indexOf("async function telechargerPDF(){"));
+  assert.match(freeRenderer, /await waitForReportImages\(document\.getElementById\("rapport-contenu"\)\)/u);
+  assert.match(freeRenderer, /html2canvasFn\(page, optionsCapturePdfDiagnostic\(\)\)/u);
+  const premiumStart = generator.indexOf("async function telechargerAuditPremium(){");
+  assert.ok(premiumStart >= 0, "renderer Premium introuvable");
+  const premiumRenderer = generator.slice(premiumStart, generator.indexOf("async function telechargerPDF(){"));
+  assert.doesNotMatch(premiumRenderer, /optionsCapturePdfDiagnostic/u);
+  assert.doesNotMatch(premiumRenderer, /logoCapture/u);
 });

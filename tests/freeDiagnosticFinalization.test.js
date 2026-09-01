@@ -187,6 +187,7 @@ test("les deux interfaces chargent le moteur commun et ne conservent pas l’anc
 });
 
 test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
+  const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
   let composed = 0;
   let canvasCalls = 0;
@@ -234,7 +235,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     alert: () => assert.fail("aucune alerte attendue"),
     console,
   };
-  vm.runInNewContext(`${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
   assert.equal(canvasCalls, 6);

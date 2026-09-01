@@ -4742,6 +4742,41 @@ async function waitForReportImages(container){
   }));
 }
 
+// html2canvas recrée les <img> dans un document de clone. Sur les pages
+// lointaines du rapport, Chrome pouvait alors rasteriser le logo PNG data URL
+// depuis une boîte verticale incomplète, alors que le DOM source est correct.
+// Dans le clone de capture uniquement, la même image est donc peinte comme
+// arrière-plan d'une boîte ayant exactement la géométrie du logo source.
+// Le DOM affiché, le logo et le renderer Premium restent inchangés.
+function optionsCapturePdfDiagnostic(){
+  return {
+    scale:2,
+    useCORS:true,
+    allowTaint:false,
+    backgroundColor:"#ffffff",
+    onclone: clonedDoc => {
+      clonedDoc.querySelectorAll("#rapport-contenu .rapport-logo img").forEach(img => {
+        const rect = img.getBoundingClientRect();
+        const logoCapture = clonedDoc.createElement("span");
+        logoCapture.setAttribute("aria-label", img.alt || "Efficia Digital");
+        logoCapture.style.display = "block";
+        logoCapture.style.flex = "0 0 auto";
+        logoCapture.style.width = `${rect.width}px`;
+        logoCapture.style.height = `${rect.height}px`;
+        logoCapture.style.backgroundImage = `url("${img.currentSrc || img.src}")`;
+        logoCapture.style.backgroundRepeat = "no-repeat";
+        logoCapture.style.backgroundPosition = "center";
+        logoCapture.style.backgroundSize = "contain";
+        img.replaceWith(logoCapture);
+      });
+      clonedDoc.querySelectorAll("#rapport-contenu .rapport-logo .fallback").forEach(el => {
+        el.style.fontWeight = "850";
+        el.style.color = "#071a3a";
+      });
+    }
+  };
+}
+
 async function chargerLogoRapportDataUrl(){
   if(logoRapportDataUrl) return logoRapportDataUrl;
   const src = LOGO_RAPPORT_SRC;
@@ -8009,18 +8044,7 @@ async function telechargerPDF(){
     await waitForReportImages(document.getElementById("rapport-contenu"));
     const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
     for(const [index, page] of pages.entries()){
-      const canvas = await html2canvasFn(page, {
-        scale:2,
-        useCORS:true,
-        allowTaint:false,
-        backgroundColor:"#ffffff",
-        onclone: clonedDoc => {
-          clonedDoc.querySelectorAll("#rapport-contenu .rapport-logo .fallback").forEach(el => {
-            el.style.fontWeight = "850";
-            el.style.color = "#071a3a";
-          });
-        }
-      });
+      const canvas = await html2canvasFn(page, optionsCapturePdfDiagnostic());
       if(index > 0) pdf.addPage("a4", "portrait");
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
       ajouterLiensPdfPourPage(pdf, page);
