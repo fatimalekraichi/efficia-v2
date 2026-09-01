@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { collectPageResultWithIsolatedChrome } from "./chromeHeadlessHarness.js";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const generatorPath = join(projectRoot, "admin/free-diagnostic-production/index.html");
 const generator = readFileSync(generatorPath, "utf8");
 const css = generator.match(/<style>([\s\S]*?)<\/style>/u)?.[1] || "";
-const chrome = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+function chromeForTestingPath() {
+  const cache = join(homedir(), "Library", "Caches", "ms-playwright");
+  try {
+    const versions = readdirSync(cache).filter((name) => name.startsWith("chromium-")).sort().reverse();
+    return versions.map((version) => join(cache, version, "chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing")).find(existsSync) || "";
+  } catch {
+    return "";
+  }
+}
+
+// Chrome for Testing est isolé du navigateur quotidien et évite les tâches
+// macOS du profil utilisateur qui empêchent parfois --dump-dom de se fermer.
+const chrome = [process.env.CHROME_BIN, chromeForTestingPath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find((candidate) => candidate && existsSync(candidate));
 const hasChrome = existsSync(chrome);
 
 // Empêche toute régression silencieuse du garde-fou historique : le
@@ -143,15 +155,16 @@ function pageOffresFixture({
   </div>`;
 }
 
-function layoutHtmlPage(pageHtml) {
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu">${pageHtml}</div><output id="layout-result"></output><script>
+function layoutHtmlPages(pagesHtml) {
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu">${pagesHtml}</div><output id="layout-result"></output><script>
     addEventListener("load", () => {
-      const page = document.querySelector(".page"); const footer = page.querySelector(".pied");
-      const content = [...page.children].filter((element) => !element.classList.contains("pied"));
-      const contentBottom = Math.max(...content.map((element) => element.offsetTop + element.offsetHeight));
-      const rect = (element) => { const value = element.getBoundingClientRect(); return { top:value.top, bottom:value.bottom }; };
-      const pageRect = rect(page); const footerRect = rect(footer);
-      const clippedByPage = content.some((element) => element.getBoundingClientRect().bottom > pageRect.bottom + 0.5);
+      const result = Object.fromEntries([...document.querySelectorAll(".page-offres[data-layout-scenario]")].map((page) => {
+        const footer = page.querySelector(".pied");
+        const content = [...page.children].filter((element) => !element.classList.contains("pied"));
+        const contentBottom = Math.max(...content.map((element) => element.offsetTop + element.offsetHeight));
+        const rect = (element) => { const value = element.getBoundingClientRect(); return { top:value.top, bottom:value.bottom }; };
+        const pageRect = rect(page); const footerRect = rect(footer);
+        const clippedByPage = content.some((element) => element.getBoundingClientRect().bottom > pageRect.bottom + 0.5);
       // Chaque bloc direct de la page (offer-card compris) doit contenir tout
       // son propre contenu : détecte un texte qui déborderait visuellement de
       // sa carte (chevauchement / masquage) sans forcément dépasser la page.
@@ -159,7 +172,7 @@ function layoutHtmlPage(pageHtml) {
       // des enfants sont relatifs à leur offsetParent positionné le plus
       // proche (ici la page), pas à leur parent direct — les mélanger avec
       // le offsetHeight du parent donnerait un faux positif systématique.
-      const overflowingBlocks = [...page.querySelectorAll(".offer-card, .offer-grid, .projection-grid, .effort-grid")].filter((element) => {
+        const overflowingBlocks = [...page.querySelectorAll(".offer-card, .offer-grid, .projection-grid, .effort-grid")].filter((element) => {
         const kids = [...element.children];
         if (!kids.length) return false;
         const parentBottom = element.getBoundingClientRect().bottom;
@@ -168,46 +181,80 @@ function layoutHtmlPage(pageHtml) {
       }).map((element) => element.className);
       // Les deux cartes d'offre (grille 2 colonnes) ne doivent jamais se
       // chevaucher visuellement.
-      const cards = [...page.querySelectorAll(".offer-card")].map(rect);
-      let cardsOverlap = false;
-      for (let i = 0; i < cards.length; i += 1) {
-        for (let j = i + 1; j < cards.length; j += 1) {
-          const a = cards[i], b = cards[j];
-          if (a.top < b.bottom && a.bottom > b.top) {
-            const ael = page.querySelectorAll(".offer-card")[i].getBoundingClientRect();
-            const bel = page.querySelectorAll(".offer-card")[j].getBoundingClientRect();
-            if (ael.left < bel.right && ael.right > bel.left) cardsOverlap = true;
+        const cards = [...page.querySelectorAll(".offer-card")].map(rect);
+        let cardsOverlap = false;
+        for (let i = 0; i < cards.length; i += 1) {
+          for (let j = i + 1; j < cards.length; j += 1) {
+            const a = cards[i], b = cards[j];
+            if (a.top < b.bottom && a.bottom > b.top) {
+              const ael = page.querySelectorAll(".offer-card")[i].getBoundingClientRect();
+              const bel = page.querySelectorAll(".offer-card")[j].getBoundingClientRect();
+              if (ael.left < bel.right && ael.right > bel.left) cardsOverlap = true;
+            }
           }
         }
-      }
-      const result = {
-        contentBottom,
-        footerTop: footer.offsetTop,
-        footerBottom: footerRect.bottom,
-        pageBottom: pageRect.bottom,
-        marginPx: footer.offsetTop - contentBottom,
-        clipped: clippedByPage,
-        overflowingBlocks,
-        cardsOverlap,
-        exportAlert: contentBottom > footer.offsetTop - 12,
-      };
+        return [page.dataset.layoutScenario, {
+          contentBottom,
+          footerTop: footer.offsetTop,
+          footerBottom: footerRect.bottom,
+          pageBottom: pageRect.bottom,
+          marginPx: footer.offsetTop - contentBottom,
+          clipped: clippedByPage,
+          overflowingBlocks,
+          cardsOverlap,
+          exportAlert: contentBottom > footer.offsetTop - 12,
+        }];
+      }));
       document.querySelector("#layout-result").textContent = JSON.stringify(result);
     });
   <\/script></body></html>`;
 }
 
-function measureLayout(directory, name, opts) {
-  const htmlPath = join(directory, `${name}.html`);
-  writeFileSync(htmlPath, layoutHtmlPage(pageOffresFixture(opts)));
-  const output = execFileSync(chrome, ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
-  const encoded = output.match(/<output id="layout-result">([^<]+)<\/output>/u)?.[1];
-  assert.ok(encoded, `${name}: mesures DOM absentes`);
-  return JSON.parse(encoded.replaceAll("&quot;", '"'));
+/* Chrome headless ne doit jamais hériter du profil interactif macOS : il y
+   lance alors des tâches de fond (installations d'applications, sync, etc.)
+   qui peuvent empêcher --dump-dom de se terminer. Chaque suite page 6
+   reçoit donc son profil éphémère et toute attente est bornée avec la phase
+   concernée dans le message d'erreur. */
+async function serveTemporaryDirectory(directory) {
+  const server = createServer((request, response) => {
+    const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
+    const filename = (pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, ""));
+    if(filename.includes("..")) { response.writeHead(400).end(); return; }
+    let content;
+    try { content = readFileSync(join(directory, filename)); }
+    catch { response.writeHead(404).end(); return; }
+    response.writeHead(200, {
+      "content-type": filename.endsWith(".html") ? "text/html; charset=utf-8" : "application/octet-stream",
+      connection: "close",
+    });
+    response.end(content);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  return {
+    url: (filename) => `http://127.0.0.1:${port}/${filename}`,
+    close: () => new Promise((resolve, reject) => {
+      server.closeAllConnections?.();
+      server.close((error) => error ? reject(error) : resolve());
+    }),
+  };
 }
 
-test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, sans coupe ni chevauchement", { skip: !hasChrome }, () => {
+async function measureLayouts(directory, profileDir, scenarios, server) {
+  const htmlPath = join(directory, "scenarios.html");
+  const pages = scenarios.map(({ name, opts }) => pageOffresFixture(opts).replace('class="page page-offres"', `class="page page-offres" data-layout-scenario="${name}"`)).join("\n");
+  writeFileSync(htmlPath, layoutHtmlPages(pages));
+  const result = await collectPageResultWithIsolatedChrome({ chrome, url: server.url("scenarios.html"), profileDir, phase: "page 6 / scénarios de mise en page", selector: "#layout-result" });
+  assert.ok(result, "page 6 : mesures DOM absentes");
+  return JSON.parse(result);
+}
+
+test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, sans coupe ni chevauchement", { skip: !hasChrome, timeout: 25_000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "efficia-page6-layout-"));
+  let server;
   try {
+    const profileDir = join(directory, "chrome-profile");
+    server = await serveTemporaryDirectory(directory);
     const scenarios = [
       { name: "baseline-courte", opts: { business: "Chez Marc", withProjection: false, withEffort: false, tempsDiy: 20 } },
       // Scénario "B&V dense" : nom long avec esperluette, blocs projection +
@@ -225,8 +272,10 @@ test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, s
       // les blocs optionnels activés + DIY maximal.
       { name: "pire-scenario-intitules-longs", opts: { business: "Cabinet d'Électricité Générale, Domotique, Sécurité Incendie et Bornes de Recharge B&V — Arlon, Habay, Attert et Environs", withProjection: true, withEffort: true, withConcurrents: true, withDeduction: true, tempsDiy: 300 } },
     ];
-    for (const { name, opts } of scenarios) {
-      const layout = measureLayout(directory, name, opts);
+    const layouts = await measureLayouts(directory, profileDir, scenarios, server);
+    for (const { name } of scenarios) {
+      const layout = layouts[name];
+      assert.ok(layout, `${name}: mesures DOM absentes`);
       assert.equal(layout.exportAlert, false, `${name}: validerMiseEnPageRapport() déclencherait l'alerte (contentBottom=${layout.contentBottom} > footerTop-12=${layout.footerTop - 12})`);
       assert.ok(layout.marginPx >= 24, `${name}: marge de ${layout.marginPx}px sous le minimum robuste de 24px`);
       assert.ok(layout.footerBottom <= layout.pageBottom + 0.5, `${name}: pied de page hors des limites de la page`);
@@ -235,6 +284,7 @@ test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, s
       assert.equal(layout.cardsOverlap, false, `${name}: les deux cartes d'offre se chevauchent`);
     }
   } finally {
+    await server?.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -310,29 +360,39 @@ function pdfHtmlPage(pageOffresHtml) {
   </body></html>`;
 }
 
-test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) — 6 pages, sans alerte", { skip: !hasChrome }, async (t) => {
+test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) — 6 pages, sans alerte", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
   if (!(await cdnReachable())) {
     t.skip("CDN jsPDF/html2canvas injoignable depuis cet environnement");
     return;
   }
   const directory = mkdtempSync(join(tmpdir(), "efficia-page6-pdf-"));
+  let server;
   try {
+    const profileDir = join(directory, "chrome-profile");
+    server = await serveTemporaryDirectory(directory);
     const pageOffresHtml = pageOffresFixture({
       business: "B&V Électricité Générale — Installations, Dépannages & Domotique",
       withProjection: true, withEffort: true, withConcurrents: true, tempsDiy: 240,
     });
     const htmlPath = join(directory, "bv-dense-pdf.html");
     writeFileSync(htmlPath, pdfHtmlPage(pageOffresHtml));
-    const output = execFileSync(chrome, ["--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=30000", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 20_000_000, timeout: 45_000 });
-    const encoded = output.match(/<output id="pdf-result">([^<]*)<\/output>/u)?.[1];
-    assert.ok(encoded, "résultat de génération PDF absent du DOM");
-    const result = JSON.parse(encoded.replaceAll("&quot;", '"'));
+    const resultText = await collectPageResultWithIsolatedChrome({
+      chrome,
+      url: server.url("bv-dense-pdf.html"),
+      profileDir,
+      phase: "page 6 / PDF B&V dense",
+      timeout: 35_000,
+      selector: "#pdf-result",
+    });
+    assert.ok(resultText, "résultat de génération PDF absent du DOM");
+    const result = JSON.parse(resultText);
     assert.equal(result.error, undefined, `génération PDF en échec : ${result.error}`);
     assert.equal(result.pageCount, 6, `le rapport contient ${result.pageCount} pages au lieu de 6`);
     assert.equal(result.totalPdfPages, 6, `le PDF généré contient ${result.totalPdfPages} pages au lieu de 6`);
     assert.ok(result.pdfBytes > 0, "le PDF généré est vide");
     assert.deepEqual(result.alerts, [], `alerte(s) déclenchée(s) pendant la génération : ${(result.alerts || []).join(", ")}`);
   } finally {
+    await server?.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

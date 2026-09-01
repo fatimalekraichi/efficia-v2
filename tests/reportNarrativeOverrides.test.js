@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { collectPageResultWithIsolatedChrome } from "./chromeHeadlessHarness.js";
 
 import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestPut as putDraft } from "../functions/api/admin/audit-drafts/[draftId].js";
@@ -128,7 +128,7 @@ function longestAutomaticText(fieldId) {
   return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[fieldId];
 }
 
-function runAdminBrowserHarness(harnessSource) {
+async function runAdminBrowserHarness(harnessSource) {
   const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
     .replace(
       '<script src="/js/score-efficia-core.js?v=1"></script>',
@@ -207,13 +207,16 @@ function runAdminBrowserHarness(harnessSource) {
   try {
     const htmlPath = join(directory, "workflow.html");
     writeFileSync(htmlPath, instrumented);
-    const output = execFileSync(CHROME, [
-      "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=5000", "--dump-dom",
-      `${pathToFileURL(htmlPath).href}?analysisId=${ANALYSIS_ID}`,
-    ], { encoding: "utf8", maxBuffer: 8_000_000 });
-    const encoded = output.match(/<output id="workflow-browser-result">([^<]+)<\/output>/u)?.[1];
-    assert.ok(encoded, "résultat du parcours navigateur absent");
-    return JSON.parse(encoded.replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
+    const result = await collectPageResultWithIsolatedChrome({
+      chrome: CHROME,
+      url: `${pathToFileURL(htmlPath).href}?analysisId=${ANALYSIS_ID}`,
+      profileDir: join(directory, "chrome-profile"),
+      phase: "parcours navigateur des textes personnalisés",
+      timeout: 15_000,
+      selector: "#workflow-browser-result",
+    });
+    assert.ok(result, "résultat du parcours navigateur absent");
+    return JSON.parse(result);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -467,7 +470,7 @@ test("le benchmark photos affiche Dans la moyenne à l'égalité exacte", () => 
   assert.equal(lignes.find((item) => item.label === "Photos")?.statut, "Dans la moyenne");
 });
 
-test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME) }, () => {
+test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {
   const scenarios = [
     ["summary.general", "page 1"],
     ["priority.1.title", "page 4 titre"],
@@ -484,7 +487,10 @@ test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4
     const instrumented = report.replace("</body>", `<output id="override-layout-result"></output><script>
     addEventListener("load", () => {
       const pages = [...document.querySelectorAll(".page")];
-      const editable = [...document.querySelectorAll("p, li")].filter((element) => element.textContent.includes("OVR-"));
+      // Les titres de priorité sont rendus dans un heading ; les inclure
+      // permet de vérifier le même garde-fou de pagination que pour les
+      // paragraphes et listes personnalisables.
+      const editable = [...document.querySelectorAll("p, li, h1, h2, h3")].filter((element) => element.textContent.includes("OVR-"));
       const outside = editable.flatMap((element) => {
         const page = element.closest(".page");
         const footer = page?.querySelector(".doc-footer");
@@ -505,10 +511,16 @@ test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4
     try {
       const htmlPath = join(directory, "maxima.html");
       writeFileSync(htmlPath, instrumented);
-      const output = execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--dump-dom", pathToFileURL(htmlPath).href], { encoding: "utf8", maxBuffer: 5_000_000 });
-      const encoded = output.match(/<output id="override-layout-result">([^<]+)<\/output>/u)?.[1];
-      assert.ok(encoded, `${pageLabel} : mesures DOM absentes`);
-      const layout = JSON.parse(encoded.replaceAll("&quot;", '"'));
+      const result = await collectPageResultWithIsolatedChrome({
+        chrome: CHROME,
+        url: pathToFileURL(htmlPath).href,
+        profileDir: join(directory, "chrome-profile"),
+        phase: `textes personnalisés / ${pageLabel}`,
+        timeout: 15_000,
+        selector: "#override-layout-result",
+      });
+      assert.ok(result, `${pageLabel} : mesures DOM absentes`);
+      const layout = JSON.parse(result);
       assert.equal(layout.pageCount, 6, pageLabel);
       assert.ok(layout.editableCount >= 1, `${pageLabel} : bloc personnalisé introuvable dans le PDF`);
       assert.deepEqual(layout.outside, [], pageLabel);
@@ -518,8 +530,8 @@ test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4
   }
 });
 
-test("après un rechargement complet, l’éditeur s’ouvre sans génération PDF et affiche les textes persistés", { skip: !existsSync(CHROME) }, () => {
-  const result = runAdminBrowserHarness(`
+test("après un rechargement complet, l’éditeur s’ouvre sans génération PDF et affiche les textes persistés", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
     (async () => {
       try {
         for (let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
@@ -558,8 +570,8 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
   assert.equal(result.pageReviewWarning, false);
 });
 
-test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME) }, () => {
-  const result = runAdminBrowserHarness(`
+test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
     (async () => {
       try {
         for (let attempt = 0; attempt < 50 && !document.getElementById("d-requete")?.value; attempt += 1) {

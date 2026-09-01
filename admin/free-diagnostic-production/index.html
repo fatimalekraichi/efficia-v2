@@ -4970,6 +4970,40 @@ function nomCourtRapport(nom, max = 42){
   return (dernierEspace > 20 ? coupe.slice(0, dernierEspace) : coupe).trim() + "…";
 }
 
+/* Les variantes du Diagnostic gratuit restent stables : un même brouillon
+   régénéré conserve son texte, sans jamais tirer au hasard. L'identifiant de
+   l'analyse est prioritaire ; le nom normalisé offre un repli sûr pour une
+   analyse locale qui n'a pas encore d'identifiant. Le bloc et la branche
+   font partie de la graine afin que deux blocs d'une même fiche ne soient
+   pas artificiellement synchronisés. */
+function normaliserGraineNarrative(value){
+  return String(value || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function hashNarratifDeterministe(value){
+  let hash = 2166136261;
+  for(const caractere of String(value || "")){
+    hash ^= caractere.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function choisirVarianteNarrative(blockId, branche, variantes, identite = null){
+  const pool = Array.isArray(variantes) ? variantes.filter(estTexte) : [];
+  if(!pool.length) return "";
+  const analysisId = typeof analysisIdDepuisUrl === "function" ? analysisIdDepuisUrl() : "";
+  const entreprise = identite || document.getElementById("p-entreprise")?.value || "diagnostic";
+  const graine = [normaliserGraineNarrative(analysisId || entreprise), blockId, branche].join("|");
+  return pool[hashNarratifDeterministe(graine) % pool.length];
+}
+
+function moyenneAvisAffichee(value){
+  return estNombre(value) ? `environ ${nEntier(value)} avis` : "";
+}
+
 function texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete, priorites}){
   const bonjour = contact ? `Bonjour ${contact},` : "Bonjour,";
   const persona = personaSecteur(activite);
@@ -4990,23 +5024,47 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
 
   let ouverture, constat, projection;
   if(score < 50){
-    ouverture = `La fiche Google de ${nom} ne donne pas encore à un client qui la découvre suffisamment de raisons de lui faire confiance.`;
+    ouverture = choisirVarianteNarrative("summary.general.opening", "score_under_50", [
+      `La fiche Google de ${nom} ne donne pas encore à un client qui la découvre suffisamment de raisons de lui faire confiance.`,
+      `Avant le premier appel, la fiche Google de ${nom} laisse encore trop de questions ouvertes à une personne qui vous découvre.`,
+      `La présentation visible de ${nom} ne permet pas encore à un nouveau prospect de comprendre et de vérifier l'essentiel avec confiance.`
+    ]);
     constat = signaux.length
       ? `Aujourd'hui, ${persona}${lieu} découvre ${joinFr(signaux)}.`
       : `Aujourd'hui, votre fiche laisse encore plusieurs informations importantes à préciser.`;
-    projection = ` Ces éléments ne suffisent pas à évaluer la qualité globale de votre travail, mais ils peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}.`;
+    projection = choisirVarianteNarrative("summary.general.projection", "score_under_50", [
+      ` Ces éléments peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}. Ce diagnostic évalue la présentation visible de votre fiche, et non la qualité de votre travail.`,
+      ` Ces signaux peuvent freiner la décision de contact. Ils ne permettent pas de juger votre travail : le diagnostic porte uniquement sur la présentation publique de votre fiche.`,
+      ` Ils peuvent ralentir un premier contact sans remettre en cause votre savoir-faire. Le diagnostic mesure la façon dont votre fiche se présente, pas la qualité de vos prestations.`
+    ]);
   } else if(score < 80){
-    ouverture = `${nom} a déjà posé de bonnes bases sur sa fiche Google.`;
+    ouverture = choisirVarianteNarrative("summary.general.opening", "score_50_to_79", [
+      `${nom} a déjà posé de bonnes bases sur sa fiche Google.`,
+      `La fiche de ${nom} présente déjà plusieurs repères utiles pour une personne qui la découvre.`,
+      `${nom} dispose d'une base visible sur Google, qui peut encore devenir plus convaincante au premier regard.`
+    ]);
     constat = signaux.length
       ? `Mais aujourd'hui, ${persona}${lieu} remarque encore ${joinFr(signaux)}.`
       : `Mais certains éléments restent incomplets aux yeux d'un prospect qui compare plusieurs fiches.`;
-    projection = " Ces signaux peuvent freiner la décision de contact, sans remettre en cause le sérieux de votre travail.";
+    projection = choisirVarianteNarrative("summary.general.projection", "score_50_to_79", [
+      " Ces signaux peuvent freiner la décision de contact, sans remettre en cause le sérieux de votre travail. Le diagnostic évalue la présentation de la fiche, pas la qualité de vos prestations.",
+      " Ils peuvent laisser une hésitation avant l'appel. Cette analyse porte sur ce que montre la fiche Google, et non sur la qualité réelle de votre travail.",
+      " Ils réduisent la clarté perçue au premier regard. Le diagnostic mesure la présentation publique de votre fiche, sans juger votre savoir-faire."
+    ]);
   } else {
-    ouverture = `${nom} présente déjà une fiche Google bien tenue.`;
+    ouverture = choisirVarianteNarrative("summary.general.opening", "score_80_plus", [
+      `${nom} présente déjà une fiche Google bien tenue.`,
+      `La fiche Google de ${nom} donne déjà plusieurs repères rassurants à un nouveau prospect.`,
+      `${nom} s'appuie sur une présentation Google déjà claire et cohérente.`
+    ]);
     constat = signaux.length
       ? `Quelques détails restent à ajuster, notamment ${joinFr(signaux)}.`
       : "Quelques ajustements fins peuvent encore la rendre plus convaincante.";
-    projection = " Rien d'alarmant : il s'agit surtout de finitions.";
+    projection = choisirVarianteNarrative("summary.general.projection", "score_80_plus", [
+      " Rien d'alarmant : il s'agit surtout de finitions. Le diagnostic évalue la présentation visible de la fiche, et non la qualité de votre travail.",
+      " Ces ajustements concernent surtout la lisibilité au premier regard ; ils ne portent pas de jugement sur la qualité de vos prestations.",
+      " L'enjeu est d'affiner ce qu'un prospect voit avant de vous contacter, sans remettre en question votre savoir-faire."
+    ]);
   }
   return `${bonjour}<br>${ouverture} ${constat}${projection}${positionPhrase}${suite}`;
 }
@@ -5149,7 +5207,7 @@ function faitsObservesHtml(){
   if(estNombre(d.nbServices)) facts.push(["Services listés", nEntier(d.nbServices)]);
   if(estNombre(d.position)) facts.push([libellePositionObserveeRapport(d), d.position === 0 ? "Non visible" : libellePositionRapport(d, {avecRecherche:false})]);
   if(estTexte(d.requeteTestee)) facts.push(["Recherche testée", "« " + libelleRechercheRapport(d.requeteTestee) + " »"]);
-  if(estNombre(d.concurrence?.volC)) facts.push(["Avis concurrents", nEntier(d.concurrence.volC) + " en moyenne"]);
+  if(estNombre(d.concurrence?.volC)) facts.push(["Avis concurrents", moyenneAvisAffichee(d.concurrence.volC) + " en moyenne"]);
   if(estTexte(d.dernierAvis)) facts.push(["Dernier avis", new Date(d.dernierAvis).toLocaleDateString("fr-FR")]);
   if(estNombre(d.descriptionLongueur)) facts.push(["Description", descriptionConfirmeeVide(d) ? "Aucune description visible" : nEntier(d.descriptionLongueur) + " caractères"]);
   if(!facts.length) return "";
@@ -5214,8 +5272,8 @@ function enrichirConstatAvecDonnees(cr, points){
   const concurrence = d.concurrence;
   if(cr.key === "noteMoyenne" && estNombre(d.note)) morceaux.push(`Note observée : ${fmtNote(d.note)}/5.`);
   if((cr.key === "volumeAvis" || cr.key === "noteMoyenne") && estNombre(d.nbAvis)) morceaux.push(`Nombre d'avis : ${nEntier(d.nbAvis)}.`);
-  if(cr.key === "volumeAvis" && concurrence && estNombre(concurrence.volC)) morceaux.push(`Moyenne des concurrents observés : ${nEntier(concurrence.volC)} avis.`);
-  if(cr.key === "attractiviteConcurrents" && concurrence && estNombre(concurrence.noteC) && estNombre(concurrence.volC)) morceaux.push(`Concurrents observés : ${fmtNote(concurrence.noteC)}/5 et ${nEntier(concurrence.volC)} avis en moyenne.`);
+  if(cr.key === "volumeAvis" && concurrence && estNombre(concurrence.volC)) morceaux.push(`Moyenne des concurrents observés : ${moyenneAvisAffichee(concurrence.volC)}.`);
+  if(cr.key === "attractiviteConcurrents" && concurrence && estNombre(concurrence.noteC) && estNombre(concurrence.volC)) morceaux.push(`Concurrents observés : ${fmtNote(concurrence.noteC)}/5 et ${moyenneAvisAffichee(concurrence.volC)} en moyenne.`);
   if(cr.key === "classementLocal" && estNombre(d.position)) morceaux.push(`${libellePositionObserveeRapport(d)} : ${d.position === 0 ? "hors des premiers résultats" : libellePositionRapport(d)}.${contexteAnnonceSponsorisee(d)}`);
   if(cr.key === "nombrePhotos" && estNombre(d.nbPhotos)) morceaux.push(`Photos observées : ${nEntier(d.nbPhotos)}.`);
   if((cr.key === "servicesPresents" || cr.key === "servicesDecrits") && estNombre(d.nbServices)) morceaux.push(`Services listés : ${nEntier(d.nbServices)}.`);
@@ -5232,7 +5290,7 @@ function observationPersonnalisee(cr){
   const volC = m.avis ?? c?.volC;
   const obs = {
     volumeAvis: estNombre(d.nbAvis) && estNombre(volC)
-      ? `En parcourant les fiches qui apparaissent à côté de la vôtre, une différence saute aux yeux : ${nEntier(d.nbAvis)} avis chez vous, ${nEntier(volC)} en moyenne chez elles. Votre travail n'est pas en cause — votre fiche recueille simplement moins la parole de vos clients satisfaits.`
+      ? `En parcourant les fiches qui apparaissent à côté de la vôtre, une différence saute aux yeux : ${nEntier(d.nbAvis)} avis chez vous, ${moyenneAvisAffichee(volC)} en moyenne chez elles. Votre travail n'est pas en cause — votre fiche recueille simplement moins la parole de vos clients satisfaits.`
       : estNombre(d.nbAvis) ? `Votre fiche compte ${nEntier(d.nbAvis)} avis. Pour un client qui compare deux entreprises qu'il ne connaît pas, ce chiffre pèse plus lourd qu'on ne l'imagine.` : null,
     descriptionRemplie: descriptionConfirmeeVide(d)
       ? `Aucune description n’est visible sur votre fiche Google. Un prospect ne peut donc pas comprendre immédiatement vos services, votre zone d’intervention et ce qui distingue votre entreprise.`
@@ -5450,7 +5508,7 @@ function enjeuRapportHtml(score, activite, ville){
   const positionFaible = donneesAnalyse.position !== null && (donneesAnalyse.position === 0 || donneesAnalyse.position > 3);
   let constat = "";
   if(c && estNombre(donneesAnalyse.nbAvis) && estNombre(c.volC) && Number(c.volC) > Number(donneesAnalyse.nbAvis) * 1.3){
-    constat = `les fiches concurrentes observées affichent en moyenne ${nEntier(c.volC)} avis, contre ${nEntier(donneesAnalyse.nbAvis)} pour votre fiche — un élément que les prospects comparent souvent en premier`;
+    constat = `les fiches concurrentes observées affichent ${moyenneAvisAffichee(c.volC)} en moyenne, contre ${nEntier(donneesAnalyse.nbAvis)} pour votre fiche — un élément que les prospects comparent souvent en premier`;
   } else if(positionFaible){
     constat = `votre fiche n'apparaît pas encore dans le trio de tête, qui concentre l'essentiel des consultations`;
   } else if(score < 70){
@@ -5864,7 +5922,7 @@ function faiblesseChiffree(cr){
     return "Votre fiche ne présente actuellement aucun avis client.";
   }
   const versions = {
-    volumeAvis: c && estNombre(c.volC) && estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis, contre ${nEntier(c.volC)} en moyenne pour les fiches concurrentes observées.` : (estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis — un volume encore modeste pour un prospect qui compare.` : null),
+    volumeAvis: c && estNombre(c.volC) && estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis, contre ${moyenneAvisAffichee(c.volC)} en moyenne pour les fiches concurrentes observées.` : (estNombre(d.nbAvis) ? `${nEntier(d.nbAvis)} avis — un volume encore modeste pour un prospect qui compare.` : null),
     servicesPresents: estNombre(d.nbServices) ? `${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""} listé${d.nbServices > 1 ? "s" : ""} — l'étendue réelle de vos prestations n'est pas visible.` : null,
     servicesDecrits: estNombre(d.nbServices) ? `Les services présents ne suffisent pas à comprendre l'étendue de vos prestations.` : null,
     descriptionRemplie: estNombre(d.descriptionLongueur) ? observationDescriptionRapport(d, {courte:true}) : null,
@@ -5928,7 +5986,7 @@ function ecartsExpliquesHtml(){
   const d = donneesAnalyse, m = d.moyennesConcurrents || {}, items = [];
   const volC = m.avis ?? d.concurrence?.volC;
   if(estNombre(d.nbAvis) && estNombre(volC) && Number(volC) > Number(d.nbAvis) * 1.3){
-    items.push(`<strong>Avis</strong> : les fiches concurrentes de votre zone affichent en moyenne ${nEntier(volC)} avis, contre ${nEntier(d.nbAvis)} pour votre fiche.`);
+    items.push(`<strong>Avis</strong> : les fiches concurrentes de votre zone affichent ${moyenneAvisAffichee(volC)} en moyenne, contre ${nEntier(d.nbAvis)} pour votre fiche.`);
   }
   if(estNombre(d.nbServices) && estNombre(m.services) && Number(m.services) > Number(d.nbServices) + 2){
     items.push(`<strong>Contenu</strong> : les entreprises similaires de votre secteur détaillent davantage leurs services visibles.`);
@@ -6222,15 +6280,31 @@ function premierPasReputation(ctx){
   const noteFaible = estNombre(d.note) && Number(d.note) < 4.2;
   const reponses = etatCritere("tauxReponseAvis");
   const recence = etatCritere("recenceAvis");
-  if(noteFaible && reponses === "insuffisant")
-    return "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis et répondre aux avis visibles avec un message personnalisé.";
-  if(noteFaible)
-    return "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis, pour faire progressivement remonter votre note.";
-  if(reponses === "insuffisant")
-    return "Répondre aux avis visibles avec un message personnalisé pour renforcer la confiance que vos avis installent déjà.";
-  if(recence === "insuffisant")
-    return "Poursuivre la collecte de nouveaux avis authentiques pour retrouver une bonne dynamique de récence.";
-  return "Continuer à solliciter des avis authentiques auprès de vos clients et à répondre aux nouveaux avis pour maintenir cette dynamique positive.";
+  if(noteFaible && reponses === "insuffisant") return choisirVarianteNarrative("priority.reputation.action", "low_rating_no_replies", [
+    "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis et répondre aux avis visibles avec un message personnalisé.",
+    "Demander des avis authentiques aux clients réellement servis, puis répondre personnellement aux avis déjà visibles pour renforcer la confiance.",
+    "Organiser une collecte d'avis authentiques après les interventions réalisées et personnaliser les réponses aux avis publics."
+  ]);
+  if(noteFaible) return choisirVarianteNarrative("priority.reputation.action", "low_rating", [
+    "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis, pour faire progressivement remonter votre note.",
+    "Solliciter progressivement des avis authentiques auprès des clients réellement servis afin que la note reflète mieux les expériences récentes.",
+    "Après chaque intervention réalisée, inviter les clients à laisser un avis authentique pour consolider la note avec des retours récents."
+  ]);
+  if(reponses === "insuffisant") return choisirVarianteNarrative("priority.reputation.action", "no_replies", [
+    "Répondre aux avis visibles avec un message personnalisé pour renforcer la confiance que vos avis installent déjà.",
+    "Ajouter une réponse personnelle aux avis déjà publiés afin de montrer que les retours clients sont pris en compte.",
+    "Préparer des réponses personnalisées aux avis visibles pour rendre votre écoute plus concrète avant le premier contact."
+  ]);
+  if(recence === "insuffisant") return choisirVarianteNarrative("priority.reputation.action", "stale_reviews", [
+    "Poursuivre la collecte de nouveaux avis authentiques pour retrouver une bonne dynamique de récence.",
+    "Inviter les clients réellement servis à partager un avis authentique après les prochaines interventions pour actualiser les retours visibles.",
+    "Relancer une collecte régulière d'avis authentiques auprès des clients réellement servis afin de renouveler les preuves récentes."
+  ]);
+  return choisirVarianteNarrative("priority.reputation.action", "maintain", [
+    "Continuer à solliciter des avis authentiques auprès de vos clients et à répondre aux nouveaux avis pour maintenir cette dynamique positive.",
+    "Conserver le rythme de collecte d'avis authentiques et de réponses personnelles aux nouveaux retours clients.",
+    "Maintenir des demandes d'avis authentiques après les interventions et des réponses individualisées aux nouveaux messages publiés."
+  ]);
 }
 
 function resultatAttenduReputation(ctx){
@@ -6242,7 +6316,9 @@ function resultatAttenduReputation(ctx){
   if(noteFaible) parts.push("une note progressivement plus représentative de la qualité réelle de votre travail");
   if(reponses === "insuffisant") parts.push("des réponses visibles");
   if(recence === "insuffisant") parts.push("des avis plus récents");
-  parts.push(parts.length ? "une fiche plus rassurante au premier regard" : "une fiche qui continue de rassurer dès le premier regard");
+  parts.push(parts.length
+    ? choisirVarianteNarrative("priority.reputation.result", "needs_reassurance", ["une fiche plus rassurante au premier regard", "une confiance plus visible avant le premier contact", "des preuves clients plus rassurantes dès la consultation de la fiche"])
+    : choisirVarianteNarrative("priority.reputation.result", "maintain", ["une fiche qui continue de rassurer dès le premier regard", "une confiance client visible dans la durée", "des retours clients qui restent rassurants au moment de choisir"]));
   return joinFr(parts) + ".";
 }
 
@@ -6257,12 +6333,20 @@ const FAMILLES_PRIORITES = [
 
 function actionFamillePriorite(famille, item = null){
   if(famille.key === "reputation" && rapportSansAvis()){
-    return "Mettre en place un parcours simple pour obtenir les premiers avis authentiques.";
+    return choisirVarianteNarrative("priority.reputation.action", "no_reviews", [
+      "Mettre en place un parcours simple pour obtenir les premiers avis authentiques.",
+      "Après chaque intervention réalisée, inviter les premiers clients à partager un avis authentique.",
+      "Prévoir une demande d'avis simple auprès des clients réellement servis afin de faire apparaître les premiers retours authentiques."
+    ]);
   }
   if(famille.key === "reputation") return premierPasReputation(contexteRapport());
   if(famille.key === "infos") return premierPasInfos();
   if(famille.key === "offre" && localisationNonVerifiablePubliquement()){
-    return "Clarifier les services principaux et les raisons de vous contacter.";
+    return choisirVarianteNarrative("priority.offer.action", "location_unverifiable", [
+      "Clarifier les services principaux et les raisons de vous contacter.",
+      "Présenter plus clairement les prestations principales et ce qui doit inciter un prospect à vous appeler.",
+      "Rendre les services principaux plus lisibles, avec une raison concrète de prendre contact."
+    ]);
   }
   if(famille.key === "visibilite") return VISIBILITE_ACTION_LONGUE[decisionVisibiliteAdmin()];
   if(famille.key === "photos") return actionPhotosPriorite({...item, famille:"photos"});
@@ -6334,8 +6418,16 @@ function titrePriorite(item){
   }
   if(item.famille === "infos") return titreInfosPriorite();
   const titres = {
-    reputation:"Renforcer votre réputation client",
-    offre:"Clarifier votre spécialité",
+    reputation:choisirVarianteNarrative("priority.reputation.title", "default", [
+      "Renforcer votre réputation client",
+      "Rendre la confiance client plus visible",
+      "Mieux valoriser les retours de vos clients"
+    ]),
+    offre:choisirVarianteNarrative("priority.offer.title", "default", [
+      "Clarifier votre spécialité",
+      "Rendre votre offre plus évidente",
+      "Mieux expliquer ce que vous proposez"
+    ]),
     visibilite:"Être visible sur les bonnes recherches",
     photos:prioritePhotosPorteSurActualite(item) ? "Actualiser régulièrement vos photos" : "Montrer davantage de preuves visuelles",
     activite:"Montrer que la fiche est active"
@@ -6475,7 +6567,7 @@ function constatObservePriorite(item, ctx){
       return `Votre note de ${fmtNote(d.note)}/5 est comparable à la moyenne des concurrents observés (${fmtNote(noteC)}/5), mais elle reste sous le niveau qui rassure généralement un nouveau client.`;
     }
     if(estNombre(d.note) && estNombre(d.nbAvis) && estNombre(volC) && Number(volC) > Number(d.nbAvis))
-      return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. Ce volume doit maintenant être consolidé face à des fiches concurrentes qui affichent ${nEntier(volC)} avis en moyenne.`;
+      return `Votre fiche dispose de ${nEntier(d.nbAvis)} avis. Ce volume doit maintenant être consolidé face à des fiches concurrentes qui affichent ${moyenneAvisAffichee(volC)} en moyenne.`;
     if(estNombre(d.note) && estNombre(d.nbAvis))
       return `Votre note de ${fmtNote(d.note)}/5 sur ${nEntier(d.nbAvis)} avis est un vrai capital — encore trop discret face aux fiches plus fournies de votre zone.`;
     return "Sur votre fiche, les preuves clients — volume d'avis, réponses visibles — restent en retrait par rapport à ce qu'un prospect attend avant d'appeler.";
@@ -6499,7 +6591,11 @@ function constatObservePriorite(item, ctx){
       const nomEcho = rq && ctx.entreprise && rq.split(" ").some(w => w.length >= 4 && ctx.entreprise.toLowerCase().includes(w.toLowerCase()));
       return `Sur votre fiche, ${morceaux.join(" et ")}. Un prospect qui cherche${rq ? " « " + rq + " »" : " vos services"} ne peut pas vérifier que vous réalisez exactement cette prestation${nomEcho ? " — alors que c'est écrit jusque dans votre nom" : ""}.`;
     }
-    return "Sur votre fiche, la partie qui explique ce que vous faites — description, services — reste trop peu détaillée pour un prospect qui compare.";
+    return choisirVarianteNarrative("priority.offer.observation", "insufficient_details", [
+      "Sur votre fiche, la partie qui explique ce que vous faites — description, services — reste trop peu détaillée pour un prospect qui compare.",
+      "La fiche ne donne pas encore assez de repères dans sa description et ses services pour qu'un prospect comprenne rapidement votre offre.",
+      "La présentation de vos services reste trop générale : une personne qui compare plusieurs fiches ne peut pas encore identifier clairement ce que vous proposez."
+    ]);
   }
   if(item.famille === "photos"){
     if(prioritePhotosPorteSurActualite(item) && estNombre(d.nbPhotos) && estNombre(m.photos))
@@ -6599,8 +6695,16 @@ function consequenceBusinessPriorite(item, ctx){
   const persona = personaSecteur(ctx.activite);
   const textes = {
     reputation: consequenceReputation(ctx),
-    offre: `${majusculeInitiale(persona)} ne reste que quelques secondes sur une fiche. S'il ne peut pas vérifier rapidement que vous faites exactement ce qu'il cherche, il risque de poursuivre sa recherche plutôt que de vous appeler pour demander.`,
-    visibilite: `Sur ce type de recherche locale, seules quelques fiches sont mises en avant en premier. ${majusculeInitiale(persona)} qui ne voit pas la vôtre parmi elles risque de contacter un concurrent plus visible, sans même savoir que vous existiez.`,
+    offre: choisirVarianteNarrative("priority.offer.impact", "unclear_offer", [
+      `${majusculeInitiale(persona)} ne reste que quelques secondes sur une fiche. S'il ne peut pas vérifier rapidement que vous faites exactement ce qu'il cherche, il risque de poursuivre sa recherche plutôt que de vous appeler pour demander.`,
+      `Avant d'appeler, ${persona} compare plusieurs fiches très vite. Si votre offre n'est pas assez claire, il peut retenir une entreprise dont les prestations sont plus faciles à identifier.`,
+      `${majusculeInitiale(persona)} cherche d'abord une réponse simple à son besoin. Sans services clairement présentés, il peut passer à une autre fiche avant de vous contacter.`
+    ]),
+    visibilite: choisirVarianteNarrative("priority.visibility.impact", "local_visibility", [
+      `Sur ce type de recherche locale, seules quelques fiches sont mises en avant en premier. ${majusculeInitiale(persona)} qui ne voit pas la vôtre parmi elles risque de contacter un concurrent plus visible, sans même savoir que vous existiez.`,
+      `Lors d'une recherche locale, ${persona} consulte surtout les premières fiches affichées. Si la vôtre reste plus bas, un concurrent plus visible peut être contacté en premier.`,
+      `La visibilité se joue dès les premiers résultats. Quand votre fiche n'y apparaît pas, ${persona} peut choisir une entreprise concurrente avant d'avoir vu la vôtre.`
+    ]),
     photos: consequencePhotos(item, ctx),
     infos: consequenceInfos(),
     activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
@@ -6615,8 +6719,16 @@ function resultatAttenduPriorite(item, ctx){
       : resultatAttenduReputation(ctx),
     visibilite: VISIBILITE_RESULTAT_ATTENDU[decisionVisibiliteAdmin()],
     offre: localisationNonVerifiablePubliquement()
-      ? "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler."
-      : "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
+      ? choisirVarianteNarrative("priority.offer.result", "location_unverifiable", [
+        "un prospect comprend en quelques secondes ce que vous faites et pourquoi vous appeler.",
+        "votre offre devient plus simple à identifier avant le premier appel.",
+        "une personne qui découvre la fiche comprend plus vite les prestations à vous confier."
+      ])
+      : choisirVarianteNarrative("priority.offer.result", "location_known", [
+        "un prospect comprend en quelques secondes ce que vous faites, où vous intervenez et pourquoi vous appeler.",
+        "votre fiche rend vos prestations, votre zone d'intervention et la raison de vous contacter plus faciles à comprendre.",
+        "une personne qui compare identifie plus vite ce que vous proposez, où vous intervenez et comment vous joindre."
+      ]),
     photos: prioritePhotosPorteSurActualite(item) ? "votre galerie montre une entreprise active aujourd'hui." : "votre travail devient visible avant même le premier contact.",
     infos: resultatAttenduInfos(),
     activite: "une fiche visiblement suivie et active."
@@ -7392,7 +7504,7 @@ function observationsDeclic(){
     }
   }
   if(estNombre(d.position) && d.position > 1 && estNombre(d.nbAvis) && estNombre(m.avis) && Number(d.nbAvis) >= Number(m.avis)){
-    obs.push("Vous apparaissez comme " + libellePositionRapport(d, {avecRecherche:false}) + " alors que vous avez plus d'avis que la moyenne de vos concurrents (" + nEntier(d.nbAvis) + " contre " + nEntier(m.avis) + "). Ce n'est donc pas votre r\u00e9putation qui vous fait passer derri\u00e8re \u2014 le levier est ailleurs : cat\u00e9gories, description ou coh\u00e9rence locale.");
+    obs.push("Vous apparaissez comme " + libellePositionRapport(d, {avecRecherche:false}) + " alors que vous avez plus d'avis que la moyenne de vos concurrents (" + nEntier(d.nbAvis) + " contre " + moyenneAvisAffichee(m.avis) + "). Ce n'est donc pas votre r\u00e9putation qui vous fait passer derri\u00e8re \u2014 le levier est ailleurs : cat\u00e9gories, description ou coh\u00e9rence locale.");
   }
   if(estNombre(d.nbPhotos) && estNombre(m.photos) && Number(m.photos) > Number(d.nbPhotos) * 1.3){
     obs.push("Vos concurrents publient en moyenne " + nEntier(m.photos) + " photos, contre " + nEntier(d.nbPhotos) + " sur votre fiche. Sur une d\u00e9cision qui se joue au premier coup d'\u0153il, celui qui montre le plus rassure le plus.");

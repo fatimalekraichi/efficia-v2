@@ -275,7 +275,7 @@ test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit re
    utilise plus haut, + le bloc reel de resultatAttenduPriorite) plutot que
    d'ecrire un mock qui contournerait la logique corrigee.
    ======================================================================== */
-const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function resultatAttenduInfos(){", "function microLivrablePriorite(item, ctx){");
+const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function resultatAttenduInfos(){", "function microLivrablePriorite(item, ctx, rank){");
 
 function callResultatAttenduPrioriteVisibilite(mocks = {}) {
   const context = {
@@ -288,6 +288,7 @@ function callResultatAttenduPrioriteVisibilite(mocks = {}) {
     modeLocalisation: () => mocks.zoneMode ?? "on_site",
     reponseZoneDesserte: () => mocks.zoneReponse ?? "coherent",
     localisationNonVerifiablePubliquement: () => false,
+    choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
   };
   vm.runInNewContext(`${CORE_CODE}\n${RESULTAT_ATTENDU_CODE}\nglobalThis.run=resultatAttenduPriorite;`, context);
   return context.run({ famille: "visibilite" }, {});

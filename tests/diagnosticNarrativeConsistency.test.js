@@ -77,6 +77,10 @@ function createPriorityHarness({ etats = {}, donneesAnalyse = {} } = {}) {
     rapportSansAvis: () => false,
     personaSecteur: () => "un particulier qui cherche un artisan",
     majusculeInitiale: (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1),
+    // Les variantes sont testées séparément avec leur vraie graine. Ici,
+    // conserver le premier texte permet aux régressions de cohérence
+    // existantes de contrôler les mêmes faits indépendamment du tirage.
+    choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
     CRITERE_IDS: ID_BY_KEY,
     trouverCritere: (id) => (id !== undefined && id !== null ? { max: MAX_PAR_ID } : null),
     lirePoints: (id) => (id in points ? points[id] : null),
@@ -518,7 +522,7 @@ const ID_BY_KEY_TASKC = {
 const MAX_OVERRIDES_TASKC = { 6: 3, 7: 3, 8: 3, 9: 2, 10: 2, 11: 3, 12: 2 };
 
 function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis = false, nonVerifiablePubliquement = false } = {}) {
-  const code = sliceBetween(html, "function critereConfirmeMax(key){", "function microLivrablePriorite(item, ctx){");
+  const code = sliceBetween(html, "function critereConfirmeMax(key){", "function microLivrablePriorite(item, ctx, rank){");
   const points = {};
   Object.entries(etats).forEach(([key, etat]) => {
     const id = ID_BY_KEY_TASKC[key];
@@ -537,6 +541,7 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
     rapportSansAvis: () => sansAvis,
     personaSecteur: () => "un particulier qui cherche un artisan",
     majusculeInitiale: (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1),
+    choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
     secteurActiviteNaturel: () => "une intervention",
     localisationNonVerifiablePubliquement: () => nonVerifiablePubliquement,
     categoriePrincipaleValideePourRapport: () => true,

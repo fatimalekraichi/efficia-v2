@@ -314,6 +314,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     prioritePhotosPorteSurActualite: () => false,
     personaSecteur: () => "un client",
     majusculeInitiale: (value) => value.charAt(0).toUpperCase() + value.slice(1),
+    choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
     joinFr: (items) => {
       const list = items.filter(Boolean);
       if(!list.length) return "";
