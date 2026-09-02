@@ -135,7 +135,7 @@ async function runAdminBrowserHarness(harnessSource) {
       `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,
     )
     .replace(
-      '<script src="/js/questionnaire-finalization.js"></script>',
+      '<script src="/js/questionnaire-finalization.js?v=7ee0654"></script>',
       `<script>${readFileSync(new URL("../js/questionnaire-finalization.js", import.meta.url), "utf8")}</script>`,
     )
     .replace(

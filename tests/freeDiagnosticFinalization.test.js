@@ -200,8 +200,11 @@ test("le calcul client attribue zéro, jamais null, à une adresse non vérifiab
 });
 
 test("les deux interfaces chargent le moteur commun et ne conservent pas l’ancien calcul divergent", () => {
-  assert.match(html, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
-  assert.match(modernHtmlSource, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
+  const loader = '<script src="/js/questionnaire-finalization.js?v=7ee0654"></script>';
+  assert.ok(html.includes(loader));
+  assert.ok(modernHtmlSource.includes(loader));
+  assert.doesNotMatch(html, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
+  assert.doesNotMatch(modernHtmlSource, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
   assert.match(html, /const elementsRestants = listerElementsRestantsPourFinalisation\(\)/);
   assert.doesNotMatch(html, /const restant = totalCrit - repondus/);
   assert.match(modernSource, /function listerElementsRestantsPourFinalisation\(\)/);
@@ -214,6 +217,16 @@ test("les deux interfaces chargent le moteur commun et ne conservent pas l’anc
   assert.match(html, /async function apercuImpression\(\)\{\s*if\(!questionnairePretPourFinalisation\(\)\) return/);
   assert.match(html, /async function telechargerPDF\(\)\{[\s\S]*if\(!questionnairePretPourFinalisation\(\)\) return/);
   assert.match(html, /async function telechargerAuditPremium\(\)\{[\s\S]*if\(!questionnairePretPourFinalisation\(\)\)/);
+});
+
+test("le module de finalisation chargé comme un script navigateur expose la vérification d’adresse avant le code de page", () => {
+  const browser = {};
+  browser.globalThis = browser;
+  vm.runInNewContext(sharedSource, browser, { filename: "/js/questionnaire-finalization.js?v=7ee0654" });
+
+  assert.equal(typeof browser.EfficiaQuestionnaireFinalization?.isAddressVerificationComplete, "function");
+  assert.equal(browser.EfficiaQuestionnaireFinalization.isAddressVerificationComplete("not_verifiable"), true);
+  assert.ok(html.indexOf('/js/questionnaire-finalization.js?v=7ee0654') < html.indexOf('isAddressVerificationComplete(reponseAdresse())'));
 });
 
 test("un clic PDF complet compose six pages et atteint pdf.save", async () => {

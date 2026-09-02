@@ -194,7 +194,7 @@ const html = (analysisId, { reportType = "premium", readOnly = false } = {}) => 
     </div>
   </main>
 
-  <script src="/js/questionnaire-finalization.js"></script>
+  <script src="/js/questionnaire-finalization.js?v=7ee0654"></script>
   <script src="/js/admin-audit-review.js"></script>
 </body>
 </html>`;
