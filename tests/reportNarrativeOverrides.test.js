@@ -128,7 +128,35 @@ function longestAutomaticText(fieldId) {
   return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[fieldId];
 }
 
-async function runAdminBrowserHarness(harnessSource) {
+async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
+  const fixture = {
+    analysisId: ANALYSIS_ID,
+    context: {
+      company: "Entreprise Test",
+      city: "Arlon",
+      activity: "Électricien",
+      scoringVersion: "score-efficia-v5",
+      collectionAvailable: false,
+      premiumAllowed: false,
+    },
+    answers: {
+      questionnaireVersion: "score-efficia-questionnaire-v4",
+      profileKey: "default",
+      fields: {
+        "p-entreprise": "Entreprise Test",
+        "p-ville": "Arlon",
+        "p-activite": "Électricien",
+        "p-contact": "Test interne",
+        "d-requete": "Électricien Arlon",
+        "d-zone-recherche": "Arlon",
+        "d-zone-pays": "BE",
+      },
+      observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
+      responses: {},
+    },
+    overrides: [{ fieldId: "summary.general", customText: "Texte persistant après rechargement", needsReview: false }],
+    ...fixtureOverrides,
+  };
   const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
     .replace(
       '<script src="/js/score-efficia-core.js?v=1"></script>',
@@ -144,6 +172,7 @@ async function runAdminBrowserHarness(harnessSource) {
     );
   const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
   const fetchFixture = `<script>
+    window.__workflowFixture = ${JSON.stringify(fixture).replaceAll("</", "<\\/")};
     window.__workflowFetchCalls = [];
     window.fetch = async (input, options = {}) => {
       const url = String(input);
@@ -154,14 +183,7 @@ async function runAdminBrowserHarness(harnessSource) {
       });
       if (url.includes("/api/admin/free-diagnostic-context/")) return json({
         success: true,
-        context: {
-          company: "Entreprise Test",
-          city: "Arlon",
-          activity: "Électricien",
-          scoringVersion: "score-efficia-v5",
-          collectionAvailable: false,
-          premiumAllowed: false
-        }
+        context: window.__workflowFixture.context
       });
       if (url.includes("/api/admin/audit-drafts/")) return json({
         success: true,
@@ -169,27 +191,13 @@ async function runAdminBrowserHarness(harnessSource) {
           reportType: "free",
           currentStep: "questionnaire",
           updatedAt: "2026-08-30T10:00:00.000Z",
-          answers: {
-            questionnaireVersion: "score-efficia-questionnaire-v4",
-            profileKey: "default",
-            fields: {
-              "p-entreprise": "Entreprise Test",
-              "p-ville": "Arlon",
-              "p-activite": "Électricien",
-              "p-contact": "Test interne",
-              "d-requete": "Électricien Arlon",
-              "d-zone-recherche": "Arlon",
-              "d-zone-pays": "BE"
-            },
-            observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
-            responses: {}
-          }
+          answers: window.__workflowFixture.answers
         }
       });
       if (url.includes("/api/admin/report-text-overrides/")) return json({
         success: true,
         catalog: [{ id: "summary.general", label: "Synthèse générale", section: "Page 1", maxLength: 380 }],
-        overrides: [{ fieldId: "summary.general", customText: "Texte persistant après rechargement", needsReview: false }]
+        overrides: window.__workflowFixture.overrides
       });
       if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
         success: false,
@@ -209,7 +217,7 @@ async function runAdminBrowserHarness(harnessSource) {
     writeFileSync(htmlPath, instrumented);
     const result = await collectPageResultWithIsolatedChrome({
       chrome: CHROME,
-      url: `${pathToFileURL(htmlPath).href}?analysisId=${ANALYSIS_ID}`,
+      url: `${pathToFileURL(htmlPath).href}?analysisId=${fixture.analysisId}`,
       profileDir: join(directory, "chrome-profile"),
       phase: "parcours navigateur des textes personnalisés",
       timeout: 15_000,
@@ -568,6 +576,107 @@ test("après un rechargement complet, l’éditeur s’ouvre sans génération P
   assert.equal(result.pdfRequests, 0);
   assert.equal(result.draftWrites, 0);
   assert.equal(result.pageReviewWarning, false);
+});
+
+test("Gabbana historique : le HTML réellement composé pour telechargerPDF recalcule la synthèse automatique et préserve une personnalisation", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
+  const ancienneSyntheseAutomatique = "Bonjour, La fiche Google contient aucun site officiel identifiable.";
+  const personnalisationUtilisateur = "Texte choisi volontairement par l’utilisateur.";
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const siteState = document.getElementById("d-site-etat");
+        if (!siteState) throw new Error("Contrôle d’état du site absent");
+        siteState.value = "aucun";
+        await chargerRemplacementsNarratifsRapport();
+        const generatedAutomatic = genererRapport({ exigerVersion: false });
+        const automaticHero = document.querySelector("#rapport-contenu .page-hero");
+        const automaticPageOne = automaticHero?.innerText || "";
+        const automaticTracked = textesAutomatiquesRapport.get("summary.general") || "";
+        const summaryRect = automaticHero?.querySelector(".hero-analysis-text")?.getBoundingClientRect();
+        const footerRect = automaticHero?.querySelector(".pied")?.getBoundingClientRect();
+        const pageRect = automaticHero?.getBoundingClientRect();
+        remplacementsTextesRapport = new Map([["summary.general", { customText: ${JSON.stringify(personnalisationUtilisateur)} }]]);
+        const generatedCustom = genererRapport({ exigerVersion: false });
+        const customPageOne = document.querySelector("#rapport-contenu .page-hero")?.innerText || "";
+        remplacementsTextesRapport = new Map();
+        siteState.value = "inaccessible";
+        document.getElementById("d-site-url").value = "https://morgan-entreprise.eu";
+        document.getElementById("d-site-code").value = "500";
+        const generatedServerError = genererRapport({ exigerVersion: false });
+        const serverErrorReport = document.getElementById("rapport-contenu")?.innerText || "";
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          generatedAutomatic,
+          generatedCustom,
+          generatedServerError,
+          pageCount: document.querySelectorAll("#rapport-contenu .page").length,
+          automaticPageOne,
+          automaticTracked,
+          customPageOne,
+          serverErrorReport,
+          summaryBottom: summaryRect?.bottom || null,
+          footerTop: footerRect?.top || null,
+          pageTop: pageRect?.top || null,
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
+      }
+    })();
+  `, {
+    analysisId: "09d84374-d6ea-4eb3-8f95-66bf4ca364a9",
+    context: {
+      company: "GabbanaElcom Sàrl",
+      city: "Junglinster",
+      activity: "Électricien",
+      scoringVersion: "score-efficia-v5",
+      collectionAvailable: false,
+      premiumAllowed: false,
+    },
+    answers: {
+      questionnaireVersion: "score-efficia-questionnaire-v4",
+      profileKey: "default",
+      fields: {
+        "p-entreprise": "GabbanaElcom Sàrl",
+        "p-ville": "Junglinster",
+        "p-activite": "Électricien",
+        "p-contact": "",
+        "d-requete": "Électricien Junglinster",
+        "d-zone-recherche": "Junglinster",
+        "d-zone-pays": "LU",
+        "d-site-url": "",
+        "d-site-etat": "aucun",
+        "d-site-code": "",
+      },
+      observedData: { nbAvis: 22, nbPhotos: 1, note: 2.5, concurrents: [] },
+      responses: {},
+    },
+    // Un snapshot automatique historique est une donnée de traçabilité ; il
+    // ne devient jamais une personnalisation. Le texte automatique courant
+    // est donc recalculé par genererRapport() à chaque export.
+    overrides: [{
+      fieldId: "summary.general",
+      customText: "",
+      automaticText: ancienneSyntheseAutomatique,
+      needsReview: false,
+    }],
+  });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.generatedAutomatic, true);
+  assert.equal(result.generatedCustom, true);
+  assert.equal(result.generatedServerError, true);
+  assert.equal(result.pageCount, 6);
+  assert.match(result.automaticTracked, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.match(result.automaticPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
+  assert.doesNotMatch(result.automaticPageOne, /Bonjour, La fiche Google contient aucun site officiel identifiable/u);
+  assert.match(result.customPageOne, /Texte choisi volontairement par l’utilisateur\./u);
+  assert.doesNotMatch(result.customPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.match(result.serverErrorReport, /erreur serveur 500/u);
+  assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
+  assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
 });
 
 test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {

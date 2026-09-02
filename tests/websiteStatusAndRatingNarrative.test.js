@@ -1,8 +1,8 @@
 // Tests permanents — corrige les deux contradictions factuelles révélées par
 // le premier diagnostic réel Morgan-Entreprise (2026-08-27) :
 //   1. "3,3/5 reste nettement inférieure à 3,0/5" alors que 3,3 > 3,0 ;
-//   2. "Téléphone et site web" conforme / "aucun site officiel identifiable" /
-//      "aucun site web officiel disponible" affichés simultanément alors
+//   2. "Téléphone et site web" conforme / "aucun lien vers le site officiel
+//      n’est renseigné sur la fiche Google" / "aucun site web officiel disponible" affichés simultanément alors
 //      qu'un site officiel est bien renseigné (morgan-entreprise.eu).
 //
 // Ces tests exécutent le code réel de admin/free-diagnostic-production/index.html
@@ -124,12 +124,15 @@ function createSiteStateHarness({ url = "", etat = "", codeHttp = "", napRadioSp
   return context;
 }
 
-test("aucune URL, réponse explicite 'Aucun site renseigné' => aucun site officiel", () => {
+test("aucune URL, réponse explicite 'Aucun lien renseigné' => le rendu ne conclut jamais à l’absence de site officiel", () => {
   const context = createSiteStateHarness({ etat: "aucun" });
   const etat = context.etatSiteOfficielCourant();
   assert.equal(etat.etat, "aucun");
   assert.equal(etat.url, "");
-  assert.equal(context.messageEtatSiteOfficiel(etat), "Aucun site officiel n’est renseigné sur la fiche Google.");
+  const message = context.messageEtatSiteOfficiel(etat);
+  assert.equal(message, "Aucun lien vers le site officiel n’est renseigné sur la fiche Google.");
+  assert.doesNotMatch(message, /aucun site officiel identifiable/i);
+  assert.doesNotMatch(message, /aucun site officiel n’est renseigné/i);
   assert.equal(context.siteOfficielAbsent(), true);
 });
 
@@ -344,17 +347,19 @@ function createPage1SignauxHarness({ url = "", etat = "", codeHttp = "", sansAvi
   return context;
 }
 
-test("page 1 — état 'incomplet' : signal 'un site officiel encore très peu renseigné', jamais 'aucun site officiel identifiable'", () => {
+test("page 1 — état 'incomplet' : signal 'un site officiel encore très peu renseigné', jamais une absence de site affirmée", () => {
   const context = createPage1SignauxHarness({ url: "https://appelfred.com/", etat: "incomplet", sansAvis: true });
   const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
   assert.ok(signaux.includes("un site officiel encore très peu renseigné"));
   assert.ok(!signaux.some((s) => /aucun site officiel/.test(s)));
 });
 
-test("page 1 — état 'aucun' : signal 'aucun site officiel identifiable' (non-régression)", () => {
+test("page 1 — état 'aucun' : le signal indique uniquement l’absence de lien sur la fiche Google", () => {
   const context = createPage1SignauxHarness({ etat: "aucun", sansAvis: true });
   const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
-  assert.ok(signaux.includes("aucun site officiel identifiable"));
+  assert.ok(signaux.includes("aucun lien vers le site officiel n’est renseigné sur la fiche Google"));
+  assert.ok(!signaux.some((signal) => /aucun site officiel identifiable/i.test(signal)));
+  assert.ok(!signaux.some((signal) => /aucun site officiel n’est renseigné/i.test(signal)));
 });
 
 test("page 1 — état 'accessible' (contenu professionnel) : aucun signal lié au site officiel", () => {
@@ -475,9 +480,9 @@ test("persistance brouillon : une réponse manuelle 'incomplet' (URL + état) es
 /* 11) Le nouveau contrôle 'État du site officiel' propose les 5 états exacts */
 /* ---------------------------------------------------------------------- */
 
-test("le sélecteur admin #d-site-etat propose les 5 libellés exacts demandés, l'URL restant un champ séparé", () => {
+test("le sélecteur admin #d-site-etat distingue l’absence de lien sur la fiche Google, l'URL restant un champ séparé", () => {
   const selectBlock = sliceBetween(html, '<select id="d-site-etat"', "</select>");
-  assert.match(selectBlock, /Aucun site officiel renseigné/);
+  assert.match(selectBlock, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/);
   assert.match(selectBlock, /Site inaccessible ou en erreur/);
   assert.match(selectBlock, /Site accessible mais vide ou inachevé/);
   assert.match(selectBlock, /Site accessible avec un contenu professionnel/);

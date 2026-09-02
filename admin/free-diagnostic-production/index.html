@@ -720,7 +720,7 @@
             <option value="incomplet">Site accessible mais vide ou inachevé</option>
             <option value="inaccessible">Site inaccessible ou en erreur</option>
             <option value="a_confirmer">À confirmer</option>
-            <option value="aucun">Aucun site officiel renseigné</option>
+            <option value="aucun">Aucun lien vers le site officiel n’est renseigné sur la fiche Google</option>
           </select>
         </div>
         <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric"></div>
@@ -4927,7 +4927,7 @@ function lireEtatSiteOfficiel(){
    d'URL saisie ici) retombent exactement sur l'ancien indicateur du critère
    NAP ("Aucun site web disponible"), sans aucun changement de comportement.
    - null           : aucune information exploitable — comportement historique.
-   - {etat:"aucun"}  : aucun site officiel connu.
+   - {etat:"aucun"}  : aucun lien vers le site officiel n'est renseigné sur la fiche Google.
    - {etat:"accessible"|"inaccessible"|"a_confirmer", url, codeHttp} : site connu. */
 function etatSiteOfficielCourant(){
   const saisie = lireEtatSiteOfficiel();
@@ -4949,7 +4949,7 @@ function siteOfficielAbsent(){
    HTTP non saisi manuellement. */
 function messageEtatSiteOfficiel(etatCourant){
   if(!etatCourant) return null;
-  if(etatCourant.etat === "aucun") return "Aucun site officiel n’est renseigné sur la fiche Google.";
+  if(etatCourant.etat === "aucun") return "Aucun lien vers le site officiel n’est renseigné sur la fiche Google.";
   if(etatCourant.etat === "accessible") return null;
   if(etatCourant.etat === "inaccessible"){
     return etatCourant.codeHttp
@@ -5000,7 +5000,7 @@ function signauxActuelsPage1(d){
     signaux.push("peu de preuves visuelles");
   }
   if(siteOfficielAbsent()){
-    signaux.push("aucun site officiel identifiable");
+    signaux.push("aucun lien vers le site officiel n’est renseigné sur la fiche Google");
   } else if(etatSiteOfficielCourant()?.etat === "incomplet"){
     signaux.push("un site officiel encore très peu renseigné");
   }
