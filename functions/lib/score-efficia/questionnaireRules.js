@@ -67,15 +67,27 @@ export function normalizeQuestionnaireConditions(payload = {}, criteriaReview = 
 }
 
 export function isPubliclyUnverifiableLocation(conditions = {}) {
-  return ["service_area", "hybrid"].includes(conditions.locationMode)
+  return (["storefront", "hybrid"].includes(conditions.locationMode)
+    && conditions.addressVerification === "not_verifiable")
+    || (["service_area", "hybrid"].includes(conditions.locationMode)
+      && conditions.serviceAreaVerification === "not_verifiable");
+}
+
+function publiclyUnverifiableLocationLabel(conditions = {}) {
+  const address = ["storefront", "hybrid"].includes(conditions.locationMode)
+    && conditions.addressVerification === "not_verifiable";
+  const serviceArea = ["service_area", "hybrid"].includes(conditions.locationMode)
     && conditions.serviceAreaVerification === "not_verifiable";
+  if (address && serviceArea) return "Localisation : à confirmer — information non vérifiable publiquement.";
+  if (address) return "Adresse et épingle : à confirmer — information non vérifiable publiquement.";
+  return "Zone desservie : à confirmer — information non vérifiable publiquement.";
 }
 
 export function locationScore(conditions = {}) {
   const { locationMode, addressVerification, serviceAreaVerification } = conditions;
   if (locationMode === "storefront") {
     if (addressVerification === "exact") return 2;
-    if (addressVerification === "inaccurate") return 0;
+    if (["inaccurate", "not_verifiable"].includes(addressVerification)) return 0;
     return null;
   }
   if (locationMode === "service_area") {
@@ -85,7 +97,8 @@ export function locationScore(conditions = {}) {
     return null;
   }
   if (locationMode === "hybrid") {
-    if (!["exact", "inaccurate"].includes(addressVerification)) return null;
+    if (!["exact", "inaccurate", "not_verifiable"].includes(addressVerification)) return null;
+    if (addressVerification === "not_verifiable") return 0;
     if (serviceAreaVerification === "not_verifiable") return 0;
     if (!["coherent", "partial", "incoherent"].includes(serviceAreaVerification)) return null;
     if (addressVerification === "exact" && serviceAreaVerification === "coherent") return 2;
@@ -118,7 +131,7 @@ export function normalizeLocationCriterion(criteriaReview = [], conditions = {})
         : "L’adresse, l’épingle et la zone desservie sont-elles cohérentes ?"),
     value,
     label: publiclyUnverifiable
-      ? "Zone desservie : à confirmer — information non vérifiable publiquement."
+      ? publiclyUnverifiableLocationLabel(conditions)
       : labels[conditions.locationMode],
     checklist: [],
     points,
@@ -184,7 +197,7 @@ export function incompleteQuestionnaireFields(manualReview = {}) {
   if (requiresLocationMode) {
     if (conditions.locationMode === "unknown") missing.unshift("locationMode");
     if (["storefront", "hybrid"].includes(conditions.locationMode)
-      && ["unknown", "not_verifiable"].includes(conditions.addressVerification)) missing.unshift("addressVerification");
+      && conditions.addressVerification === "unknown") missing.unshift("addressVerification");
     if (["service_area", "hybrid"].includes(conditions.locationMode)
       && conditions.serviceAreaVerification === "unknown") missing.unshift("serviceAreaVerification");
   }

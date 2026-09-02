@@ -1259,18 +1259,28 @@ function modeLocalisation(){ return document.querySelector('input[name="conditio
 function reponseAdresse(){ return document.querySelector('input[name="location-address"]:checked')?.value || "unknown"; }
 function reponseZoneDesserte(){ return document.querySelector('input[name="location-service-area"]:checked')?.value || "unknown"; }
 function localisationNonVerifiablePubliquement(){
-  return globalThis.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableServiceArea({
+  return globalThis.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableLocation({
     locationMode:modeLocalisation(),
+    addressVerification:reponseAdresse(),
     serviceAreaVerification:reponseZoneDesserte()
   });
+}
+function messageLocalisationNonVerifiablePubliquement(){
+  const mode = modeLocalisation();
+  const adresse = ["storefront","hybrid"].includes(mode) && reponseAdresse() === "not_verifiable";
+  const zone = ["service_area","hybrid"].includes(mode) && reponseZoneDesserte() === "not_verifiable";
+  if(adresse && zone) return "Localisation : à confirmer — information non vérifiable publiquement.";
+  if(adresse) return "Adresse et épingle : à confirmer — information non vérifiable publiquement.";
+  return "Zone desservie : à confirmer — information non vérifiable publiquement.";
 }
 function scoreLocalisation(){
   const mode = modeLocalisation(), adresse = reponseAdresse(), zone = reponseZoneDesserte();
   if(mode === "unknown") return legacyLocationPoints;
-  if(mode === "storefront") return adresse === "exact" ? 2 : (adresse === "inaccurate" ? 0 : null);
+  if(mode === "storefront") return adresse === "exact" ? 2 : (["inaccurate","not_verifiable"].includes(adresse) ? 0 : null);
   if(mode === "service_area") return zone === "coherent" ? 2 : (zone === "partial" ? 1 : (["incoherent","not_verifiable"].includes(zone) ? 0 : null));
   if(mode === "hybrid"){
-    if(!["exact","inaccurate"].includes(adresse)) return null;
+    if(!["exact","inaccurate","not_verifiable"].includes(adresse)) return null;
+    if(adresse === "not_verifiable") return 0;
     if(zone === "not_verifiable") return 0;
     if(!["coherent","partial","incoherent"].includes(zone)) return null;
     if(adresse === "exact" && zone === "coherent") return 2;
@@ -1290,12 +1300,12 @@ function majLocalisation(){
     if(!applicable) document.querySelectorAll(`input[name="${name}"]`).forEach(input => { input.checked = false; });
     if(block){ block.hidden = !applicable; block.toggleAttribute("inert", !applicable); }
   });
-  const unresolved = (addressApplicable && ["unknown","not_verifiable"].includes(reponseAdresse()))
+  const unresolved = (addressApplicable && !globalThis.EfficiaQuestionnaireFinalization.isAddressVerificationComplete(reponseAdresse()))
     || (serviceAreaApplicable && !globalThis.EfficiaQuestionnaireFinalization.isServiceAreaVerificationComplete(reponseZoneDesserte()));
   const publiclyUnverifiable = localisationNonVerifiablePubliquement();
   const note = document.querySelector("[data-location-confirmation]");
   if(note) note.innerHTML = publiclyUnverifiable
-    ? '<span class="note-auto">Zone desservie : à confirmer — information non vérifiable publiquement.</span>'
+    ? `<span class="note-auto">${messageLocalisationNonVerifiablePubliquement()}</span>`
     : (unresolved ? '<span class="note-auto">🔎 À confirmer avant finalisation — aucune anomalie n’est déduite automatiquement.</span>' : "");
   if(!unresolved){
     const serviceAreaBlock = document.querySelector('[data-location-control="service_area"]');
@@ -2551,7 +2561,7 @@ function listerElementsRestantsPourFinalisation(){
       id:"addressVerification",
       label:"Adresse et épingle Google Maps à confirmer",
       required:["storefront","hybrid"].includes(mode),
-      complete:["exact","inaccurate"].includes(reponseAdresse()),
+      complete:globalThis.EfficiaQuestionnaireFinalization.isAddressVerificationComplete(reponseAdresse()),
       element:locationElement?.querySelector('[data-location-control="address"]') || locationElement,
       focusTarget:locationElement?.querySelector('input[name="location-address"]'),
       reason:"address_verification_missing"
@@ -4833,7 +4843,7 @@ function mentionScoreProvisoireHtml(className = "methode-note"){
   const detail = calculScoreDetail();
   if(!scoreEstProvisoire(detail)) return "";
   const locationNote = localisationNonVerifiablePubliquement()
-    ? "<br>Zone desservie : à confirmer — information non vérifiable publiquement."
+    ? `<br>${messageLocalisationNonVerifiablePubliquement()}`
     : "";
   return `<p class="${className}">Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.${locationNote}</p>`;
 }
@@ -5289,7 +5299,7 @@ function concurrenceHtml(compact=true){
 
 function libelleOption(cr, points){
   if(cr.key === "adresse"){
-    if(localisationNonVerifiablePubliquement()) return "Zone desservie : à confirmer — information non vérifiable publiquement.";
+    if(localisationNonVerifiablePubliquement()) return messageLocalisationNonVerifiablePubliquement();
     const mode = modeLocalisation();
     if(mode === "storefront") return points === 2 ? "Adresse et épingle exactes" : "Adresse ou épingle imprécise";
     if(mode === "service_area") return points === 2 ? "Zone renseignée et cohérente" : (points === 1 ? "Zone partielle ou imprécise" : "Zone absente ou incohérente");

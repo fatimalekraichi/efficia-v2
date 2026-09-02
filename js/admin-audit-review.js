@@ -1063,14 +1063,20 @@ function updateLocationControls() {
     block.toggleAttribute("inert", !applicable);
   }
   const refreshed = collectQuestionnaireConditions();
-  const unresolved = (addressApplicable && ["unknown", "not_verifiable"].includes(refreshed.addressVerification))
+  const unresolved = (addressApplicable && !moteur.isAddressVerificationComplete(refreshed.addressVerification))
     || (serviceAreaApplicable && !moteur.isServiceAreaVerificationComplete(refreshed.serviceAreaVerification));
-  const publiclyUnverifiable = moteur.hasPubliclyUnverifiableServiceArea(refreshed);
+  const publiclyUnverifiable = moteur.hasPubliclyUnverifiableLocation(refreshed);
+  const addressPubliclyUnverifiable = addressApplicable && refreshed.addressVerification === "not_verifiable";
+  const serviceAreaPubliclyUnverifiable = serviceAreaApplicable && refreshed.serviceAreaVerification === "not_verifiable";
   const confirmation = criteriaGroupsBox?.querySelector("[data-location-confirmation]");
   if (confirmation) {
     confirmation.hidden = !unresolved && !publiclyUnverifiable;
     confirmation.textContent = publiclyUnverifiable
-      ? "Zone desservie : à confirmer — information non vérifiable publiquement."
+      ? (addressPubliclyUnverifiable && serviceAreaPubliclyUnverifiable
+        ? "Localisation : à confirmer — information non vérifiable publiquement."
+        : (addressPubliclyUnverifiable
+          ? "Adresse et épingle : à confirmer — information non vérifiable publiquement."
+          : "Zone desservie : à confirmer — information non vérifiable publiquement."))
       : "Cette information doit être confirmée avant la finalisation. Aucune anomalie n’est déduite automatiquement.";
   }
 }
@@ -1114,7 +1120,7 @@ function updateNotVerifiedHighlights() {
     if (key === "adresse") {
       const conditions = collectQuestionnaireConditions();
       const isNotVerified = conditions.locationMode === "unknown"
-        || (["storefront", "hybrid"].includes(conditions.locationMode) && ["unknown", "not_verifiable"].includes(conditions.addressVerification))
+        || (["storefront", "hybrid"].includes(conditions.locationMode) && !globalThis.EfficiaQuestionnaireFinalization.isAddressVerificationComplete(conditions.addressVerification))
         || (["service_area", "hybrid"].includes(conditions.locationMode) && conditions.serviceAreaVerification === "unknown");
       item.classList.toggle("is-not-verified", isNotVerified);
       const badge = item.querySelector("[data-not-verified-badge]");
@@ -1171,7 +1177,7 @@ function updateCriteriaSummary() {
   const location = collectQuestionnaireConditions();
   const moteur = globalThis.EfficiaQuestionnaireFinalization;
   const locationAnswered = location.locationMode !== "unknown"
-    && (!["storefront", "hybrid"].includes(location.locationMode) || ["exact", "inaccurate"].includes(location.addressVerification))
+    && (!["storefront", "hybrid"].includes(location.locationMode) || moteur.isAddressVerificationComplete(location.addressVerification))
     && (!["service_area", "hybrid"].includes(location.locationMode) || moteur.isServiceAreaVerificationComplete(location.serviceAreaVerification));
   const answered = visibleItems.filter((item) => item.dataset.criteriaKey === "adresse"
     ? locationAnswered
@@ -1180,7 +1186,7 @@ function updateCriteriaSummary() {
     ? !locationAnswered
     : item.querySelector('[data-criteria-option]:checked[value="not_verified"]')).length;
   criteriaSummaryBox.textContent = `${answered}/${total} critères renseignés${notVerified ? ` · ${notVerified} non vérifiés` : ""}`;
-  if (scoreProvisionalBox) scoreProvisionalBox.hidden = !moteur.hasPubliclyUnverifiableServiceArea(location);
+  if (scoreProvisionalBox) scoreProvisionalBox.hidden = !moteur.hasPubliclyUnverifiableLocation(location);
 }
 
 function listerElementsRestantsPourFinalisation() {
@@ -1210,7 +1216,7 @@ function listerElementsRestantsPourFinalisation() {
       id: "addressVerification",
       label: "Adresse et épingle Google Maps à confirmer",
       required: ["storefront", "hybrid"].includes(location.locationMode),
-      complete: ["exact", "inaccurate"].includes(location.addressVerification),
+      complete: moteur.isAddressVerificationComplete(location.addressVerification),
       element: locationElement?.querySelector('[data-location-control="address"]') || locationElement,
       focusTarget: locationElement?.querySelector('input[name="location:address"]'),
       reason: "address_verification_missing",

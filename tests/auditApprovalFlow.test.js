@@ -324,6 +324,34 @@ test("la confirmation globale prépare l’aperçu après avoir approuvé les co
   }
 });
 
+test("la finalisation Premium accepte une adresse non vérifiable comme réponse manuelle complète", async () => {
+  const db = dbForManualPremium();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true });
+  try {
+    const response = await __test__.saveManualReview({
+      context: {
+        request: new Request(`https://local.test/api/admin/audit-review/${ANALYSIS_ID}`),
+        env: { CONNECTOR_TOKEN: "test-token" },
+      },
+      db,
+      analysisId: ANALYSIS_ID,
+      payload: {
+        ...completeManualReview(),
+        addressVerification: "not_verifiable",
+        confirmAll: true,
+        executionPlan: {
+          ...completeManualReview().executionPlan,
+          description: { text: "Description complète", status: "needs_confirmation" },
+        },
+      },
+    });
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("la confirmation globale refuse une ville sentinelle avec un blocage manuel précis", async () => {
   const db = dbForManualPremium(row({ ville: "Non renseignée" }));
   const response = await __test__.saveManualReview({

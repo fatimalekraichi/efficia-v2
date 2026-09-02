@@ -26,6 +26,17 @@
     return ["coherent", "partial", "incoherent", "not_verifiable"].includes(value);
   }
 
+  function isAddressVerificationComplete(value) {
+    return ["exact", "inaccurate", "not_verifiable"].includes(value);
+  }
+
+  function hasPubliclyUnverifiableLocation(conditions = {}) {
+    return (["storefront", "hybrid"].includes(conditions.locationMode)
+      && conditions.addressVerification === "not_verifiable")
+      || (["service_area", "hybrid"].includes(conditions.locationMode)
+        && conditions.serviceAreaVerification === "not_verifiable");
+  }
+
   function hasPubliclyUnverifiableServiceArea(conditions = {}) {
     return ["service_area", "hybrid"].includes(conditions.locationMode)
       && conditions.serviceAreaVerification === "not_verifiable";
@@ -42,7 +53,9 @@
   global.EfficiaQuestionnaireFinalization = Object.freeze({
     listerElementsRestantsPourFinalisation,
     formaterResumeElementsRestants,
+    isAddressVerificationComplete,
     isServiceAreaVerificationComplete,
+    hasPubliclyUnverifiableLocation,
     hasPubliclyUnverifiableServiceArea,
   });
 }(globalThis));

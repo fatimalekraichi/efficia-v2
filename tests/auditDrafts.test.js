@@ -98,6 +98,30 @@ test("un brouillon incomplet conserve son type, ses réponses versionnées et so
   assert.equal((await restored.json()).draft.answers.questionnaireVersion, "score-efficia-questionnaire-v3");
 });
 
+test("un brouillon restaure exactement une adresse non vérifiable", async () => {
+  const db = new LocalD1();
+  seed(db, FREE_ID, "free");
+  const answers = {
+    questionnaireVersion: "score-efficia-questionnaire-v4",
+    locationMode: "storefront",
+    addressVerification: "not_verifiable",
+    serviceAreaVerification: "unknown",
+    responses: { adresse: { points: 0, value: "not_verified", source: "manual" } },
+  };
+  const saved = await putDraft(await context(db, {
+    method: "PUT",
+    body: { analysisId: FREE_ID, reportType: "free", currentStep: "questionnaire", answers },
+  }));
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).draft.answers.addressVerification, "not_verifiable");
+
+  const restored = await getDraft(await context(db));
+  const restoredAnswers = (await restored.json()).draft.answers;
+  assert.equal(restoredAnswers.locationMode, "storefront");
+  assert.equal(restoredAnswers.addressVerification, "not_verifiable");
+  assert.equal(restoredAnswers.responses.adresse.points, 0);
+});
+
 test("les brouillons sont authentifiés, listés séparément et supprimables avec un identifiant opaque", async () => {
   const db = new LocalD1();
   seed(db, FREE_ID, "free");

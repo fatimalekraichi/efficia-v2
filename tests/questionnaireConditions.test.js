@@ -245,6 +245,7 @@ test("le mode de réception pilote le critère historique adresse sans ajouter d
 
   assert.equal(locationScore({ locationMode: "storefront", addressVerification: "exact" }), 2);
   assert.equal(locationScore({ locationMode: "storefront", addressVerification: "inaccurate" }), 0);
+  assert.equal(locationScore({ locationMode: "storefront", addressVerification: "not_verifiable" }), 0);
   assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "coherent" }), 2);
   assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "partial" }), 1);
   assert.equal(locationScore({ locationMode: "service_area", serviceAreaVerification: "incoherent" }), 0);
@@ -252,6 +253,7 @@ test("le mode de réception pilote le critère historique adresse sans ajouter d
   assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "exact", serviceAreaVerification: "incoherent" }), 1);
   assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "inaccurate", serviceAreaVerification: "coherent" }), 1);
   assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "inaccurate", serviceAreaVerification: "incoherent" }), 0);
+  assert.equal(locationScore({ locationMode: "hybrid", addressVerification: "not_verifiable", serviceAreaVerification: "coherent" }), 0);
 
   const switchedToStorefront = normalizeManualReview({
     questionnaireVersion: QUESTIONNAIRE_VERSION,
@@ -299,6 +301,31 @@ test("zone non vérifiable vaut zéro, reste neutre et ne bloque plus la finalis
   const scoreContext = buildScoreContext({ reviewedScore: result.reviewedScore, scoreInputs: result.scoreInputs });
   assert.equal(scoreContext.provisional, true);
   assert.equal(scoreContext.locationConfirmation, locationCriterion.label);
+});
+
+test("adresse non vérifiable vaut zéro, reste provisoire et ne bloque pas la finalisation gratuite ou Premium", () => {
+  for (const reportType of ["free", "premium"]) {
+    const manualReview = normalizeManualReview({
+      questionnaireVersion: QUESTIONNAIRE_VERSION,
+      reportType,
+      photoPresence: "present",
+      reviewsPresence: "present",
+      locationMode: "storefront",
+      addressVerification: "not_verifiable",
+      criteriaReview: completeCriteria(),
+    });
+    const result = runScoreEfficia({ manualReview });
+    const locationCriterion = result.scoreInputs.criteria.find((item) => item.key === "adresse");
+    assert.equal(locationScore(manualReview), 0);
+    assert.equal(result.scoreInputs.answers.adresse, 0);
+    assert.notEqual(result.scoreInputs.answers.adresse, null);
+    assert.equal(result.scoreInputs.provisional, true);
+    assert.equal(result.reviewedScore.provisional, true);
+    assert.equal(locationCriterion.status, "not_verified");
+    assert.equal(locationCriterion.source, "publicly_unverifiable");
+    assert.equal(locationCriterion.label, "Adresse et épingle : à confirmer — information non vérifiable publiquement.");
+    assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
+  }
 });
 
 test("une réponse définitive ou un changement de mode retire immédiatement le statut provisoire", () => {

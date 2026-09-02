@@ -83,8 +83,9 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
   };
   context.globalThis = context;
   vm.runInNewContext(sharedSource, context);
-  context.localisationNonVerifiablePubliquement = () => context.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableServiceArea({
+  context.localisationNonVerifiablePubliquement = () => context.EfficiaQuestionnaireFinalization.hasPubliclyUnverifiableLocation({
     locationMode: state.mode,
+    addressVerification: state.address,
     serviceAreaVerification: state.serviceArea,
   });
   const listCode = sliceBetween(html, "function listerElementsRestantsPourFinalisation()", "function calc()");
@@ -171,12 +172,41 @@ test("une zone non vérifiable est complète, vaut zéro et marque le score prov
   assert.equal(harness.provisional.hidden, true);
 });
 
+test("une adresse non vérifiable est complète, vaut zéro et n'empêche pas la génération", () => {
+  const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
+  const harness = createLegacyHarness({
+    criteria: relevantCriteria,
+    selected,
+    location: { mode: "storefront", address: "not_verifiable" },
+  });
+  assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
+  harness.context.api.calc();
+  assert.equal(harness.counter.textContent, "✓ Tous les éléments sont renseignés");
+  assert.equal(harness.provisional.hidden, false);
+  assert.equal(harness.context.api.questionnairePretPourFinalisation(), true);
+});
+
+test("le calcul client attribue zéro, jamais null, à une adresse non vérifiable", () => {
+  const scoreCode = sliceBetween(html, "function scoreLocalisation()", "function majLocalisation()");
+  const context = {
+    legacyLocationPoints: null,
+    modeLocalisation: () => "storefront",
+    reponseAdresse: () => "not_verifiable",
+    reponseZoneDesserte: () => "unknown",
+  };
+  vm.runInNewContext(`${scoreCode}\nglobalThis.score = scoreLocalisation();`, context);
+  assert.equal(context.score, 0);
+  assert.notEqual(context.score, null);
+});
+
 test("les deux interfaces chargent le moteur commun et ne conservent pas l’ancien calcul divergent", () => {
   assert.match(html, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
   assert.match(modernHtmlSource, /<script src="\/js\/questionnaire-finalization\.js"><\/script>/);
   assert.match(html, /const elementsRestants = listerElementsRestantsPourFinalisation\(\)/);
   assert.doesNotMatch(html, /const restant = totalCrit - repondus/);
   assert.match(modernSource, /function listerElementsRestantsPourFinalisation\(\)/);
+  assert.match(modernSource, /isAddressVerificationComplete\(location\.addressVerification\)/);
+  assert.match(modernSource, /hasPubliclyUnverifiableLocation\(location\)/);
   assert.doesNotMatch(modernSource, /function incompleteVisibleCriteria\(\)/);
   assert.match(html, /élément\(s\) restant à vérifier/);
   assert.match(html, /Tous les éléments sont renseignés/);
