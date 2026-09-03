@@ -29,7 +29,7 @@
 //     alimente "Ce que le client voit" sur la MEME carte de priorite (page
 //     5), pouvait contredire l'action juste en dessous ;
 //   - planAction7Jours() -- calcule a chaque genererRapport() mais son
-//     résultat n'est actuellement rendu dans aucune des 4 pages du PDF
+//     resultat n'est actuellement rendu dans aucune des 6 pages du PDF
 //     (variable morte) ; corrige neanmoins car la fonction s'execute a
 //     chaque generation et pour eviter toute regression si elle est
 //     reutilisee ;
@@ -152,12 +152,14 @@ test("Avis-fix 7 : absence globale de -/5, --/5, null, undefined, NaN, 0/5 sur t
   }
 });
 
-/* Intégration réelle : le contrôle informatif canonique construit ses deux
-   textes via formatNoteAvisAdmin(), sans réécriture parallèle. */
+/* Integration reelle : le bloc "Confiance visible face aux concurrents" de
+   checklistHtml() (page 3) construit bien ses deux textes via
+   formatNoteAvisAdmin(), en reutilisant rapportSansAvis() pour "Votre
+   fiche" -- pas une reecriture parallele. */
 const CHECKLIST_CONFIANCE_CODE = sliceBetween(
   html,
-  "function controlesChecklistCanoniques(){",
-  "function resumeControlesChecklist",
+  "const synthese = donneesAnalyse.syntheseConcurrence || {};",
+  "return `<div class=\"chk-item chk-item--informational\">",
 );
 
 function renderConfianceConcurrents({ syntheseConcurrence, sansAvis = false }) {
@@ -165,13 +167,8 @@ function renderConfianceConcurrents({ syntheseConcurrence, sansAvis = false }) {
     estNombre,
     donneesAnalyse: { syntheseConcurrence, nbAvis: sansAvis ? 0 : null },
     conditionAvis: () => (sansAvis ? "none" : "present"),
-    GRILLE: [{ cat: "Avis", criteres: [{ id: 999, key: "attractiviteConcurrents", q: "Confiance visible face aux concurrents", max: 0 }] }],
-    REVIEW_DEPENDENT_KEYS: [],
-    LIBELLES_COURTS: { attractiviteConcurrents: "Confiance visible face aux concurrents" },
-    critereEstMasque: () => false,
-    critereEstNote: () => false,
   };
-  vm.runInNewContext(`${CORE_CODE}\n${CHECKLIST_CONFIANCE_CODE}\nconst controle=controlesChecklistCanoniques()[0];const parts=controle.label.match(/Votre fiche : (.*?) · Concurrents : (.*?) · /);globalThis.result={texteVotreFiche:parts[1],texteConcurrents:parts[2]};`, context);
+  vm.runInNewContext(`${CORE_CODE}\n${CHECKLIST_CONFIANCE_CODE}\nglobalThis.result={texteVotreFiche,texteConcurrents};`, context);
   return context.result;
 }
 
@@ -280,11 +277,11 @@ test("Visibilite-fix 8 : le cas 'position' ne promet jamais un classement precis
   }
 });
 
-test("Visibilite-fix 9 : score, prix et pagination quatre pages du diagnostic gratuit restent stables", () => {
+test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit restent inchanges (garde-fou de non-regression)", () => {
   assert.match(html, /99\s*€/);
   assert.match(html, /349\s*€/);
   const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 4);
+  assert.equal(pagesCommentees.length, 6);
 });
 
 /* ========================================================================
@@ -296,7 +293,7 @@ test("Visibilite-fix 9 : score, prix et pagination quatre pages du diagnostic gr
    utilise plus haut, + le bloc reel de resultatAttenduPriorite) plutot que
    d'ecrire un mock qui contournerait la logique corrigee.
    ======================================================================== */
-const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function prioriteInfosRevendiquee(item){", "function microLivrablePriorite(item, ctx, rank){");
+const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function resultatAttenduInfos(){", "function microLivrablePriorite(item, ctx, rank){");
 
 function callResultatAttenduPrioriteVisibilite(mocks = {}) {
   const context = {
@@ -374,7 +371,7 @@ test("Resultat-attendu-fix 7 : score / prix / nombre de pages du diagnostic grat
   assert.match(html, /99\s*€/);
   assert.match(html, /349\s*€/);
   const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 4);
+  assert.equal(pagesCommentees.length, 6);
 });
 
 /* ========================================================================
@@ -466,16 +463,16 @@ test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (ho
    btn-pdf -> telechargerPDF() -> genererRapport() -> html2canvas -> jsPDF.
    pdf.save() est intercepte pour eviter tout telechargement reel ; le test
    verifie que le flux appelle bien le VRAI genererRapport() (non stub) et
-   que les 4 pages sont composees avant tout appel a pdf.save().
+   que les 6 pages sont composees avant tout appel a pdf.save().
    ======================================================================== */
-test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 4 pages, puis pdf.save()", async () => {
+test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 6 pages, puis pdf.save()", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
   let composed = 0;
   let canvasCalls = 0;
   let savedFilename = "";
   let orderOk = true;
-  const pages = Array.from({ length: 4 }, (_, i) => ({ id: `page-${i}` }));
+  const pages = Array.from({ length: 6 }, (_, i) => ({ id: `page-${i}` }));
   class FakePdf {
     constructor() { this.pageCount = 1; this.internal = { getNumberOfPages: () => this.pageCount }; }
     addPage() { this.pageCount += 1; }
@@ -483,7 +480,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     link() {}
     save(filename) {
       savedFilename = filename;
-      if (canvasCalls !== 4) orderOk = false;
+      if (canvasCalls !== 6) orderOk = false;
     }
   }
   const buttons = [{ disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
@@ -502,8 +499,8 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     enregistrerBrouillonD1: async () => true,
     chargerLogoRapportDataUrl: async () => {},
     // genererRapport() est stub ici (comme dans le test existant "un clic
-    // PDF complet compose quatre pages" de tests/freeDiagnosticFinalization.test.js) :
-    // ce test verifie le FLUX du bouton (appel reel, ordre, 4 pages, pdf.save
+    // PDF complet compose six pages" de tests/freeDiagnosticFinalization.test.js) :
+    // ce test verifie le FLUX du bouton (appel reel, ordre, 6 pages, pdf.save
     // uniquement apres composition). Le CONTENU reel produit par genererRapport()
     // -- page 3 / page 5 -- est verifie separement par les tests d'integration
     // actionFamillePriorite / constatObservePriorite / checklistHtml
@@ -526,7 +523,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
   vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 4);
+  assert.equal(canvasCalls, 6);
   assert.equal(savedFilename, "diagnostic-regression.pdf");
-  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 4 pages soient composees");
+  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 6 pages soient composees");
 });

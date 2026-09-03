@@ -51,7 +51,7 @@ addEventListener("load", () => {
 </script>`;
 }
 
-test("PDF réel page 4 : les deux CTA possèdent des annotations URI valides", { skip: !hasPrerequisites }, async (t) => {
+test("PDF réel page 6 : les deux CTA possèdent des annotations URI valides", { skip: !hasPrerequisites }, async (t) => {
   if (!(await cdnReachable())) {
     t.skip("CDN jsPDF injoignable depuis cet environnement");
     return;

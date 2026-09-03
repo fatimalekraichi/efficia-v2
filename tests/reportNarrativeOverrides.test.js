@@ -535,8 +535,6 @@ test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4
       });
       assert.ok(result, `${pageLabel} : mesures DOM absentes`);
       const layout = JSON.parse(result);
-      // Cette fixture exerce le renderer serveur indépendant : la refonte
-      // quatre pages vise exclusivement le téléchargement admin index.html.
       assert.equal(layout.pageCount, 6, pageLabel);
       assert.ok(layout.editableCount >= 1, `${pageLabel} : bloc personnalisé introuvable dans le PDF`);
       assert.deepEqual(layout.outside, [], pageLabel);
@@ -674,7 +672,7 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.generatedAutomatic, true);
   assert.equal(result.generatedCustom, true);
   assert.equal(result.generatedServerError, true);
-  assert.equal(result.pageCount, 4);
+  assert.equal(result.pageCount, 6);
   assert.match(result.automaticTracked, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.match(result.automaticPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
@@ -686,113 +684,6 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
-});
-
-test("renderer admin gratuit : quatre pages, priorités compactes et aperçu Audit réellement tronqué", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
-  const result = await runAdminBrowserHarness(`
-    (async () => {
-      try {
-        for (let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-        for (const name of new Set([...document.querySelectorAll('input[type="radio"][name^="c"]')].map(input => input.name))) {
-          const radio = document.querySelector('input[name="' + name + '"][value="0"]') || document.querySelector('input[name="' + name + '"]');
-          radio.checked = true;
-          radio.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        calc();
-        await chargerRemplacementsNarratifsRapport();
-        const generated = genererRapport({ exigerVersion: false });
-        const pages = [...document.querySelectorAll("#rapport-contenu .page")];
-        const page2 = pages[1]; const page3 = pages[2]; const page4 = pages[3];
-        const compactCards = [...page3.querySelectorAll(".priority-card--compact")];
-        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
-          generated,
-          pageCount: pages.length,
-          page2HasFullGrid: Boolean(page2.querySelector(".chk-grid")),
-          page2Highlights: page2.querySelectorAll(".checklist-highlight").length,
-          compactCount: compactCards.length,
-          compactOperationalBlocks: compactCards.map(card => ({
-            actions: card.querySelectorAll(".priority-step--action").length,
-            results: card.querySelectorAll(".priority-resultat").length,
-            times: card.querySelectorAll(".priority-time").length,
-            samples: card.querySelectorAll(".priority-sample").length,
-            locks: card.querySelectorAll(".priority-audit-lock").length,
-          })),
-          compactTitles: compactCards.map(card => card.querySelector(".priority-title")?.textContent || ""),
-          auditExcerpt: page4.querySelector(".audit-preview__excerpt")?.textContent || "",
-          auditPreviewText: page4.querySelector(".audit-preview")?.textContent || "",
-          offers: [...page4.querySelectorAll(".offer-price")].map(item => item.textContent),
-          links: [...page4.querySelectorAll("[data-pdf-link=payment]")].map(item => item.getAttribute("href")),
-          offerClasses: [...page4.querySelectorAll(".offer-card")].map(item => item.className),
-          ctaClasses: [...page4.querySelectorAll("[data-pdf-link=payment]")].map(item => item.className),
-          offerDetails: [...page4.querySelectorAll(".offer-card")].map(card => {
-            const cta = card.querySelector("[data-pdf-link=payment]");
-            const badge = card.querySelector(".offer-badge");
-            const style = getComputedStyle(cta);
-            return {
-              title: card.querySelector("h3")?.textContent || "",
-              price: card.querySelector(".offer-price")?.textContent || "",
-              badge: badge?.textContent || "",
-              href: cta?.getAttribute("href") || "",
-              cta: cta?.textContent || "",
-              background: style.backgroundColor,
-              color: style.color,
-              borderColor: style.borderTopColor,
-            };
-          }),
-          layouts: pages.map((page, index) => {
-            const footer = page.querySelector(".pied");
-            const footerRect = footer.getBoundingClientRect();
-            const content = [...page.children].filter(element => !element.classList.contains("pied"));
-            const contentBottom = Math.max(...content.map(element => element.getBoundingClientRect().bottom));
-            const pageRect = page.getBoundingClientRect();
-            return { page: index + 1, contentBottom, footerTop: footerRect.top, pageBottom: pageRect.bottom };
-          }),
-        });
-      } catch (error) {
-        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
-      }
-    })();
-  `, {
-    overrides: [
-      { fieldId: "priority.2.title", customText: "Titre personnalisé de la priorité 2", needsReview: false },
-    ],
-  });
-  assert.equal(result.error, undefined, result.error);
-  assert.equal(result.generated, true);
-  assert.equal(result.pageCount, 4);
-  assert.equal(result.page2HasFullGrid, false, "la grille exhaustive ne doit plus être embarquée dans la page 2");
-  assert.ok(result.page2Highlights >= 1, "la page 2 doit garder des exemples de contrôles réels");
-  assert.equal(result.compactCount, 2);
-  for (const card of result.compactOperationalBlocks) {
-    assert.deepEqual(card, { actions: 0, results: 0, times: 0, samples: 0, locks: 1 });
-  }
-  assert.ok(result.compactTitles.includes("Titre personnalisé de la priorité 2"));
-  assert.match(result.auditExcerpt, /… \[…\]$/u, "l’aperçu Audit doit être intrinsèquement tronqué");
-  assert.doesNotMatch(result.auditPreviewText, /plan d'action directement applicable|analyse détaillée de la fiche/i);
-  assert.ok(result.offers.some(text => /99\s*€/u.test(text)));
-  assert.ok(result.offers.some(text => /349\s*€/u.test(text)));
-  assert.ok(result.links.some(url => /offre=audit/u.test(url)));
-  assert.ok(result.links.some(url => /offre=visibility/u.test(url)));
-  assert.equal(result.offerClasses[0].includes("primary"), false, "l’Audit à 99 € reste la carte secondaire à gauche");
-  assert.equal(result.offerClasses[1].includes("primary"), true, "le Pack à 349 € devient la carte principale à droite");
-  assert.match(result.ctaClasses[0], /payment-button--audit/u);
-  assert.match(result.ctaClasses[1], /payment-button--pack/u);
-  assert.deepEqual(result.offerDetails.map(({ title, price, badge, cta }) => ({ title, price, badge, cta })), [
-    { title: "Audit complet Google Business", price: "99 € TTC", badge: "Je le fais moi-même", cta: "Je veux savoir quoi corriger en premier" },
-    { title: "Pack Visibilité Google", price: "349 €", badge: "Efficia s'occupe de tout", cta: "Optimiser ma fiche maintenant" },
-  ]);
-  assert.match(result.offerDetails[0].href, /offre=audit/u);
-  assert.match(result.offerDetails[1].href, /offre=visibility/u);
-  assert.equal(result.offerDetails[0].background, "rgb(255, 255, 255)");
-  assert.equal(result.offerDetails[0].color, "rgb(29, 78, 216)");
-  assert.equal(result.offerDetails[1].background, "rgb(37, 99, 235)");
-  assert.equal(result.offerDetails[1].color, "rgb(255, 255, 255)");
-  for (const layout of result.layouts) {
-    assert.ok(layout.contentBottom < layout.footerTop - 12, `page ${layout.page}: contenu ${layout.contentBottom} trop près du footer ${layout.footerTop}`);
-    assert.ok(layout.footerTop < layout.pageBottom, `page ${layout.page}: footer hors page`);
-  }
 });
 
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {

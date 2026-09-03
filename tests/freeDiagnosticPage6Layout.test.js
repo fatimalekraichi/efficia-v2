@@ -27,7 +27,7 @@ const chrome = [process.env.CHROME_BIN, chromeForTestingPath(), "/Applications/G
 const hasChrome = existsSync(chrome);
 
 // Empêche toute régression silencieuse du garde-fou historique : le
-// correctif de mise en page de la page 4 (page-offres) ne doit jamais
+// correctif de mise en page de la page 6 (page-offres) ne doit jamais
 // modifier validerMiseEnPageRapport() ni sa tolérance de 12px.
 test("le garde-fou validerMiseEnPageRapport() et sa tolérance de 12px restent inchangés", () => {
   assert.match(generator, /function validerMiseEnPageRapport\(\)\{/u);
@@ -60,7 +60,7 @@ function formatMinutes(minutes) {
   return `environ ${bas} à ${haut} heures`;
 }
 
-// Reproduction fidèle du template réel de la PAGE 4 (.page-offres) tel que
+// Reproduction fidèle du template réel de la PAGE 6 (.page-offres) tel que
 // produit par genererRapport() dans admin/free-diagnostic-production/index.html
 // (même approche que freeDiagnosticPage3Layout.test.js pour la page 3 :
 // fixture autonome important la vraie feuille de styles, sans dépendre de
@@ -102,14 +102,14 @@ function pageOffresFixture({
 
   return `<div class="page page-offres">
     <header class="rapport-header report-header"><div class="rapport-logo report-logo-wrap"><img class="report-logo" src="${LOGO_SRC}" alt="Efficia Digital"><span class="fallback">Efficia Digital</span></div><span class="rap-etiquette">Diagnostic Efficia™</span></header>
-    <div class="chapitre">Étape 5 · Passer à l'action</div>
+    <div class="chapitre">Étape 6 · Passer à l'action</div>
     <h1 class="rapport-title">Deux façons d'améliorer votre fiche</h1>
     <p class="rapport-subtitle">Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${escapeHtml(business)}.</p>
     ${projectionBloc}
     ${effortBloc}
     <div class="choice-note">Le Pack permet de prendre en charge les priorités détectées, sans que vous ayez à modifier la fiche vous-même.</div>
     <div class="offer-grid">
-      <div class="offer-card offer-choice">
+      <div class="offer-card offer-choice primary">
         <span class="offer-badge">Je le fais moi-même</span>
         <h3>Audit complet Google Business</h3>
         <div class="offer-price">99 € <small>TTC</small></div>
@@ -124,7 +124,7 @@ function pageOffresFixture({
         <p class="offer-note">Prévoyez ensuite ${formatMinutes(tempsDiy)} au total pour appliquer les recommandations vous-même, selon les éléments déjà disponibles et les vérifications nécessaires.${deductionNote ? " " + deductionNote : ""}</p>
         <a class="payment-button payment-button--audit" data-pdf-link="payment" href="https://www.efficiadigital.com/achat?offre=audit" target="_blank" rel="noopener noreferrer">Je veux savoir quoi corriger en premier</a>
       </div>
-      <div class="offer-card offer-choice primary">
+      <div class="offer-card offer-choice">
         <span class="offer-badge">Efficia s'occupe de tout</span>
         <h3>Pack Visibilité Google</h3>
         <div class="offer-price">349 €</div>
@@ -151,7 +151,7 @@ function pageOffresFixture({
     </div>
     <p style="text-align:center;color:#64748b;font-size:.7rem;margin-top:7px"><a class="rapport-link" href="https://efficiadigital.com">efficiadigital.com</a> • <a class="rapport-link" href="mailto:contact@efficiadigital.com">contact@efficiadigital.com</a> — réponse sous 24 h ouvrées, sans engagement.</p>
     <p class="legal-note">Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au 25 août 2026${concurrentsClause}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</p>
-    <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="4">Page 4/4</span></div>
+    <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="6">Page 6/6</span></div>
   </div>`;
 }
 
@@ -212,7 +212,7 @@ function layoutHtmlPages(pagesHtml) {
 
 /* Chrome headless ne doit jamais hériter du profil interactif macOS : il y
    lance alors des tâches de fond (installations d'applications, sync, etc.)
-   qui peuvent empêcher --dump-dom de se terminer. Chaque suite page 4
+   qui peuvent empêcher --dump-dom de se terminer. Chaque suite page 6
    reçoit donc son profil éphémère et toute attente est bornée avec la phase
    concernée dans le message d'erreur. */
 async function serveTemporaryDirectory(directory) {
@@ -244,13 +244,13 @@ async function measureLayouts(directory, profileDir, scenarios, server) {
   const htmlPath = join(directory, "scenarios.html");
   const pages = scenarios.map(({ name, opts }) => pageOffresFixture(opts).replace('class="page page-offres"', `class="page page-offres" data-layout-scenario="${name}"`)).join("\n");
   writeFileSync(htmlPath, layoutHtmlPages(pages));
-  const result = await collectPageResultWithIsolatedChrome({ chrome, url: server.url("scenarios.html"), profileDir, phase: "page 4 / scénarios de mise en page", selector: "#layout-result" });
-  assert.ok(result, "page 4 : mesures DOM absentes");
+  const result = await collectPageResultWithIsolatedChrome({ chrome, url: server.url("scenarios.html"), profileDir, phase: "page 6 / scénarios de mise en page", selector: "#layout-result" });
+  assert.ok(result, "page 6 : mesures DOM absentes");
   return JSON.parse(result);
 }
 
-test("page 4 : scénarios de contenu variables — marge >= 24px, sans alerte, sans coupe ni chevauchement", { skip: !hasChrome, timeout: 25_000 }, async () => {
-  const directory = mkdtempSync(join(tmpdir(), "efficia-page4-layout-"));
+test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, sans coupe ni chevauchement", { skip: !hasChrome, timeout: 25_000 }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "efficia-page6-layout-"));
   let server;
   try {
     const profileDir = join(directory, "chrome-profile");
@@ -325,14 +325,16 @@ async function html2canvasReachable() {
 }
 
 function minimalOtherPage(n, cls) {
-  return `<div class="page ${cls}" style="position:relative"><h1 class="rapport-title">Page ${n}</h1><div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="${n}">Page ${n}/4</span></div></div>`;
+  return `<div class="page ${cls}" style="position:relative"><h1 class="rapport-title">Page ${n}</h1><div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="${n}">Page ${n}/6</span></div></div>`;
 }
 
 function pdfHtmlPage(pageOffresHtml) {
   const otherPages = [
     minimalOtherPage(1, "page-hero"),
     minimalOtherPage(2, "page-benchmark"),
-    minimalOtherPage(3, "page-priorites"),
+    minimalOtherPage(3, "page-action"),
+    minimalOtherPage(4, "page-priorites"),
+    minimalOtherPage(5, "page-plan"),
   ].join("\n");
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head>
   <body>
@@ -349,7 +351,7 @@ function pdfHtmlPage(pageOffresHtml) {
       try {
         const pages = [...document.querySelectorAll("#rapport-contenu .page")];
         const result = { pageCount: pages.length };
-        if (pages.length === 4) {
+        if (pages.length === 6) {
           const jsPDFCtor = window.jspdf?.jsPDF || window.jsPDF;
           const html2canvasFn = window.html2canvas;
           const pdf = new jsPDFCtor({ unit: "mm", format: "a4", orientation: "portrait" });
@@ -371,7 +373,7 @@ function pdfHtmlPage(pageOffresHtml) {
   </body></html>`;
 }
 
-test("page 4 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) — 4 pages, sans alerte", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
+test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) — 6 pages, sans alerte", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
   if (!(await cdnReachable())) {
     t.skip("CDN jsPDF/html2canvas injoignable depuis cet environnement");
     return;
@@ -391,15 +393,15 @@ test("page 4 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) 
       chrome,
       url: server.url("bv-dense-pdf.html"),
       profileDir,
-      phase: "page 4 / PDF B&V dense",
+      phase: "page 6 / PDF B&V dense",
       timeout: 35_000,
       selector: "#pdf-result",
     });
     assert.ok(resultText, "résultat de génération PDF absent du DOM");
     const result = JSON.parse(resultText);
     assert.equal(result.error, undefined, `génération PDF en échec : ${result.error}`);
-    assert.equal(result.pageCount, 4, `le rapport contient ${result.pageCount} pages au lieu de 4`);
-    assert.equal(result.totalPdfPages, 4, `le PDF généré contient ${result.totalPdfPages} pages au lieu de 4`);
+    assert.equal(result.pageCount, 6, `le rapport contient ${result.pageCount} pages au lieu de 6`);
+    assert.equal(result.totalPdfPages, 6, `le PDF généré contient ${result.totalPdfPages} pages au lieu de 6`);
     assert.ok(result.pdfBytes > 0, "le PDF généré est vide");
     assert.deepEqual(result.alerts, [], `alerte(s) déclenchée(s) pendant la génération : ${(result.alerts || []).join(", ")}`);
   } finally {
@@ -410,18 +412,18 @@ test("page 4 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) 
 
 // Le défaut historique ne vient pas du DOM : il apparaît pendant la capture
 // html2canvas de certaines pages éloignées du long rapport. Cette fixture
-// reproduit quatre pages A4 avec le vrai logo PNG et vérifie à la fois la
+// reproduit six pages A4 avec le vrai logo PNG et vérifie à la fois la
 // géométrie du DOM source, celle du clone html2canvas et le canvas capturé.
 const LOGO_PNG_DATA_URL = `data:image/png;base64,${readFileSync(join(projectRoot, "assets", "logo", "logo-efficia-digital.png")).toString("base64")}`;
 
-function fourPagesLogoFixture() {
-  const pages = Array.from({ length: 4 }, (_, index) => {
+function sixPagesLogoFixture() {
+  const pages = Array.from({ length: 6 }, (_, index) => {
     const page = index + 1;
     return `<section class="page page-logo-test page-${page}">
       <header class="rapport-header report-header"><div class="rapport-logo report-logo-wrap"><img class="report-logo" src="${LOGO_PNG_DATA_URL}" alt="Efficia Digital"></div><span class="rap-etiquette">Diagnostic Efficia™</span></header>
       <div class="chapitre">Étape ${page} · Vérification</div><h1 class="rapport-title">Page ${page}</h1>
       <p class="rapport-subtitle">Contenu de contrôle du diagnostic gratuit.</p>
-      <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page ${page}/4</span></div>
+      <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page ${page}/6</span></div>
     </section>`;
   }).join("\n");
   return `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${css}</style>
@@ -470,7 +472,7 @@ function fourPagesLogoFixture() {
   <\/script></html>`;
 }
 
-test("logo du diagnostic gratuit : les quatre pages gardent une marge haute dans le DOM et le canvas html2canvas", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
+test("logo du diagnostic gratuit : les six pages gardent une marge haute dans le DOM et le canvas html2canvas", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
   if (!(await html2canvasReachable())) {
     t.skip("CDN html2canvas injoignable depuis cet environnement");
     return;
@@ -479,20 +481,20 @@ test("logo du diagnostic gratuit : les quatre pages gardent une marge haute dans
   let server;
   try {
     server = await serveTemporaryDirectory(directory);
-    writeFileSync(join(directory, "four-pages-logo.html"), fourPagesLogoFixture());
+    writeFileSync(join(directory, "six-pages-logo.html"), sixPagesLogoFixture());
     const result = JSON.parse(await collectPageResultWithIsolatedChrome({
       chrome,
-      url: server.url("four-pages-logo.html"),
+      url: server.url("six-pages-logo.html"),
       profileDir: join(directory, "chrome-profile"),
-      phase: "logo rapport gratuit / quatre pages",
+      phase: "logo rapport gratuit / six pages",
       timeout: 35_000,
       selector: "#logo-layout-result",
     }));
     assert.equal(result.error, undefined, `capture html2canvas en échec : ${result.error}`);
-    assert.equal(result.pageCount, 4, "le rapport doit contenir exactement quatre pages");
-    assert.equal(result.source.length, 4);
-    assert.equal(result.clones.length, 4);
-    assert.equal(result.canvases.length, 4);
+    assert.equal(result.pageCount, 6, "le rapport doit contenir exactement six pages");
+    assert.equal(result.source.length, 6);
+    assert.equal(result.clones.length, 6);
+    assert.equal(result.canvases.length, 6);
     const headerTops = result.source.map((entry) => entry.headerTop);
     for (const entry of result.source) {
       assert.ok(entry.logoTop > 0, `page ${entry.page}: logo collé ou coupé par le haut (${entry.logoTop}px)`);
