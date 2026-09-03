@@ -466,18 +466,22 @@ test("le modèle de réponse aux avis universel reste éditable et ne présume p
   assert.doesNotMatch(adminSource, /Nous sommes désolés qu'elle n'ait pas répondu à vos attentes/);
 });
 
-test("le benchmark photos affiche Dans la moyenne à l'égalité exacte", () => {
+test("le benchmark photos applique le comparateur canonique à la ligne réellement rendue", () => {
   const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  const comparator = source.match(/function comparerVolumePhotos\([\s\S]*?(?=\n\/\* ============ PAGE 2)/u)?.[0];
+  assert.ok(comparator, "comparateur photos canonique introuvable");
   const match = source.match(/function benchmarkLignes\(\)\{[\s\S]*?\n\}\nfunction benchmarkTableHtml/u);
   assert.ok(match, "benchmarkLignes doit rester une fonction isolée testable");
-  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${match[0].replace(/\nfunction benchmarkTableHtml$/u, "")}\nreturn benchmarkLignes();`);
-  const lignes = factory(
-    (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
-    (value) => Math.round(Number(value)),
-    (value) => String(value),
-    { nbPhotos: 19, moyennesConcurrents: { photos: 19 }, concurrence: null },
-  );
-  assert.equal(lignes.find((item) => item.label === "Photos")?.statut, "Dans la moyenne");
+  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${comparator}\n${match[0].replace(/\nfunction benchmarkTableHtml$/u, "")}\nreturn benchmarkLignes();`);
+  const estNombre = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  for (const [photos, moyenne, expected] of [[2, 15, "À renforcer"], [15, 15, "Dans la moyenne"], [16, 15, "Avantage"], [0, 15, "À renforcer"]]) {
+    const lignes = factory(estNombre, (value) => Math.round(Number(value)), (value) => String(value), {
+      nbPhotos: photos,
+      moyennesConcurrents: { photos: moyenne },
+      concurrence: null,
+    });
+    assert.equal(lignes.find((item) => item.label === "Photos")?.statut, expected, `${photos}/${moyenne}`);
+  }
 });
 
 test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {

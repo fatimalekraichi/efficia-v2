@@ -108,9 +108,9 @@ test("note propre comparable (légèrement sous la moyenne, dans la tolérance)"
 function createSiteStateHarness({ url = "", etat = "", codeHttp = "", napRadioSpecial = null } = {}) {
   const code = sliceBetween(html, "function napRadioAucunSite(){", "function signauxActuelsPage1(");
   const fields = {
-    "d-site-url": { value: url },
-    "d-site-etat": { value: etat },
-    "d-site-code": { value: codeHttp },
+    "d-site-url": { value: url, dataset: {} },
+    "d-site-etat": { value: etat, dataset: {} },
+    "d-site-code": { value: codeHttp, dataset: {} },
   };
   const napRadio = napRadioSpecial ? { dataset: { special: napRadioSpecial } } : null;
   const context = {
@@ -161,13 +161,34 @@ test("URL présente et inaccessible, sans code HTTP saisi => aucun code inventé
   assert.doesNotMatch(message, /\d{3}/);
 });
 
-test("URL présente et inaccessible avec code HTTP 500 saisi => code repris tel quel", () => {
+test("URL présente et inaccessible avec code HTTP 500 saisi => erreur serveur professionnelle", () => {
   const context = createSiteStateHarness({ url: "https://morgan-entreprise.eu", etat: "inaccessible", codeHttp: "500" });
   const etat = context.etatSiteOfficielCourant();
   assert.equal(
     context.messageEtatSiteOfficiel(etat),
-    "Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur serveur 500.",
+    "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.",
   );
+});
+
+test("erreur DNS Tecelec : le message technique brut est remplacé par une formulation professionnelle", () => {
+  const rawDns = "DNS records for tecelec.lu are not properly configured. Please check your DNS settings..";
+  const context = createSiteStateHarness({ url: "https://tecelec.lu", etat: "inaccessible", codeHttp: rawDns });
+  const etat = context.etatSiteOfficielCourant();
+  const message = context.messageEtatSiteOfficiel(etat);
+  assert.equal(etat.problemeTechnique, "dns");
+  assert.equal(etat.codeHttp, "");
+  assert.equal(message, "Le site officiel était inaccessible lors de notre contrôle. La vérification indique un problème de configuration DNS à faire contrôler par le prestataire qui gère le domaine ou le site.");
+  assert.doesNotMatch(message, /DNS records|tecelec\.lu|Please check|settings/i);
+});
+
+test("erreur technique inattendue : aucun détail brut, anglais ou trace ne peut être rendu", () => {
+  const rawError = "TypeError: fetch failed at resolver.js:42 <html>upstream unavailable</html>";
+  const context = createSiteStateHarness({ url: "https://exemple.lu", etat: "inaccessible", codeHttp: rawError });
+  const etat = context.etatSiteOfficielCourant();
+  const message = context.messageEtatSiteOfficiel(etat);
+  assert.equal(etat.problemeTechnique, "incident_technique");
+  assert.equal(message, "Le site officiel n’a pas pu être consulté lors de notre contrôle.");
+  assert.doesNotMatch(message, /TypeError|resolver\.js|html|upstream|unavailable/i);
 });
 
 test("analyse ancienne (pas de nouveau contrôle rempli), critère NAP répondu normalement => comportement historique inchangé", () => {
@@ -190,7 +211,7 @@ test("cas Morgan exact : URL connue + état inaccessible + code 500 => jamais 'a
   const etat = context.etatSiteOfficielCourant();
   const message = context.messageEtatSiteOfficiel(etat);
   assert.doesNotMatch(message, /[Aa]ucun site/);
-  assert.match(message, /500/);
+  assert.equal(message, "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.");
   assert.equal(context.siteOfficielAbsent(), false);
 });
 
@@ -328,9 +349,9 @@ test("état 'accessible' avec contenu professionnel : toujours aucun message, au
 function createPage1SignauxHarness({ url = "", etat = "", codeHttp = "", sansAvis = false } = {}) {
   const code = sliceBetween(html, "function napRadioAucunSite(){", "function nomCourtRapport(");
   const fields = {
-    "d-site-url": { value: url },
-    "d-site-etat": { value: etat },
-    "d-site-code": { value: codeHttp },
+    "d-site-url": { value: url, dataset: {} },
+    "d-site-etat": { value: etat, dataset: {} },
+    "d-site-code": { value: codeHttp, dataset: {} },
   };
   const context = {
     CRITERE_IDS: { nap: 7 },
@@ -366,6 +387,43 @@ test("page 1 — état 'accessible' (contenu professionnel) : aucun signal lié 
   const context = createPage1SignauxHarness({ url: "https://exemple-pro.fr", etat: "accessible", sansAvis: true });
   const signaux = context.signauxActuelsPage1({ nbPhotos: 2 });
   assert.ok(!signaux.some((s) => /site officiel/.test(s)));
+});
+
+test("page 1 — erreur DNS brute : aucun signal d'ouverture ne peut divulguer le détail fournisseur", () => {
+  const rawDns = "DNS records for tecelec.lu are not properly configured. Please check your DNS settings..";
+  const context = createPage1SignauxHarness({ url: "https://tecelec.lu", etat: "inaccessible", codeHttp: rawDns, sansAvis: true });
+  const htmlRendu = context.signauxActuelsPage1({ nbPhotos: 2 }).join(" ");
+  assert.doesNotMatch(htmlRendu, /DNS records|tecelec\.lu|Please check|settings/i);
+});
+
+function createChecklistSiteRendererHarness(siteState) {
+  const messageCode = sliceBetween(html, "function messageEtatSiteOfficiel(etatCourant){", "function ouvrirSiteOfficielDetecte()");
+  const checklistCode = sliceBetween(html, "const LIBELLES_COURTS = {", "function compterCriteresApplicablesRapport()");
+  const context = {
+    GRILLE: [{ cat: "Informations essentielles", criteres: [{ id: 7, key: "nap", q: "Cohérence fiche/site", max: 3 }] }],
+    REVIEW_DEPENDENT_KEYS: [],
+    donneesAnalyse: {},
+    critereEstMasque: () => false,
+    rapportSansAvis: () => false,
+    critereEstNote: () => true,
+    critereEstNonApplicable: () => false,
+    critereEstNonVerifiablePubliquement: () => false,
+    lirePoints: () => 0,
+    etatSiteOfficielCourant: () => siteState,
+    compterElementsAConfirmerRapport: () => 0,
+    phraseElementsAConfirmer: () => "",
+  };
+  vm.runInNewContext(`${messageCode}\n${checklistCode}`, context);
+  return context;
+}
+
+test("renderer checklist page 3 : le HTML réel préparé pour le PDF remplace le détail DNS brut", () => {
+  const rawDns = "DNS records for tecelec.lu are not properly configured. Please check your DNS settings..";
+  const context = createChecklistSiteRendererHarness({ etat: "inaccessible", url: "https://tecelec.lu", codeHttp: "", problemeTechnique: "dns" });
+  const htmlRendu = context.checklistHtml().html;
+  assert.match(htmlRendu, /Le site officiel était inaccessible lors de notre contrôle\. La vérification indique un problème de configuration DNS/);
+  assert.doesNotMatch(htmlRendu, /DNS records|tecelec\.lu|Please check|settings/i);
+  assert.ok(rawDns, "fixture brute explicitement couverte");
 });
 
 test("page 1 — état 'a_confirmer' : aucun signal lié au site officiel (état non tranché, formulation prudente)", () => {
@@ -445,35 +503,51 @@ test("rendu priorité 'incomplet' générique : ne mentionne jamais une technolo
 /* ---------------------------------------------------------------------- */
 
 function createDraftPersistenceHarness() {
+  const normalizerCode = sliceBetween(html, "function normaliserErreurTechniqueSite(", "function siteOfficielAbsent()");
   const code = sliceBetween(html, "function champsBrouillonD1(){", "function restaurerLocalisation(");
   const fields = {};
   const context = {
     document: {
       getElementById: (id) => {
-        if (!(id in fields)) fields[id] = { value: "" };
+        if (!(id in fields)) fields[id] = { value: "", dataset: {} };
         return fields[id];
       },
     },
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(`${normalizerCode}\n${code}`, context);
   context.__fields = fields;
   return context;
 }
 
 test("persistance brouillon : une réponse manuelle 'incomplet' (URL + état) est sauvegardée puis restaurée à l'identique", () => {
   const context = createDraftPersistenceHarness();
-  context.__fields["d-site-url"] = { value: "https://appelfred.com/" };
-  context.__fields["d-site-etat"] = { value: "incomplet" };
-  context.__fields["d-site-code"] = { value: "" };
+  context.__fields["d-site-url"] = { value: "https://appelfred.com/", dataset: {} };
+  context.__fields["d-site-etat"] = { value: "incomplet", dataset: {} };
+  context.__fields["d-site-code"] = { value: "", dataset: {} };
   const snapshot = context.champsBrouillonD1();
   assert.equal(snapshot["d-site-etat"], "incomplet");
   assert.equal(snapshot["d-site-url"], "https://appelfred.com/");
   // Simule un rechargement de page (champs vidés), puis restauration depuis le brouillon sauvegardé.
-  context.__fields["d-site-url"] = { value: "" };
-  context.__fields["d-site-etat"] = { value: "" };
+  context.__fields["d-site-url"] = { value: "", dataset: {} };
+  context.__fields["d-site-etat"] = { value: "", dataset: {} };
   context.appliquerChampsBrouillonD1(snapshot);
   assert.equal(context.__fields["d-site-url"].value, "https://appelfred.com/");
   assert.equal(context.__fields["d-site-etat"].value, "incomplet");
+});
+
+test("persistance brouillon : une erreur DNS brute historique est remplacée par sa catégorie sûre avant sauvegarde et restauration", () => {
+  const context = createDraftPersistenceHarness();
+  const rawDns = "DNS records for tecelec.lu are not properly configured. Please check your DNS settings..";
+  context.__fields["d-site-url"] = { value: "https://tecelec.lu", dataset: {} };
+  context.__fields["d-site-etat"] = { value: "inaccessible", dataset: {} };
+  context.__fields["d-site-code"] = { value: rawDns, dataset: {} };
+  const snapshot = context.champsBrouillonD1();
+  assert.equal(snapshot["d-site-code"], "dns");
+  assert.doesNotMatch(snapshot["d-site-code"], /DNS records|Please check|settings/i);
+  context.__fields["d-site-code"] = { value: snapshot["d-site-code"], dataset: {} };
+  context.appliquerChampsBrouillonD1(snapshot);
+  assert.equal(context.__fields["d-site-code"].value, "");
+  assert.equal(context.__fields["d-site-code"].dataset.problemeTechnique, "dns");
 });
 
 /* ---------------------------------------------------------------------- */

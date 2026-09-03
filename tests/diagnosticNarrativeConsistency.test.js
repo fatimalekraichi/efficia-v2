@@ -63,6 +63,7 @@ const ID_BY_KEY = { recenceAvis: 1, tauxReponseAvis: 2, qualiteReponsesAvis: 3, 
 const MAX_PAR_ID = 4;
 
 function createPriorityHarness({ etats = {}, donneesAnalyse = {} } = {}) {
+  const photoComparator = sliceBetween(html, "function comparerVolumePhotos(", "/* ============ PAGE 2");
   const code = sliceBetween(html, "function critereConfirmeMax(key){", "function resultatAttenduPriorite(item, ctx){");
   const points = {};
   Object.entries(etats).forEach(([key, etat]) => {
@@ -89,7 +90,7 @@ function createPriorityHarness({ etats = {}, donneesAnalyse = {} } = {}) {
     // code réel de l'admin (aucune réécriture de cette fonction existante).
     donneesAnalyse,
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(`${photoComparator}\n${code}`, context);
   return context;
 }
 
@@ -191,6 +192,38 @@ test("invariant : la narration photos ne qualifie jamais le volume d'insuffisant
   const ctx = { data: donnees };
   const texte = context.consequenceBusinessPriorite(item, ctx);
   assert.doesNotMatch(texte, /Faute de visuels suffisants/);
+});
+
+test("comparaison photos canonique : les constats, priorités et conséquences suivent strictement le même verdict", () => {
+  const scenarios = [
+    { own: 2, average: 15, expected: "inferieur", status: "À renforcer", forbidden: /légèrement supérieur|volume dans la moyenne/i },
+    { own: 15, average: 15, expected: "comparable", status: "Dans la moyenne", forbidden: /légèrement supérieur|volume est inférieur/i },
+    { own: 16, average: 15, expected: "superieur", status: "Avantage", forbidden: /volume est inférieur/i },
+    { own: 0, average: 15, expected: "inferieur", status: "À renforcer", forbidden: /légèrement supérieur|volume dans la moyenne/i },
+  ];
+  for (const scenario of scenarios) {
+    const donnees = { nbPhotos: scenario.own, moyennesConcurrents: { photos: scenario.average } };
+    const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees });
+    const item = { famille: "photos", critere: { key: "photoRecente" } };
+    const constat = context.constatObservePriorite(item, { data: donnees, recherche: "", entreprise: "" });
+    const consequence = context.consequencePhotos(item, { data: donnees });
+    assert.equal(context.comparerVolumePhotos(scenario.own, scenario.average), scenario.expected);
+    assert.doesNotMatch(constat, scenario.forbidden, `${scenario.own}/${scenario.average}`);
+    assert.doesNotMatch(consequence, scenario.forbidden, `${scenario.own}/${scenario.average}`);
+    if (scenario.expected === "inferieur") assert.match(constat, /volume est inférieur|contre 15/i);
+    if (scenario.expected === "comparable") assert.match(constat, /dans la moyenne observée/i);
+    if (scenario.expected === "superieur") assert.match(constat, /volume supérieur à la moyenne observée/i);
+    assert.equal(({ inferieur: "À renforcer", comparable: "Dans la moyenne", superieur: "Avantage" })[scenario.expected], scenario.status);
+  }
+});
+
+test("photos sans benchmark : aucun verdict comparatif n'est inventé", () => {
+  const donnees = { nbPhotos: 2, moyennesConcurrents: {} };
+  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees });
+  const item = { famille: "photos", critere: { key: "photoRecente" } };
+  const constat = context.constatObservePriorite(item, { data: donnees, recherche: "", entreprise: "" });
+  assert.equal(context.comparerVolumePhotos(2, undefined), "inconnu");
+  assert.doesNotMatch(constat, /moyenne observée|concurrentes observées|supérieur|inférieur|dans la moyenne/i);
 });
 
 /* ---------------------------------------------------------------------- */
@@ -522,6 +555,7 @@ const ID_BY_KEY_TASKC = {
 const MAX_OVERRIDES_TASKC = { 6: 3, 7: 3, 8: 3, 9: 2, 10: 2, 11: 3, 12: 2 };
 
 function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis = false, nonVerifiablePubliquement = false } = {}) {
+  const photoComparator = sliceBetween(html, "function comparerVolumePhotos(", "/* ============ PAGE 2");
   const code = sliceBetween(html, "function critereConfirmeMax(key){", "function microLivrablePriorite(item, ctx, rank){");
   const points = {};
   Object.entries(etats).forEach(([key, etat]) => {
@@ -587,7 +621,7 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
     lirePoints: (id) => (id in points ? points[id] : null),
     donneesAnalyse,
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(`${photoComparator}\n${code}`, context);
   return context;
 }
 
@@ -948,25 +982,26 @@ test("Infos 24 : cas réel MK Elec Saint-Léger (score 45/100, PDF de référenc
 const OFFRE_ITEM = { famille: "offre" };
 const REPETITION_FICHE = /sur votre fiche[\s\S]{0,80}sur votre fiche google/i;
 
-test("Offre 1 : description absente -> texte exact requis, sans répétition 'sur votre fiche...sur votre fiche Google'", () => {
+test("Offre 1 : description absente -> constat factuel, sans déduire une prestation précise ni répéter la fiche Google", () => {
   const context = createFullPriorityHarness();
   const ctx = { data: { descriptionLongueur: 0 }, recherche: "", entreprise: "" };
   const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
   assert.match(texte, /^Sur votre fiche, aucune description n’est visible\./);
+  assert.match(texte, /ne dispose pas encore de suffisamment de repères pour comprendre les prestations que vous proposez\./);
+  assert.doesNotMatch(texte, /ne peut pas vérifier que vous réalisez exactement cette prestation/i);
   assert.doesNotMatch(texte, REPETITION_FICHE);
   assert.doesNotMatch(texte, /sur votre fiche google/i);
   const occurrences = (texte.match(/sur votre fiche/gi) || []).length;
   assert.equal(occurrences, 1, texte);
 });
 
-test("Offre 2 : description absente + services absents -> même garde-fou de non-répétition, texte combiné cohérent", () => {
+test("Offre 2 : description absente + services absents -> même garde-fou, sans déduire une prestation recherchée", () => {
   const context = createFullPriorityHarness();
   const ctx = { data: { descriptionLongueur: 0, nbServices: 0 }, recherche: "électricien Neufchâteau", entreprise: "Computelec" };
   const texte = context.constatObservePriorite(OFFRE_ITEM, ctx);
-  // Le fragment "services" utilise une apostrophe droite dans le code source
-  // existant ("n'est détaillé") — non réécrit ici, seule la répétition
-  // "sur votre fiche...sur votre fiche Google" était dans le périmètre du correctif.
   assert.match(texte, /^Sur votre fiche, aucune description n’est visible et aucun service n'est détaillé\./);
+  assert.match(texte, /ne dispose pas encore de suffisamment de repères pour comprendre les prestations que vous proposez\./);
+  assert.doesNotMatch(texte, /ne peut pas vérifier que vous réalisez exactement cette prestation/i);
   assert.doesNotMatch(texte, REPETITION_FICHE);
   assert.doesNotMatch(texte, /sur votre fiche google/i);
 });

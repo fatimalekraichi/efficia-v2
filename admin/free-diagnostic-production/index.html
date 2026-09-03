@@ -723,7 +723,7 @@
             <option value="aucun">Aucun lien vers le site officiel n’est renseigné sur la fiche Google</option>
           </select>
         </div>
-        <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric"></div>
+        <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric" onchange="normaliserSaisieTechniqueSite()"></div>
         <div><label>&nbsp;</label><button type="button" class="btn-mini" onclick="ouvrirSiteOfficielDetecte()">Ouvrir le site détecté</button></div>
       </div>
       <div class="recherche-actions">
@@ -4015,7 +4015,9 @@ function majEtatBrouillonD1(etat, updatedAt = null){
 
 function champsBrouillonD1(){
   const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-zone-recherche","d-zone-pays","d-site-url","d-site-etat","d-site-code"];
-  return Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || ""]));
+  return Object.fromEntries(ids.map(id => [id, id === "d-site-code"
+    ? normaliserSaisieTechniqueSite().valeurPersistable
+    : document.getElementById(id)?.value || ""]));
 }
 
 function appliquerChampsBrouillonD1(champs){
@@ -4023,6 +4025,10 @@ function appliquerChampsBrouillonD1(champs){
     const field = document.getElementById(id);
     if(field) field.value = typeof value === "string" ? value : "";
   });
+  // Les anciens brouillons pouvaient contenir le message brut d'un fournisseur
+  // dans le champ prévu pour le code HTTP. Il est converti dès la restauration,
+  // avant tout affichage dans l'interface ou le rapport.
+  normaliserSaisieTechniqueSite();
 }
 
 function restaurerLocalisation(source = {}){
@@ -4915,11 +4921,39 @@ function napRadioAucunSite(){
    émise depuis cette page (pas de risque SSRF) — le code HTTP n'est retenu
    que si un humain l'a saisi. */
 function lireEtatSiteOfficiel(){
+  const detailTechnique = normaliserSaisieTechniqueSite();
   return {
     url: (document.getElementById("d-site-url")?.value || "").trim(),
     etat: document.getElementById("d-site-etat")?.value || "",
-    codeHttp: (document.getElementById("d-site-code")?.value || "").trim(),
+    codeHttp: detailTechnique.codeHttp,
+    problemeTechnique: detailTechnique.problemeTechnique,
   };
+}
+
+/* Les réponses du contrôle de site proviennent parfois d'un outil tiers.
+   Elles ne doivent jamais être rendues telles quelles : le PDF et l'interface
+   ne manipulent que ces catégories professionnelles, jamais le détail brut. */
+function normaliserErreurTechniqueSite(valeur){
+  const brute = String(valeur || "").trim();
+  const normalisee = brute.toLowerCase();
+  if(!brute) return {codeHttp:"", problemeTechnique:"", valeurPersistable:""};
+  if(normalisee === "dns" || /\bdns\b|nxdomain|enotfound|domain name|name resolution|records? .*not properly configured/i.test(brute)){
+    return {codeHttp:"", problemeTechnique:"dns", valeurPersistable:"dns"};
+  }
+  const code = normalisee.match(/\b([1-5]\d{2})\b/)?.[1] || "";
+  if(/^5\d{2}$/.test(code)) return {codeHttp:code, problemeTechnique:"erreur_serveur", valeurPersistable:code};
+  if(code) return {codeHttp:code, problemeTechnique:"erreur_http", valeurPersistable:code};
+  return {codeHttp:"", problemeTechnique:"incident_technique", valeurPersistable:"incident_technique"};
+}
+
+function normaliserSaisieTechniqueSite(){
+  const champ = document.getElementById("d-site-code");
+  const detail = normaliserErreurTechniqueSite(champ?.value || champ?.dataset?.problemeTechnique || "");
+  if(champ){
+    champ.value = detail.codeHttp;
+    if(champ.dataset) champ.dataset.problemeTechnique = detail.problemeTechnique;
+  }
+  return detail;
 }
 
 /* Règle factuelle unique "existence / accessibilité du site officiel",
@@ -4934,7 +4968,7 @@ function etatSiteOfficielCourant(){
   const saisie = lireEtatSiteOfficiel();
   if(saisie.url){
     const etat = ["accessible","inaccessible","incomplet","a_confirmer"].includes(saisie.etat) ? saisie.etat : "a_confirmer";
-    return {etat, url:saisie.url, codeHttp:saisie.codeHttp || ""};
+    return {etat, url:saisie.url, codeHttp:saisie.codeHttp || "", problemeTechnique:saisie.problemeTechnique || ""};
   }
   if(saisie.etat === "aucun") return {etat:"aucun", url:"", codeHttp:""};
   return napRadioAucunSite() ? {etat:"aucun", url:"", codeHttp:""} : null;
@@ -4953,9 +4987,19 @@ function messageEtatSiteOfficiel(etatCourant){
   if(etatCourant.etat === "aucun") return "Aucun lien vers le site officiel n’est renseigné sur la fiche Google.";
   if(etatCourant.etat === "accessible") return null;
   if(etatCourant.etat === "inaccessible"){
-    return etatCourant.codeHttp
-      ? `Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur serveur ${etatCourant.codeHttp}.`
-      : "Un site officiel est bien associé à l’entreprise, mais il était inaccessible lors de notre contrôle.";
+    if(etatCourant.problemeTechnique === "dns"){
+      return "Le site officiel était inaccessible lors de notre contrôle. La vérification indique un problème de configuration DNS à faire contrôler par le prestataire qui gère le domaine ou le site.";
+    }
+    if(etatCourant.problemeTechnique === "erreur_serveur"){
+      return "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.";
+    }
+    if(etatCourant.problemeTechnique === "erreur_http"){
+      return `Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur HTTP ${etatCourant.codeHttp}.`;
+    }
+    if(etatCourant.problemeTechnique === "incident_technique"){
+      return "Le site officiel n’a pas pu être consulté lors de notre contrôle.";
+    }
+    return "Un site officiel est bien associé à l’entreprise, mais il était inaccessible lors de notre contrôle.";
   }
   if(etatCourant.etat === "incomplet"){
     return "Un site officiel est bien associé à l’entreprise, mais son contenu était encore très incomplet lors de notre contrôle.";
@@ -5363,7 +5407,15 @@ function observationPersonnalisee(cr){
     rythmePublication: `Les publications existantes sont trop espacées pour donner l'impression d'une entreprise en mouvement.`,
     photoRecente: `En ouvrant votre galerie, les photos les plus récentes datent. Un client qui les regarde peut se demander si l'activité est encore en cours.`,
     varietePhotos: `Votre galerie répète souvent les mêmes angles de votre activité. Il manque ce qu'un client cherche vraiment : vos réalisations, votre équipe, votre façon de travailler.`,
-    nombrePhotos: estNombre(d.nbPhotos) ? `Votre fiche compte ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""}${estNombre(m.photos) ? ", contre " + nEntier(m.photos) + " en moyenne chez vos concurrents" : ""}. C'est peu pour permettre à un client de se faire une idée.` : null,
+    nombrePhotos: (() => {
+      if(!estNombre(d.nbPhotos)) return null;
+      const comparaison = comparerVolumePhotos(d.nbPhotos, m.photos);
+      const photos = `${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""}`;
+      if(comparaison === "inferieur") return `Votre fiche compte ${photos}, contre ${nEntier(m.photos)} en moyenne chez vos concurrents. Ce volume est inférieur et laisse moins de preuves visuelles à un client qui compare.`;
+      if(comparaison === "comparable") return `Votre fiche compte ${photos}, dans la moyenne observée chez vos concurrents. Le volume est là ; les visuels peuvent encore gagner en variété ou en actualité.`;
+      if(comparaison === "superieur") return `Votre fiche compte ${photos}, un volume supérieur à la moyenne observée chez vos concurrents. Les visuels peuvent encore gagner en variété ou en actualité.`;
+      return `Votre fiche compte ${photos}. Les visuels peuvent aider un client à se faire une idée plus concrète de votre activité.`;
+    })(),
     tauxReponseAvis: `${buildReviewsResponseSentence(d.avisAnalyses, d.reponsesProprietaire, statutVerificationCritere(cr))} Ces avis, et vos réponses, sont lus par les clients qui hésitent : c'est une conversation publique qui influence la confiance.`,
     qualiteReponsesAvis: `Vos réponses aux avis se ressemblent : le client qui les lit sent le copier-coller, et c'est l'inverse de l'effet recherché.`,
     recenceAvis: estTexte(d.dernierAvis) ? `Votre dernier avis date du ${new Date(d.dernierAvis).toLocaleDateString("fr-FR")}. Une fiche dont les avis s'arrêtent laisse penser que l'activité s'est arrêtée avec eux.` : null,
@@ -6011,6 +6063,19 @@ function significationV2(forcesDetail, prioritesDetail){
   return `<div class="meaning-box"><h3>Ce qu'il faut en retenir</h3><ul>${lignes.join("")}</ul></div>`;
 }
 
+/* Comparaison canonique des volumes de photos. Les deux valeurs sont celles
+   rendues dans le rapport (arrondies comme la ligne de benchmark) : toutes
+   les pages, priorités et constats emploient donc le même verdict, sans
+   transformer une fiche moins fournie en avantage ou en volume suffisant. */
+function comparerVolumePhotos(volumeFiche, moyenneConcurrentielle){
+  if(!estNombre(volumeFiche) || !estNombre(moyenneConcurrentielle)) return "inconnu";
+  const fiche = nEntier(volumeFiche);
+  const moyenne = nEntier(moyenneConcurrentielle);
+  if(fiche < moyenne) return "inferieur";
+  if(fiche > moyenne) return "superieur";
+  return "comparable";
+}
+
 /* ============ PAGE 2 : BENCHMARK CONCURRENTIEL ============ */
 function benchmarkLignes(){
   const d = donneesAnalyse, m = d.moyennesConcurrents || {};
@@ -6023,19 +6088,15 @@ function benchmarkLignes(){
     const prioritaire = !avantage && (label === "Note moyenne" ? t - v >= 0.35 : t > Math.max(v * 1.6, v + 4));
     lignes.push({label, vous:formatV(vous), top3:formatV(top3), statut: statutForce || (avantage ? "Avantage" : prioritaire ? "Prioritaire" : "À renforcer")});
   };
-  // La ligne PDF affiche les deux volumes comme des nombres entiers. Le badge
-  // doit comparer exactement ces mêmes valeurs visibles : sinon une moyenne
-  // brute de 19,33 est imprimée « 19 » tout en classant à tort 19 comme
-  // inférieur. Aucun score ni critère n'est concerné par cette présentation.
-  const statutPhotos = (v, t) => {
-    const photosFiche = nEntier(v);
-    const moyenneAffichee = nEntier(t);
-    return photosFiche < moyenneAffichee ? "À renforcer" : photosFiche === moyenneAffichee ? "Dans la moyenne" : "Avantage";
-  };
+  const statutPhotos = (v, t) => ({
+    inferieur: "À renforcer",
+    comparable: "Dans la moyenne",
+    superieur: "Avantage"
+  })[comparerVolumePhotos(v, t)] || null;
   const entier = v => String(nEntier(v));
   push("Note moyenne", d.note, m.note ?? api?.noteC, fmtNote, (v,t) => v >= t - 0.05);
   push("Nombre d'avis", d.nbAvis, m.avis ?? api?.volC, entier, (v,t) => v >= t);
-  push("Photos", d.nbPhotos, m.photos, entier, (v,t) => v > t, statutPhotos(Number(d.nbPhotos), Number(m.photos)));
+  push("Photos", d.nbPhotos, m.photos, entier, (v,t) => v > t, statutPhotos(d.nbPhotos, m.photos));
   push("Services listés", d.nbServices, m.services, entier, (v,t) => v >= t);
   push("Publications", d.nbPublications, m.pubs, entier, (v,t) => v >= t);
   return lignes;
@@ -6521,9 +6582,11 @@ function titrePriorite(item){
 function prioritePhotosPorteSurActualite(item){
   if(!item || item.famille !== "photos") return false;
   const d = donneesAnalyse || {};
-  const moyennePhotos = d.moyennesConcurrents?.photos;
-  if(item.critere?.key === "photoRecente") return true;
-  return estNombre(d.nbPhotos) && estNombre(moyennePhotos) && Number(d.nbPhotos) >= Number(moyennePhotos) * 0.9;
+  const comparaison = comparerVolumePhotos(d.nbPhotos, d.moyennesConcurrents?.photos);
+  // Une priorité d'actualité demeure pertinente même sans benchmark, mais un
+  // volume inférieur ne doit jamais être présenté comme une simple actualité.
+  if(item.critere?.key === "photoRecente") return comparaison !== "inferieur";
+  return comparaison === "comparable" || comparaison === "superieur";
 }
 
 /* Normalise un texte pour la détection sectorielle : minuscules + accents
@@ -6671,8 +6734,7 @@ function constatObservePriorite(item, ctx){
       if(descVide) morceaux.push("aucune description n’est visible");
       else if(descCourte) morceaux.push("la description est présente, mais reste trop courte pour présenter clairement l’activité");
       if(servicesTxt) morceaux.push(servicesTxt);
-      const nomEcho = rq && ctx.entreprise && rq.split(" ").some(w => w.length >= 4 && ctx.entreprise.toLowerCase().includes(w.toLowerCase()));
-      return `Sur votre fiche, ${morceaux.join(" et ")}. Un prospect qui cherche${rq ? " « " + rq + " »" : " vos services"} ne peut pas vérifier que vous réalisez exactement cette prestation${nomEcho ? " — alors que c'est écrit jusque dans votre nom" : ""}.`;
+      return `Sur votre fiche, ${morceaux.join(" et ")}. Un prospect qui compare ne dispose pas encore de suffisamment de repères pour comprendre les prestations que vous proposez.`;
     }
     return choisirVarianteNarrative("priority.offer.observation", "insufficient_details", [
       "Sur votre fiche, la partie qui explique ce que vous faites — description, services — reste trop peu détaillée pour un prospect qui compare.",
@@ -6681,8 +6743,13 @@ function constatObservePriorite(item, ctx){
     ]);
   }
   if(item.famille === "photos"){
-    if(prioritePhotosPorteSurActualite(item) && estNombre(d.nbPhotos) && estNombre(m.photos))
-      return `Votre volume de photos est légèrement supérieur à la moyenne observée. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
+    const comparaison = comparerVolumePhotos(d.nbPhotos, m.photos);
+    if(comparaison === "superieur")
+      return `Votre fiche dispose de ${nEntier(d.nbPhotos)} photos, un volume supérieur à la moyenne observée. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
+    if(comparaison === "comparable")
+      return `Votre fiche dispose de ${nEntier(d.nbPhotos)} photos, un volume dans la moyenne observée. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
+    if(comparaison === "inferieur")
+      return `Votre fiche compte ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""}, contre ${nEntier(m.photos)} en moyenne sur les fiches concurrentes observées. Ce volume est inférieur et mérite d’être renforcé${item.critere?.key === "photoRecente" ? "; de nouvelles photos permettront aussi de montrer que l’entreprise est active aujourd’hui." : "."}`;
     if(prioritePhotosPorteSurActualite(item) && estNombre(d.nbPhotos))
       return `Votre fiche dispose déjà de ${nEntier(d.nbPhotos)} photos. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
     if(estNombre(d.nbPhotos))
@@ -6744,9 +6811,10 @@ function consequenceReputation(ctx){
    comparable à la moyenne observée. */
 function consequencePhotos(item, ctx){
   const d = ctx.data || {};
-  const volumeConnu = estNombre(d.nbPhotos) && estNombre(d.moyennesConcurrents?.photos);
-  const volumeSuffisant = volumeConnu && prioritePhotosPorteSurActualite(item);
-  const volumeInsuffisant = volumeConnu && !volumeSuffisant;
+  const comparaison = comparerVolumePhotos(d.nbPhotos, d.moyennesConcurrents?.photos);
+  const volumeConnu = comparaison !== "inconnu";
+  const volumeSuffisant = comparaison === "comparable" || comparaison === "superieur";
+  const volumeInsuffisant = comparaison === "inferieur";
   const actualiteInsuffisante = etatCritere("photoRecente") === "insuffisant";
   // Zéro photo : "photoRecente" est forcé à "insuffisant" (voir lirePoints,
   // PHOTO_DEPENDENT_KEYS) alors qu'il n'y a précisément AUCUNE photo dont la

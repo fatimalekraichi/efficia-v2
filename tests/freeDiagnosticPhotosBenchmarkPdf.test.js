@@ -20,6 +20,8 @@ const CDN_URLS = [
 // réécriture de la logique dans le test.
 const benchmarkRenderer = generator.match(/function benchmarkLignes\(\)\{[\s\S]*?(?=\nfunction ecartsExpliquesHtml\()/u)?.[0];
 assert.ok(benchmarkRenderer, "renderer de benchmark page 2 introuvable");
+const photoComparator = generator.match(/function comparerVolumePhotos\([\s\S]*?(?=\n\/\* ============ PAGE 2)/u)?.[0];
+assert.ok(photoComparator, "comparateur photos canonique introuvable");
 
 async function cdnsReachable() {
   try {
@@ -64,6 +66,7 @@ function benchmarkPdfFixture() {
     const estNombre = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
     const nEntier = value => Math.round(Number(value));
     const fmtNote = value => Number(value).toFixed(1).replace(".", ",");
+    ${photoComparator}
     ${benchmarkRenderer}
 
     addEventListener("load", async () => {
