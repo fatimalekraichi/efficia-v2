@@ -412,10 +412,11 @@ test("chaque bloc éditable accepte, persiste et recharge son texte automatique 
 
 test("les titres personnalisés des trois priorités sont persistés, utilisés dans le PDF et restaurables", async () => {
   const { db, cookie, documentModel } = await setup();
+  documentModel.freeDiagnostic.priorities[0].title = "Revendiquer et vérifier votre fiche";
   const overrides = [1, 2, 3].map((rank) => ({
     fieldId: `priority.${rank}.title`,
     text: `Titre personnalisé prioritaire ${rank}`,
-    automaticText: `Titre automatique prioritaire ${rank}`,
+    automaticText: rank === 1 ? "Revendiquer et vérifier votre fiche" : `Titre automatique prioritaire ${rank}`,
     weeklyReview: false,
     anomalyCategory: "autre",
   }));
@@ -426,6 +427,7 @@ test("les titres personnalisés des trois priorités sont persistés, utilisés 
   assert.equal(saved.status, 200);
   const reloaded = await (await getOverrides(context(db, cookie))).json();
   assert.deepEqual(reloaded.overrides.map((item) => item.fieldId), overrides.map((item) => item.fieldId));
+  assert.equal(reloaded.overrides.find((item) => item.fieldId === "priority.1.title")?.automaticText, "Revendiquer et vérifier votre fiche");
 
   const effective = await buildEffectiveDocumentModelFromAnalysis(db, { analysisId: ANALYSIS_ID, documentModel });
   assert.deepEqual(effective.freeDiagnostic.priorities.map((item) => item.title), overrides.map((item) => item.text));

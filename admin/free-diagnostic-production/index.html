@@ -2532,7 +2532,10 @@ function calculScoreDetail(){
 }
 
 function scoreEstProvisoire(detail = calculScoreDetail()){
-  return localisationNonVerifiablePubliquement() || detail.repondus < detail.totalCrit;
+  // Une réponse manuelle terminale, y compris « non vérifiable
+  // publiquement », ne rend pas le score provisoire. Seuls les éléments
+  // réellement sans réponse dans la liste canonique de finalisation le font.
+  return listerElementsRestantsPourFinalisation().length > 0;
 }
 
 function listerElementsRestantsPourFinalisation(){
@@ -2598,7 +2601,7 @@ function calc(){
   const detail = calculScoreDetail();
   const {total, repondus, totalCrit} = detail;
   const elementsRestants = listerElementsRestantsPourFinalisation();
-  document.getElementById("score-provisoire").hidden = !(localisationNonVerifiablePubliquement() || repondus < totalCrit);
+  document.getElementById("score-provisoire").hidden = elementsRestants.length === 0;
   if(!collecteDiagnosticValidee){
     document.getElementById("score-live").textContent = "—";
     document.getElementById("compteur-restant").textContent = "analyse non lancée";
@@ -4840,12 +4843,10 @@ function scoreGaugeHtml(score){
 }
 
 function mentionScoreProvisoireHtml(className = "methode-note"){
-  const detail = calculScoreDetail();
-  if(!scoreEstProvisoire(detail)) return "";
-  const locationNote = localisationNonVerifiablePubliquement()
-    ? `<br>${messageLocalisationNonVerifiablePubliquement()}`
-    : "";
-  return `<p class="${className}">Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer.${locationNote}</p>`;
+  const elementsRestants = listerElementsRestantsPourFinalisation();
+  if(!elementsRestants.length) return "";
+  const resume = globalThis.EfficiaQuestionnaireFinalization.formaterResumeElementsRestants(elementsRestants);
+  return `<p class="${className}">Ce score est provisoire : ${resume}</p>`;
 }
 
 function potentielScoreHtml(scoreActuel, scoreProjete){
@@ -5966,7 +5967,14 @@ function compterElementsAConfirmerRapport(){
   return GRILLE.flatMap(cat => cat.criteres).filter(cr => {
     if(!(typeof critereEstNote === "function" ? critereEstNote(cr) : cr.scored !== false)) return false;
     if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return false;
-    return critereEstNonVerifiablePubliquement(cr) || lirePoints(cr.id) === null;
+    if(cr.key === "adresse"){
+      const mode = modeLocalisation();
+      const addressRequired = ["storefront","hybrid"].includes(mode);
+      const serviceAreaRequired = ["service_area","hybrid"].includes(mode);
+      return (addressRequired && !globalThis.EfficiaQuestionnaireFinalization.isAddressVerificationComplete(reponseAdresse()))
+        || (serviceAreaRequired && !globalThis.EfficiaQuestionnaireFinalization.isServiceAreaVerificationComplete(reponseZoneDesserte()));
+    }
+    return lirePoints(cr.id) === null;
   }).length;
 }
 
@@ -6281,13 +6289,28 @@ const FRAGMENTS_A_CONFIRMER_INFOS = {
   adresse: "la zone desservie affichée reste à confirmer"
 };
 
-function titreInfosPriorite(){
+function clePriorite(item){
+  return item?.priorityKey || item?.critere?.key || "";
+}
+
+function prioriteInfosRevendiquee(item){
+  const famille = typeof item?.famille === "string" ? item.famille : item?.famille?.key;
+  return famille === "infos" && clePriorite(item) === "revendiquee";
+}
+
+function titreInfosPriorite(item = null){
+  // Une fiche non revendiquée reste une priorité métier à part entière même
+  // lorsqu'un autre défaut d'information est également présent. La clé est
+  // conservée par le sélecteur de priorités et pilote ici le texte détaillé.
+  if(prioriteInfosRevendiquee(item)) return TITRES_UNIQUES_INFOS.revendiquee;
   const defauts = defautsInfos();
   if(defauts.length === 1) return TITRES_UNIQUES_INFOS[defauts[0]] || "Sécuriser les informations essentielles";
   return "Sécuriser les informations essentielles";
 }
 
-function constatInfos(){
+function constatInfos(item = null){
+  if(prioriteInfosRevendiquee(item))
+    return "Votre fiche affiche encore « Vous êtes le propriétaire ? » : elle vit sa vie sans vous, et vous ne pouvez ni la corriger ni y répondre.";
   const defauts = defautsInfos();
   if(defauts.length === 1 && defauts[0] === "attributs")
     return "Certains attributs utiles à votre activité, comme les modalités d'accès ou de paiement lorsqu'elles s'appliquent, ne sont pas renseignés sur votre fiche Google.";
@@ -6304,11 +6327,14 @@ function constatInfos(){
 /* "Ce qu'il peut penser" pour la priorité "infos" : volontairement neutre —
    ne cite aucun sous-critère par nom, donc reste valide quel que soit le(s)
    défaut(s) réel(s) sans jamais mentionner un critère déjà conforme. */
-function consequenceInfos(){
+function consequenceInfos(item = null){
+  if(prioriteInfosRevendiquee(item))
+    return "Tant que la fiche n'est pas entre vos mains, c'est Google et les internautes qui racontent votre entreprise à votre place.";
   return "Un prospect peut manquer d'informations pratiques au moment de comparer votre entreprise avec une autre fiche plus complète.";
 }
 
-function premierPasInfos(){
+function premierPasInfos(item = null){
+  if(prioriteInfosRevendiquee(item)) return ACTIONS_INFOS.revendiquee;
   const defauts = defautsInfos();
   if(defauts.length === 1) return ACTIONS_INFOS[defauts[0]];
   if(defauts.length > 1) return `Corriger, dans votre compte Google Business : ${joinFr(defauts.map(k => FRAGMENT_INFOS[k]))}.`;
@@ -6318,7 +6344,9 @@ function premierPasInfos(){
 
 /* "Résultat attendu" pour la priorité "infos" : comme pour la conséquence,
    volontairement générique — ne cite aucun critère par nom. */
-function resultatAttenduInfos(){
+function resultatAttenduInfos(item = null){
+  if(prioriteInfosRevendiquee(item))
+    return "une fiche que vous pouvez corriger, compléter et piloter directement, avec des informations à jour pour vos prospects.";
   return "une fiche plus complète, avec moins d'incertitudes pratiques avant le premier contact.";
 }
 
@@ -6394,7 +6422,7 @@ function actionFamillePriorite(famille, item = null){
     ]);
   }
   if(famille.key === "reputation") return premierPasReputation(contexteRapport());
-  if(famille.key === "infos") return premierPasInfos();
+  if(famille.key === "infos") return premierPasInfos(item);
   if(famille.key === "offre" && localisationNonVerifiablePubliquement()){
     return choisirVarianteNarrative("priority.offer.action", "location_unverifiable", [
       "Clarifier les services principaux et les raisons de vous contacter.",
@@ -6440,6 +6468,7 @@ function selectionnerPrioritesDynamiques(candidats){
       return {
         ...item,
         famille:item.famille.key,
+        priorityKey:item.critere.key,
         critere:{...item.critere, q:item.famille.label},
         constat: base.constat,
         pourquoi: base.pourquoi,
@@ -6470,7 +6499,7 @@ function titrePriorite(item){
     if(ctx.recherche) return `Apparaître quand on cherche « ${ctx.recherche} »`;
     if(ctx.ville) return `Être visible sur les recherches autour de ${ctx.ville}`;
   }
-  if(item.famille === "infos") return titreInfosPriorite();
+  if(item.famille === "infos") return titreInfosPriorite(item);
   const titres = {
     reputation:choisirVarianteNarrative("priority.reputation.title", "default", [
       "Renforcer votre réputation client",
@@ -6562,7 +6591,7 @@ function recommandationPriorite(item, ctx){
       : estNombre(d.nbPhotos)
       ? `Ajouter des photos utiles et variées. Aujourd'hui, ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""} ne suffisent pas toujours à rassurer une personne qui compare.`
       : "Ajouter des photos récentes, nettes et utiles pour montrer concrètement l'entreprise.",
-    infos: premierPasInfos(),
+    infos: premierPasInfos(item),
     activite: "Publier un signe d'activité récent pour montrer que l'entreprise est disponible et suivie."
   };
   return reco[item.famille] || item.action;
@@ -6661,7 +6690,7 @@ function constatObservePriorite(item, ctx){
     return "Les visuels de votre fiche ne montrent pas encore votre travail — c'est pourtant la première chose que regarde un prospect qui compare.";
   }
   if(item.famille === "infos")
-    return constatInfos();
+    return constatInfos(item);
   if(item.famille === "activite"){
     if(estNombre(d.nbPublications) && d.nbPublications === 0)
       return "Aucune publication n'est visible sur votre fiche — aucun signe d'activité récent pour un prospect qui la consulte.";
@@ -6760,7 +6789,7 @@ function consequenceBusinessPriorite(item, ctx){
       `La visibilité se joue dès les premiers résultats. Quand votre fiche n'y apparaît pas, ${persona} peut choisir une entreprise concurrente avant d'avoir vu la vôtre.`
     ]),
     photos: consequencePhotos(item, ctx),
-    infos: consequenceInfos(),
+    infos: consequenceInfos(item),
     activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
   };
   return textes[item.famille] || "Cet écart peut réduire la confiance ou retarder la prise de contact.";
@@ -6784,7 +6813,7 @@ function resultatAttenduPriorite(item, ctx){
         "une personne qui compare identifie plus vite ce que vous proposez, où vous intervenez et comment vous joindre."
       ]),
     photos: prioritePhotosPorteSurActualite(item) ? "votre galerie montre une entreprise active aujourd'hui." : "votre travail devient visible avant même le premier contact.",
-    infos: resultatAttenduInfos(),
+    infos: resultatAttenduInfos(item),
     activite: "une fiche visiblement suivie et active."
   };
   return textes[item.famille] || "";

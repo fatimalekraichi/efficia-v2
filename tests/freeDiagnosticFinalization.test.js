@@ -88,10 +88,12 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
     addressVerification: state.address,
     serviceAreaVerification: state.serviceArea,
   });
+  const provisionalCode = sliceBetween(html, "function scoreEstProvisoire", "function listerElementsRestantsPourFinalisation()");
   const listCode = sliceBetween(html, "function listerElementsRestantsPourFinalisation()", "function calc()");
   const calcCode = sliceBetween(html, "function calc()", "function statsScore()");
   const validationCode = sliceBetween(html, "function questionnairePretPourFinalisation()", "function slugPDF(");
-  vm.runInNewContext(`${listCode}\n${calcCode}\n${validationCode}\nglobalThis.api={listerElementsRestantsPourFinalisation,calc,questionnairePretPourFinalisation};`, context);
+  const provisionalNarrativeCode = sliceBetween(html, "function mentionScoreProvisoireHtml", "function potentielScoreHtml");
+  vm.runInNewContext(`${provisionalCode}\n${listCode}\n${calcCode}\n${validationCode}\n${provisionalNarrativeCode}\nglobalThis.api={listerElementsRestantsPourFinalisation,calc,questionnairePretPourFinalisation,scoreEstProvisoire,mentionScoreProvisoireHtml};`, context);
   return { context, state, counter, status, provisional };
 }
 
@@ -154,7 +156,7 @@ test("nomConforme reste obligatoire et une réponse à zéro est valide", () => 
   assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
 });
 
-test("une zone non vérifiable est complète, vaut zéro et marque le score provisoire", () => {
+test("une zone non vérifiable est complète, vaut zéro et ne rend pas seule le score provisoire", () => {
   const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
   const harness = createLegacyHarness({
     criteria: relevantCriteria,
@@ -164,7 +166,7 @@ test("une zone non vérifiable est complète, vaut zéro et marque le score prov
   assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
   harness.context.api.calc();
   assert.equal(harness.counter.textContent, "✓ Tous les éléments sont renseignés");
-  assert.equal(harness.provisional.hidden, false);
+  assert.equal(harness.provisional.hidden, true);
   assert.equal(harness.context.api.questionnairePretPourFinalisation(), true);
 
   harness.state.serviceArea = "coherent";
@@ -172,7 +174,7 @@ test("une zone non vérifiable est complète, vaut zéro et marque le score prov
   assert.equal(harness.provisional.hidden, true);
 });
 
-test("une adresse non vérifiable est complète, vaut zéro et n'empêche pas la génération", () => {
+test("une adresse non vérifiable est complète, vaut zéro et ne rend pas seule le score provisoire", () => {
   const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
   const harness = createLegacyHarness({
     criteria: relevantCriteria,
@@ -182,8 +184,45 @@ test("une adresse non vérifiable est complète, vaut zéro et n'empêche pas la
   assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
   harness.context.api.calc();
   assert.equal(harness.counter.textContent, "✓ Tous les éléments sont renseignés");
-  assert.equal(harness.provisional.hidden, false);
+  assert.equal(harness.provisional.hidden, true);
   assert.equal(harness.context.api.questionnairePretPourFinalisation(), true);
+});
+
+test("en mode hybride, une adresse non vérifiable ne masque pas la zone desservie réellement manquante", () => {
+  const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
+  const harness = createLegacyHarness({
+    criteria: relevantCriteria,
+    selected,
+    location: { mode: "hybrid", address: "not_verifiable", serviceArea: "unknown" },
+  });
+  const remaining = harness.context.api.listerElementsRestantsPourFinalisation();
+  assert.deepEqual(JSON.parse(JSON.stringify(remaining.map(({ id, type, reason }) => ({ id, type, reason })))), [{
+    id: "serviceAreaVerification",
+    type: "required_context",
+    reason: "service_area_verification_missing",
+  }]);
+  harness.context.api.calc();
+  assert.equal(harness.counter.textContent, "1 élément(s) restant à vérifier");
+  assert.equal(harness.provisional.hidden, false);
+  assert.equal(harness.context.api.questionnairePretPourFinalisation(), false);
+  assert.equal(harness.context.api.scoreEstProvisoire(), true);
+  assert.match(harness.context.api.mentionScoreProvisoireHtml(), /Zone desservie à confirmer/);
+});
+
+test("en mode hybride, deux réponses terminales suppriment le dernier compteur et le statut provisoire", () => {
+  const selected = Object.fromEntries(relevantCriteria.map((criterion) => [criterion.id, { value: "0" }]));
+  const harness = createLegacyHarness({
+    criteria: relevantCriteria,
+    selected,
+    location: { mode: "hybrid", address: "not_verifiable", serviceArea: "coherent" },
+  });
+  assert.equal(harness.context.api.listerElementsRestantsPourFinalisation().length, 0);
+  harness.context.api.calc();
+  assert.equal(harness.counter.textContent, "✓ Tous les éléments sont renseignés");
+  assert.equal(harness.provisional.hidden, true);
+  assert.equal(harness.context.api.questionnairePretPourFinalisation(), true);
+  assert.equal(harness.context.api.scoreEstProvisoire(), false);
+  assert.equal(harness.context.api.mentionScoreProvisoireHtml(), "");
 });
 
 test("le calcul client attribue zéro, jamais null, à une adresse non vérifiable", () => {
@@ -344,6 +383,10 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     },
     modeLocalisation: () => "service_area",
     reponseZoneDesserte: () => state.publiclyUnverifiable ? "not_verifiable" : "coherent",
+    EfficiaQuestionnaireFinalization: {
+      isAddressVerificationComplete: (value) => ["exact", "inaccurate", "not_verifiable"].includes(value),
+      isServiceAreaVerificationComplete: (value) => ["coherent", "partial", "incoherent", "not_verifiable"].includes(value),
+    },
     critereEstNonVerifiablePubliquement: (criterion) => state.publiclyUnverifiable && criterion?.key === "adresse",
     critereEstMasque: () => false,
     critereEstNonApplicable: () => false,
@@ -391,6 +434,16 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   assert.equal(selected.some((item) => item.famille === "visibilite"), false);
   assert.equal(selected.find((item) => item.famille === "reputation")?.critere.key, "noteMoyenne");
 
+  const withUnclaimedListing = context.api.selectionnerPrioritesDynamiques([
+    candidate("revendiquee", 3, 3),
+    candidate("noteMoyenne", 6, 6),
+    candidate("descriptionRemplie", 4, 4),
+  ]);
+  const unclaimedPriority = withUnclaimedListing.find((item) => item.famille === "infos");
+  assert.equal(unclaimedPriority?.critere.key, "revendiquee");
+  assert.equal(unclaimedPriority?.priorityKey, "revendiquee");
+  assert.equal(unclaimedPriority?.action, "Revendiquer votre fiche Google Business et la faire vérifier.");
+
   const reputation = selected.find((item) => item.famille === "reputation");
   const reportContext = { activite: "Électricien", data: context.donneesAnalyse, recherche: "Électricien Audun-le-Tiche" };
   const texts = [
@@ -419,7 +472,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   const offerPriority = selected.find((item) => item.famille === "offre");
   assert.doesNotMatch(context.api.resultatAttenduPriorite(offerPriority, reportContext), /où vous intervenez|zone/i);
 
-  assert.equal(context.api.compterElementsAConfirmerRapport(), 1);
+  assert.equal(context.api.compterElementsAConfirmerRapport(), 0);
   assert.equal(context.api.phraseElementsAConfirmer(1), "1 élément reste à confirmer.");
   assert.equal(context.api.phraseElementsAConfirmer(3), "3 éléments restent à confirmer.");
 

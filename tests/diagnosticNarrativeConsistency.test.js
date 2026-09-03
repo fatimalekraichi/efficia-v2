@@ -593,6 +593,7 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
 
 const REPUTATION_ITEM = { famille: "reputation" };
 const INFOS_ITEM = { famille: "infos" };
+const INFOS_UNCLAIMED_ITEM = { famille: "infos", priorityKey: "revendiquee", critere: { key: "revendiquee" } };
 const FORBIDDEN_RECENCY = /des avis plus récents|davantage d'avis récents|manque d'avis récents|retrouver de la récence/i;
 
 /* --- Avis (10 scénarios permanents) --- */
@@ -780,6 +781,19 @@ test("Infos 14 : attributs ET horaires non conformes -> les deux sont regroupés
   const premierPas = context.recommandationPriorite(INFOS_ITEM, { data: {} });
   assert.match(premierPas, /horaires/i);
   assert.match(premierPas, /attributs/i);
+});
+
+test("Infos 14 bis : une fiche non revendiquée conserve sa priorité détaillée même avec un autre défaut d'information", () => {
+  const context = createFullPriorityHarness({
+    etats: { revendiquee: "nonConforme", horaires: "nonConforme", contact: "conforme", attributs: "conforme", adresse: "conforme", nap: "conforme", nomConforme: "conforme" },
+  });
+  const reportContext = { activite: "Électricien", data: {} };
+  assert.equal(context.titrePriorite(INFOS_UNCLAIMED_ITEM), "Revendiquer et vérifier votre fiche");
+  assert.match(context.constatObservePriorite(INFOS_UNCLAIMED_ITEM, reportContext), /Vous êtes le propriétaire/i);
+  assert.match(context.consequenceBusinessPriorite(INFOS_UNCLAIMED_ITEM, reportContext), /Google et les internautes/i);
+  assert.equal(context.recommandationPriorite(INFOS_UNCLAIMED_ITEM, reportContext), "Revendiquer votre fiche Google Business et la faire vérifier.");
+  assert.match(context.resultatAttenduPriorite(INFOS_UNCLAIMED_ITEM, reportContext), /corriger, compléter et piloter/i);
+  assert.equal(context.actionFamillePriorite({ key: "infos" }, INFOS_UNCLAIMED_ITEM), "Revendiquer votre fiche Google Business et la faire vérifier.");
 });
 
 test("Infos 15 : tous les critères sont conformes -> aucune critique, formulation neutre", () => {
