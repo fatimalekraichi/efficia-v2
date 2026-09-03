@@ -268,7 +268,7 @@ test("le module de finalisation chargé comme un script navigateur expose la vé
   assert.ok(html.indexOf('/js/questionnaire-finalization.js?v=7ee0654') < html.indexOf('isAddressVerificationComplete(reponseAdresse())'));
 });
 
-test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
+test("un clic PDF complet compose exactement quatre pages et atteint pdf.save", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
   let composed = 0;
@@ -276,7 +276,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   let savedFilename = "";
   let savedDraft = 0;
   let finalizedSnapshot = 0;
-  const pages = Array.from({ length: 6 }, () => ({}));
+  const pages = Array.from({ length: 4 }, () => ({}));
   class FakePdf {
     constructor() {
       this.pageCount = 1;
@@ -303,7 +303,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     enregistrerBrouillonD1: async () => { savedDraft += 1; return true; },
     chargerLogoRapportDataUrl: async () => {},
     genererRapport: () => { composed += 1; return true; },
-    nomFichierDiagnosticPDF: () => "diagnostic-six-pages.pdf",
+    nomFichierDiagnosticPDF: () => "diagnostic-quatre-pages.pdf",
     dernierNomPdfGenere: "",
     assurerLibrairiesPDF: async () => ({
       jsPDFCtor: FakePdf,
@@ -320,8 +320,8 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 6);
-  assert.equal(savedFilename, "diagnostic-six-pages.pdf");
+  assert.equal(canvasCalls, 4);
+  assert.equal(savedFilename, "diagnostic-quatre-pages.pdf");
   assert.equal(savedDraft, 1);
   assert.equal(finalizedSnapshot, 1);
   assert.equal(buttons[0].disabled, false);
@@ -339,6 +339,50 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
   vm.runInNewContext(`${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 0);
+});
+
+function createPrioritySummaryHarness() {
+  const code = sliceBetween(html, "function resumePrioritesRapport(priorites, controles = controlesChecklistCanoniques())", "function bandeauPrioritesRestantesHtml");
+  const context = {};
+  vm.runInNewContext(`${code}\nglobalThis.resume=resumePrioritesRapport;`, context);
+  return context.resume;
+}
+
+test("le compteur des priorités est fondé sur les clés exactes des contrôles, sans rapprochement par texte ou famille", () => {
+  const resume = createPrioritySummaryHarness();
+  const controles = [
+    { key: "revendiquee", statut: "ko" },
+    { key: "nap", statut: "ko" },
+    { key: "descriptionRemplie", statut: "ko" },
+    { key: "nombrePhotos", statut: "warn" },
+  ];
+  const resultat = resume([
+    { priorityKey: "revendiquee", famille: "infos" },
+    { priorityKey: "autre-cle", famille: "offre", title: "Même titre que la description" },
+  ], controles);
+  assert.deepEqual(JSON.parse(JSON.stringify(resultat)), {
+    totalPrioritaires: 3,
+    prioritairesPresentes: 1,
+    prioritairesRestants: 2,
+    priorityKeys: ["revendiquee", "nap", "descriptionRemplie"],
+    presentedKeys: ["revendiquee"],
+  });
+});
+
+test("le compteur des priorités déduplique les clés et reste borné à zéro", () => {
+  const resume = createPrioritySummaryHarness();
+  const controles = [{ key: "nap", statut: "ko" }, { key: "nap", statut: "ko" }];
+  const resultat = resume([{ priorityKey: "nap" }, { criterionKey: "nap" }], controles);
+  assert.equal(resultat.totalPrioritaires, 1);
+  assert.equal(resultat.prioritairesPresentes, 1);
+  assert.equal(resultat.prioritairesRestants, 0);
+});
+
+test("les quatre pages sont les seules acceptées par l’export gratuit", () => {
+  const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
+  assert.match(downloadCode, /pages\.length !== 4/u);
+  assert.match(downloadCode, /totalPdf !== 4/u);
+  assert.doesNotMatch(downloadCode, /pages\.length !== 6|totalPdf !== 6/u);
 });
 
 test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {

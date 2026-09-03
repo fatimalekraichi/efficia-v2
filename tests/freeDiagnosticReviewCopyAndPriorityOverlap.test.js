@@ -128,6 +128,8 @@ test("Avis page 3 · 12 — le correctif ne modifie ni le score, ni les prix, ni
     rating: null, reviews: 0, averageRating: 4.1, averageReviews: 19.666666667,
   });
   const pageCount = (html.match(/<section class="page/g) || []).length;
+  // Ce renderer serveur est un parcours distinct du téléchargement gratuit
+  // administré par index.html : il reste hors du correctif 4 pages.
   assert.equal(pageCount, 6);
   assert.match(html, /99\s*€/);
   assert.match(html, /349\s*€/);
@@ -340,7 +342,7 @@ test("Priorités · 11 — aucune valeur Computelec codée en dur dans les modul
   }
 });
 
-test("Priorités · structure — le diagnostic gratuit garde exactement 3 priorités et 6 pages avec ce profil", async () => {
+test("Priorités · structure — le diagnostic gratuit garde exactement 3 priorités et 4 pages avec ce profil", async () => {
   const fx = computelecShapedFixture();
   const priorities = await buildFreePriorities(fx.business, fx.benchmark);
   assert.equal(priorities.length, 3);

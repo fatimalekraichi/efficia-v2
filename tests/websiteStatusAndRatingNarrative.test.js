@@ -611,10 +611,10 @@ function createEvaluationStatusHarness({ etat } = {}) {
 }
 
 function createChecklistStatutHarness({ etat, p = 3 } = {}) {
-  const code = sliceBetween(html, "const napSiteStateChk = cr.key", 'if(statut === "ok") ok++');
+  const code = sliceBetween(html, "const siteState = cr.key", "const label = rapportSansAvis()");
   // nonApplicable / publiclyUnverifiable / p sont déclarés AVANT ce bloc dans le
   // fichier source (non repris ici) : fournis comme paramètres de la fonction de test.
-  const wrapped = `function computeChecklistStatut(cr, p, nonApplicable, publiclyUnverifiable){\n${code}\n  return statut;\n}`;
+  const wrapped = `function computeChecklistStatut(cr, p, nonApplicable, publiclyUnverifiable){\n    const points = p;\n${code}\n  return statut;\n}`;
   const context = {
     critereEstNonApplicable: () => false,
     critereEstNonVerifiablePubliquement: () => false,
@@ -711,7 +711,7 @@ test("les cinq états du site officiel n'ont toujours aucun impact sur le calcul
 });
 
 test("la priorité 'Finaliser le site officiel' (état 'incomplet') ne mentionne aucune technologie particulière au niveau générique — WordPress reste réservé à la personnalisation e-mail du cas réel, hors générateur", () => {
-  const rendrePrioriteSource = sliceBetween(html, "function rendrePrioriteSiteOfficiel(item, index){", "function rendrePriorite(item, index, variante){");
+  const rendrePrioriteSource = sliceBetween(html, "function rendrePrioriteSiteOfficiel(item, index, variante = \"complete\"){", "function rendrePriorite(item, index, variante){");
   assert.doesNotMatch(rendrePrioriteSource, /WordPress/i);
   assert.doesNotMatch(rendrePrioriteSource, /Wix|Squarespace|Shopify|Webflow|Jimdo|Joomla|Drupal/i);
 });

@@ -26,30 +26,24 @@ function escapeHtml(value) {
 }
 
 function pageFixture({ business, unknown = false, longLabels = false }) {
-  const cards = domains.map(([title, sourceItems], domainIndex) => {
-    const items = [...sourceItems];
-    if (unknown && domainIndex === 0) {
-      items[5] = "Zone desservie : à confirmer — information non vérifiable publiquement.";
-      items[7] = "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google.";
-    }
-    if (longLabels && domainIndex === 3) {
-      items[2] = "Services présents avec un intitulé professionnel particulièrement long";
-    }
-    return `<div class="chk-rubrique"><h3>${escapeHtml(title)}<span>0/${items.length} conformes</span></h3>${items.map((label) => `<div class="chk-item"><span class="chk-ic chk-unknown">○</span><span>${escapeHtml(label)}</span></div>`).join("")}</div>`;
-  }).join("");
-  const unknownSuffix = unknown ? " 3 éléments restent à confirmer. Ils ne sont vérifiables que depuis l'intérieur du compte Google Business : ils restent donc volontairement à confirmer, plutôt que présenté comme un défaut." : "";
-
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action">
+  const titre = longLabels
+    ? "Clarifier les informations visibles pour une entreprise d’électricité, domotique et installations techniques de très longue dénomination"
+    : "Clarifier les informations visibles avant le premier contact";
+  const confirmation = unknown ? " Certaines informations restent à confirmer manuellement." : "";
+  const priority = (rank, compact = false) => `<section class="priority-card${compact ? " priority-card--compact" : ""}">
+    <div class="priority-kicker">Priorité n°${rank}</div><h2 class="priority-title">${rank === 1 ? escapeHtml(titre) : `Priorité ciblée ${rank}`}</h2>
+    <div class="priority-step priority-step--observation"><div class="priority-step-label">Ce que le client voit</div><p>Les informations essentielles ne permettent pas encore de vérifier l’offre et les modalités de contact avec confiance.${confirmation}</p></div>
+    <div class="priority-step priority-step--client"><div class="priority-step-label">Ce qu’il peut penser</div><p>Un prospect peut hésiter avant d’appeler lorsqu’il ne trouve pas les repères attendus.</p></div>
+    ${compact ? '<div class="priority-audit-lock">🔒 La marche à suivre précise est détaillée dans l’Audit Efficia™.</div>' : '<div class="priority-step priority-step--action"><div class="priority-step-label">Votre premier pas</div><p>Vérifier et compléter les informations nécessaires.</p><p class="priority-resultat"><b>Résultat attendu :</b> une fiche plus claire.</p><span class="priority-time">Temps estimé : 20 minutes</span></div>'}
+  </section>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-priorites page-priorites--four-pages">
     <div class="rapport-header"><div class="rapport-logo"><svg role="img" aria-label="Efficia Digital" viewBox="0 0 340 104"><rect width="340" height="104" fill="#fff"></rect><text x="8" y="64" font-size="34" fill="#0f3186">Efficia Digital</text></svg></div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
-    <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Ce que nous avons analysé</h1>
-    <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 20 vérifications applicables à cette fiche.</p>
-    <div class="chk-compteur"><span>✓ 15 éléments conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
-    <div class="chk-grid">${cards}</div>
-    <div class="chk-legend"><strong>Légende</strong> — ✓ conforme&nbsp;&nbsp;·&nbsp;&nbsp;! à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;✕ prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;○ à confirmer manuellement.</div>
-    <p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client qui consulte votre fiche, compare les informations disponibles et observe les entreprises concurrentes.${unknownSuffix}</p>
-    <p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps. Nous avons isolé les trois actions les plus susceptibles d'améliorer rapidement la clarté et la crédibilité de votre fiche.</p>
-    <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
-    <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page 3/6</span></div>
+    <div class="chapitre">Étape 4 · Vos trois priorités</div><h1 class="rapport-title">Par où commencer</h1>
+    <p class="rapport-subtitle">Priorités retenues pour ${escapeHtml(business)}.</p>
+    ${priority(1)}${priority(2, true)}${priority(3, true)}
+    <div class="priorities-remaining"><strong>Priorités restantes :</strong> le détail est inclus dans l’Audit Efficia™.</div>
+    <div class="next-hint">Page suivante : les solutions adaptées à votre situation <b>→</b></div>
+    <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page 3/4</span></div>
   </div></div><output id="layout-result"></output><script>
     addEventListener("load", () => {
       const page = document.querySelector(".page"); const footer = page.querySelector(".pied");
@@ -67,14 +61,15 @@ function pageFixture({ business, unknown = false, longLabels = false }) {
 }
 
 test("la correction de page 3 reste locale et conserve le contrôle anti-débordement", () => {
-  assert.match(css, /\.page-action \.rapport-explication/u);
-  assert.match(css, /\.page-action \.pied\{bottom:6mm/u);
-  assert.doesNotMatch(css, /\.page-action[^{}]*overflow\s*:\s*hidden/u);
+  assert.match(css, /\.page-priorites--four-pages/u);
+  assert.match(css, /\.priority-card--compact/u);
+  assert.match(css, /\.priority-audit-lock/u);
   assert.match(generator, /if\(contentBottom > footerTop - 12\)/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps/u);
-  assert.doesNotMatch(generator, /rapport-explication--reassurance">Rassurez-vous/u);
+  const compactStart = generator.indexOf('if(variante === "compacte") return `<section class="priority-card priority-card--compact">');
+  const compactEnd = generator.indexOf('return `<section class="priority-card">', compactStart);
+  const compactBlock = generator.slice(compactStart, compactEnd);
+  assert.doesNotMatch(compactBlock, /priority-step--action|priority-resultat|priority-time|priority-sample/u);
 });
 
 test("page 3 : les scénarios variables restent au-dessus du footer sans coupe ni chevauchement", { skip: !existsSync(chrome) }, () => {
