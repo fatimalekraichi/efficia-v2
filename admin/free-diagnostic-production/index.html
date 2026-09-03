@@ -723,7 +723,7 @@
             <option value="aucun">Aucun lien vers le site officiel n’est renseigné sur la fiche Google</option>
           </select>
         </div>
-        <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP observé (optionnel)</label><input type="text" id="d-site-code" placeholder="500" inputmode="numeric" onchange="normaliserSaisieTechniqueSite()"></div>
+        <div id="d-site-code-wrap" hidden><label for="d-site-code">Code HTTP ou détail technique observé (interne)</label><input type="text" id="d-site-code" placeholder="500 ou détail technique observé"></div>
         <div><label>&nbsp;</label><button type="button" class="btn-mini" onclick="ouvrirSiteOfficielDetecte()">Ouvrir le site détecté</button></div>
       </div>
       <div class="recherche-actions">
@@ -4015,9 +4015,7 @@ function majEtatBrouillonD1(etat, updatedAt = null){
 
 function champsBrouillonD1(){
   const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-zone-recherche","d-zone-pays","d-site-url","d-site-etat","d-site-code"];
-  return Object.fromEntries(ids.map(id => [id, id === "d-site-code"
-    ? normaliserSaisieTechniqueSite().valeurPersistable
-    : document.getElementById(id)?.value || ""]));
+  return Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value || ""]));
 }
 
 function appliquerChampsBrouillonD1(champs){
@@ -4025,10 +4023,6 @@ function appliquerChampsBrouillonD1(champs){
     const field = document.getElementById(id);
     if(field) field.value = typeof value === "string" ? value : "";
   });
-  // Les anciens brouillons pouvaient contenir le message brut d'un fournisseur
-  // dans le champ prévu pour le code HTTP. Il est converti dès la restauration,
-  // avant tout affichage dans l'interface ou le rapport.
-  normaliserSaisieTechniqueSite();
 }
 
 function restaurerLocalisation(source = {}){
@@ -4921,39 +4915,31 @@ function napRadioAucunSite(){
    émise depuis cette page (pas de risque SSRF) — le code HTTP n'est retenu
    que si un humain l'a saisi. */
 function lireEtatSiteOfficiel(){
-  const detailTechnique = normaliserSaisieTechniqueSite();
+  const detailTechniqueBrut = (document.getElementById("d-site-code")?.value || "").trim();
+  const detailTechnique = normaliserErreurTechniqueSite(detailTechniqueBrut);
   return {
     url: (document.getElementById("d-site-url")?.value || "").trim(),
     etat: document.getElementById("d-site-etat")?.value || "",
     codeHttp: detailTechnique.codeHttp,
     problemeTechnique: detailTechnique.problemeTechnique,
+    detailTechniqueBrut,
   };
 }
 
-/* Les réponses du contrôle de site proviennent parfois d'un outil tiers.
-   Elles ne doivent jamais être rendues telles quelles : le PDF et l'interface
-   ne manipulent que ces catégories professionnelles, jamais le détail brut. */
+/* Les réponses du contrôle de site peuvent contenir un détail fournisseur.
+   Ce détail brut reste exclusivement dans le brouillon interne ; le renderer
+   prospect ne reçoit que la catégorie professionnelle ci-dessous. */
 function normaliserErreurTechniqueSite(valeur){
   const brute = String(valeur || "").trim();
   const normalisee = brute.toLowerCase();
-  if(!brute) return {codeHttp:"", problemeTechnique:"", valeurPersistable:""};
+  if(!brute) return {codeHttp:"", problemeTechnique:""};
   if(normalisee === "dns" || /\bdns\b|nxdomain|enotfound|domain name|name resolution|records? .*not properly configured/i.test(brute)){
-    return {codeHttp:"", problemeTechnique:"dns", valeurPersistable:"dns"};
+    return {codeHttp:"", problemeTechnique:"dns"};
   }
   const code = normalisee.match(/\b([1-5]\d{2})\b/)?.[1] || "";
-  if(/^5\d{2}$/.test(code)) return {codeHttp:code, problemeTechnique:"erreur_serveur", valeurPersistable:code};
-  if(code) return {codeHttp:code, problemeTechnique:"erreur_http", valeurPersistable:code};
-  return {codeHttp:"", problemeTechnique:"incident_technique", valeurPersistable:"incident_technique"};
-}
-
-function normaliserSaisieTechniqueSite(){
-  const champ = document.getElementById("d-site-code");
-  const detail = normaliserErreurTechniqueSite(champ?.value || champ?.dataset?.problemeTechnique || "");
-  if(champ){
-    champ.value = detail.codeHttp;
-    if(champ.dataset) champ.dataset.problemeTechnique = detail.problemeTechnique;
-  }
-  return detail;
+  if(/^5\d{2}$/.test(code)) return {codeHttp:code, problemeTechnique:"erreur_serveur"};
+  if(code) return {codeHttp:code, problemeTechnique:"erreur_http"};
+  return {codeHttp:"", problemeTechnique:"incident_technique"};
 }
 
 /* Règle factuelle unique "existence / accessibilité du site officiel",
@@ -4968,7 +4954,7 @@ function etatSiteOfficielCourant(){
   const saisie = lireEtatSiteOfficiel();
   if(saisie.url){
     const etat = ["accessible","inaccessible","incomplet","a_confirmer"].includes(saisie.etat) ? saisie.etat : "a_confirmer";
-    return {etat, url:saisie.url, codeHttp:saisie.codeHttp || "", problemeTechnique:saisie.problemeTechnique || ""};
+    return {etat, url:saisie.url, codeHttp:saisie.codeHttp || "", problemeTechnique:saisie.problemeTechnique || "", detailTechniqueBrut:saisie.detailTechniqueBrut || ""};
   }
   if(saisie.etat === "aucun") return {etat:"aucun", url:"", codeHttp:""};
   return napRadioAucunSite() ? {etat:"aucun", url:"", codeHttp:""} : null;
@@ -6944,9 +6930,33 @@ function rendrePrioriteSiteOfficiel(item, index){
       titre: "Remettre le site officiel en ligne",
       observation: "Votre entreprise est bien visible sur Google, mais une personne qui clique sur votre site arrive actuellement sur une page d’erreur. Elle peut alors revenir immédiatement aux résultats Google et contacter un concurrent.",
       client: "Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site en erreur.",
-      action: "Faire vérifier l’hébergement, les journaux d’erreur et la configuration du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.",
+      action: "Faire vérifier le fonctionnement technique du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.",
       resultat: "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
-      delai: "Délai dépendant de votre hébergeur — à traiter en priorité."
+      delai: "À traiter en priorité."
+    },
+    dns: {
+      titre: "Remettre le site officiel en ligne",
+      observation: "Le site officiel était inaccessible lors de notre contrôle. La vérification indique un problème de configuration DNS.",
+      client: "Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site inaccessible.",
+      action: "Faire vérifier la configuration DNS du domaine par la personne ou le prestataire qui gère le domaine ou le site, puis tester le lien depuis la fiche Google.",
+      resultat: "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+      delai: "À traiter en priorité."
+    },
+    erreur_serveur: {
+      titre: "Remettre le site officiel en ligne",
+      observation: "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.",
+      client: "Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site en erreur.",
+      action: "Faire vérifier l’erreur serveur et le fonctionnement technique du site afin de rétablir son accès, puis tester le lien depuis la fiche Google.",
+      resultat: "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+      delai: "À traiter en priorité."
+    },
+    incident_technique: {
+      titre: "Remettre le site officiel en ligne",
+      observation: "Le site officiel n’a pas pu être consulté lors de notre contrôle.",
+      client: "Il risque de revenir aux résultats Google et de contacter directement un concurrent plutôt que d’insister sur un site inaccessible.",
+      action: "Faire vérifier le fonctionnement technique du site, puis tester le lien depuis la fiche Google.",
+      resultat: "un site à nouveau accessible et cohérent avec la fiche Google, qui ne fait plus perdre de prospects.",
+      delai: "À traiter en priorité."
     },
     incomplet: {
       titre: "Finaliser le site officiel",
@@ -6957,7 +6967,9 @@ function rendrePrioriteSiteOfficiel(item, index){
       delai: "Temps variable selon les contenus à préparer."
     }
   };
-  const contenu = CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.etat] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible;
+  const contenu = item.siteState?.etat === "inaccessible"
+    ? (CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.problemeTechnique] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible)
+    : (CONTENU_PRIORITE_SITE_OFFICIEL[item.siteState?.etat] || CONTENU_PRIORITE_SITE_OFFICIEL.inaccessible);
   const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
   const rank = index + 1;
   const title = effectiveText(`priority.${rank}.title`, contenu.titre);

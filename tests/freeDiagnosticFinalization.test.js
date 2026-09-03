@@ -343,6 +343,10 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
 
 test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {
   const helperCode = sliceBetween(html, "function rapportSansAvis()", "function faiblesseChiffree(");
+  // consequencePhotos appelle désormais la comparaison canonique utilisée par
+  // le renderer. Le harnais charge donc cette dépendance réelle, sans changer
+  // le comportement Production ni le scénario Photos couvert ici.
+  const comparaisonPhotosCode = sliceBetween(html, "function comparerVolumePhotos(", "/* ============ PAGE 2");
   const selectionCode = sliceBetween(html, '/* ===== Priorit\u00e9 "Informations essentielles"', "function contexteRapport()");
   // etatCritere (utilisé par consequenceReputation/consequencePhotos, appelées
   // depuis consequenceBusinessPriorite ci-dessous) vit plus haut dans le
@@ -411,7 +415,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     globalThis: null,
   };
   context.globalThis = context;
-  vm.runInNewContext(`${helperCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
+  vm.runInNewContext(`${helperCode}\n${comparaisonPhotosCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
     FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite,
     recommandationPriorite, beneficePriorite, constatObservePriorite,
     consequenceBusinessPriorite, resultatAttenduPriorite,

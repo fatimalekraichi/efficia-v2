@@ -176,7 +176,7 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
     window.__workflowFetchCalls = [];
     window.fetch = async (input, options = {}) => {
       const url = String(input);
-      window.__workflowFetchCalls.push({ url, method: options.method || "GET" });
+      window.__workflowFetchCalls.push({ url, method: options.method || "GET", body: options.body || null });
       const json = (body, status = 200) => new Response(JSON.stringify(body), {
         status,
         headers: { "Content-Type": "application/json" }
@@ -679,10 +679,90 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.doesNotMatch(result.automaticPageOne, /Bonjour, La fiche Google contient aucun site officiel identifiable/u);
   assert.match(result.customPageOne, /Texte choisi volontairement par l’utilisateur\./u);
   assert.doesNotMatch(result.customPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
-  assert.match(result.serverErrorReport, /erreur serveur 500/u);
+  assert.match(result.serverErrorReport, /erreur serveur/u);
+  assert.doesNotMatch(result.serverErrorReport, /erreur serveur 500/u);
   assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
+});
+
+test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {
+  const rawDns = "The DNS records for tecelec.lu are not properly configured. Please check your DNS settings.";
+  const firstPass = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        document.getElementById("d-site-url").value = "https://tecelec.lu";
+        document.getElementById("d-site-etat").value = "inaccessible";
+        document.getElementById("d-site-code").value = ${JSON.stringify(rawDns)};
+        await enregistrerBrouillonD1();
+        const generated = genererRapport({ exigerVersion: false });
+        const reportText = document.getElementById("rapport-contenu")?.innerText || "";
+        const draftWrite = window.__workflowFetchCalls.filter(item => item.method === "PUT" && item.url.includes("/api/admin/audit-drafts/")).at(-1);
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          internalValue: document.getElementById("d-site-code").value,
+          generated,
+          reportText,
+          draftBody: draftWrite?.body || null,
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
+      }
+    })();
+  `);
+  assert.equal(firstPass.error, undefined, firstPass.error);
+  assert.equal(firstPass.internalValue, rawDns);
+  assert.equal(firstPass.generated, true);
+  assert.match(String(firstPass.draftBody), /DNS records for tecelec\.lu are not properly configured/u);
+  assert.match(firstPass.reportText, /Le site officiel était inaccessible lors de notre contrôle\. La vérification indique un problème de configuration DNS/u);
+  assert.doesNotMatch(firstPass.reportText, /DNS records|Please check your DNS settings/u);
+  assert.doesNotMatch(firstPass.reportText, /hébergement|journaux d’erreur/u);
+
+  const reloaded = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 75 && document.getElementById("d-site-code")?.value !== ${JSON.stringify(rawDns)}; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const generated = genererRapport({ exigerVersion: false });
+        const reportText = document.getElementById("rapport-contenu")?.innerText || "";
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          internalValue: document.getElementById("d-site-code").value,
+          generated,
+          reportText,
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
+      }
+    })();
+  `, {
+    answers: {
+      questionnaireVersion: "score-efficia-questionnaire-v4",
+      profileKey: "default",
+      fields: {
+        "p-entreprise": "Entreprise Test",
+        "p-ville": "Arlon",
+        "p-activite": "Électricien",
+        "p-contact": "Test interne",
+        "d-requete": "Électricien Arlon",
+        "d-zone-recherche": "Arlon",
+        "d-zone-pays": "BE",
+        "d-site-url": "https://tecelec.lu",
+        "d-site-etat": "inaccessible",
+        "d-site-code": rawDns,
+      },
+      observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
+      responses: {},
+    },
+  });
+  assert.equal(reloaded.error, undefined, reloaded.error);
+  assert.equal(reloaded.internalValue, rawDns);
+  assert.equal(reloaded.generated, true);
+  assert.match(reloaded.reportText, /Le site officiel était inaccessible lors de notre contrôle\. La vérification indique un problème de configuration DNS/u);
+  assert.match(reloaded.reportText, /Faire vérifier la configuration DNS du domaine par la personne ou le prestataire qui gère le domaine ou le site, puis tester le lien depuis la fiche Google\./u);
+  assert.doesNotMatch(reloaded.reportText, /DNS records|Please check your DNS settings|hébergement|journaux d’erreur/u);
 });
 
 test("un clic réel sur la relance concurrentielle appelle exactement une fois l’endpoint existant", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
