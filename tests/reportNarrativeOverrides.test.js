@@ -613,6 +613,15 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
         document.getElementById("d-site-code").value = "500";
         const generatedServerError = genererRapport({ exigerVersion: false });
         const serverErrorReport = document.getElementById("rapport-contenu")?.innerText || "";
+        const reportPages = [...document.querySelectorAll("#rapport-contenu .page")];
+        const page4 = document.querySelector('[data-report-page="4"]');
+        const page5 = document.querySelector('[data-report-page="5"]');
+        const page6 = document.querySelector('[data-report-page="6"]');
+        const offerCards = [...(page6?.querySelectorAll(".v3-offer") || [])];
+        const layout = reportPages.map((page) => {
+          const measure = mesuresPageRapport(page);
+          return { page: page.dataset.reportPage, ok: measure.ok, overflow: measure.overflow };
+        });
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({
           generatedAutomatic,
           generatedCustom,
@@ -625,6 +634,19 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
           summaryBottom: summaryRect?.bottom || null,
           footerTop: footerRect?.top || null,
           pageTop: pageRect?.top || null,
+          v3PageOrder: reportPages.map((page) => page.dataset.reportPage),
+          page4JourneyLabels: [...(page4?.querySelectorAll(".v3-step-label") || [])].map((element) => element.textContent),
+          page5HasActionStep: Boolean(page5?.querySelector(".v3-step--action, [data-priority-action]")),
+          page5ForbiddenDetailNodes: page5?.querySelectorAll(".v3-step--action, .v3-step--result, .v3-example, .v3-time, [data-priority-action], [data-priority-result]").length || 0,
+          page5ForbiddenDetailText: [...(page5?.querySelectorAll(".v3-mini-priority") || [])].some((element) => /Premier pas|Résultat attendu|Temps estimé|Structure de réponse|Exemple concret/u.test(element.textContent)),
+          page5PriorityCount: page5?.querySelectorAll(".v3-mini-priority").length || 0,
+          offerSummary: offerCards.map((card) => ({
+            title: card.querySelector("h2")?.textContent || "",
+            pack: card.classList.contains("v3-offer--pack"),
+            href: card.querySelector("a")?.getAttribute("href") || "",
+            buttonClass: card.querySelector("a")?.className || "",
+          })),
+          layout,
         });
       } catch (error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
@@ -684,6 +706,96 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
+  assert.deepEqual(result.v3PageOrder, ["1", "2", "3", "4", "5", "6"], "le renderer gratuit V3.2 conserve exactement six pages ordonnées");
+  assert.deepEqual(result.page4JourneyLabels, ["Constat", "Conséquence", "Premier pas", "Résultat attendu"], "la page 4 conserve le parcours complet de la seule priorité n°1");
+  assert.equal(result.page5HasActionStep, false, "les priorités 2 et 3 ne doivent pas répéter le premier pas de la page 4");
+  assert.equal(result.page5ForbiddenDetailNodes, 0, "les éléments détaillés réservés à l’Audit ne doivent pas exister dans le DOM capturé de la page 5");
+  assert.equal(result.page5ForbiddenDetailText, false, "aucun libellé d’action, résultat, délai ou exemple ne doit subsister dans les priorités 2 et 3");
+  assert.ok(result.page5PriorityCount <= 2, "la page 5 ne condense que les priorités n°2 et n°3");
+  assert.deepEqual(result.offerSummary.map((offer) => offer.title), ["Audit complet Google Business", "Pack Visibilité Google"]);
+  assert.equal(result.offerSummary[0].pack, false, "l'Audit reste la carte secondaire à gauche");
+  assert.equal(result.offerSummary[0].href, "https://www.efficiadigital.com/achat?offre=audit");
+  assert.match(result.offerSummary[0].buttonClass, /payment-button--audit/);
+  assert.equal(result.offerSummary[1].pack, true, "le Pack 349 € reste la carte principale à droite");
+  assert.equal(result.offerSummary[1].href, "https://www.efficiadigital.com/achat?offre=visibility");
+  assert.match(result.offerSummary[1].buttonClass, /payment-button--pack/);
+  assert.ok(result.layout.every((page) => page.ok && page.overflow !== "hidden" && page.overflow !== "clip"), "chaque page V3.2 doit rester dans sa zone sûre sans masquage");
+});
+
+test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le titre personnalisé de revendiquee", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        const chooseAll = () => {
+          const groups = {};
+          document.querySelectorAll('input[type="radio"][name^="c"]').forEach((input) => (groups[input.name] ??= []).push(input));
+          Object.values(groups).forEach((inputs) => {
+            const selected = inputs.find((input) => !input.disabled && !input.closest("[hidden]") && !input.dataset.special) || inputs[0];
+            selected.checked = true;
+            selected.dispatchEvent(new Event("change", { bubbles:true }));
+          });
+        };
+        const chooseCriterion = (key, optionIndex) => {
+          const input = [...document.querySelectorAll("input[name=\\\"c" + CRITERE_IDS[key] + "\\\"]")][optionIndex];
+          if(!input) throw new Error("option absente : " + key + ":" + optionIndex);
+          input.checked = true;
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+        };
+        const select = (name, value) => {
+          const input = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+          if(!input) throw new Error("réponse manuelle absente : " + name + ":" + value);
+          input.checked = true;
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+        };
+        const capture = () => {
+          const p4 = document.querySelector('[data-report-page="4"]');
+          const p5 = document.querySelector('[data-report-page="5"]');
+          return {
+            page4Title:p4?.querySelector(".rapport-title")?.textContent || "",
+            page5Chapter:p5?.querySelector(".chapitre")?.textContent || "",
+            page5Title:p5?.querySelector(".rapport-title")?.textContent || "",
+            miniPriorities:p5?.querySelectorAll(".v3-mini-priority").length || 0,
+            forbiddenDetails:p5?.querySelectorAll(".v3-step--action, .v3-step--result, .v3-example, .v3-time").length || 0,
+            priorityCount:p5?.querySelector(".v3-priority-count")?.textContent || "",
+          };
+        };
+        const render = () => { majConditionsQuestionnaire(); majLocalisation(); calc(); genererRapport({exigerVersion:false}); return capture(); };
+        chooseAll(); select("condition-location-mode", "storefront"); select("location-address", "exact");
+        const zero = render();
+        chooseCriterion("descriptionRemplie", 2);
+        const one = render();
+        chooseCriterion("nombrePhotos", 2);
+        const two = render();
+        chooseCriterion("noteMoyenne", 3);
+        const three = render();
+        chooseCriterion("classementLocal", 2);
+        const more = render();
+        chooseAll(); chooseCriterion("revendiquee", 1); select("condition-location-mode", "storefront"); select("location-address", "exact");
+        remplacementsTextesRapport = new Map([["priority.1.title", {customText:"Titre revendiquee personnalisé"}]]);
+        const custom = render();
+        const hero = document.querySelector('[data-report-page="4"] .v3-priority-hero');
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({zero, one, two, three, more, custom, customTitle:hero?.querySelector(".v3-priority-title")?.textContent || "", customKey:hero?.dataset.priorityKey || ""});
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `);
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.zero.page4Title, "Aucune priorité majeure confirmée");
+  assert.equal(result.zero.page5Title, "Aucune autre priorité à traiter");
+  assert.equal(result.zero.miniPriorities, 0);
+  assert.equal(result.one.miniPriorities, 0);
+  assert.equal(result.one.page5Title, "Aucune autre priorité à traiter");
+  assert.equal(result.two.page5Chapter, "Étape 5 · La priorité suivante");
+  assert.equal(result.two.miniPriorities, 1);
+  assert.equal(result.three.page5Title, "Deux freins à traiter ensuite");
+  assert.equal(result.three.miniPriorities, 2);
+  assert.equal(result.more.miniPriorities, 2);
+  assert.match(result.more.priorityCount, /priorité.*présentée/u);
+  for(const scenario of [result.zero, result.one, result.two, result.three, result.more]) assert.equal(scenario.forbiddenDetails, 0);
+  assert.equal(result.customKey, "revendiquee");
+  assert.equal(result.customTitle, "Titre revendiquee personnalisé");
 });
 
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {

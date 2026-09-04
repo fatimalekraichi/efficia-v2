@@ -26,12 +26,16 @@ function chromeForTestingPath() {
 const chrome = [process.env.CHROME_BIN, chromeForTestingPath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find((candidate) => candidate && existsSync(candidate));
 const hasChrome = existsSync(chrome);
 
-// Empêche toute régression silencieuse du garde-fou historique : le
-// correctif de mise en page de la page 6 (page-offres) ne doit jamais
-// modifier validerMiseEnPageRapport() ni sa tolérance de 12px.
-test("le garde-fou validerMiseEnPageRapport() et sa tolérance de 12px restent inchangés", () => {
+// Le garde-fou V3.2 doit mesurer le DOM réel (footer, largeur et contenu),
+// plutôt que masquer un dépassement avec overflow:hidden.
+test("le garde-fou V3.2 contrôle le footer et les limites réelles de chaque page", () => {
   assert.match(generator, /function validerMiseEnPageRapport\(\)\{/u);
-  assert.match(generator, /if\(contentBottom > footerTop - 12\)\{/u);
+  assert.match(generator, /function mesuresPageRapport\(page\)/u);
+  assert.match(generator, /contentBottom <= footerRect\.top - securityGap/u);
+  assert.match(generator, /contentLeft >= pageRect\.left - 1/u);
+  assert.match(generator, /contentRight <= pageRect\.right \+ 1/u);
+  assert.match(generator, /appliquerCompactionLocaleRapport\(\)/u);
+  assert.doesNotMatch(generator, /\.page\{[^}]*overflow:hidden/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
 });
 
@@ -66,91 +70,50 @@ function formatMinutes(minutes) {
 // fixture autonome important la vraie feuille de styles, sans dépendre de
 // tout l'état applicatif — formulaire, grille de critères, session — requis
 // par genererRapport() lui-même).
-function pageOffresFixture({
-  business,
-  withProjection = true,
-  withEffort = true,
-  withConcurrents = false,
-  withDeduction = true,
-  tempsDiy = 90,
-  score = 42,
-  scoreProjete = 78,
-}) {
-  const bandeCouleur = score < 40 ? "#dc2626" : score < 60 ? "#d97706" : score < 80 ? "#2563eb" : "#059669";
+function pageOffresFixture({ business, withConcurrents = false, withDeduction = true }) {
   const deductionNote = withDeduction
     ? "Les 99 € sont déduits si vous commandez un pack éligible dans les 30 jours."
-    : "";
-  const projectionBloc = withProjection
-    ? `
-    <div class="projection-grid">
-      <div class="proj-col"><div class="lab">Aujourd'hui</div><div class="num" style="color:${bandeCouleur}">${score}<span style="font-size:.9rem;color:#64748b">/100</span></div></div>
-      <div class="proj-fleche">→</div>
-      <div class="proj-col"><div class="lab">Objectif réaliste</div><div class="num" style="color:#059669">${scoreProjete}<span style="font-size:.9rem;color:#64748b">/100</span></div></div>
-    </div>
-    <p style="color:#8a97a8;font-size:.62rem;line-height:1.35;margin-top:5px">Projection du score de complétude Efficia après correction des critères directement maîtrisables. Elle ne constitue pas une garantie de classement Google, d'appels ou de chiffre d'affaires.</p>`
-    : "";
-  const effortBloc = withEffort
-    ? `
-    <div class="effort-grid">
-      <div class="effort-card">Appliquer vous-même l'ensemble des recommandations<b>${formatMinutes(tempsDiy)}</b>au total, selon les éléments déjà disponibles et les vérifications nécessaires</div>
-      <div class="effort-card" style="border-color:#93c5fd;background:#f8fbff">Avec le Pack Visibilité<b>20 à 30 minutes</b>de votre côté : transmettre les informations, puis valider avant publication</div>
-    </div>`
-    : "";
+    : "Ce diagnostic vous aide à choisir la prochaine action la plus utile.";
   const concurrentsClause = withConcurrents
     ? ", et sur les données publiques agrégées de fiches concurrentes de votre zone"
     : "";
 
-  return `<div class="page page-offres">
+  // Reproduction fidèle de la page 6 V3.2 réellement produite par
+  // genererRapport(). Cette fixture ne conserve aucun des anciens blocs de
+  // projection/d'effort : leur présence aurait masqué une régression de la
+  // nouvelle grille compacte des offres.
+  return `<div class="page page-offres report-v3">
     <header class="rapport-header report-header"><div class="rapport-logo report-logo-wrap"><img class="report-logo" src="${LOGO_SRC}" alt="Efficia Digital"><span class="fallback">Efficia Digital</span></div><span class="rap-etiquette">Diagnostic Efficia™</span></header>
-    <div class="chapitre">Étape 6 · Passer à l'action</div>
+    <div class="chapitre">Étape 6 · Les solutions</div>
     <h1 class="rapport-title">Deux façons d'améliorer votre fiche</h1>
-    <p class="rapport-subtitle">Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${escapeHtml(business)}.</p>
-    ${projectionBloc}
-    ${effortBloc}
-    <div class="choice-note">Le Pack permet de prendre en charge les priorités détectées, sans que vous ayez à modifier la fiche vous-même.</div>
-    <div class="offer-grid">
-      <div class="offer-card offer-choice primary">
-        <span class="offer-badge">Je le fais moi-même</span>
-        <h3>Audit complet Google Business</h3>
+    <p class="v3-solution-lead">Vous pouvez appliquer les priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${escapeHtml(business)}.</p>
+    <section class="v3-offer-grid">
+      <article class="v3-offer">
+        <span class="v3-offer-tag">Je le fais moi-même</span>
+        <h2>Audit complet Google Business</h2>
         <div class="offer-price">99 € <small>TTC</small></div>
-        <p class="offer-main">Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.</p>
-        <ul class="offer-check">
-          <li><span><strong>Analyse détaillée</strong> de la fiche</span></li>
-          <li><span><strong>Comparaison</strong> avec les concurrents pertinents</span></li>
-          <li><span><strong>Corrections classées par priorité</strong></span></li>
-          <li><span><strong>Textes et recommandations personnalisés</strong></span></li>
-          <li><span><strong>Plan d'action directement applicable</strong></span></li>
+        <p>Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.</p>
+        <ul>
+          <li>Analyse détaillée de la fiche</li><li>Comparaison avec les concurrents pertinents</li><li>Corrections classées par priorité</li><li>Textes et recommandations personnalisés</li><li>Plan d'action directement applicable</li>
         </ul>
-        <p class="offer-note">Prévoyez ensuite ${formatMinutes(tempsDiy)} au total pour appliquer les recommandations vous-même, selon les éléments déjà disponibles et les vérifications nécessaires.${deductionNote ? " " + deductionNote : ""}</p>
+        <p class="offer-note">${deductionNote}</p>
         <a class="payment-button payment-button--audit" data-pdf-link="payment" href="https://www.efficiadigital.com/achat?offre=audit" target="_blank" rel="noopener noreferrer">Je veux savoir quoi corriger en premier</a>
-      </div>
-      <div class="offer-card offer-choice">
-        <span class="offer-badge">Efficia s'occupe de tout</span>
-        <h3>Pack Visibilité Google</h3>
+      </article>
+      <article class="v3-offer v3-offer--pack">
+        <span class="v3-offer-tag">Efficia s'occupe de tout</span>
+        <h2>Pack Visibilité Google</h2>
         <div class="offer-price">349 €</div>
-        <p class="offer-main">Vous préférez que les optimisations soient prises en charge ? Nous réalisons les optimisations à votre place.</p>
-        <ul class="offer-check">
-          <li><span><strong>Optimisation complète</strong> de votre fiche par nos soins</span></li>
-          <li><span><strong>Description, services et catégories</strong> retravaillés</span></li>
-          <li><span><strong>Parcours de collecte d'avis</strong> mis en place</span></li>
-          <li><span><strong>Validation finale</strong> avec vous avant publication</span></li>
+        <p>Vous préférez que les optimisations soient prises en charge ? Nous les réalisons à votre place.</p>
+        <ul>
+          <li>Optimisation complète de votre fiche</li><li>Description, services et catégories retravaillés</li><li>Parcours de collecte d'avis mis en place</li><li>Validation finale avec vous avant publication</li>
         </ul>
-        <p class="offer-note"><strong>Les trois priorités identifiées dans ce diagnostic font partie des optimisations incluses.</strong> Votre seule tâche : nous transmettre quelques informations, puis valider avant publication (20 à 30 minutes de votre côté).</p>
+        <p class="offer-note"><strong>Les trois priorités identifiées dans ce diagnostic font partie des optimisations incluses.</strong> Votre seule tâche : nous transmettre quelques informations, puis valider.</p>
         <a class="payment-button payment-button--pack" data-pdf-link="payment" href="https://www.efficiadigital.com/achat?offre=visibilite" target="_blank" rel="noopener noreferrer">Optimiser ma fiche maintenant</a>
-      </div>
-    </div>
-    <div class="process-note"><b>Après votre commande</b> — Audit : vous recevez votre rapport complet sous 24 heures ouvrées. Pack : nous préparons les optimisations puis vous les faisons valider avant toute publication.</div>
-    <div class="signature-bloc">
-      <div class="avatar-fallback">E</div>
-      <div style="font-size:.8rem;color:#475569;line-height:1.5">
-        <b style="color:#071a3a">Diagnostic réalisé par l'équipe Efficia Digital</b><br>Une question sur un point du diagnostic ? Répondez simplement à cet e-mail.
-      </div></div>
-    <div class="email-choice-box">
-      <div class="email-choice-box__title">Vous préférez échanger avant de choisir ?</div>
-      <div class="email-choice-box__instruction">Répondez simplement à l'e-mail avec AUDIT ou PACK.</div>
-    </div>
-    <p style="text-align:center;color:#64748b;font-size:.7rem;margin-top:7px"><a class="rapport-link" href="https://efficiadigital.com">efficiadigital.com</a> • <a class="rapport-link" href="mailto:contact@efficiadigital.com">contact@efficiadigital.com</a> — réponse sous 24 h ouvrées, sans engagement.</p>
-    <p class="legal-note">Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au 25 août 2026${concurrentsClause}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</p>
+      </article>
+    </section>
+    <section class="v3-after"><div><b>Après votre commande — Audit</b>Vous recevez votre rapport complet sous 24 heures ouvrées.</div><div><b>Après votre commande — Pack</b>Nous préparons les optimisations puis vous les faisons valider avant toute publication.</div></section>
+    <div class="v3-signature"><b>Diagnostic réalisé par l'équipe Efficia Digital</b> · Une question ? Répondez simplement à l'e-mail.</div>
+    <p class="v3-legal">Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au 25 août 2026${concurrentsClause}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</p>
     <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="6">Page 6/6</span></div>
   </div>`;
 }
@@ -172,7 +135,7 @@ function layoutHtmlPages(pagesHtml) {
       // des enfants sont relatifs à leur offsetParent positionné le plus
       // proche (ici la page), pas à leur parent direct — les mélanger avec
       // le offsetHeight du parent donnerait un faux positif systématique.
-        const overflowingBlocks = [...page.querySelectorAll(".offer-card, .offer-grid, .projection-grid, .effort-grid")].filter((element) => {
+        const overflowingBlocks = [...page.querySelectorAll(".v3-offer, .v3-offer-grid, .v3-after")].filter((element) => {
         const kids = [...element.children];
         if (!kids.length) return false;
         const parentBottom = element.getBoundingClientRect().bottom;
@@ -181,14 +144,14 @@ function layoutHtmlPages(pagesHtml) {
       }).map((element) => element.className);
       // Les deux cartes d'offre (grille 2 colonnes) ne doivent jamais se
       // chevaucher visuellement.
-        const cards = [...page.querySelectorAll(".offer-card")].map(rect);
+        const cards = [...page.querySelectorAll(".v3-offer")].map(rect);
         let cardsOverlap = false;
         for (let i = 0; i < cards.length; i += 1) {
           for (let j = i + 1; j < cards.length; j += 1) {
             const a = cards[i], b = cards[j];
             if (a.top < b.bottom && a.bottom > b.top) {
-              const ael = page.querySelectorAll(".offer-card")[i].getBoundingClientRect();
-              const bel = page.querySelectorAll(".offer-card")[j].getBoundingClientRect();
+              const ael = page.querySelectorAll(".v3-offer")[i].getBoundingClientRect();
+              const bel = page.querySelectorAll(".v3-offer")[j].getBoundingClientRect();
               if (ael.left < bel.right && ael.right > bel.left) cardsOverlap = true;
             }
           }
@@ -242,7 +205,7 @@ async function serveTemporaryDirectory(directory) {
 
 async function measureLayouts(directory, profileDir, scenarios, server) {
   const htmlPath = join(directory, "scenarios.html");
-  const pages = scenarios.map(({ name, opts }) => pageOffresFixture(opts).replace('class="page page-offres"', `class="page page-offres" data-layout-scenario="${name}"`)).join("\n");
+  const pages = scenarios.map(({ name, opts }) => pageOffresFixture(opts).replace('class="page page-offres report-v3"', `class="page page-offres report-v3" data-layout-scenario="${name}"`)).join("\n");
   writeFileSync(htmlPath, layoutHtmlPages(pages));
   const result = await collectPageResultWithIsolatedChrome({ chrome, url: server.url("scenarios.html"), profileDir, phase: "page 6 / scénarios de mise en page", selector: "#layout-result" });
   assert.ok(result, "page 6 : mesures DOM absentes");
@@ -256,21 +219,21 @@ test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, s
     const profileDir = join(directory, "chrome-profile");
     server = await serveTemporaryDirectory(directory);
     const scenarios = [
-      { name: "baseline-courte", opts: { business: "Chez Marc", withProjection: false, withEffort: false, tempsDiy: 20 } },
+      { name: "baseline-courte", opts: { business: "Chez Marc", withDeduction: false } },
       // Scénario "B&V dense" : nom long avec esperluette, blocs projection +
       // effort, mention concurrents, DIY long — le scénario qui reproduisait
       // le débordement de production (analyse 802efbfc-…).
-      { name: "bv-dense", opts: { business: "B&V Électricité Générale — Installations, Dépannages & Domotique", withProjection: true, withEffort: true, withConcurrents: true, tempsDiy: 240 } },
-      { name: "projection-seule", opts: { business: "Garage Dupont", withProjection: true, withEffort: false, tempsDiy: 20 } },
-      { name: "effort-seul", opts: { business: "Garage Dupont", withProjection: false, withEffort: true, tempsDiy: 90 } },
-      { name: "projection-et-effort", opts: { business: "Cabinet Dentaire du Parc", withProjection: true, withEffort: true, tempsDiy: 90 } },
-      { name: "avec-concurrents", opts: { business: "Restaurant La Table Ronde", withProjection: true, withEffort: true, withConcurrents: true, tempsDiy: 60 } },
-      { name: "diy-en-heures", opts: { business: "Plomberie Chauffage Sanitaire Dupuis & Fils", withProjection: true, withEffort: true, tempsDiy: 300 } },
-      { name: "sans-deduction", opts: { business: "Fleuriste Belle Époque", withProjection: true, withEffort: true, withDeduction: false, tempsDiy: 90 } },
-      { name: "nom-long-concurrents-effort", opts: { business: "Menuiserie Ébénisterie Traditionnelle et Sur-Mesure Lemoine & Associés", withProjection: false, withEffort: true, withConcurrents: true, tempsDiy: 180 } },
+      { name: "bv-dense", opts: { business: "B&V Électricité Générale — Installations, Dépannages & Domotique", withConcurrents: true } },
+      { name: "garage", opts: { business: "Garage Dupont" } },
+      { name: "cabinet", opts: { business: "Cabinet Dentaire du Parc" } },
+      { name: "accents-et-apostrophes", opts: { business: "L'Électricité d'Œsling — Réparation & Dépannage" } },
+      { name: "avec-concurrents", opts: { business: "Restaurant La Table Ronde", withConcurrents: true } },
+      { name: "sans-deduction", opts: { business: "Fleuriste Belle Époque", withDeduction: false } },
+      { name: "nom-long-concurrents", opts: { business: "Menuiserie Ébénisterie Traditionnelle et Sur-Mesure Lemoine & Associés", withConcurrents: true } },
+      { name: "contenu-complet", opts: { business: "Entreprise locale de chauffage, électricité et solutions d'énergie" } },
       // Pire scénario à intitulés longs : nom d'entreprise extrême + tous
       // les blocs optionnels activés + DIY maximal.
-      { name: "pire-scenario-intitules-longs", opts: { business: "Cabinet d'Électricité Générale, Domotique, Sécurité Incendie et Bornes de Recharge B&V — Arlon, Habay, Attert et Environs", withProjection: true, withEffort: true, withConcurrents: true, withDeduction: true, tempsDiy: 300 } },
+      { name: "pire-scenario-intitules-longs", opts: { business: "Cabinet d'Électricité Générale, Domotique, Sécurité Incendie et Bornes de Recharge B&V — Arlon, Habay, Attert et Environs", withConcurrents: true, withDeduction: true } },
     ];
     const layouts = await measureLayouts(directory, profileDir, scenarios, server);
     for (const { name } of scenarios) {
@@ -373,7 +336,7 @@ function pdfHtmlPage(pageOffresHtml) {
   </body></html>`;
 }
 
-test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) — 6 pages, sans alerte", { skip: !hasChrome, timeout: 45_000 }, async (t) => {
+test("page 6 : 10 scénarios génèrent chacun un PDF réel jsPDF/html2canvas de 6 pages, sans alerte", { skip: !hasChrome, timeout: 120_000 }, async (t) => {
   if (!(await cdnReachable())) {
     t.skip("CDN jsPDF/html2canvas injoignable depuis cet environnement");
     return;
@@ -381,29 +344,38 @@ test("page 6 : génération PDF réelle jsPDF/html2canvas (scénario B&V dense) 
   const directory = mkdtempSync(join(tmpdir(), "efficia-page6-pdf-"));
   let server;
   try {
-    const profileDir = join(directory, "chrome-profile");
     server = await serveTemporaryDirectory(directory);
-    const pageOffresHtml = pageOffresFixture({
-      business: "B&V Électricité Générale — Installations, Dépannages & Domotique",
-      withProjection: true, withEffort: true, withConcurrents: true, tempsDiy: 240,
-    });
-    const htmlPath = join(directory, "bv-dense-pdf.html");
-    writeFileSync(htmlPath, pdfHtmlPage(pageOffresHtml));
-    const resultText = await collectPageResultWithIsolatedChrome({
-      chrome,
-      url: server.url("bv-dense-pdf.html"),
-      profileDir,
-      phase: "page 6 / PDF B&V dense",
-      timeout: 35_000,
-      selector: "#pdf-result",
-    });
-    assert.ok(resultText, "résultat de génération PDF absent du DOM");
-    const result = JSON.parse(resultText);
-    assert.equal(result.error, undefined, `génération PDF en échec : ${result.error}`);
-    assert.equal(result.pageCount, 6, `le rapport contient ${result.pageCount} pages au lieu de 6`);
-    assert.equal(result.totalPdfPages, 6, `le PDF généré contient ${result.totalPdfPages} pages au lieu de 6`);
-    assert.ok(result.pdfBytes > 0, "le PDF généré est vide");
-    assert.deepEqual(result.alerts, [], `alerte(s) déclenchée(s) pendant la génération : ${(result.alerts || []).join(", ")}`);
+    const scenarios = [
+      ["minimal", { business: "Chez Marc", withDeduction: false }],
+      ["b-and-v", { business: "B&V Électricité Générale — Installations, Dépannages & Domotique", withConcurrents: true }],
+      ["garage", { business: "Garage Dupont" }],
+      ["cabinet", { business: "Cabinet Dentaire du Parc" }],
+      ["accents", { business: "L'Électricité d'Œsling — Réparation & Dépannage" }],
+      ["restaurant", { business: "Restaurant La Table Ronde", withConcurrents: true }],
+      ["fleuriste", { business: "Fleuriste Belle Époque", withDeduction: false }],
+      ["menuiserie", { business: "Menuiserie Ébénisterie Traditionnelle et Sur-Mesure Lemoine & Associés", withConcurrents: true }],
+      ["services", { business: "Entreprise locale de chauffage, électricité et solutions d'énergie" }],
+      ["intitules-longs", { business: "Cabinet d'Électricité Générale, Domotique, Sécurité Incendie et Bornes de Recharge B&V — Arlon, Habay, Attert et Environs", withConcurrents: true }],
+    ];
+    for (const [name, options] of scenarios) {
+      const filename = `${name}-pdf.html`;
+      writeFileSync(join(directory, filename), pdfHtmlPage(pageOffresFixture(options)));
+      const resultText = await collectPageResultWithIsolatedChrome({
+        chrome,
+        url: server.url(filename),
+        profileDir: join(directory, `chrome-profile-${name}`),
+        phase: `page 6 / PDF ${name}`,
+        timeout: 35_000,
+        selector: "#pdf-result",
+      });
+      assert.ok(resultText, `${name}: résultat de génération PDF absent du DOM`);
+      const result = JSON.parse(resultText);
+      assert.equal(result.error, undefined, `${name}: génération PDF en échec : ${result.error}`);
+      assert.equal(result.pageCount, 6, `${name}: le rapport contient ${result.pageCount} pages au lieu de 6`);
+      assert.equal(result.totalPdfPages, 6, `${name}: le PDF généré contient ${result.totalPdfPages} pages au lieu de 6`);
+      assert.ok(result.pdfBytes > 0, `${name}: le PDF généré est vide`);
+      assert.deepEqual(result.alerts, [], `${name}: alerte(s) déclenchée(s) : ${(result.alerts || []).join(", ")}`);
+    }
   } finally {
     await server?.close();
     rmSync(directory, { recursive: true, force: true });

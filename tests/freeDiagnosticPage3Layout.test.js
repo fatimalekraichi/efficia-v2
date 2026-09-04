@@ -25,56 +25,51 @@ function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function pageFixture({ business, unknown = false, longLabels = false }) {
-  const cards = domains.map(([title, sourceItems], domainIndex) => {
-    const items = [...sourceItems];
-    if (unknown && domainIndex === 0) {
-      items[5] = "Zone desservie : à confirmer — information non vérifiable publiquement.";
-      items[7] = "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google.";
-    }
-    if (longLabels && domainIndex === 3) {
-      items[2] = "Services présents avec un intitulé professionnel particulièrement long";
-    }
-    return `<div class="chk-rubrique"><h3>${escapeHtml(title)}<span>0/${items.length} conformes</span></h3>${items.map((label) => `<div class="chk-item"><span class="chk-ic chk-unknown">○</span><span>${escapeHtml(label)}</span></div>`).join("")}</div>`;
-  }).join("");
-  const unknownSuffix = unknown ? " 3 éléments restent à confirmer. Ils ne sont vérifiables que depuis l'intérieur du compte Google Business : ils restent donc volontairement à confirmer, plutôt que présenté comme un défaut." : "";
-
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action">
+function pageFixture({ business, unknown = false, terminal = false, longLabels = false }) {
+  const observations = [
+    ["Présentation de l’activité", "à améliorer", "La fiche ne décrit pas clairement les prestations et les raisons de vous contacter."],
+    ["Avis visibles", "prioritaire", "Le volume d’avis reste inférieur aux repères locaux réellement collectés."],
+    ["Photos de la fiche", "à améliorer", "Les images sont peu nombreuses au regard des informations disponibles."],
+    ["Informations vérifiables", terminal ? "non vérifiable publiquement" : "à confirmer", terminal ? "Ce contrôle a reçu une réponse terminale, sans être confondu avec un élément à confirmer." : unknown ? "La zone desservie reste distincte et demande une réponse manuelle." : "Les contrôles manuels ont tous reçu une réponse terminale."],
+    ["Présence sur la recherche", "conforme", "La fiche apparaît dans les résultats réellement collectés."],
+    [longLabels ? "Services présents avec un intitulé professionnel particulièrement long" : "Liens d’action", "à améliorer", "La prochaine étape n’est pas suffisamment évidente pour un prospect."],
+  ];
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="rapport-contenu"><div class="page page-action report-v3" data-report-page="3">
     <div class="rapport-header"><div class="rapport-logo"><svg role="img" aria-label="Efficia Digital" viewBox="0 0 340 104"><rect width="340" height="104" fill="#fff"></rect><text x="8" y="64" font-size="34" fill="#0f3186">Efficia Digital</text></svg></div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
-    <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Ce que nous avons analysé</h1>
+    <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Une méthode rigoureuse, sans vous noyer dans la technique</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 20 vérifications applicables à cette fiche.</p>
-    <div class="chk-compteur"><span>✓ 15 éléments conformes</span><span>! 6 à améliorer</span><span>✕ 5 prioritaires</span>${unknown ? "<span>○ 3 à confirmer</span>" : ""}</div>
-    <div class="chk-grid">${cards}</div>
-    <div class="chk-legend"><strong>Légende</strong> — ✓ conforme&nbsp;&nbsp;·&nbsp;&nbsp;! à améliorer&nbsp;&nbsp;·&nbsp;&nbsp;✕ prioritaire&nbsp;&nbsp;·&nbsp;&nbsp;○ à confirmer manuellement.</div>
-    <p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client qui consulte votre fiche, compare les informations disponibles et observe les entreprises concurrentes.${unknownSuffix}</p>
-    <p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps. Nous avons isolé les trois actions les plus susceptibles d'améliorer rapidement la clarté et la crédibilité de votre fiche.</p>
-    <div class="next-hint">Page suivante : vos trois priorités <b>→</b></div>
+    <div class="v3-method-top${terminal ? " v3-method-top--with-neutral" : ""}"><div class="v3-method-number"><b>20</b><span>vérifications applicables</span><small>à cette fiche</small></div><div class="v3-method-number v3-method-number--ok"><b>5</b><span>Conformes</span><small>signaux positifs</small></div><div class="v3-method-number v3-method-number--warn"><b>3</b><span>À améliorer</span><small>à renforcer</small></div><div class="v3-method-number v3-method-number--ko"><b>8</b><span>Prioritaires</span><small>à traiter d'abord</small></div><div class="v3-method-number v3-method-number--unknown"><b>${unknown ? 4 : 0}</b><span>À confirmer</span><small>contrôles encore non résolus</small></div>${terminal ? `<div class="v3-method-number v3-method-number--neutral"><b>1</b><span>Non vérifiables</span><small>publiquement</small></div>` : ""}</div>
+    <p class="v3-method-categories"><b>Domaines analysés :</b> Informations essentielles · Photos &amp; visuels · Avis clients · Contenu de la fiche · Activité &amp; animation · Visibilité locale</p>
+    <section class="v3-representative"><h2>Constats représentatifs</h2>${observations.map(([title, status, text]) => `<article class="v3-observation"><b>${escapeHtml(title)}<span class="v3-status v3-status--${status === "prioritaire" ? "ko" : status === "conforme" ? "ok" : status === "à confirmer" ? "unknown" : status === "non vérifiable publiquement" ? "neutral" : "warn"}">${status}</span></b>${escapeHtml(text)}</article>`).join("")}</section>
+    <div class="v3-boundary"><h2>Ce qui est réservé à l'Audit Efficia™</h2><p>L'Audit détaille les corrections exactes et les vérifications qui nécessitent l'accès au compte.</p></div>
     <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport">Page 3/6</span></div>
   </div></div><output id="layout-result"></output><script>
     addEventListener("load", () => {
       const page = document.querySelector(".page"); const footer = page.querySelector(".pied");
       const content = [...page.children].filter((element) => !element.classList.contains("pied"));
-      const contentBottom = Math.max(...content.map((element) => element.offsetTop + element.offsetHeight));
       const rect = (element) => { const value = element.getBoundingClientRect(); return { top:value.top, right:value.right, bottom:value.bottom, left:value.left }; };
-      const pageRect = rect(page); const header = rect(page.querySelector(".rapport-header")); const logo = rect(page.querySelector(".rapport-logo svg"));
-      const next = rect(page.querySelector(".next-hint")); const counter = rect(page.querySelector(".pagination-rapport"));
-      const overlaps = next.left < counter.right && next.right > counter.left && next.top < counter.bottom && next.bottom > counter.top;
-      const clipped = content.some((element) => element.getBoundingClientRect().bottom > page.getBoundingClientRect().bottom + 0.5);
-      const result = { contentBottom, footerTop:footer.offsetTop, safetyLimit:footer.offsetTop - 12, footerBottom:rect(footer).bottom, pageBottom:pageRect.bottom, pageLeft:pageRect.left, pageRight:pageRect.right, headerTop:header.top, logoTop:logo.top, logoRight:logo.right, logoBottom:logo.bottom, topInset:header.top-pageRect.top, overlaps, clipped, exportAlert:contentBottom > footer.offsetTop - 12 };
+      const pageRect = rect(page); const footerRect = rect(footer); const contentBottom = Math.max(...content.map((element) => rect(element).bottom));
+      const header = rect(page.querySelector(".rapport-header")); const logo = rect(page.querySelector(".rapport-logo svg"));
+      const horizontalOverflow = content.some((element) => { const value = rect(element); return value.left < pageRect.left - .5 || value.right > pageRect.right + .5; });
+      const clipped = content.some((element) => rect(element).bottom > pageRect.bottom + .5);
+      const result = { contentBottom, footerTop:footerRect.top, safetyLimit:footerRect.top - 18, footerBottom:footerRect.bottom, pageBottom:pageRect.bottom, pageLeft:pageRect.left, pageRight:pageRect.right, headerTop:header.top, logoTop:logo.top, logoRight:logo.right, logoBottom:logo.bottom, topInset:header.top-pageRect.top, horizontalOverflow, clipped, exportAlert:contentBottom > footerRect.top - 18 };
       document.querySelector("#layout-result").textContent = JSON.stringify(result);
     });
   <\/script></body></html>`;
 }
 
-test("la correction de page 3 reste locale et conserve le contrôle anti-débordement", () => {
-  assert.match(css, /\.page-action \.rapport-explication/u);
-  assert.match(css, /\.page-action \.pied\{bottom:6mm/u);
-  assert.doesNotMatch(css, /\.page-action[^{}]*overflow\s*:\s*hidden/u);
-  assert.match(generator, /if\(contentBottom > footerTop - 12\)/u);
+test("page 3 V3.2 conserve un contrôle géométrique sans masquage", () => {
+  assert.match(css, /\.report-v3 \.v3-method-top/u);
+  assert.match(css, /\.report-v3 \.v3-method-number--unknown/u);
+  assert.match(css, /\.report-v3 \.v3-method-top--with-neutral/u);
+  assert.match(css, /\.report-v3 \.v3-method-number--neutral/u);
+  assert.doesNotMatch(css, /\.report-v3[^{}]*overflow\s*:\s*hidden/u);
+  assert.match(generator, /function mesuresPageRapport\(page\)/u);
+  assert.match(generator, /contentBottom <= footerRect\.top - securityGap/u);
+  assert.match(generator, /appliquerCompactionLocaleRapport\(\)/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--methode">Cette analyse reproduit le regard d'un client/u);
-  assert.match(generator, /<p class="rapport-explication rapport-explication--reassurance">Vous n'avez pas besoin de tout modifier en même temps/u);
-  assert.doesNotMatch(generator, /rapport-explication--reassurance">Rassurez-vous/u);
+  assert.match(generator, /contrôles encore non résolus/u);
+  assert.match(generator, /Non vérifiables", "publiquement", "neutral"/u);
 });
 
 test("page 3 : les scénarios variables restent au-dessus du footer sans coupe ni chevauchement", { skip: !existsSync(chrome) }, () => {
@@ -85,6 +80,7 @@ test("page 3 : les scénarios variables restent au-dessus du footer sans coupe n
       { name: "unknowns", business: "Entreprise avec plusieurs éléments à confirmer", unknown: true },
       { name: "long-labels", business: "Entreprise générale d'électricité, domotique et installations techniques de très longue dénomination", unknown: true, longLabels: true },
       { name: "bv-electricite", business: "B&V électricité", unknown: true },
+      { name: "not-verifiable-terminal", business: "Électricité du Parc", terminal: true },
     ];
     for (const scenario of scenarios) {
       const htmlPath = join(directory, `${scenario.name}.html`);
@@ -95,11 +91,11 @@ test("page 3 : les scénarios variables restent au-dessus du footer sans coupe n
       const layout = JSON.parse(encoded.replaceAll("&quot;", '"'));
       assert.ok(layout.contentBottom <= layout.safetyLimit, `${scenario.name}: contenu ${layout.contentBottom} > limite ${layout.safetyLimit}`);
       assert.ok(layout.footerBottom <= layout.pageBottom + 0.5, `${scenario.name}: footer hors page`);
-      assert.ok(layout.topInset >= 48, `${scenario.name}: marge haute insuffisante (${layout.topInset}px)`);
+      assert.ok(layout.topInset >= 40, `${scenario.name}: marge haute insuffisante (${layout.topInset}px)`);
       assert.ok(layout.logoTop >= layout.headerTop - 0.5, `${scenario.name}: logo coupé en haut`);
       assert.ok(layout.logoRight <= layout.pageRight + 0.5, `${scenario.name}: logo coupé à droite`);
       assert.ok(layout.logoBottom < layout.pageBottom, `${scenario.name}: logo coupé en bas`);
-      assert.equal(layout.overlaps, false, `${scenario.name}: compteur et indication se chevauchent`);
+      assert.equal(layout.horizontalOverflow, false, `${scenario.name}: contenu horizontalement hors page`);
       assert.equal(layout.clipped, false, `${scenario.name}: bloc coupé ou masqué`);
       assert.equal(layout.exportAlert, false, `${scenario.name}: l'alerte d'export serait affichée`);
     }

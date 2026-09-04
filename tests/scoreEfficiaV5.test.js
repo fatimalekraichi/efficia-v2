@@ -172,12 +172,90 @@ test("le décompte applicable est dynamique et exclut la synthèse non notée", 
     critereEstNote: (criterion) => criterion.scored !== false,
     critereEstMasque: (criterion) => hidden.has(criterion.key),
     critereEstNonApplicable: () => false,
+    etatSiteOfficielCourant: () => ({ etat: "accessible" }),
     rapportSansAvis: () => false,
     REVIEW_DEPENDENT_KEYS: [],
   };
   vm.runInNewContext(`${extractFunction(html, "compterCriteresApplicablesRapport", "critereConfirmeMax")}\nresult = compterCriteresApplicablesRapport();`, context);
   assert.equal(context.result, 20);
-  assert.match(html, /\$\{nbControles\} vérifications applicables à cette fiche/);
+  assert.match(html, /function checklistV3Html\(\)/);
+  assert.match(html, /\$\{nbApplicables\}<\/b><span>vérifications applicables<\/span>/);
+});
+
+test("la page 3 réconcilie les contrôles terminaux non vérifiables sans les confondre avec À confirmer", () => {
+  const criteres = [
+    { id: "revendiquee", key: "revendiquee", max: 4, q: "Fiche revendiquée", force: "Fiche revendiquée et vérifiée", constat: "La fiche ne semble pas entièrement revendiquée ou vérifiée." },
+    { id: "adresse", key: "adresse", max: 3, q: "Adresse / zone", force: "Localisation confirmée", constat: "La zone mérite d’être corrigée." },
+  ];
+  const source = [
+    extractFunction(html, "statutControleRapportV3", "listeControlesRapportV3"),
+    extractFunction(html, "listeControlesRapportV3", "libelleStatutRapportV3"),
+    extractFunction(html, "libelleStatutRapportV3", "texteControleRapportV3"),
+    extractFunction(html, "texteControleRapportV3", "checklistV3Html"),
+    extractFunction(html, "checklistV3Html", "critereConfirmeMax"),
+  ].join("\n");
+  const render = ({ locationMode, addressVerification, serviceAreaVerification }) => {
+    const context = {
+      GRILLE: [{ cat: "Informations essentielles", criteres }],
+      REVIEW_DEPENDENT_KEYS: [],
+      LIBELLES_COURTS: {},
+      result: null,
+      critereEstNote: () => true,
+      critereEstMasque: () => false,
+      critereEstNonApplicable: () => false,
+      critereEstNonVerifiablePubliquement: () => false,
+      rapportSansAvis: () => false,
+      etatSiteOfficielCourant: () => ({ etat: "accessible" }),
+      modeLocalisation: () => locationMode,
+      reponseAdresse: () => addressVerification,
+      reponseZoneDesserte: () => serviceAreaVerification,
+      lirePoints: (id) => id === "revendiquee" ? 4 : 0,
+      forceChiffree: (criterion) => `Preuve positive : ${criterion.key}.`,
+      faiblesseChiffree: (criterion) => `Faiblesse : ${criterion.key}.`,
+      globalThis: {
+        EfficiaQuestionnaireFinalization: {
+          isAddressVerificationComplete: (value) => ["exact", "inaccurate", "not_verifiable"].includes(value),
+          isServiceAreaVerificationComplete: (value) => ["coherent", "inaccurate", "not_verifiable"].includes(value),
+        },
+      },
+    };
+    vm.runInNewContext(`${source}\nresult = checklistV3Html();`, context);
+    return context.result;
+  };
+
+  const terminal = render({ locationMode: "storefront", addressVerification: "not_verifiable", serviceAreaVerification: "unknown" });
+  assert.deepEqual({ ...terminal.counts }, { ok: 1, warn: 0, ko: 0, unknown: 0, not_verifiable: 1 });
+  assert.equal(terminal.total, 2);
+  assert.equal(terminal.total, Object.values(terminal.counts).reduce((sum, count) => sum + count, 0));
+  assert.match(terminal.html, /Non vérifiables<\/span><small>publiquement/u);
+  assert.match(terminal.html, /v3-method-top--with-neutral/u);
+  assert.match(terminal.html, /v3-status--neutral/u);
+  assert.match(terminal.html, /Preuve positive : revendiquee\./u, "un badge Conforme ne doit jamais réutiliser la formulation négative");
+  assert.doesNotMatch(terminal.html, /La fiche ne semble pas entièrement revendiquée/u);
+
+  const hybridMissingArea = render({ locationMode: "hybrid", addressVerification: "not_verifiable", serviceAreaVerification: "unknown" });
+  assert.deepEqual({ ...hybridMissingArea.counts }, { ok: 1, warn: 0, ko: 0, unknown: 1, not_verifiable: 0 });
+  assert.equal(hybridMissingArea.total, 2, "la zone desservie manquante reste un contrôle distinct");
+  assert.match(hybridMissingArea.html, /contrôles encore non résolus/u);
+});
+
+test("le reliquat des priorités est dédupliqué par identité métier, y compris pour le site technique", () => {
+  const context = { result: null };
+  vm.runInNewContext(`${extractFunction(html, "clePriorite", "prioriteInfosRevendiquee")}\nresult = {
+    all: prioritesDistinctesRapport([
+      { priorityKey:"revendiquee" }, { priorityKey:"adresse" }, { priorityKey:"horaires" }, { priorityKey:"contact" }, { priorityKey:"contact" }
+    ], [
+      { famille:"site_officiel" }, { priorityKey:"revendiquee" }, { priorityKey:"adresse" }
+    ]).map(identitePrioriteRapport),
+    remaining: compterPrioritesRestantesRapport([
+      { priorityKey:"revendiquee" }, { priorityKey:"adresse" }, { priorityKey:"horaires" }, { priorityKey:"contact" }, { priorityKey:"contact" }
+    ], [
+      { famille:"site_officiel" }, { priorityKey:"revendiquee" }, { priorityKey:"adresse" }
+    ])
+  };`, context);
+  assert.deepEqual([...context.result.all], ["revendiquee", "adresse", "horaires", "contact", "site_officiel"]);
+  assert.equal(context.result.remaining, 2);
+  assert.match(html, /projete:Math\.max\(Math\.round\(score\), projectionBrute\.projete\)/u, "le potentiel affiché ne peut pas être inférieur au score actuel");
 });
 
 test("v4 explicite conserve le moteur historique et une analyse sans version reste historique", () => {

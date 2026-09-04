@@ -416,9 +416,12 @@ test("les deux interfaces partagent la règle non vérifiable et les rapports la
   assert.match(modern, /moteur\.isServiceAreaVerificationComplete\(location\.serviceAreaVerification\)/);
   assert.match(legacy, /EfficiaQuestionnaireFinalization\.isServiceAreaVerificationComplete\(reponseZoneDesserte\(\)\)/);
   assert.match(modernPage, /data-score-provisional/);
-  for (const source of [modernPage, legacy]) {
-    assert.match(source, /Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer\./);
-  }
+  assert.match(modernPage, /Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer\./);
+  // Le diagnostic gratuit ne décrit plus une réponse terminale « non
+  // vérifiable » comme une absence : il énumère les seuls contrôles encore
+  // effectivement non résolus.
+  assert.match(legacy, /formaterResumeElementsRestants\(elementsRestants\)/);
+  assert.match(legacy, /Ce score est provisoire : \$\{resume\}/);
   assert.match(legacy, /critereEstNonVerifiablePubliquement\(cr\)/);
   assert.match(legacy, /Zone desservie : à confirmer — information non vérifiable publiquement\./);
   assert.match(legacy, /if\(critereEstNonVerifiablePubliquement\(cr\)\) return;/);
