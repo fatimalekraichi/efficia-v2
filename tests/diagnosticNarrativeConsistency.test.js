@@ -210,7 +210,8 @@ test("comparaison photos canonique : les constats, priorités et conséquences s
     assert.equal(context.comparerVolumePhotos(scenario.own, scenario.average), scenario.expected);
     assert.doesNotMatch(constat, scenario.forbidden, `${scenario.own}/${scenario.average}`);
     assert.doesNotMatch(consequence, scenario.forbidden, `${scenario.own}/${scenario.average}`);
-    if (scenario.expected === "inferieur") assert.match(constat, /volume est inférieur|contre 15/i);
+    if (scenario.own === 0) assert.equal(constat, "Votre fiche ne présente actuellement aucune photo, contre environ 15 sur les fiches concurrentes observées.");
+    else if (scenario.expected === "inferieur") assert.match(constat, /volume est inférieur|contre 15/i);
     if (scenario.expected === "comparable") assert.match(constat, /dans la moyenne observée/i);
     if (scenario.expected === "superieur") assert.match(constat, /volume supérieur à la moyenne observée/i);
     assert.equal(({ inferieur: "À renforcer", comparable: "Dans la moyenne", superieur: "Avantage" })[scenario.expected], scenario.status);
@@ -681,6 +682,29 @@ test("Avis 5 : aucun avis -> branche dédiée rapportSansAvis, jamais la logique
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
   assert.match(premierPas, /premiers avis authentiques/i);
   assert.match(resultat, /premiers avis authentiques/i);
+});
+
+test("priorité avis sans historique : résultat attendu et message type respectent la ponctuation éditoriale", () => {
+  const context = createFullPriorityHarness({ sansAvis: true });
+  const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, { data: {} });
+  assert.equal(resultat, "Les premiers avis authentiques apportent une preuve client visible et rassurante.");
+
+  const micro = sliceBetween(html, "function microLivrablePriorite(item, ctx, rank){", "function niveauImpactPriorite(item, index = 0){");
+  const microContext = {
+    rapportSansAvis: () => true,
+    texteEffectifRapport: (_field, text) => text,
+    result: null,
+  };
+  vm.runInNewContext(`${micro}\nresult = microLivrablePriorite({famille:"reputation"}, {data:{}}, 0);`, microContext);
+  assert.equal(microContext.result, '<div class="priority-sample"><b>Message type pour demander un avis :</b> « Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup. »</div>');
+});
+
+test("priorité photos : zéro photo emploie une formulation naturelle sans singulier artificiel", () => {
+  const donnees = { nbPhotos: 0, moyennesConcurrents: { photos: 13 } };
+  const context = createFullPriorityHarness({ donneesAnalyse: donnees });
+  const constat = context.constatObservePriorite({ famille:"photos", critere:{ key:"nombrePhotos" } }, { data:donnees });
+  assert.equal(constat, "Votre fiche ne présente actuellement aucune photo, contre environ 13 sur les fiches concurrentes observées.");
+  assert.doesNotMatch(constat, /0 photo/u);
 });
 
 test("Avis 11 : aucun avis — constat et conséquence business utilisent le texte exact requis, sans aucune critique de récence", () => {

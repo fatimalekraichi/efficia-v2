@@ -118,6 +118,25 @@ test("le classement local ne récupère pas les 4,8 points retirés au profil Ar
   assert.notEqual(visibility.pointsPonderesBruts, 12);
 });
 
+test("les barres des six familles suivent le maximum effectif affiché, jamais le maximum historique", () => {
+  const context = { result: null };
+  vm.runInNewContext(`${extractFunction(html, "pourcentageBarreFamille", "benchmarkV3Html")}\nresult = [
+    [19, 25], [16, 16], [26, 26], [22, 22], [5, 5], [6, 6], [3, 6], [0, 6]
+  ].map(([score, maximum]) => ({ score, maximum, ratio:pourcentageBarreFamille(score, maximum) }));`, context);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.result)), [
+    { score:19, maximum:25, ratio:76 },
+    { score:16, maximum:16, ratio:100 },
+    { score:26, maximum:26, ratio:100 },
+    { score:22, maximum:22, ratio:100 },
+    { score:5, maximum:5, ratio:100 },
+    { score:6, maximum:6, ratio:100 },
+    { score:3, maximum:6, ratio:50 },
+    { score:0, maximum:6, ratio:0 },
+  ]);
+  assert.match(html, /pourcentageBarreFamille\(pointsPonderes, maximumEffectifNormalise \|\| poidsProfil\)/u);
+  assert.match(html, /<strong>\$\{pointsAffiches\}<\/strong>/u);
+});
+
 test("administration et serveur produisent le même score v5 sur un questionnaire complet", () => {
   const answersByKey = fullAnswers();
   const admin = calculateAdminScore(answersByKey, "artisan");

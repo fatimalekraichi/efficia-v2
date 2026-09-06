@@ -6150,6 +6150,17 @@ function benchmarkTableHtml(){
   </div>`;
 }
 
+/* Les valeurs affichées par famille sont normalisées au maximum effectif du
+   profil V3.2. La barre doit donc suivre exactement le même dénominateur que
+   le libellé « points / maximum », et non le maximum historique qui peut
+   contenir une synthèse informative non notée. */
+function pourcentageBarreFamille(pointsFamille, maximumFamille){
+  const points = Number(pointsFamille);
+  const maximum = Number(maximumFamille);
+  if(!Number.isFinite(points) || !Number.isFinite(maximum) || maximum <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(points / maximum * 100)));
+}
+
 function benchmarkV3Html(){
   const lignes = benchmarkLignes().slice(0, 4);
   if(!lignes.length) return "";
@@ -6921,6 +6932,8 @@ function constatObservePriorite(item, ctx){
       return `Votre fiche dispose de ${nEntier(d.nbPhotos)} photos, un volume supérieur à la moyenne observée. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
     if(comparaison === "comparable")
       return `Votre fiche dispose de ${nEntier(d.nbPhotos)} photos, un volume dans la moyenne observée. Le point à améliorer concerne surtout leur actualité : de nouvelles photos permettent de montrer que l'entreprise est active aujourd'hui.`;
+    if(Number(d.nbPhotos) === 0 && estNombre(m.photos))
+      return `Votre fiche ne présente actuellement aucune photo, contre environ ${nEntier(m.photos)} sur les fiches concurrentes observées.`;
     if(comparaison === "inferieur")
       return `Votre fiche compte ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""}, contre ${nEntier(m.photos)} en moyenne sur les fiches concurrentes observées. Ce volume est inférieur et mérite d’être renforcé${item.critere?.key === "photoRecente" ? "; de nouvelles photos permettront aussi de montrer que l’entreprise est active aujourd’hui." : "."}`;
     if(prioritePhotosPorteSurActualite(item) && estNombre(d.nbPhotos))
@@ -7039,7 +7052,7 @@ function consequenceBusinessPriorite(item, ctx){
 function resultatAttenduPriorite(item, ctx){
   const textes = {
     reputation: rapportSansAvis()
-      ? "les premiers avis authentiques apportent une preuve client visible et rassurante."
+      ? "Les premiers avis authentiques apportent une preuve client visible et rassurante."
       : resultatAttenduReputation(ctx),
     visibilite: VISIBILITE_RESULTAT_ATTENDU[decisionVisibiliteAdmin()],
     offre: localisationNonVerifiablePubliquement()
@@ -7068,7 +7081,7 @@ function microLivrablePriorite(item, ctx, rank){
   const example = text => effectiveText(`priority.${rank}.action_example`, text);
   if(item.famille === "reputation"){
     if(rapportSansAvis()){
-      return `<div class="priority-sample"><b>Message type pour demander un avis</b>« ${example("Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup.")} »</div>`;
+      return `<div class="priority-sample"><b>Message type pour demander un avis :</b> « ${example("Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup.")} »</div>`;
     }
     if(estNombre(d.note) && Number(d.note) < 4){
       return `<div class="priority-sample"><b>Structure de réponse à un avis</b>« ${example("Bonjour [Prénom], merci d’avoir pris le temps de partager votre expérience. Votre retour est important pour nous. [Ajoutez ensuite une réponse personnelle liée à son commentaire.]")} »</div>`;
@@ -7415,9 +7428,10 @@ function genererRapport(options = {}){
       : {label:"Données insuffisantes", couleur:"#64748b", fond:"#f8fafc"};
     categoriesTriees.push({cat, pct:pctAffiche});
     const pointsAffiches = maxEvalue ? `${Math.round(pointsPonderes)}/${Math.round(maximumEffectifNormalise || poidsProfil)}` : "À confirmer";
+    const pourcentageBarre = pourcentageBarreFamille(pointsPonderes, maximumEffectifNormalise || poidsProfil);
     catsBlocs.push({pct:pctAffiche, evalue:!!maxEvalue, html:`<div class="barre-cat"><div class="ligne"><span>${cat.cat}</span><strong>${pointsAffiches}</strong>
       <span class="statut-domaine" style="background:${statut.fond};color:${statut.couleur}">${statut.label}</span></div>
-      <div class="barre-fond"><div class="barre-rempli" style="width:${pctAffiche}%;background:${statut.couleur}"></div></div></div>`});
+      <div class="barre-fond"><div class="barre-rempli" style="width:${pourcentageBarre}%;background:${statut.couleur}"></div></div></div>`});
   });
   const catsHtml = catsBlocs.sort((a,b) => (Number(b.evalue) - Number(a.evalue)) || (b.pct - a.pct)).map(b => b.html).join("");
   forces.sort((a,b) => b.poids - a.poids);
@@ -7551,7 +7565,7 @@ function genererRapport(options = {}){
     estNombre(dIdent.position) ? ["Position", dIdent.position === 0 ? "Non détectée" : libellePositionRapport(dIdent)] : null
   ].filter(Boolean);
   const scoreLignesV3 = detailScore.categories.map(({cat, pct, pointsPonderes, maximumEffectifNormalise, poidsProfil}) => {
-    const ratio = pct === null ? 0 : Math.max(0, Math.min(100, Math.round(Number(pct) * 100)));
+    const ratio = pct === null ? 0 : pourcentageBarreFamille(pointsPonderes, maximumEffectifNormalise || poidsProfil);
     return `<div class="v3-score-line"><span>${cat.cat}</span><div class="v3-bar"><i class="${ratio < 60 ? "warn" : ratio >= 80 ? "good" : ""}" style="width:${ratio}%"></i></div><b>${pct === null ? "À confirmer" : `${Math.round(pointsPonderes)}/${Math.round(maximumEffectifNormalise || poidsProfil)}`}</b></div>`;
   }).join("");
   const comparisonIntroV3 = benchTable
