@@ -113,8 +113,10 @@ test("toutes les variantes d’introduction restent simples et laissent l’aver
       assert.doesNotMatch(text, /\s{2,}|\.\s*\./u, `${score}/${index}: ponctuation invalide`);
     }
   }
-  const scopeNote = "Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.";
-  assert.equal(source.split(scopeNote).length - 1, 1, "l’avertissement gris demeure unique");
+  const scopeNote = "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.";
+  const historicalScopeNote = "Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.";
+  assert.equal(source.split(scopeNote).length - 1, 1, "l’avertissement court demeure unique");
+  assert.equal(source.split(historicalScopeNote).length - 1, 0, "l’avertissement historique n’est plus rendu");
 });
 
 test("introduction EGS : première position, manques établis et trois priorités utilisent une formulation simple", () => {

@@ -600,6 +600,9 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
         const generatedAutomatic = genererRapport({ exigerVersion: false });
         const automaticHero = document.querySelector("#rapport-contenu .page-hero");
         const automaticPageOne = automaticHero?.innerText || "";
+        const scoreScopeNote = "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.";
+        const historicalScopeNote = "Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.";
+        const occurrences = (text, needle) => text.split(needle).length - 1;
         const automaticTracked = textesAutomatiquesRapport.get("summary.general") || "";
         const summaryRect = automaticHero?.querySelector(".hero-analysis-text")?.getBoundingClientRect();
         const footerRect = automaticHero?.querySelector(".pied")?.getBoundingClientRect();
@@ -628,8 +631,12 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
           generatedServerError,
           pageCount: document.querySelectorAll("#rapport-contenu .page").length,
           automaticPageOne,
+          automaticScoreScopeCount: occurrences(automaticPageOne, scoreScopeNote),
+          automaticHistoricalScopeCount: occurrences(automaticPageOne, historicalScopeNote),
           automaticTracked,
           customPageOne,
+          customScoreScopeCount: occurrences(customPageOne, scoreScopeNote),
+          customHistoricalScopeCount: occurrences(customPageOne, historicalScopeNote),
           serverErrorReport,
           summaryBottom: summaryRect?.bottom || null,
           footerTop: footerRect?.top || null,
@@ -697,9 +704,13 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.pageCount, 6);
   assert.match(result.automaticTracked, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.match(result.automaticPageOne, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.equal(result.automaticScoreScopeCount, 1, "l’introduction automatique contient un seul avertissement court");
+  assert.equal(result.automaticHistoricalScopeCount, 0, "l’avertissement historique n’est plus ajouté après l’introduction automatique");
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
   assert.doesNotMatch(result.automaticPageOne, /Bonjour, La fiche Google contient aucun site officiel identifiable/u);
   assert.match(result.customPageOne, /Texte choisi volontairement par l’utilisateur\./u);
+  assert.equal(result.customScoreScopeCount, 1, "un override conserve un unique avertissement court distinct de son texte");
+  assert.equal(result.customHistoricalScopeCount, 0, "un override ne réintroduit pas l’avertissement historique");
   assert.doesNotMatch(result.customPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.match(result.serverErrorReport, /erreur serveur/u);
   assert.doesNotMatch(result.serverErrorReport, /erreur serveur 500/u);
