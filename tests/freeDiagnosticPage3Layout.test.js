@@ -16,7 +16,7 @@ const domains = [
   ["Informations essentielles", ["Fiche revendiquée et vérifiée", "Catégorie principale", "Catégories secondaires", "Horaires complets", "Téléphone et site web", "Adresse / zone de service", "Attributs (accès, paiement…)", "Cohérence fiche ↔ site web", "Conformité du nom"]],
   ["Photos & visuels", ["Logo et couverture", "Volume de photos", "Photos récentes", "Variété", "Qualité"]],
   ["Avis clients", ["Note moyenne", "Volume d'avis vs concurrents", "Avis récents", "Réponses aux avis", "Qualité des réponses"]],
-  ["Contenu de la fiche", ["Description remplie", "Description ciblée (ville, offre)", "Services présents", "Services détaillés", "Questions / Réponses", "Liens d'action (devis, RDV)"]],
+  ["Contenu de la fiche", ["Description visible", "Description ciblée (ville, offre)", "Services présents", "Services détaillés", "Questions / Réponses", "Liens d'action (devis, RDV)"]],
   ["Activité & animation", ["Publication récente", "Rythme de publication"]],
   ["Visibilité locale", ["Classement local", "Confiance visible face aux concurrents — Votre fiche : 1,8/5 et 5 avis · Moyenne : 4,8/5 et 10,67 avis · Derrière"]],
 ];
@@ -70,6 +70,9 @@ test("page 3 V3.2 conserve un contrôle géométrique sans masquage", () => {
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
   assert.match(generator, /contrôles encore non résolus/u);
   assert.match(generator, /Non vérifiables", "publiquement", "neutral"/u);
+  assert.match(generator, /descriptionRemplie:"Description visible"/u);
+  assert.doesNotMatch(generator, /descriptionRemplie:"Description remplie"/u);
+  assert.match(generator, /Aucune description visible/u);
 });
 
 test("page 3 : les scénarios variables restent au-dessus du footer sans coupe ni chevauchement", { skip: !existsSync(chrome) }, () => {

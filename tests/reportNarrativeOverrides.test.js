@@ -809,6 +809,80 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
   assert.equal(result.customTitle, "Titre revendiquee personnalisé");
 });
 
+test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libellé Description restent identiques", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        const chooseAll = () => {
+          const groups = {};
+          document.querySelectorAll('input[type="radio"][name^="c"]').forEach((input) => (groups[input.name] ??= []).push(input));
+          Object.values(groups).forEach((inputs) => {
+            const selected = inputs.find((input) => !input.disabled && !input.closest("[hidden]") && !input.dataset.special) || inputs[0];
+            selected.checked = true;
+            selected.dispatchEvent(new Event("change", { bubbles:true }));
+          });
+        };
+        const chooseZero = (key) => {
+          const input = [...document.querySelectorAll('input[name="c' + CRITERE_IDS[key] + '"]')]
+            .find((candidate) => Number(candidate.value) === 0 && !candidate.dataset.special);
+          if(!input) throw new Error("option zéro absente : " + key);
+          input.checked = true;
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+        };
+        chooseAll();
+        const locationMode = document.querySelector('input[name="condition-location-mode"][value="storefront"]');
+        const address = document.querySelector('input[name="location-address"][value="exact"]');
+        locationMode.checked = true; locationMode.dispatchEvent(new Event("change", { bubbles:true }));
+        address.checked = true; address.dispatchEvent(new Event("change", { bubbles:true }));
+        ["descriptionRemplie", "servicesPresents", "questionsReponses", "liensAction", "publicationRecente", "categoriesSecondaires", "classementLocal"].forEach(chooseZero);
+        majConditionsQuestionnaire(); majLocalisation(); calc();
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
+        const page3 = document.querySelector('[data-report-page="3"]');
+        const page5 = document.querySelector('[data-report-page="5"]');
+        const countPage3 = [...page3.querySelectorAll(".v3-method-number")]
+          .find((item) => item.querySelector("span")?.textContent.trim() === "Prioritaires")?.querySelector("b")?.textContent || "";
+        const countPage5 = page5.querySelector(".v3-priority-count span:first-child b")?.textContent || "";
+        const presentedPage5 = page5.querySelector(".v3-priority-count span:nth-child(2) b")?.textContent || "";
+        const otherCount = page5.querySelector(".v3-audit-count")?.childNodes[0]?.textContent.trim() || "";
+        const otherLabel = page5.querySelector(".v3-audit-count small")?.textContent.trim() || "";
+        const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+        if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
+        const pages = [...document.querySelectorAll("#rapport-contenu .page")];
+        const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+        for(const [index, page] of pages.entries()) {
+          const canvas = await html2canvasFn(page, optionsCapturePdfDiagnostic());
+          if(index > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
+        }
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          pageCount: pages.length,
+          pdfPages: pdf.internal.getNumberOfPages(),
+          pdfBytes: pdf.output("arraybuffer").byteLength,
+          page3Prioritaires: countPage3,
+          page5Prioritaires: countPage5,
+          page5Presentees: presentedPage5,
+          page5Autres: {count: otherCount, label: otherLabel},
+          descriptionVisible: page3.textContent.includes("Description visible"),
+          descriptionRemplie: page3.textContent.includes("Description remplie"),
+        });
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, { overrides: [] });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.pageCount, 6);
+  assert.equal(result.pdfPages, 6, "le PDF jsPDF reçoit les six pages réellement composées");
+  assert.ok(result.pdfBytes > 0, "le PDF html2canvas/jsPDF ne doit pas être vide");
+  assert.equal(result.page3Prioritaires, "7");
+  assert.equal(result.page5Prioritaires, "7");
+  assert.equal(result.page5Presentees, "3");
+  assert.deepEqual(result.page5Autres, {count: "4", label: "autres points"});
+  assert.equal(result.descriptionVisible, true);
+  assert.equal(result.descriptionRemplie, false);
+});
+
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {
   const rawDns = "The DNS records for tecelec.lu are not properly configured. Please check your DNS settings.";
   const firstPass = await runAdminBrowserHarness(`

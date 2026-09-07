@@ -5148,11 +5148,15 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
   const manques = manquesIntroductionPage1(d);
   const recherche = estTexte(d.requeteTestee) ? libelleRechercheRapport(d.requeteTestee) : "";
   const position = estNombre(d.position) ? Number(d.position) : null;
+  const rechercheEffectivementRealisee = estTexte(d.derniereRequeteAnalysee);
+  const positionNonDetecteeApresRecherche = position === 0 && rechercheEffectivementRealisee && recherche;
   const nbPriorites = Array.isArray(priorites) ? priorites.length : 0;
   const lienSiteAbsent = typeof etatSiteOfficielCourant === "function"
     && etatSiteOfficielCourant()?.etat === "aucun";
   const phrases = [];
-  if(position === 1 && recherche){
+  if(positionNonDetecteeApresRecherche){
+    phrases.push(`Lors de notre test sur « ${recherche} », votre fiche n’est pas apparue parmi les premiers résultats affichés. Un client qui effectue cette recherche voit donc d’abord d’autres entreprises, avant même d’avoir la possibilité de découvrir la vôtre.`);
+  }else if(position === 1 && recherche){
     phrases.push(choisirVarianteNarrative("summary.general.opening", "position_one", [
       `Votre fiche Google apparaît en première position quand un client recherche « ${recherche} ». C’est un très bon point.`,
       `Quand un client recherche « ${recherche} », votre fiche Google apparaît en première position. C’est un très bon point.`,
@@ -5178,13 +5182,17 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
     ]));
   }
 
-  if(manques.length){
+  if(positionNonDetecteeApresRecherche && estNombre(d.nbAvis) && Number(d.nbAvis) === 0 && estNombre(d.descriptionLongueur) && Number(d.descriptionLongueur) === 0){
+    phrases.push("Votre fiche ne présente actuellement aucun avis ni description visible de vos services.");
+  }else if(manques.length){
     phrases.push(`Votre fiche ne contient ${joinFr(manques)}.`);
   }
   if(lienSiteAbsent){
     phrases.push("Aucun lien vers le site officiel n’est renseigné sur la fiche Google.");
   }
-  if(manques.length || lienSiteAbsent){
+  if(positionNonDetecteeApresRecherche && estNombre(d.nbAvis) && Number(d.nbAvis) === 0 && estNombre(d.descriptionLongueur) && Number(d.descriptionLongueur) === 0){
+    phrases.push("Un prospect qui la trouve peut donc encore hésiter à vous contacter.");
+  }else if(manques.length || lienSiteAbsent){
     phrases.push(choisirVarianteNarrative("summary.general.client", "missing_information", [
       "Un client qui ne vous connaît pas peut donc hésiter à vous contacter. Il peut aussi choisir une autre entreprise qui montre mieux son travail.",
       "Un nouveau client peut hésiter avant d'appeler. Il peut préférer une autre entreprise qui donne plus d'informations.",
@@ -5198,7 +5206,9 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
     ]));
   }
 
-  if(nbPriorites === 3){
+  if(positionNonDetecteeApresRecherche && critereConfirmeMax("revendiquee") && categoriePrincipaleValideePourRapport()){
+    phrases.push("La bonne nouvelle : votre fiche est revendiquée et votre catégorie principale est bien choisie. Des actions ciblées peuvent améliorer à la fois sa visibilité et les repères qu’elle donne aux clients.");
+  }else if(nbPriorites === 3){
     phrases.push("La bonne nouvelle, c’est que trois actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
   }else if(nbPriorites === 2){
     phrases.push("La bonne nouvelle, c’est que deux actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
@@ -5336,6 +5346,8 @@ function phraseDirecteScoreDiagnosticGratuit(score, data = donneesAnalyse){
   const manqueConfiance = (estNombre(data?.nbAvis) && Number(data.nbAvis) === 0)
     || (estNombre(data?.nbPhotos) && Number(data.nbPhotos) === 0)
     || (estNombre(data?.descriptionLongueur) && Number(data.descriptionLongueur) === 0);
+  if(Number(data?.position) === 0 && estTexte(data?.derniereRequeteAnalysee))
+    return {texte:"Votre fiche reste difficile à trouver sur Google.", couleur:"#dc2626", fond:"#fef2f2"};
   if(Number(data?.position) === 1 && manqueConfiance)
     return {texte:"Votre fiche est bien placée, mais elle ne rassure pas encore assez.", couleur:"#d97706", fond:"#fffbeb"};
   if(score < 40) return {texte:"Votre fiche a besoin de plus d’informations pour rassurer les clients.", couleur:"#dc2626", fond:"#fef2f2"};
@@ -6248,7 +6260,7 @@ const LIBELLES_COURTS = {
   nap:"Cohérence fiche ↔ site web", logoCouverture:"Logo et couverture", nombrePhotos:"Volume de photos", photoRecente:"Photos récentes",
   varietePhotos:"Variété", qualitePhotos:"Qualité", noteMoyenne:"Note moyenne", volumeAvis:"Volume d'avis vs concurrents",
   recenceAvis:"Avis récents", tauxReponseAvis:"Réponses aux avis", qualiteReponsesAvis:"Qualité des réponses",
-  descriptionRemplie:"Description remplie", descriptionQualite:"Description ciblée (ville, offre)", servicesPresents:"Services présents",
+  descriptionRemplie:"Description visible", descriptionQualite:"Description ciblée (ville, offre)", servicesPresents:"Services présents",
   servicesDecrits:"Services détaillés", questionsReponses:"Questions / Réponses", liensAction:"Liens d'action (devis, RDV)",
   publicationRecente:"Publication récente", rythmePublication:"Rythme de publication",
   classementLocal:"Classement local", attractiviteConcurrents:"Confiance visible face aux concurrents", nomConforme:"Conformité du nom"
@@ -6540,28 +6552,14 @@ function clePriorite(item){
   return item?.priorityKey || item?.critere?.key || "";
 }
 
-/* L'identité métier, et non le rang visuel, sert au reliquat affiché page 5.
-   Une priorité technique « site_officiel » ne possède pas de critère de
-   grille : elle garde donc une identité explicite, sans influencer l'ordre
-   de sélection déjà décidé par le moteur. */
-function identitePrioriteRapport(item){
-  if(item?.famille === "site_officiel") return "site_officiel";
-  return clePriorite(item) || item?.critere?.id || "";
-}
-
-function prioritesDistinctesRapport(priorites, prioritesPresentees = []){
-  const uniques = new Map();
-  [...priorites, ...prioritesPresentees].forEach((item, index) => {
-    const identite = identitePrioriteRapport(item) || `priorite-sans-cle-${index}`;
-    if(!uniques.has(identite)) uniques.set(identite, item);
-  });
-  return [...uniques.values()];
-}
-
-function compterPrioritesRestantesRapport(priorites, prioritesPresentees = []){
-  const toutes = prioritesDistinctesRapport(priorites, prioritesPresentees);
-  const presentees = new Set(prioritesPresentees.map(identitePrioriteRapport).filter(Boolean));
-  return toutes.filter(item => !presentees.has(identitePrioriteRapport(item))).length;
+/* La page 5 reprend strictement le total canonique de la page 3 : seuls les
+   contrôles au statut « prioritaire » y figurent. Les états « à améliorer »
+   et « non vérifiable publiquement » ne peuvent donc jamais gonfler ce
+   compteur commercial. */
+function compteursPrioritesPage5(totalPrioritaires, prioritesPresentees = 0){
+  const total = Math.max(0, Math.round(Number(totalPrioritaires) || 0));
+  const presentees = Math.max(0, Math.round(Number(prioritesPresentees) || 0));
+  return {total, presentees, restants:Math.max(0, total - presentees)};
 }
 
 function prioriteInfosRevendiquee(item){
@@ -7466,8 +7464,6 @@ function genererRapport(options = {}){
   const categoriesFortes = [...categoriesTriees].sort((a,b) => b.pct - a.pct).slice(0,2);
   const top3f = forces.slice(0,3);
   const top3p = appliquerPrioriteSiteInaccessible(selectionnerPrioritesDynamiques(priorites), etatSiteOfficielCourant());
-  const prioritesDistinctes = prioritesDistinctesRapport(priorites, top3p);
-  const restants = compterPrioritesRestantesRapport(priorites, top3p);
   const pied = n => `<div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="${n}">Page ${n}</span></div>`;
   const salutation = contact ? `Bonjour ${contact},` : `Bonjour,`;
   const faibles = categoriesTriees.filter(c => c.pct < 70);
@@ -7519,6 +7515,7 @@ function genererRapport(options = {}){
   const dIdent = donneesAnalyse;
   const checklist = checklistHtml();
   const checklistV3 = checklistV3Html();
+  const compteursPriorites = compteursPrioritesPage5(checklistV3.counts.ko, top3p.length);
   const indicesV3 = indicesProspect();
   const domainesV3 = [
     ["Visibilité", indicesV3.visibilite, estNombre(dIdent?.position) && Number(dIdent.position) > 0 ? `position ${libellePositionRapport(dIdent)}` : "présence locale à confirmer"],
@@ -7644,8 +7641,8 @@ function genererRapport(options = {}){
     ${rapportHeaderHtml("Diagnostic Efficia™")}
     <div class="chapitre">${page5Chapitre}</div><h1 class="rapport-title">${page5Titre}</h1><p class="v3-secondary-lead">${page5Lead}</p>
     <section class="v3-priorities">${prioritesPage5 || `<p class="rapport-subtitle">Votre fiche ne demande pas de deuxième ou de troisième chantier prioritaire confirmé.</p>`}</section>
-    <section class="v3-audit-teaser"><div><h2>La marche à suivre précise est détaillée dans l'Audit Efficia™.</h2><p>Textes adaptés, contenus à prioriser, ordre d'intervention et vérifications à mener : l'Audit transforme ces constats en plan d'action adapté aux informations réelles de votre entreprise.</p></div>${restants ? `<div class="v3-audit-count">${restants}<small>autre${restants > 1 ? "s" : ""} point${restants > 1 ? "s" : ""}</small></div>` : ""}</section>
-    <div class="v3-priority-count"><span><b>${prioritesDistinctes.length}</b> point${prioritesDistinctes.length > 1 ? "s" : ""} prioritaire${prioritesDistinctes.length > 1 ? "s" : ""} détecté${prioritesDistinctes.length > 1 ? "s" : ""}</span><span><b>${top3p.length}</b> priorité${top3p.length > 1 ? "s" : ""} présentée${top3p.length > 1 ? "s" : ""}</span></div>
+    <section class="v3-audit-teaser"><div><h2>La marche à suivre précise est détaillée dans l'Audit Efficia™.</h2><p>Textes adaptés, contenus à prioriser, ordre d'intervention et vérifications à mener : l'Audit transforme ces constats en plan d'action adapté aux informations réelles de votre entreprise.</p></div>${compteursPriorites.restants ? `<div class="v3-audit-count">${compteursPriorites.restants}<small>autre${compteursPriorites.restants > 1 ? "s" : ""} point${compteursPriorites.restants > 1 ? "s" : ""}</small></div>` : ""}</section>
+    <div class="v3-priority-count"><span><b>${compteursPriorites.total}</b> point${compteursPriorites.total > 1 ? "s" : ""} prioritaire${compteursPriorites.total > 1 ? "s" : ""} détecté${compteursPriorites.total > 1 ? "s" : ""}</span><span><b>${compteursPriorites.presentees}</b> priorité${compteursPriorites.presentees > 1 ? "s" : ""} présentée${compteursPriorites.presentees > 1 ? "s" : ""}</span></div>
     ${pied(5)}
   </div>
 

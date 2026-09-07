@@ -31,6 +31,8 @@ function createNarrativeHarness({ analysisId = "analysis-demo", enterprise = "At
     estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
     nEntier: (value) => Math.round(Number(value)),
     donneesAnalyse: data,
+    critereConfirmeMax: () => false,
+    categoriePrincipaleValideePourRapport: () => false,
     joinFr: (items) => {
       const list = items.filter(Boolean);
       if (list.length < 2) return list.join("");
@@ -152,6 +154,46 @@ test("introduction : la position observée et les manques sont décrits sans rie
   assert.match(unknownText, /pas pu être confirmée|reste à confirmer|n’est pas encore connue/u);
   assert.doesNotMatch(unknownText, /1re position|2e position|3e position|4e position|premier résultat/u);
   assert.doesNotMatch(unknownText, /aucun avis|aucune photo|aucune description/u);
+});
+
+test("introduction : une fiche non détectée après une recherche réelle décrit l'absence sans l'inventer", () => {
+  const context = createNarrativeHarness({
+    enterprise: "Atelier Neufchâteau",
+    data: {
+      position: 0,
+      requeteTestee: "Électricien Neufchâteau",
+      derniereRequeteAnalysee: "Électricien Neufchâteau",
+      nbAvis: 0,
+      nbPhotos: 4,
+      descriptionLongueur: 0,
+    },
+  });
+  context.critereConfirmeMax = (key) => key === "revendiquee";
+  context.categoriePrincipaleValideePourRapport = () => true;
+  const text = context.texteConsultantPage1({
+    contact: "",
+    entreprise: "Atelier Neufchâteau",
+    activite: "Électricien",
+    ville: "Neufchâteau",
+    score: 42,
+    scoreProjete: 42,
+    priorites: [{}, {}, {}],
+  });
+  assert.equal(context.phraseDirecteScoreDiagnosticGratuit(42, context.donneesAnalyse).texte, "Votre fiche reste difficile à trouver sur Google.");
+  assert.match(text, /Lors de notre test sur « Électricien Neufchâteau », votre fiche n’est pas apparue parmi les premiers résultats affichés\./u);
+  assert.match(text, /Votre fiche ne présente actuellement aucun avis ni description visible de vos services\./u);
+  assert.match(text, /Un prospect qui la trouve peut donc encore hésiter à vous contacter\./u);
+  assert.match(text, /La bonne nouvelle : votre fiche est revendiquée et votre catégorie principale est bien choisie\./u);
+  assert.doesNotMatch(text, /La place de votre fiche dans cette recherche n’est pas encore connue|pas pu être confirmée|reste à confirmer/u);
+});
+
+test("introduction : une position nulle sans recherche analysée conserve une formulation neutre", () => {
+  const context = createNarrativeHarness({
+    data: { position: 0, requeteTestee: "Électricien Neufchâteau", nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 },
+  });
+  const text = context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Neufchâteau", score: 70, scoreProjete: 70, priorites: [{}] });
+  assert.doesNotMatch(text, /n’est pas apparue parmi les premiers résultats affichés|difficile à trouver sur Google/u);
+  assert.match(text, /pas pu être confirmée|reste à confirmer|n’est pas encore connue/u);
 });
 
 test("introduction : les ouvertures sont déterministes, variées et sans classement inventé", () => {

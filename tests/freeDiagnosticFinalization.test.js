@@ -15,6 +15,27 @@ function sliceBetween(source, start, end) {
   return source.slice(from, to);
 }
 
+test("la page 5 reprend exclusivement le compteur prioritaire canonique de la page 3", () => {
+  const helperCode = sliceBetween(html, "function compteursPrioritesPage5", "function prioriteInfosRevendiquee");
+  const context = { Math, Number, globalThis: null };
+  context.globalThis = context;
+  vm.runInNewContext(`${helperCode}\nglobalThis.compteursPrioritesPage5 = compteursPrioritesPage5;`, context);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(context.compteursPrioritesPage5(7, 3))), {
+    total: 7,
+    presentees: 3,
+    restants: 4,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.compteursPrioritesPage5(0, 3))), {
+    total: 0,
+    presentees: 3,
+    restants: 0,
+  });
+  assert.match(html, /compteursPrioritesPage5\(checklistV3\.counts\.ko, top3p\.length\)/u);
+  assert.doesNotMatch(html, /prioritesDistinctesRapport\(priorites, top3p\)/u);
+  assert.doesNotMatch(html, /compterPrioritesRestantesRapport\(priorites, top3p\)/u);
+});
+
 function createElement({ hidden = false } = {}) {
   const classes = new Set();
   const attributes = new Map();
