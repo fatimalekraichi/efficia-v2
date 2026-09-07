@@ -129,6 +129,8 @@
   .report-text-dialog__head h2{margin:0 0 5px;color:#0b1526}
   .report-text-dialog__head p{margin:0;color:#64748b;font-size:.86rem;line-height:1.5}
   .report-text-dialog__list{display:grid;gap:14px;max-height:62vh;overflow:auto;padding-right:6px}
+  .report-text-section{display:grid;gap:10px}
+  .report-text-section h2{position:sticky;top:0;z-index:1;margin:0;padding:9px 12px;border-radius:10px;background:#edf4ff;color:#16499c;font-size:.88rem}
   .report-text-field{border:1px solid #dbe4f0;border-radius:16px;padding:16px;background:#fff}
   .report-text-field__head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
   .report-text-field__head strong{display:block;color:#0b1526}
@@ -4357,15 +4359,35 @@ function texteAutomatiqueBrut(value){
 }
 
 function enregistrerTexteAutomatiqueRapport(fieldId, automaticText){
-  textesAutomatiquesRapport.set(fieldId, texteAutomatiqueBrut(automaticText));
+  textesAutomatiquesRapport.set(fieldId, texteAutomatiqueBrut(normaliserTexteProspectRapport(automaticText)));
+}
+
+/* Toute personnalisation passe par cette frontière avant le rendu prospect.
+   Le détail brut reste dans le brouillon métier, mais un message DNS, HTML,
+   HTTP ou une trace ne peut jamais être injecté dans l'aperçu ou le PDF. */
+function normaliserTexteProspectRapport(value){
+  const texte = String(value ?? "").trim();
+  if(!texte) return texte;
+  const erreurDnsBrute = /\b(?:nxdomain|enotfound|name resolution|dns\s+(?:error|lookup|resolution|records?|settings?|failure|failed)|records? .*not properly configured|please check your dns)\b/i;
+  if(erreurDnsBrute.test(texte)){
+    return "Le site officiel était inaccessible lors de notre contrôle. La vérification indique un problème de configuration DNS à faire contrôler par le prestataire qui gère le domaine ou le site.";
+  }
+  if(/\b(?:http\s*)?5\d{2}\b|internal server error|erreur serveur/i.test(texte)){
+    return "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.";
+  }
+  if(/<!doctype|<\/?(?:html|head|body|script|style|pre)\b|\b(?:stack trace|exception|typeorm|undefined|null reference)\b/i.test(texte)){
+    return "Le site officiel était inaccessible lors de notre contrôle. Une vérification technique est nécessaire avant de diffuser davantage d’informations.";
+  }
+  return texte;
 }
 
 function texteEffectifRapport(fieldId, automaticText){
-  enregistrerTexteAutomatiqueRapport(fieldId, automaticText);
-  const custom = remplacementsTextesRapport.get(fieldId)?.customText;
+  const automatic = normaliserTexteProspectRapport(automaticText);
+  enregistrerTexteAutomatiqueRapport(fieldId, automatic);
+  const custom = normaliserTexteProspectRapport(remplacementsTextesRapport.get(fieldId)?.customText);
   return typeof custom === "string" && custom.trim()
     ? escapeHtml(custom.trim()).replace(/\r?\n/g, "<br>")
-    : automaticText;
+    : automatic;
 }
 
 function majAlerteTextesPersonnalises(){
@@ -4447,6 +4469,19 @@ function rendreChampTexteRapport(field){
   </section>`;
 }
 
+function rendreChampsTextesRapportParSection(){
+  const groupes = new Map();
+  catalogueTextesRapport.forEach(field => {
+    const html = rendreChampTexteRapport(field);
+    if(!html) return;
+    const section = field.section || "Autres textes";
+    groupes.set(section, [...(groupes.get(section) || []), html]);
+  });
+  return [...groupes].map(([section, champs]) =>
+    `<section class="report-text-section"><h2>${escapeHtml(section)}</h2>${champs.join("")}</section>`
+  ).join("");
+}
+
 function activerInteractionsEditeurTextes(){
   document.querySelectorAll("[data-report-text-field]").forEach(card => {
     const textarea = card.querySelector("[data-custom-text]");
@@ -4491,7 +4526,7 @@ async function ouvrirEditeurTextesRapport(){
     if(!await chargerRemplacementsNarratifsRapport()) throw new Error("TEXT_OVERRIDES_LOAD_FAILED");
     textesAutomatiquesRapport = new Map();
     if(!genererRapport({exigerVersion:false})) throw new Error("REPORT_MODEL_BUILD_FAILED");
-    list.innerHTML = catalogueTextesRapport.map(rendreChampTexteRapport).filter(Boolean).join("")
+    list.innerHTML = rendreChampsTextesRapportParSection()
       || `<p>Aucun bloc narratif modifiable n’est présent dans ce rapport.</p>`;
     activerInteractionsEditeurTextes();
     return true;
@@ -6395,6 +6430,7 @@ function texteControleRapportV3(item){
 }
 
 function checklistV3Html(){
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
   const controles = listeControlesRapportV3();
   const counts = {ok:0, warn:0, ko:0, unknown:0, not_verifiable:0};
   controles.forEach(item => { counts[item.statut]++; });
@@ -6418,7 +6454,12 @@ function checklistV3Html(){
       ${counts.not_verifiable ? statHtml(counts.not_verifiable, "Non vérifiables", "publiquement", "neutral") : ""}
     </div>
     <p class="v3-method-categories"><b>Domaines analysés :</b> ${categories.join(" · ")}</p>
-    <section class="v3-representative"><h2>Constats représentatifs</h2>${observations.slice(0,6).map(item => `<article class="v3-observation"><b>${LIBELLES_COURTS[item.cr.key] || item.cr.q}<span class="v3-status v3-status--${item.statut === "not_verifiable" ? "neutral" : item.statut}">${libelleStatutRapportV3(item.statut)}</span></b>${texteControleRapportV3(item)}</article>`).join("")}</section>
+    <section class="v3-representative"><h2>${effectiveText("page3.representative_heading", "Constats représentatifs")}</h2>${observations.slice(0,6).map(item => {
+      const key = item.cr.key;
+      const titre = effectiveText(`page3.representative.${key}.title`, LIBELLES_COURTS[key] || item.cr.q);
+      const description = effectiveText(`page3.representative.${key}.description`, texteControleRapportV3(item));
+      return `<article class="v3-observation"><b>${titre}<span class="v3-status v3-status--${item.statut === "not_verifiable" ? "neutral" : item.statut}">${libelleStatutRapportV3(item.statut)}</span></b>${description}</article>`;
+    }).join("")}</section>
     ${counts.not_verifiable ? `<p class="v3-method-categories"><b>Information séparée :</b> ${counts.not_verifiable} contrôle${counts.not_verifiable > 1 ? "s" : ""} non vérifiable${counts.not_verifiable > 1 ? "s" : ""} publiquement a été traité sans être compté comme restant à confirmer.</p>` : ""}`
   };
 }
@@ -7302,7 +7343,7 @@ function narrationPrioriteV3(item, index){
       client:effectiveText(`priority.${rank}.impact`, contenu.impact),
       action:effectiveText(`priority.${rank}.first_action`, contenu.action),
       result:effectiveText(`priority.${rank}.expected_result`, contenu.resultat),
-      time:contenu.delai,
+      time:effectiveText(`priority.${rank}.estimated_time`, contenu.delai),
       example:""
     };
   }
@@ -7311,7 +7352,7 @@ function narrationPrioriteV3(item, index){
   const observation = constatObservePriorite(item, contexteRapport());
   const client = consequenceBusinessPriorite(item, contexteRapport());
   const result = resultatAttenduPriorite(item, contexteRapport());
-  const example = index === 0 ? microLivrablePriorite(item, contexteRapport(), rank) : "";
+  const automaticExample = index === 0 ? microLivrablePriorite(item, contexteRapport(), rank) : "";
   return {
     impact,
     title:effectiveText(`priority.${rank}.title`, titrePriorite(item)),
@@ -7319,24 +7360,27 @@ function narrationPrioriteV3(item, index){
     client:effectiveText(`priority.${rank}.impact`, client),
     action:effectiveText(`priority.${rank}.first_action`, details.action),
     result:result ? effectiveText(`priority.${rank}.expected_result`, result) : "",
-    time:`Temps estimé : ${tempsPriorite(item)}`,
-    example
+    time:effectiveText(`priority.${rank}.estimated_time`, `Temps estimé : ${tempsPriorite(item)}`),
+    example:automaticExample ? effectiveText(`priority.${rank}.action_example`, automaticExample) : ""
   };
 }
 
 function rendrePrioriteV3Principale(item){
   if(!item) return "";
   const n = narrationPrioriteV3(item, 0);
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
+  const impactLabel = effectiveText("priority.1.impact_label", n.impact.label);
+  const resultat = n.result || effectiveText("priority.1.expected_result", "Une fiche plus claire et plus rassurante avant le premier contact.");
   const exemple = n.example ? `<div class="v3-example">${n.example.replace(/class="priority-sample"/, "")}</div>` : "";
   return `<section class="v3-priority-hero" data-priority-key="${clePriorite(item)}">
-    <div class="v3-priority-meta"><span class="v3-priority-number">PRIORITÉ N°1</span><span class="v3-impact" style="color:${n.impact.couleur};background:${n.impact.fond}">${n.impact.label}</span></div>
+    <div class="v3-priority-meta"><span class="v3-priority-number">PRIORITÉ N°1</span><span class="v3-impact" style="color:${n.impact.couleur};background:${n.impact.fond}">${impactLabel}</span></div>
     <h2 class="v3-priority-title">${n.title}</h2>
     <p class="v3-priority-intro">${n.client}</p>
     <div class="v3-journey">
       <article class="v3-step v3-step--observation"><span class="v3-step-label">Constat</span><p>${n.observation}</p></article><span class="v3-arrow">→</span>
       <article class="v3-step v3-step--impact"><span class="v3-step-label">Conséquence</span><p>${n.client}</p></article><span class="v3-arrow">↙</span>
       <article class="v3-step v3-step--action"><span class="v3-step-label">Premier pas</span><p>${n.action}</p></article><span class="v3-arrow">→</span>
-      <article class="v3-step v3-step--result"><span class="v3-step-label">Résultat attendu</span><p>${n.result || "Une fiche plus claire et plus rassurante avant le premier contact."}</p></article>
+      <article class="v3-step v3-step--result"><span class="v3-step-label">Résultat attendu</span><p>${resultat}</p></article>
     </div>
     ${exemple}
   </section><p class="v3-time">${n.time}</p>`;
@@ -7345,9 +7389,11 @@ function rendrePrioriteV3Principale(item){
 function rendrePrioriteV3Resume(item, index){
   if(!item) return "";
   const n = narrationPrioriteV3(item, index);
+  const effectiveText = typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
+  const impactLabel = effectiveText(`priority.${index + 1}.impact_label`, n.impact.label);
   return `<article class="v3-mini-priority v3-mini-priority--${index === 1 ? "two" : "three"}" data-priority-key="${clePriorite(item)}">
     <div class="v3-priority-number">PRIORITÉ N°${index + 1}</div>
-    <h2>${n.title}</h2><span class="v3-impact" style="display:inline-block;margin-top:10px;color:${n.impact.couleur};background:${n.impact.fond}">${n.impact.label}</span>
+    <h2>${n.title}</h2><span class="v3-impact" style="display:inline-block;margin-top:10px;color:${n.impact.couleur};background:${n.impact.fond}">${impactLabel}</span>
     <div class="v3-mini-label">Constat</div><p>${n.observation}</p>
     <div class="v3-mini-label">Conséquence</div><p>${n.client}</p>
   </article>`;
@@ -7503,6 +7549,10 @@ function genererRapport(options = {}){
   const significationBloc = significationV2(forces, priorites) || signification;
   const texteIntroConsultant = texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete:proj.projete, priorites:top3p});
   const texteIntroEffectif = texteEffectifRapport("summary.general", texteIntroConsultant);
+  const titrePage1Effectif = texteEffectifRapport("page1.title", "Votre situation aujourd'hui");
+  const surtitreVerdictEffectif = texteEffectifRapport("page1.verdict_eyebrow", "Verdict personnalisé");
+  const titreVerdictEffectif = texteEffectifRapport("page1.verdict_title", phraseScore.texte);
+  const precisionScoreEffectif = texteEffectifRapport("page1.score_disclaimer", "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.");
   const syntheseFaiblessesEffectif = texteEffectifRapport("weaknesses.summary", phraseTransitionPage2(categoriesTriees));
   const conclusionCommercialeEffectif = texteEffectifRapport(
     "conclusion.commercial",
@@ -7580,6 +7630,12 @@ function genererRapport(options = {}){
   // elle reste présentée page 4, sans être envoyée au formateur de faiblesse
   // chiffrée réservé aux critères notés.
   const vigilancesV3 = top3p.slice(0,2).filter(p => p?.critere).map(p => faiblesseChiffree(p.critere)).filter(Boolean);
+  const titreForcesEffectif = texteEffectifRapport("page1.strengths_heading", "Ce qui fonctionne déjà");
+  const titreFreinsEffectif = texteEffectifRapport("page1.weaknesses_heading", "Ce qui freine les contacts");
+  const forcesV3Effectives = (forcesV3.length ? forcesV3 : ["Les éléments positifs sont indiqués uniquement lorsqu'ils sont démontrés."])
+    .map((text, index) => texteEffectifRapport(`page1.strength.${index + 1}`, text));
+  const vigilancesV3Effectives = (vigilancesV3.length ? vigilancesV3 : ["Aucun frein majeur confirmé n'a été retenu dans les données disponibles."])
+    .map((text, index) => texteEffectifRapport(`page1.weakness.${index + 1}`, text));
   const noteComparaisonV3 = ecartsExpliquesHtml() || "Les concurrents restent anonymisés : il s'agit de repères de zone, pas d'un classement public d'entreprises.";
   const faitsV3 = [
     estNombre(dIdent.note) ? ["Note", `${fmtNote(dIdent.note)}/5`] : null,
@@ -7594,27 +7650,60 @@ function genererRapport(options = {}){
   const comparisonIntroV3 = benchTable
     ? `Lecture simplifiée à partir de ${(donneesAnalyse.concurrents || []).length} fiche${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} concurrente${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} anonymisée${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} réellement comparable${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""}.`
     : "Les données concurrentielles publiques ne permettent pas une comparaison suffisamment fiable sur cette fiche.";
+  const titrePage2Effectif = texteEffectifRapport("page2.title", "Comment votre fiche se situe localement");
+  const comparaisonLocaleEffectif = texteEffectifRapport("page2.comparison_intro", comparisonIntroV3);
+  const titreLectureEfficiaEffectif = texteEffectifRapport("page2.efficia_label", "Lecture Efficia");
+  const precisionLectureEfficiaEffectif = texteEffectifRapport(
+    "page2.efficia_explanation",
+    benchTable ? "Les écarts ci-dessous s'appuient uniquement sur les données concurrentielles réellement collectées et restent anonymisés." : "Aucun concurrent n'est inventé lorsque les informations publiques ne suffisent pas à établir une moyenne."
+  );
+  const noteMethodePage2Effectif = texteEffectifRapport("page2.micro_note", "Les volumes moyens sont arrondis. Le nombre de concurrents affiché est toujours celui réellement utilisé pour la comparaison.");
+  const titrePage3Effectif = texteEffectifRapport("page3.title", "Une méthode rigoureuse, sans vous noyer dans la technique");
+  const introductionPage3Effectif = texteEffectifRapport("page3.introduction", "Nous regardons les signaux qu'un client peut observer avant de décider d'appeler. Voici les éléments les plus représentatifs.");
+  const titreAuditPage3Effectif = texteEffectifRapport("page3.audit_boundary_title", "Ce qui est réservé à l'Audit Efficia™");
+  const texteAuditPage3Effectif = texteEffectifRapport("page3.audit_boundary_text", "L'Audit détaille les corrections exactes, les contenus à publier, l'ordre des actions et les vérifications qui nécessitent l'accès au compte. Le diagnostic gratuit révèle les freins visibles ; il ne prétend pas tout déduire de l'extérieur.");
+  const titrePage5Effectif = texteEffectifRapport("page5.title", page5Titre);
+  const sousTitrePage5Effectif = texteEffectifRapport("page5.subtitle", page5Lead);
+  const titreTeasingAuditPage5Effectif = texteEffectifRapport("page5.audit_teaser_title", "La marche à suivre précise est détaillée dans l'Audit Efficia™.");
+  const texteTeasingAuditPage5Effectif = texteEffectifRapport("page5.audit_teaser_text", "Textes adaptés, contenus à prioriser, ordre d'intervention et vérifications à mener : l'Audit transforme ces constats en plan d'action adapté aux informations réelles de votre entreprise.");
+  const titrePage6Effectif = texteEffectifRapport("page6.title", "Deux façons d'améliorer votre fiche");
+  const surtitreAuditEffectif = texteEffectifRapport("page6.audit_tag", "Je le fais moi-même");
+  const descriptionAuditEffectif = texteEffectifRapport("page6.audit_description", "Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.");
+  const beneficesAuditEffectifs = ["Analyse détaillée de la fiche", "Comparaison avec les concurrents pertinents", "Corrections classées par priorité", "Textes et recommandations personnalisés", "Plan d'action directement applicable"]
+    .map((text, index) => texteEffectifRapport(`page6.audit_benefit.${index + 1}`, text));
+  const ctaAuditEffectif = texteEffectifRapport("page6.audit_cta", "Je veux savoir quoi corriger en premier");
+  const surtitrePackEffectif = texteEffectifRapport("page6.pack_tag", "Efficia s'occupe de tout");
+  const descriptionPackEffectif = texteEffectifRapport("page6.pack_description", "Vous préférez que les optimisations soient prises en charge ? Nous les réalisons à votre place.");
+  const beneficesPackEffectifs = ["Optimisation complète de votre fiche", "Description, services et catégories retravaillés", "Parcours de collecte d'avis mis en place", "Validation finale avec vous avant publication"]
+    .map((text, index) => texteEffectifRapport(`page6.pack_benefit.${index + 1}`, text));
+  const ctaPackEffectif = texteEffectifRapport("page6.pack_cta", "Optimiser ma fiche maintenant");
+  const apresAuditEffectif = texteEffectifRapport("page6.after_audit", "Vous recevez votre rapport complet sous 24 heures ouvrées.");
+  const apresPackEffectif = texteEffectifRapport("page6.after_pack", "Nous préparons les optimisations puis vous les faisons valider avant toute publication.");
+  const titreApresAuditEffectif = texteEffectifRapport("page6.after_audit_title", "Après votre commande — Audit");
+  const titreApresPackEffectif = texteEffectifRapport("page6.after_pack_title", "Après votre commande — Pack");
+  const piedProspectEffectif = texteEffectifRapport("page6.prospect_footer", "Diagnostic réalisé par l'équipe Efficia Digital · Une question ? Répondez simplement à l'e-mail.");
+  const legalPage6Effectif = texteEffectifRapport("page6.legal", `Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au ${dateStr}${(donneesAnalyse.concurrents || []).length ? ", et sur les données publiques agrégées de fiches concurrentes de votre zone" : ""}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.`);
 
   document.getElementById("rapport-contenu").innerHTML = `
   <!-- PAGE 1 — Votre situation actuelle -->
   <div class="page page-hero report-v3" data-report-page="1">
     ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 1 · Votre fiche aujourd'hui</div><h1 class="rapport-title">Votre situation aujourd'hui</h1>
+    <div class="chapitre">Étape 1 · Votre fiche aujourd'hui</div><h1 class="rapport-title">${titrePage1Effectif}</h1>
     <p class="rapport-subtitle">${entreprise}${activite ? " — " + activite : ""}${ville ? " (" + ville + ")" : ""} · Diagnostic réalisé le ${dateStr}</p>
     <div class="v3-facts">${faitsV3.map(([label, value]) => `<span class="v3-fact"><strong>${label}</strong>${value}</span>`).join("")}</div>
-    <section class="v3-situation"><div>${scoreGaugeHtml(score)}<div class="score-potential">Potentiel estimé<br><span>${proj.projete}/100</span></div></div><div class="v3-verdict"><div class="v3-eyebrow">Verdict personnalisé</div><h2>${phraseScore.texte}</h2><p class="hero-analysis-text">${texteIntroEffectif}</p><p class="v3-scope">Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.</p></div></section>
+    <section class="v3-situation"><div>${scoreGaugeHtml(score)}<div class="score-potential">Potentiel estimé<br><span>${proj.projete}/100</span></div></div><div class="v3-verdict"><div class="v3-eyebrow">${surtitreVerdictEffectif}</div><h2>${titreVerdictEffectif}</h2><p class="hero-analysis-text">${texteIntroEffectif}</p><p class="v3-scope">${precisionScoreEffectif}</p></div></section>
     ${mentionScoreProvisoireHtml()}
     <section class="v3-domains">${domainesV3.map(([label, value, description]) => `<article class="v3-domain"><span>${label}</span><b>${value === null ? "—" : value}<small>/100</small></b><em>${description}</em></article>`).join("")}</section>
-    <section class="v3-signals"><div><h2>Ce qui fonctionne déjà</h2><div class="v3-signal-list">${forcesV3.length ? forcesV3.map(text => `<p class="v3-signal v3-signal--ok">${text}</p>`).join("") : `<p class="v3-signal v3-signal--ok">Les éléments positifs sont indiqués uniquement lorsqu'ils sont démontrés.</p>`}</div></div><div><h2>Ce qui freine les contacts</h2><div class="v3-signal-list">${vigilancesV3.length ? vigilancesV3.map(text => `<p class="v3-signal">${text}</p>`).join("") : `<p class="v3-signal">Aucun frein majeur confirmé n'a été retenu dans les données disponibles.</p>`}</div></div></section>
+    <section class="v3-signals"><div><h2>${titreForcesEffectif}</h2><div class="v3-signal-list">${forcesV3Effectives.map(text => `<p class="v3-signal v3-signal--ok">${text}</p>`).join("")}</div></div><div><h2>${titreFreinsEffectif}</h2><div class="v3-signal-list">${vigilancesV3Effectives.map(text => `<p class="v3-signal">${text}</p>`).join("")}</div></div></section>
     ${pied(1)}
   </div>
 
   <!-- PAGE 2 — Comparaison locale -->
   <div class="page page-benchmark report-v3" data-report-page="2">
     ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 2 · Comparaison locale</div><h1 class="rapport-title">Comment votre fiche se situe localement</h1><p class="rapport-subtitle">${comparisonIntroV3}</p>
-    <section class="v3-comparison">${benchmarkV3Html() || `<section class="v3-benchmark"><h2>Des repères à confirmer</h2><p class="rapport-subtitle">La comparaison locale reste volontairement absente tant que le panel public est insuffisant.</p></section>`}<aside class="v3-comparison-note"><div class="v3-eyebrow">Lecture Efficia</div><h2>${syntheseFaiblessesEffectif}</h2><p>${benchTable ? "Les écarts ci-dessous s'appuient uniquement sur les données concurrentielles réellement collectées et restent anonymisés." : "Aucun concurrent n'est inventé lorsque les informations publiques ne suffisent pas à établir une moyenne."}</p></aside></section>
-    <p class="v3-micro-note">Les volumes moyens sont arrondis. Le nombre de concurrents affiché est toujours celui réellement utilisé pour la comparaison.</p>
+    <div class="chapitre">Étape 2 · Comparaison locale</div><h1 class="rapport-title">${titrePage2Effectif}</h1><p class="rapport-subtitle">${comparaisonLocaleEffectif}</p>
+    <section class="v3-comparison">${benchmarkV3Html() || `<section class="v3-benchmark"><h2>Des repères à confirmer</h2><p class="rapport-subtitle">La comparaison locale reste volontairement absente tant que le panel public est insuffisant.</p></section>`}<aside class="v3-comparison-note"><div class="v3-eyebrow">${titreLectureEfficiaEffectif}</div><h2>${syntheseFaiblessesEffectif}</h2><p>${precisionLectureEfficiaEffectif}</p></aside></section>
+    <p class="v3-micro-note">${noteMethodePage2Effectif}</p>
     <section class="v3-score-lines">${scoreLignesV3}</section>
     ${pied(2)}
   </div>
@@ -7622,9 +7711,9 @@ function genererRapport(options = {}){
   <!-- PAGE 3 — Contrôles et méthode -->
   <div class="page page-action report-v3" data-report-page="3">
     ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Une méthode rigoureuse, sans vous noyer dans la technique</h1><p class="rapport-subtitle">Nous regardons les signaux qu'un client peut observer avant de décider d'appeler. Voici les éléments les plus représentatifs.</p>
+    <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">${titrePage3Effectif}</h1><p class="rapport-subtitle">${introductionPage3Effectif}</p>
     ${checklistV3.html}
-    <div class="v3-boundary"><h2>Ce qui est réservé à l'Audit Efficia™</h2><p>L'Audit détaille les corrections exactes, les contenus à publier, l'ordre des actions et les vérifications qui nécessitent l'accès au compte. Le diagnostic gratuit révèle les freins visibles ; il ne prétend pas tout déduire de l'extérieur.</p></div>
+    <div class="v3-boundary"><h2>${titreAuditPage3Effectif}</h2><p>${texteAuditPage3Effectif}</p></div>
     ${pied(3)}
   </div>
 
@@ -7639,9 +7728,9 @@ function genererRapport(options = {}){
   <!-- PAGE 5 — Priorités 2 et 3 -->
   <div class="page page-plan report-v3" data-report-page="5">
     ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">${page5Chapitre}</div><h1 class="rapport-title">${page5Titre}</h1><p class="v3-secondary-lead">${page5Lead}</p>
+    <div class="chapitre">${page5Chapitre}</div><h1 class="rapport-title">${titrePage5Effectif}</h1><p class="v3-secondary-lead">${sousTitrePage5Effectif}</p>
     <section class="v3-priorities">${prioritesPage5 || `<p class="rapport-subtitle">Votre fiche ne demande pas de deuxième ou de troisième chantier prioritaire confirmé.</p>`}</section>
-    <section class="v3-audit-teaser"><div><h2>La marche à suivre précise est détaillée dans l'Audit Efficia™.</h2><p>Textes adaptés, contenus à prioriser, ordre d'intervention et vérifications à mener : l'Audit transforme ces constats en plan d'action adapté aux informations réelles de votre entreprise.</p></div>${compteursPriorites.restants ? `<div class="v3-audit-count">${compteursPriorites.restants}<small>autre${compteursPriorites.restants > 1 ? "s" : ""} point${compteursPriorites.restants > 1 ? "s" : ""}</small></div>` : ""}</section>
+    <section class="v3-audit-teaser"><div><h2>${titreTeasingAuditPage5Effectif}</h2><p>${texteTeasingAuditPage5Effectif}</p></div>${compteursPriorites.restants ? `<div class="v3-audit-count">${compteursPriorites.restants}<small>autre${compteursPriorites.restants > 1 ? "s" : ""} point${compteursPriorites.restants > 1 ? "s" : ""}</small></div>` : ""}</section>
     <div class="v3-priority-count"><span><b>${compteursPriorites.total}</b> point${compteursPriorites.total > 1 ? "s" : ""} prioritaire${compteursPriorites.total > 1 ? "s" : ""} détecté${compteursPriorites.total > 1 ? "s" : ""}</span><span><b>${compteursPriorites.presentees}</b> priorité${compteursPriorites.presentees > 1 ? "s" : ""} présentée${compteursPriorites.presentees > 1 ? "s" : ""}</span></div>
     ${pied(5)}
   </div>
@@ -7649,13 +7738,13 @@ function genererRapport(options = {}){
   <!-- PAGE 6 — Offres -->
   <div class="page page-offres report-v3" data-report-page="6">
     ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 6 · Les solutions</div><h1 class="rapport-title">Deux façons d'améliorer votre fiche</h1><p class="v3-solution-lead">${conclusionCommercialeEffectif}</p>
+    <div class="chapitre">Étape 6 · Les solutions</div><h1 class="rapport-title">${titrePage6Effectif}</h1><p class="v3-solution-lead">${conclusionCommercialeEffectif}</p>
     <section class="v3-offer-grid">
-      <article class="v3-offer"><span class="v3-offer-tag">Je le fais moi-même</span><h2>Audit complet Google Business</h2><div class="offer-price">99 € <small>TTC</small></div><p>Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.</p><ul><li>Analyse détaillée de la fiche</li><li>Comparaison avec les concurrents pertinents</li><li>Corrections classées par priorité</li><li>Textes et recommandations personnalisés</li><li>Plan d'action directement applicable</li></ul><p class="offer-note">${deductionNote}</p>${paymentButtonHtml({url:auditPaymentUrl, label:"Je veux savoir quoi corriger en premier", variant:"audit"})}</article>
-      <article class="v3-offer v3-offer--pack"><span class="v3-offer-tag">Efficia s'occupe de tout</span><h2>Pack Visibilité Google</h2><div class="offer-price">349 €</div><p>Vous préférez que les optimisations soient prises en charge ? Nous les réalisons à votre place.</p><ul><li>Optimisation complète de votre fiche</li><li>Description, services et catégories retravaillés</li><li>Parcours de collecte d'avis mis en place</li><li>Validation finale avec vous avant publication</li></ul><p class="offer-note"><strong>${notePackPriorites}</strong> Votre seule tâche : nous transmettre quelques informations, puis valider.</p>${paymentButtonHtml({url:packPaymentUrl, label:"Optimiser ma fiche maintenant", variant:"pack"})}</article>
+      <article class="v3-offer"><span class="v3-offer-tag">${surtitreAuditEffectif}</span><h2>Audit complet Google Business</h2><div class="offer-price">99 € <small>TTC</small></div><p>${descriptionAuditEffectif}</p><ul>${beneficesAuditEffectifs.map(text => `<li>${text}</li>`).join("")}</ul><p class="offer-note">${deductionNote}</p>${paymentButtonHtml({url:auditPaymentUrl, label:ctaAuditEffectif, variant:"audit"})}</article>
+      <article class="v3-offer v3-offer--pack"><span class="v3-offer-tag">${surtitrePackEffectif}</span><h2>Pack Visibilité Google</h2><div class="offer-price">349 €</div><p>${descriptionPackEffectif}</p><ul>${beneficesPackEffectifs.map(text => `<li>${text}</li>`).join("")}</ul><p class="offer-note"><strong>${notePackPriorites}</strong> Votre seule tâche : nous transmettre quelques informations, puis valider.</p>${paymentButtonHtml({url:packPaymentUrl, label:ctaPackEffectif, variant:"pack"})}</article>
     </section>
-    <section class="v3-after"><div><b>Après votre commande — Audit</b>Vous recevez votre rapport complet sous 24 heures ouvrées.</div><div><b>Après votre commande — Pack</b>Nous préparons les optimisations puis vous les faisons valider avant toute publication.</div></section>
-    <div class="v3-signature"><b>Diagnostic réalisé par l'équipe Efficia Digital</b> · Une question ? Répondez simplement à l'e-mail.</div><p class="v3-legal">Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au ${dateStr}${(donneesAnalyse.concurrents || []).length ? ", et sur les données publiques agrégées de fiches concurrentes de votre zone" : ""}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</p>
+    <section class="v3-after"><div><b>${titreApresAuditEffectif}</b>${apresAuditEffectif}</div><div><b>${titreApresPackEffectif}</b>${apresPackEffectif}</div></section>
+    <div class="v3-signature">${piedProspectEffectif}</div><p class="v3-legal">${legalPage6Effectif}</p>
     ${pied(6)}
   </div>`;
 

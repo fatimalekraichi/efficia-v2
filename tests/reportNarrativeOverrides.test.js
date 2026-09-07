@@ -123,9 +123,11 @@ const LONGEST_AUTOMATIC_NARRATIVE_TEXTS = Object.freeze({
 
 function longestAutomaticText(fieldId) {
   if (fieldId.startsWith("priority.")) {
-    return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[`priority.${fieldId.split(".").at(-1)}`];
+    return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[`priority.${fieldId.split(".").at(-1)}`]
+      || `Texte automatique complet pour ${fieldId}.`;
   }
-  return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[fieldId];
+  return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[fieldId]
+    || `Texte automatique complet pour ${fieldId}.`;
 }
 
 async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
@@ -194,11 +196,27 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
           answers: window.__workflowFixture.answers
         }
       });
-      if (url.includes("/api/admin/report-text-overrides/")) return json({
-        success: true,
-        catalog: [{ id: "summary.general", label: "Synthèse générale", section: "Page 1", maxLength: 380 }],
-        overrides: window.__workflowFixture.overrides
-      });
+      if (url.includes("/api/admin/report-text-overrides/")) {
+        if ((options.method || "GET") === "PUT") {
+          const payload = JSON.parse(options.body || "{}");
+          const current = new Map((window.__workflowFixture.overrides || []).map(item => [item.fieldId, item]));
+          (payload.restoredFieldIds || []).forEach(fieldId => current.delete(fieldId));
+          (payload.overrides || []).forEach(item => current.set(item.fieldId, {
+            fieldId: item.fieldId,
+            customText: item.text,
+            automaticText: item.automaticText,
+            weeklyReview: item.weeklyReview,
+            anomalyCategory: item.anomalyCategory,
+            needsReview: false,
+          }));
+          window.__workflowFixture.overrides = [...current.values()];
+        }
+        return json({
+          success: true,
+          catalog: window.__workflowFixture.catalog || [{ id: "summary.general", label: "Synthèse générale", section: "Page 1", maxLength: 380 }],
+          overrides: window.__workflowFixture.overrides
+        });
+      }
       if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
         success: false,
         error: "SEARCH_REFRESH_FAILED",
@@ -450,6 +468,31 @@ test("les titres personnalisés des trois priorités sont persistés, utilisés 
   assert.equal(restoredModel.freeDiagnostic.priorities[0].title, "Titre personnalisé prioritaire 1");
   assert.equal(restoredModel.freeDiagnostic.priorities[1].title, "Titre automatique courant");
   assert.equal(applyReportNarrativeOverrides(documentModel, []).freeDiagnostic.priorities[2].title, "Priorité 3");
+});
+
+test("les textes V3.2 du diagnostic gratuit sont autorisés, persistés puis restaurés sans toucher aux données métier", async () => {
+  const { db, cookie } = await setup();
+  const overrides = [
+    ["page1.verdict_title", "Titre de verdict choisi", "Titre automatique du verdict"],
+    ["priority.1.observation", "Constat prioritaire choisi", "Constat automatique"],
+    ["page5.audit_teaser_text", "Teasing Audit choisi", "Teasing automatique"],
+  ].map(([fieldId, text, automaticText]) => ({ fieldId, text, automaticText, weeklyReview: false, anomalyCategory: "autre" }));
+  const saved = await putOverrides(context(db, cookie, {
+    method: "PUT",
+    body: { analysisId: ANALYSIS_ID, overrides, restoredFieldIds: [] },
+  }));
+  assert.equal(saved.status, 200);
+  const reloaded = await (await getOverrides(context(db, cookie))).json();
+  assert.deepEqual(
+    reloaded.overrides.map((item) => [item.fieldId, item.customText]),
+    overrides.map((item) => [item.fieldId, item.text]).sort(([left], [right]) => left.localeCompare(right)),
+  );
+  const restored = await putOverrides(context(db, cookie, {
+    method: "PUT",
+    body: { analysisId: ANALYSIS_ID, overrides: [], restoredFieldIds: overrides.map((item) => item.fieldId) },
+  }));
+  assert.equal(restored.status, 200);
+  assert.deepEqual((await restored.json()).overrides, []);
 });
 
 test("le modèle de réponse aux avis universel reste éditable et ne présume pas un avis négatif", () => {
@@ -881,6 +924,114 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
   assert.deepEqual(result.page5Autres, {count: "4", label: "autres points"});
   assert.equal(result.descriptionVisible, true);
   assert.equal(result.descriptionRemplie, false);
+});
+
+test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persistés, restaurés et capturés par html2canvas/jsPDF", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {
+  const fieldIds = ["page1.verdict_title", "priority.1.observation", "page5.audit_teaser_text"];
+  const catalog = fieldIds.map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        const chooseAll = () => {
+          const groups = {};
+          document.querySelectorAll('input[type="radio"][name^="c"]').forEach(input => (groups[input.name] ??= []).push(input));
+          Object.values(groups).forEach(inputs => {
+            const selected = inputs.find(input => !input.disabled && !input.closest("[hidden]") && !input.dataset.special) || inputs[0];
+            selected.checked = true;
+            selected.dispatchEvent(new Event("change", {bubbles:true}));
+          });
+        };
+        chooseAll();
+        const locationMode = document.querySelector('input[name="condition-location-mode"][value="storefront"]');
+        const address = document.querySelector('input[name="location-address"][value="exact"]');
+        locationMode.checked = true; locationMode.dispatchEvent(new Event("change", {bubbles:true}));
+        address.checked = true; address.dispatchEvent(new Event("change", {bubbles:true}));
+        const description = [...document.querySelectorAll('input[name="c' + CRITERE_IDS.descriptionRemplie + '"]')].find(input => Number(input.value) === 0 && !input.dataset.special);
+        description.checked = true; description.dispatchEvent(new Event("change", {bubbles:true}));
+        majConditionsQuestionnaire(); majLocalisation(); calc();
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu initial refusé");
+        const initial = {
+          verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
+          score: document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
+          benchmark: document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
+          priorityKey: document.querySelector('[data-report-page="4"] .v3-priority-hero')?.dataset.priorityKey || "",
+          prices: [...document.querySelectorAll('[data-report-page="6"] .offer-price')].map(item => item.textContent),
+        };
+        const opened = await ouvrirEditeurTextesRapport();
+        const write = (fieldId, value) => {
+          const textarea = document.querySelector('[data-report-text-field="' + fieldId + '"] [data-custom-text]');
+          if(!textarea) throw new Error("champ absent : " + fieldId);
+          textarea.value = value;
+          textarea.dispatchEvent(new Event("input", {bubbles:true}));
+        };
+        write("page1.verdict_title", "Titre de verdict personnalisé");
+        write("priority.1.observation", "Constat de priorité personnalisé.");
+        write("page5.audit_teaser_text", "Teasing Audit personnalisé.");
+        await enregistrerTextesRapport();
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu personnalisé refusé");
+        const preview = {
+          verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
+          observation: document.querySelector('[data-report-page="4"] .v3-step--observation p')?.textContent || "",
+          teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
+        };
+        await chargerRemplacementsNarratifsRapport();
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu rechargé refusé");
+        const restored = {
+          verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
+          observation: document.querySelector('[data-report-page="4"] .v3-step--observation p')?.textContent || "",
+          teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
+        };
+        const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+        if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
+        let clonedVerdict = "";
+        const pages = [...document.querySelectorAll("#rapport-contenu .page")];
+        const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+        for(const [index, page] of pages.entries()) {
+          const options = optionsCapturePdfDiagnostic();
+          const previousClone = options.onclone;
+          options.onclone = clonedDoc => {
+            previousClone?.(clonedDoc);
+            if(index === 0) clonedVerdict = clonedDoc.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "";
+          };
+          const canvas = await html2canvasFn(page, options);
+          if(index > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(canvas.toDataURL("image/jpeg", .98), "JPEG", 0, 0, 210, 297);
+        }
+        await ouvrirEditeurTextesRapport();
+        document.querySelector('[data-report-text-field="page1.verdict_title"] [data-restore-text]').click();
+        await enregistrerTextesRapport();
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu restauré refusé");
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          opened, initial, preview, restored, clonedVerdict,
+          pdfPages:pdf.internal.getNumberOfPages(), pdfBytes:pdf.output("arraybuffer").byteLength,
+          restoredAutomatic:document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
+          finalScore:document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
+          finalBenchmark:document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
+          finalPriorityKey:document.querySelector('[data-report-page="4"] .v3-priority-hero')?.dataset.priorityKey || "",
+          finalPrices:[...document.querySelectorAll('[data-report-page="6"] .offer-price')].map(item => item.textContent),
+        });
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, { catalog, overrides: [] });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.opened, true);
+  assert.deepEqual(result.preview, {
+    verdict: "Titre de verdict personnalisé",
+    observation: "Constat de priorité personnalisé.",
+    teaser: "Teasing Audit personnalisé.",
+  });
+  assert.deepEqual(result.restored, result.preview, "la même personnalisation doit être relue avant le PDF");
+  assert.equal(result.clonedVerdict, result.preview.verdict, "html2canvas doit capturer le même titre que l’aperçu");
+  assert.equal(result.pdfPages, 6);
+  assert.ok(result.pdfBytes > 0);
+  assert.equal(result.restoredAutomatic, result.initial.verdict, "la suppression rétablit exactement le texte automatique");
+  assert.equal(result.finalScore, result.initial.score);
+  assert.equal(result.finalBenchmark, result.initial.benchmark);
+  assert.equal(result.finalPriorityKey, result.initial.priorityKey);
+  assert.deepEqual(result.finalPrices, result.initial.prices);
 });
 
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {
