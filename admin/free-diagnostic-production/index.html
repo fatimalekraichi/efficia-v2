@@ -5067,6 +5067,17 @@ function joinFr(items){
 /* Signaux concrets et vérifiés (jamais inventés) que verrait un prospect
    aujourd'hui sur la fiche — utilisés pour construire le constat d'ouverture
    de la page 1 sans généraliser au-delà des données disponibles. */
+function manquesIntroductionPage1(d = donneesAnalyse){
+  const manques = [];
+  if(estNombre(d?.nbAvis) && Number(d.nbAvis) === 0) manques.push("aucun avis");
+  if(estNombre(d?.nbPhotos) && Number(d.nbPhotos) === 0) manques.push("aucune photo");
+  if(estNombre(d?.descriptionLongueur) && Number(d.descriptionLongueur) === 0) manques.push("aucune description de vos services");
+  return manques;
+}
+
+/* Conserve le signal factuel déjà utilisé ailleurs dans le renderer. Il ne
+   conclut jamais qu'un site n'existe pas : seul le lien absent de la fiche
+   Google est décrit. */
 function signauxActuelsPage1(d){
   const signaux = [];
   if(rapportSansAvis()){
@@ -5133,67 +5144,70 @@ function moyenneAvisAffichee(value){
 
 function texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete, priorites}){
   const bonjour = contact ? `Bonjour ${contact},` : "Bonjour,";
-  const persona = personaSecteur(activite);
-  const recherche = rechercheNaturelleClient(activite);
-  const lieu = ville ? ` de ${ville}` : "";
   const d = donneesAnalyse || {};
-  const nom = nomCourtRapport(entreprise) || "Votre entreprise";
-  const signaux = signauxActuelsPage1(d);
-  const positionPhrase = estNombre(d.position) && Number(d.position) === 1 && estTexte(d.requeteTestee)
-    ? ` Votre fiche apparaît en première position sur la recherche testée « ${libelleRechercheRapport(d.requeteTestee)} » — un excellent point d'appui.`
-    : "";
+  const manques = manquesIntroductionPage1(d);
+  const recherche = estTexte(d.requeteTestee) ? libelleRechercheRapport(d.requeteTestee) : "";
+  const position = estNombre(d.position) ? Number(d.position) : null;
   const nbPriorites = Array.isArray(priorites) ? priorites.length : 0;
-  const actionPhrase = nbPriorites >= 3 ? "Trois actions ciblées peuvent déjà"
-    : nbPriorites === 2 ? "Deux actions ciblées peuvent déjà"
-    : nbPriorites === 1 ? "Une action ciblée peut déjà"
-    : "Quelques ajustements ciblés peuvent déjà";
-  const suite = ` La situation n'est pas figée. ${actionPhrase} rendre la fiche plus claire, plus rassurante et plus convaincante.`;
-
-  let ouverture, constat, projection;
-  if(score < 50){
-    ouverture = choisirVarianteNarrative("summary.general.opening", "score_under_50", [
-      `La fiche Google de ${nom} ne donne pas encore à un client qui la découvre suffisamment de raisons de lui faire confiance.`,
-      `Avant le premier appel, la fiche Google de ${nom} laisse encore trop de questions ouvertes à une personne qui vous découvre.`,
-      `La présentation visible de ${nom} ne permet pas encore à un nouveau prospect de comprendre et de vérifier l'essentiel avec confiance.`
-    ]);
-    constat = signaux.length
-      ? `Aujourd'hui, ${persona}${lieu} découvre ${joinFr(signaux)}.`
-      : `Aujourd'hui, votre fiche laisse encore plusieurs informations importantes à préciser.`;
-    projection = choisirVarianteNarrative("summary.general.projection", "score_under_50", [
-      ` Ces éléments peuvent créer un doute au moment de choisir une entreprise comme la vôtre${ville ? " autour de " + ville : ""}.`,
-      " Ces signaux peuvent freiner la décision de contact.",
-      " Ce manque de repères peut ralentir un premier contact."
-    ]);
-  } else if(score < 80){
-    ouverture = choisirVarianteNarrative("summary.general.opening", "score_50_to_79", [
-      `${nom} a déjà posé de bonnes bases sur sa fiche Google.`,
-      `La fiche de ${nom} présente déjà plusieurs repères utiles pour une personne qui la découvre.`,
-      `${nom} dispose d'une base visible sur Google, qui peut encore devenir plus convaincante au premier regard.`
-    ]);
-    constat = signaux.length
-      ? `Mais aujourd'hui, ${persona}${lieu} remarque encore ${joinFr(signaux)}.`
-      : `Mais certains éléments restent incomplets aux yeux d'un prospect qui compare plusieurs fiches.`;
-    projection = choisirVarianteNarrative("summary.general.projection", "score_50_to_79", [
-      " Ces signaux peuvent freiner la décision de contact.",
-      " Ils peuvent laisser une hésitation avant l'appel.",
-      " Ils réduisent la clarté perçue au premier regard."
-    ]);
-  } else {
-    ouverture = choisirVarianteNarrative("summary.general.opening", "score_80_plus", [
-      `${nom} présente déjà une fiche Google bien tenue.`,
-      `La fiche Google de ${nom} donne déjà plusieurs repères rassurants à un nouveau prospect.`,
-      `${nom} s'appuie sur une présentation Google déjà claire et cohérente.`
-    ]);
-    constat = signaux.length
-      ? `Quelques détails restent à ajuster, notamment ${joinFr(signaux)}.`
-      : "Quelques ajustements fins peuvent encore la rendre plus convaincante.";
-    projection = choisirVarianteNarrative("summary.general.projection", "score_80_plus", [
-      " Rien d'alarmant : il s'agit surtout de finitions.",
-      " Ces ajustements concernent surtout la lisibilité au premier regard.",
-      " L'enjeu est d'affiner ce qu'un prospect voit avant de vous contacter."
-    ]);
+  const lienSiteAbsent = typeof etatSiteOfficielCourant === "function"
+    && etatSiteOfficielCourant()?.etat === "aucun";
+  const phrases = [];
+  if(position === 1 && recherche){
+    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_one", [
+      `Votre fiche Google apparaît en première position quand un client recherche « ${recherche} ». C’est un très bon point.`,
+      `Quand un client recherche « ${recherche} », votre fiche Google apparaît en première position. C’est un très bon point.`,
+      `Pour la recherche « ${recherche} », votre fiche Google est en première position. C’est un très bon point.`
+    ]));
+  }else if(position !== null && position > 1 && recherche){
+    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_known", [
+      `Votre fiche Google apparaît en ${position}e position pour la recherche « ${recherche} ».`,
+      `Pour la recherche « ${recherche} », votre fiche Google apparaît en ${position}e position.`,
+      `Votre fiche est visible en ${position}e position quand un client recherche « ${recherche} ».`
+    ]));
+  }else if(position !== null && position > 1){
+    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_known", [
+      `Votre fiche Google apparaît en ${position}e position dans les résultats observés.`,
+      `Votre fiche est visible en ${position}e position dans les résultats observés.`,
+      `La fiche apparaît en ${position}e position dans les résultats observés.`
+    ]));
+  }else{
+    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_unknown", [
+      "La position de votre fiche n’a pas pu être confirmée pour cette recherche.",
+      "Le classement de votre fiche reste à confirmer pour cette recherche.",
+      "La place de votre fiche dans cette recherche n’est pas encore connue."
+    ]));
   }
-  return `${bonjour}<br>${ouverture} ${constat}${projection}${positionPhrase}${suite}`;
+
+  if(manques.length){
+    phrases.push(`Votre fiche ne contient ${joinFr(manques)}.`);
+  }
+  if(lienSiteAbsent){
+    phrases.push("Aucun lien vers le site officiel n’est renseigné sur la fiche Google.");
+  }
+  if(manques.length || lienSiteAbsent){
+    phrases.push(choisirVarianteNarrative("summary.general.client", "missing_information", [
+      "Un client qui ne vous connaît pas peut donc hésiter à vous contacter. Il peut aussi choisir une autre entreprise qui montre mieux son travail.",
+      "Un nouveau client peut hésiter avant d'appeler. Il peut préférer une autre entreprise qui donne plus d'informations.",
+      "Une personne qui découvre votre entreprise peut manquer d'éléments pour vous choisir. Elle peut alors contacter une autre entreprise."
+    ]));
+  }else if(nbPriorites > 0){
+    phrases.push(choisirVarianteNarrative("summary.general.client", "other_priorities", [
+      "Quelques points restent à améliorer sur votre fiche.",
+      "Votre fiche peut encore être améliorée sur certains points.",
+      "Certaines informations de votre fiche peuvent encore être renforcées."
+    ]));
+  }
+
+  if(nbPriorites === 3){
+    phrases.push("La bonne nouvelle, c’est que trois actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+  }else if(nbPriorites === 2){
+    phrases.push("La bonne nouvelle, c’est que deux actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+  }else if(nbPriorites === 1){
+    phrases.push("La bonne nouvelle, c’est qu’une action simple peut déjà améliorer votre fiche et donner plus confiance aux clients.");
+  }else{
+    phrases.push("Aucune action prioritaire n’est proposée dans ce diagnostic.");
+  }
+  return `${bonjour}<br>${phrases.join(" ")}`;
 }
 
 function buildPhotoContext(sectorProfile, activity, businessName){
@@ -5316,6 +5330,18 @@ function phraseDirecteScore(score){
   if(score < 60) return {texte:"Votre fiche a déjà des atouts visibles, mais elle peut convertir beaucoup mieux.", couleur:"#d97706", fond:"#fffbeb"};
   if(score < 80) return {texte:"Votre fiche est déjà solide, mais quelques écarts limitent encore son impact.", couleur:"#2563eb", fond:"#eff6ff"};
   return {texte:"Votre fiche est très bien structurée. Les améliorations restantes sont surtout des optimisations fines.", couleur:"#059669", fond:"#ecfdf5"};
+}
+
+function phraseDirecteScoreDiagnosticGratuit(score, data = donneesAnalyse){
+  const manqueConfiance = (estNombre(data?.nbAvis) && Number(data.nbAvis) === 0)
+    || (estNombre(data?.nbPhotos) && Number(data.nbPhotos) === 0)
+    || (estNombre(data?.descriptionLongueur) && Number(data.descriptionLongueur) === 0);
+  if(Number(data?.position) === 1 && manqueConfiance)
+    return {texte:"Votre fiche est bien placée, mais elle ne rassure pas encore assez.", couleur:"#d97706", fond:"#fffbeb"};
+  if(score < 40) return {texte:"Votre fiche a besoin de plus d’informations pour rassurer les clients.", couleur:"#dc2626", fond:"#fef2f2"};
+  if(score < 60) return {texte:"Votre fiche a des points à améliorer pour mieux rassurer les clients.", couleur:"#d97706", fond:"#fffbeb"};
+  if(score < 80) return {texte:"Votre fiche est bien remplie, mais certains points restent à améliorer.", couleur:"#2563eb", fond:"#eff6ff"};
+  return {texte:"Votre fiche est déjà claire et rassurante.", couleur:"#059669", fond:"#ecfdf5"};
 }
 
 function significationHtml(fortes, faibles){
@@ -7400,7 +7426,7 @@ function genererRapport(options = {}){
   const detailScore = calculScoreDetail();
   const score = Math.round(detailScore.total);
   const bande = BANDES.find(b => score >= b.min);
-  const phraseScore = phraseDirecteScore(score);
+  const phraseScore = phraseDirecteScoreDiagnosticGratuit(score);
   const entreprise = document.getElementById("p-entreprise").value || "Votre entreprise";
   const activite = corrigerLibelleRapport(document.getElementById("p-activite").value || "");
   const ville = document.getElementById("p-ville").value || "";

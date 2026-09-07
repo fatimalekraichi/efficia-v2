@@ -17,7 +17,8 @@ function between(start, end) {
   return source.slice(from, to);
 }
 
-const narrativeSeedCode = between("function normaliserGraineNarrative(value){", "function buildPhotoContext(");
+const narrativeSeedCode = between("function manquesIntroductionPage1(d = donneesAnalyse){", "function buildPhotoContext(");
+const freeScoreTitleCode = between("function phraseDirecteScoreDiagnosticGratuit(score, data = donneesAnalyse){", "function significationHtml(");
 
 function createNarrativeHarness({ analysisId = "analysis-demo", enterprise = "Atelier Démo", data = {} } = {}) {
   const context = {
@@ -30,14 +31,14 @@ function createNarrativeHarness({ analysisId = "analysis-demo", enterprise = "At
     estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
     nEntier: (value) => Math.round(Number(value)),
     donneesAnalyse: data,
-    personaSecteur: () => "un prospect",
-    rechercheNaturelleClient: () => "un artisan",
-    nomCourtRapport: (value) => String(value || "").trim(),
-    signauxActuelsPage1: () => [],
-    joinFr: (items) => items.join(" et "),
+    joinFr: (items) => {
+      const list = items.filter(Boolean);
+      if (list.length < 2) return list.join("");
+      return `${list.slice(0, -1).join(", ")} et ${list[list.length - 1]}`;
+    },
     libelleRechercheRapport: (value) => String(value),
   };
-  vm.runInNewContext(narrativeSeedCode, context);
+  vm.runInNewContext(`${narrativeSeedCode}\n${freeScoreTitleCode}`, context);
   return context;
 }
 
@@ -90,9 +91,12 @@ test("introduction réelle : salutation fiable, stabilité et absence de placeho
   }
 });
 
-test("toutes les variantes d’introduction laissent l’avertissement qualité au seul bloc gris", () => {
-  const context = createNarrativeHarness({ enterprise: "VL ÉLEC" });
-  const forbidden = /qualité (?:de votre travail|réelle de votre travail|de vos prestations)|savoir-faire|sans remettre en cause|ne porte pas de jugement|ne permettent pas de juger/iu;
+test("toutes les variantes d’introduction restent simples et laissent l’avertissement qualité au seul bloc gris", () => {
+  const context = createNarrativeHarness({
+    enterprise: "VL ÉLEC",
+    data: { position: 1, requeteTestee: "Électricien Bertrix", nbAvis: 0, nbPhotos: 0, descriptionLongueur: 0 },
+  });
+  const forbidden = /leviers importants inexploités|questions ouvertes|signaux incomplets|freiner la décision de contact|rendre la fiche plus convaincante|qualité (?:de votre travail|réelle de votre travail|de vos prestations)|savoir-faire|sans remettre en cause|ne porte pas de jugement|ne permettent pas de juger/iu;
   for (const score of [44, 65, 86]) {
     for (let index = 0; index < 3; index += 1) {
       context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[index];
@@ -113,21 +117,76 @@ test("toutes les variantes d’introduction laissent l’avertissement qualité 
   assert.equal(source.split(scopeNote).length - 1, 1, "l’avertissement gris demeure unique");
 });
 
-test("introduction VL ÉLEC : la variante concernée remplace la répétition par le manque de repères", () => {
-  const context = createNarrativeHarness({ enterprise: "VL ÉLEC" });
-  context.personaSecteur = () => "un client";
-  context.signauxActuelsPage1 = () => ["une note de 1,0/5 basée sur un seul avis et peu de preuves visuelles"];
-  context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[2];
+test("introduction EGS : première position, manques établis et trois priorités utilisent une formulation simple", () => {
+  const context = createNarrativeHarness({
+    enterprise: "EGS",
+    data: { position: 1, requeteTestee: "Électricien Steinfort", nbAvis: 0, nbPhotos: 0, descriptionLongueur: 0 },
+  });
+  context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[0];
   const text = context.texteConsultantPage1({
     contact: "",
-    entreprise: "VL ÉLEC",
+    entreprise: "EGS",
     activite: "Électricien",
-    ville: "Bertrix",
+    ville: "Steinfort",
     score: 44,
     scoreProjete: 44,
     priorites: [{}, {}, {}],
   });
-  assert.equal(text, "Bonjour,<br>La présentation visible de VL ÉLEC ne permet pas encore à un nouveau prospect de comprendre et de vérifier l'essentiel avec confiance. Aujourd'hui, un client de Bertrix découvre une note de 1,0/5 basée sur un seul avis et peu de preuves visuelles. Ce manque de repères peut ralentir un premier contact. La situation n'est pas figée. Trois actions ciblées peuvent déjà rendre la fiche plus claire, plus rassurante et plus convaincante.");
+  assert.equal(text, "Bonjour,<br>Votre fiche Google apparaît en première position quand un client recherche « Électricien Steinfort ». C’est un très bon point. Votre fiche ne contient aucun avis, aucune photo et aucune description de vos services. Un client qui ne vous connaît pas peut donc hésiter à vous contacter. Il peut aussi choisir une autre entreprise qui montre mieux son travail. La bonne nouvelle, c’est que trois actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+  assert.equal(context.phraseDirecteScoreDiagnosticGratuit(44, context.donneesAnalyse).texte, "Votre fiche est bien placée, mais elle ne rassure pas encore assez.");
+});
+
+test("introduction : la position observée et les manques sont décrits sans rien inventer", () => {
+  const second = createNarrativeHarness({
+    data: { position: 2, requeteTestee: "Électricien Arlon", nbAvis: 7, nbPhotos: 3, descriptionLongueur: 120 },
+  });
+  const secondText = second.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 70, scoreProjete: 70, priorites: [{}, {}] });
+  assert.match(secondText, /2e position/u);
+  assert.match(secondText, /Électricien Arlon/u);
+  assert.doesNotMatch(secondText, /première position|aucun avis|aucune photo|aucune description/u);
+
+  const unknown = createNarrativeHarness({ data: { position: null, requeteTestee: "Électricien Arlon", nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 } });
+  const unknownText = unknown.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 70, scoreProjete: 70, priorites: [{}] });
+  assert.match(unknownText, /pas pu être confirmée|reste à confirmer|n’est pas encore connue/u);
+  assert.doesNotMatch(unknownText, /1re position|2e position|3e position|4e position|premier résultat/u);
+  assert.doesNotMatch(unknownText, /aucun avis|aucune photo|aucune description/u);
+});
+
+test("introduction : les ouvertures sont déterministes, variées et sans classement inventé", () => {
+  const context = createNarrativeHarness({ data: { position: 1, requeteTestee: "Électricien Steinfort", nbAvis: 0, nbPhotos: 0, descriptionLongueur: 0 } });
+  const build = () => context.texteConsultantPage1({ contact: "", entreprise: "EGS", activite: "Électricien", ville: "Steinfort", score: 50, scoreProjete: 50, priorites: [{}] });
+  const variants = [];
+  for (let index = 0; index < 3; index += 1) {
+    context.choisirVarianteNarrative = (_blockId, _branch, pool) => pool[index];
+    variants.push(build().split(". ")[0]);
+  }
+  assert.equal(new Set(variants).size, 3);
+  assert.ok(variants.every((value) => /première position/u.test(value)));
+});
+
+test("introduction : le nombre réel de priorités est annoncé, y compris zéro", () => {
+  const context = createNarrativeHarness({ data: { nbAvis: 3, nbPhotos: 2, descriptionLongueur: 100 } });
+  const build = (priorites) => context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 60, scoreProjete: 60, priorites });
+  assert.match(build([]), /Aucune action prioritaire n’est proposée/u);
+  assert.doesNotMatch(build([]), /\b(?:trois|deux|une) actions?\b/u);
+  assert.match(build([{}]), /qu’une action simple/u);
+  assert.match(build([{}, {}]), /deux actions simples/u);
+  assert.match(build([{}, {}, {}]), /trois actions simples/u);
+});
+
+test("introduction : textes longs, données partielles et variantes restent stables et lisibles", () => {
+  const longQuery = "Électricien pour installations résidentielles et professionnelles dans les communes autour de Luxembourg";
+  const context = createNarrativeHarness({
+    analysisId: "intro-longue",
+    enterprise: "Entreprise d’électricité et de rénovation énergétique avec un nom volontairement très long",
+    data: { position: 4, requeteTestee: longQuery, nbAvis: 0, nbPhotos: 8, descriptionLongueur: 0 },
+  });
+  const build = () => context.texteConsultantPage1({ contact: "", entreprise: "Entreprise", activite: "Électricien", ville: "Luxembourg", score: 45, scoreProjete: 45, priorites: [{}, {}, {}] });
+  assert.equal(build(), build());
+  assert.match(build(), /en 4e position/u);
+  assert.match(build(), /aucun avis/u);
+  assert.match(build(), /aucune description de vos services/u);
+  assert.doesNotMatch(build(), /aucune photo|undefined|null|\{[^}]+\}/iu);
 });
 
 test("Conversion : les contacts présents ne sont jamais décrits comme absents lorsque l’offre ou les liens d’action manquent", () => {

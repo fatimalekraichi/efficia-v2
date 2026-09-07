@@ -695,8 +695,8 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.generatedCustom, true);
   assert.equal(result.generatedServerError, true);
   assert.equal(result.pageCount, 6);
-  assert.match(result.automaticTracked, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
-  assert.match(result.automaticPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.match(result.automaticTracked, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.match(result.automaticPageOne, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
   assert.doesNotMatch(result.automaticPageOne, /Bonjour, La fiche Google contient aucun site officiel identifiable/u);
   assert.match(result.customPageOne, /Texte choisi volontairement par l’utilisateur\./u);
