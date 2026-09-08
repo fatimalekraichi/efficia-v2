@@ -170,6 +170,7 @@ function refreshBody(overrides = {}) {
     city: "Neufchâteau",
     activity: "Électricien",
     searchQuery: "Électricien Neufchâteau",
+    searchZone: { city: "Neufchâteau", countryCode: "BE", countryName: "Belgique" },
     ...overrides,
   };
 }
@@ -362,7 +363,7 @@ test("2. Computelec est ancrée automatiquement à Neufchâteau 6840, Belgique",
     const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
+    assert.equal(body.business.geographicAnchor.label, "Neufchâteau, Belgique");
     assert.equal(body.business.geographicAnchor.tier, 1);
     assert.equal(body.business.geographicAnchor.region, "BE");
     const params = new URL(capturedUrl).searchParams;
@@ -512,7 +513,7 @@ test("3. la requête affichée, la requête fournisseur, l’ancrage et la date 
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.business.searchQuery, "Électricien Neufchâteau");
-    assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
+    assert.equal(body.business.geographicAnchor.label, "Neufchâteau, Belgique");
     assert.ok(body.searchAnalyzedAt);
     assert.notEqual(body.business.searchQuery, body.business.geographicAnchor.label);
     // Aucune entreprise « des Vosges » (panel entièrement contrôlé par le
@@ -556,9 +557,9 @@ test("fallback confirmé — Lux Smart Energie utilise Luxembourg/LU, conserve l
     assert.equal(body.business.localPosition, 4);
     assert.equal(body.business.geographicAnchor.region, "LU");
     assert.equal(body.business.geographicAnchor.label, "Luxembourg, Luxembourg");
-    assert.equal(body.business.geographicAnchor.localitySource, "admin_confirmed_city");
+    assert.equal(body.business.geographicAnchor.localitySource, "admin_confirmed_search_zone");
     assert.equal(body.business.geographicAnchorStale, false);
-    assert.deepEqual(counters, { identifier: 1, geocoding: 1, competitor: 1 });
+    assert.deepEqual(counters, { identifier: 0, geocoding: 1, competitor: 1 });
     assert.equal(body.competitiveDataChanged, true);
 
     const persisted = db.sqlite.prepare(`
@@ -574,7 +575,7 @@ test("fallback confirmé — Lux Smart Energie utilise Luxembourg/LU, conserve l
       postalCode: "",
       countryName: "Luxembourg",
       countryCode: "LU",
-      source: "admin_confirmed_city",
+      source: "admin_confirmed_search_zone",
     });
     assert.equal(normalized.geographic_anchor.coordinates, "49.6116,6.1319");
     assert.notEqual(normalized.geographic_anchor.coordinates, "49.815332999999995,6.133451099999999");
@@ -599,26 +600,22 @@ test("fallback confirmé — Lux Smart Energie utilise Luxembourg/LU, conserve l
   }
 });
 
-test("récupération par identifiant — une localité structurée retrouvée reste prioritaire sur le fallback manuel", async () => {
+test("ancien brouillon sans zone de recherche confirmée — blocage explicite avant tout géocodage ou collecte", async () => {
   const db = new LocalD1();
   seedLuxSmartProductionShape(db);
   const counters = { identifier: 0, geocoding: 0, competitor: 0 };
   const restoreFetch = installLuxSmartFixture(counters, { recoveredLocality: true });
   try {
+    const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(LUX_ANALYSIS_ID);
     const response = await collectDiagnostic(await context(db, LUX_ANALYSIS_ID, {
       body: luxRefreshBody({ searchZone: undefined }),
     }));
     const body = await response.json();
-    assert.equal(response.status, 200);
-    assert.equal(body.business.geographicAnchor.localitySource, "google_business_identifier");
-    assert.equal(body.business.geographicAnchor.region, "LU");
-    assert.deepEqual(counters, { identifier: 1, geocoding: 1, competitor: 1 });
-    const normalized = JSON.parse(db.sqlite.prepare(
-      "SELECT normalized_json FROM analyses WHERE analysis_id = ?",
-    ).get(LUX_ANALYSIS_ID).normalized_json);
-    assert.equal(normalized.city, "Luxembourg");
-    assert.equal(normalized.country_code, "LU");
-    assert.equal("confirmed_search_zone" in normalized, false);
+    assert.equal(response.status, 409);
+    assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
+    assert.deepEqual(body.missing, ["searchZone.city", "searchZone.countryCode"]);
+    assert.deepEqual(counters, { identifier: 0, geocoding: 0, competitor: 0 });
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(LUX_ANALYSIS_ID), before);
   } finally {
     restoreFetch();
   }
@@ -721,7 +718,7 @@ test("7. un brouillon duplicate_manual copié depuis une analyse ancrée conserv
     }));
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
+    assert.equal(body.business.geographicAnchor.label, "Neufchâteau, Belgique");
     assert.equal(new URL(capturedUrl).searchParams.get("region"), "BE");
   } finally {
     restoreFetch();
@@ -740,7 +737,7 @@ test("8. sans aucune donnée géographique fiable, la relance est bloquée avant
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { providerCalled = true; return Response.json({ data: [[]] }); };
   try {
-    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
+    const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody({ searchZone: undefined }) }));
     const body = await response.json();
     assert.equal(response.status, 409);
     assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
@@ -748,7 +745,7 @@ test("8. sans aucune donnée géographique fiable, la relance est bloquée avant
       body.message,
       "Confirmez la zone géographique utilisée pour la recherche Google et son pays avant de relancer l’analyse.",
     );
-    assert.equal(providerCalled, true, "l’identifiant Google peut être vérifié avant le refus contrôlé");
+    assert.equal(providerCalled, false, "aucun géocodage ni appel fournisseur n’est permis avant confirmation");
     assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID), beforeAnalysis);
   } finally {
     globalThis.fetch = originalFetch;
@@ -760,7 +757,7 @@ test("8bis. un code postal seul, sans pays reconnaissable, reste bloqué (jamais
   seedAnalysis(db);
   seedManualMetadata(db, ANALYSIS_ID);
   marksInitialCollection(db, ANALYSIS_ID, { geo: { postalCode: "6840" } });
-  const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody() }));
+  const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: refreshBody({ searchZone: undefined }) }));
   const body = await response.json();
   assert.equal(response.status, 409);
   assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
@@ -913,7 +910,7 @@ test("8quaterter. un mismatch de ville renvoie seulement le détail de localité
   }
 });
 
-test("8quaterbis. MBGE / Wibrin dépasse le centre géographique et lance la collecte seulement après validation du village structuré", async () => {
+test("8quaterbis. MBGE conserve Wibrin comme ville d’entreprise et utilise Houffalize confirmé pour le centre de recherche", async () => {
   const db = new LocalD1();
   const analysisId = "geo-mbge-wibrin";
   seedAnalysis(db, { analysisId, companyName: "MBGE Marville Benjamin Électricien", city: "Wibrin" });
@@ -957,9 +954,9 @@ test("8quaterbis. MBGE / Wibrin dépasse le centre géographique et lance la col
       body: refreshBody({
         analysisId,
         company: "MBGE Marville Benjamin Électricien",
-        city: "Wibrin",
+        companyCity: "Wibrin",
         searchQuery: "Électricien Houffalize",
-        searchZone: { city: "Wibrin", countryCode: "BE" },
+        searchZone: { city: "Houffalize", countryCode: "BE" },
       }),
     }));
     const body = await response.json();
@@ -967,11 +964,20 @@ test("8quaterbis. MBGE / Wibrin dépasse le centre géographique et lance la col
     assert.equal(body.operation, "refresh_search");
     assert.deepEqual(calls, ["geocoding", "competitors"]);
     assert.equal(body.business.searchQuery, "Électricien Houffalize");
-    assert.equal(body.business.geographicAnchor.locality.city, "Wibrin");
+    assert.equal(body.business.geographicAnchor.locality.city, "Houffalize");
     assert.equal(body.business.geographicAnchor.region, "BE");
     const persisted = db.sqlite.prepare("SELECT search_query, normalized_json FROM analyses WHERE analysis_id = ?").get(analysisId);
     assert.equal(persisted.search_query, "Électricien Houffalize");
-    assert.equal(JSON.parse(persisted.normalized_json).geographic_anchor.locality.city, "Wibrin");
+    const normalized = JSON.parse(persisted.normalized_json);
+    assert.equal(normalized.city, "Wibrin");
+    assert.equal(normalized.geographic_anchor.locality.city, "Houffalize");
+    assert.deepEqual(normalized.confirmed_search_zone, {
+      city: "Houffalize",
+      postalCode: "",
+      countryName: "Belgique",
+      countryCode: "BE",
+      source: "admin_confirmed_search_zone",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1099,7 +1105,7 @@ test("réel — Computelec : requête visible « Électricien Neufchâteau », r
     assert.equal(params.get("coordinates"), "49.8419,5.4342");
     assert.notEqual(params.get("coordinates"), "49.816779999999994,5.449034");
     assert.equal(params.get("region"), "BE");
-    assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
+    assert.equal(body.business.geographicAnchor.label, "Neufchâteau, Belgique");
     // Position réellement obtenue (9e, fixture ci-dessus) restituée telle
     // quelle — jamais forcée à coïncider avec une position antérieure.
     assert.equal(body.business.localPosition, 9);

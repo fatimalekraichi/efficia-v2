@@ -125,23 +125,9 @@ function buildLabel({ postalCode, city, countryName, countryCode }) {
  * rester synchrone.
  */
 export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {}, confirmedSearchZone = null } = {}) {
-  const region = resolveRegionCode(normalized) || resolveRegionCode(fiche) || null;
-  const postalCode = firstNonEmpty(normalized?.postal_code, fiche?.postal_code);
-  const city = firstNonEmpty(normalized?.city, fiche?.city, normalized?.borough, fiche?.borough);
-  const countryName = firstNonEmpty(normalized?.country, fiche?.country);
-  const label = buildLabel({ postalCode, city, countryName, countryCode: region });
-
-  // Une localité fiable exige au minimum une VILLE et un PAYS reconnu — un
-  // code postal seul, ou une ville sans pays, ne permet ni de désambiguïser
-  // les homonymes (Neufchâteau Belgique/France) ni de géocoder sans deviner.
-  if (region && city) {
-    return { ok: true, region, postalCode, city, countryName, label };
-  }
-
-  // Repli explicite uniquement : la zone de recherche confirmée est un
-  // objet distinct de l'adresse et de la zone de service de la fiche. Elle
-  // n'est acceptée qu'avec un pays non ambigu et n'est jamais construite à
-  // partir du seul libellé de ville transmis par l'ancien formulaire.
+  // Une zone explicitement confirmée décrit la recherche locale à mesurer.
+  // Elle est donc prioritaire sur la ville de la fiche, qui reste une donnée
+  // d'identité de l'entreprise et peut légitimement être différente.
   const confirmed = normalizeConfirmedSearchZone(
     confirmedSearchZone || normalized?.confirmed_search_zone,
   );
@@ -160,6 +146,18 @@ export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {}, c
       }),
       localitySource: confirmed.source,
     };
+  }
+  const region = resolveRegionCode(normalized) || resolveRegionCode(fiche) || null;
+  const postalCode = firstNonEmpty(normalized?.postal_code, fiche?.postal_code);
+  const city = firstNonEmpty(normalized?.city, fiche?.city, normalized?.borough, fiche?.borough);
+  const countryName = firstNonEmpty(normalized?.country, fiche?.country);
+  const label = buildLabel({ postalCode, city, countryName, countryCode: region });
+
+  // Une localité fiable exige au minimum une VILLE et un PAYS reconnu — un
+  // code postal seul, ou une ville sans pays, ne permet ni de désambiguïser
+  // les homonymes (Neufchâteau Belgique/France) ni de géocoder sans deviner.
+  if (region && city) {
+    return { ok: true, region, postalCode, city, countryName, label };
   }
 
   return { ok: false, region: null, postalCode: "", city: "", countryName: "", label: null };
@@ -332,7 +330,12 @@ export function evaluateGeographicAnchorReadiness({
     }
     : null;
   const resultsExist = hasExistingCompetitiveResults(business, benchmarkAverages);
-  const live = resolveGeographicAnchorLocality({ normalized, fiche });
+  // Une zone de recherche confirmée et mémorisée reste la référence de
+  // péremption des résultats concurrentiels. Comparer l'ancrage à la ville
+  // de l'entreprise créerait un faux état périmé lorsque les deux sont
+  // légitimement différents (ex. entreprise à Wibrin, recherche Houffalize).
+  const confirmedSearchZone = normalizeConfirmedSearchZone(normalized?.confirmed_search_zone);
+  const live = resolveGeographicAnchorLocality({ normalized, fiche, confirmedSearchZone });
   const liveDisplay = live.ok
     ? {
       region: live.region,

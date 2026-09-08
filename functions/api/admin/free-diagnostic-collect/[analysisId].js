@@ -136,9 +136,13 @@ function normalizeSearchRefreshPayload(payload) {
   if (payload?.operation !== "refresh_search") return null;
   const searchQuery = normalizeText(payload.searchQuery).slice(0, 240);
   const activity = normalizeText(payload.activity).slice(0, 160);
-  const city = normalizeText(payload.city).slice(0, 160);
+  // La ville de l'entreprise est une donnée d'identité et de rapport. Elle
+  // ne doit jamais choisir le centre neutre de la recherche locale.
+  // Compatibilité de lecture limitée avec les appels admin antérieurs qui
+  // envoyaient encore `city`.
+  const companyCity = normalizeText(payload.companyCity ?? payload.city).slice(0, 160);
   const company = normalizeText(payload.company).slice(0, 200);
-  if (!searchQuery || !activity || !city || !company) return false;
+  if (!searchQuery || !activity || !companyCity || !company) return false;
   const rawSearchZone = payload?.searchZone && typeof payload.searchZone === "object"
     ? payload.searchZone
     : null;
@@ -148,13 +152,11 @@ function normalizeSearchRefreshPayload(payload) {
       postalCode: normalizeText(rawSearchZone.postalCode).slice(0, 32),
       countryCode: normalizeText(rawSearchZone.countryCode).slice(0, 2),
       countryName: normalizeText(rawSearchZone.countryName).slice(0, 80),
-      source: normalizeText(rawSearchZone.city).localeCompare(city, "fr", { sensitivity: "base" }) === 0
-        ? "admin_confirmed_city"
-        : "admin_confirmed_search_zone",
+      source: "admin_confirmed_search_zone",
     })
     : null;
   return {
-    searchQuery, activity, city, company,
+    searchQuery, activity, companyCity, company,
     confirmedSearchZone,
     confirmedSearchZoneProvided: Boolean(rawSearchZone),
   };
@@ -273,57 +275,23 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   // Ancrage géographique automatique (mission "ancrage géographique",
   // corrigée pour ne plus jamais mesurer depuis les coordonnées de
   // l'entreprise analysée — voir geographicAnchor.js/localityGeocoder.js) :
-  // résolu ici d'abord à partir de données déjà vérifiées côté serveur
-  // (normalized/fiche). Si elles sont incomplètes, le serveur tente une
-  // récupération par l'identifiant Google persisté, puis accepte uniquement
-  // la zone + le pays explicitement confirmés dans le champ dédié du
-  // back-office. En l’absence d’ancrage fiable (localité inconnue ou centre
-  // de localité non géocodable), on n’appelle jamais le collecteur
-  // concurrentiel avec une recherche ambiguë ni avec les coordonnées de
-  // l'entreprise en secours : on s’arrête ici, sans toucher aux anciennes
-  // données (aucune écriture DB avant ce point).
-  let resolvedNormalized = normalized;
-  let resolvedFiche = fiche;
-  let anchor = await resolveGeographicAnchor({ normalized, fiche, apiKey: context.env.OUTSCRAPER_API_KEY });
-
-  // Deuxième niveau : réinterroger la fiche par son identifiant Google déjà
-  // persisté. Les coordonnées propres à l'entreprise ne deviennent jamais
-  // le point de mesure ; seules les données de localité récupérées servent à
-  // résoudre ensuite le même centre neutre que dans le chemin historique.
-  if (!anchor.ok && anchor.code === "GEOGRAPHIC_ANCHOR_LOCALITY_UNKNOWN") {
-    const recovered = await recoverGeographyFromIdentifier({
-      normalized,
-      fiche,
-      apiKey: context.env.OUTSCRAPER_API_KEY,
-    });
-    if (recovered) {
-      resolvedNormalized = mergeRecoveredGeography(normalized, recovered);
-      resolvedFiche = mergeRecoveredGeography(fiche, recovered);
-      anchor = await resolveGeographicAnchor({
-        normalized: resolvedNormalized,
-        fiche: resolvedFiche,
-        apiKey: context.env.OUTSCRAPER_API_KEY,
-      });
-      if (anchor.ok) anchor = { ...anchor, localitySource: "google_business_identifier" };
-    }
+  // La zone de recherche explicitement confirmée est la seule identité
+  // autorisée pour le centre neutre et la collecte concurrentielle. La
+  // localité de la fiche décrit l'entreprise : elle ne sert jamais de repli
+  // pour une recherche locale potentiellement différente.
+  if (!payload.confirmedSearchZone) {
+    return geographicAnchorUnavailableFailure({ confirmedSearchZoneProvided: false });
   }
-
-  // Troisième niveau : zone et pays explicitement confirmés par
-  // l'administratrice dans le champ dédié. Une ville seule ne suffit jamais.
-  if (!anchor.ok && payload.confirmedSearchZone) {
-    anchor = await resolveGeographicAnchor({
-      normalized: resolvedNormalized,
-      fiche: resolvedFiche,
-      confirmedSearchZone: payload.confirmedSearchZone,
-      apiKey: context.env.OUTSCRAPER_API_KEY,
-    });
-  }
+  const anchor = await resolveGeographicAnchor({
+    confirmedSearchZone: payload.confirmedSearchZone,
+    apiKey: context.env.OUTSCRAPER_API_KEY,
+  });
   if (!anchor.ok) {
     const diagnosticCode = safeLocalityCenterDiagnosticCode(anchor);
     console.error("free-diagnostic-collect: geographic anchor unavailable", {
       phase: "geographic_anchor",
       analysis_id: analysisId,
-      city: normalizeText(payload.confirmedSearchZone?.city || resolvedNormalized?.city || resolvedFiche?.city).slice(0, 160) || null,
+      city: normalizeText(payload.confirmedSearchZone?.city).slice(0, 160) || null,
       country_code: normalizeText(anchor.region || payload.confirmedSearchZone?.countryCode).slice(0, 2).toUpperCase() || null,
       reason: diagnosticCode || anchor.code || null,
     });
@@ -335,7 +303,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   const result = await collectCompetitors({
     requete: payload.searchQuery,
     activite: payload.activity,
-    ville: payload.city,
+    ville: anchor.locality.city,
     placeIdCible: analysis.business?.placeId || normalized.place_id || fiche.place_id,
     cidCible: normalized.cid || fiche.cid,
     urlCible: normalized.location_link || fiche.location_link,
@@ -360,8 +328,8 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     competitors_json: competitorsJson,
   });
   const updatedAt = new Date().toISOString();
-  const normalizedWithCategories = mergeCategoryObservation(resolvedNormalized, result.targetObservation, payload.activity);
-  const ficheWithCategories = mergeCategoryObservation(resolvedFiche, result.targetObservation, payload.activity);
+  const normalizedWithCategories = mergeCategoryObservation(normalized, result.targetObservation, payload.activity);
+  const ficheWithCategories = mergeCategoryObservation(fiche, result.targetObservation, payload.activity);
   // Séparation obligatoire : l’ancrage réellement utilisé est tracé à part,
   // distinct de `result.requete` (requête affichée/saisie par l’administrateur,
   // jamais modifiée par cet ancrage — voir collectCompetitors.js).
@@ -374,7 +342,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   // correspondant à de nouvelles coordonnées.
   const normalizedWithAnchor = {
     ...normalizedWithCategories,
-    ...(anchor.localitySource === "admin_confirmed_city" || anchor.localitySource === "admin_confirmed_search_zone"
+    ...(anchor.localitySource === "admin_confirmed_search_zone"
       ? { confirmed_search_zone: payload.confirmedSearchZone }
       : {}),
     geographic_anchor: buildGeographicAnchorRecord(anchor, updatedAt),

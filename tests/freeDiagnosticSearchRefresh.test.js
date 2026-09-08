@@ -13,19 +13,35 @@ test("l’activité Électricien et la ville Attert composent la proposition att
 });
 
 test("une recherche personnalisée n’est jamais écrasée silencieusement", () => {
-  assert.match(html, /if\(!requetePersonnalisee\) input\.value = composerRequeteProposee\(\)/);
+  assert.match(html, /if\(!requetePersonnalisee && !\(collecteDiagnosticValidee && donneesAnalyse\.derniereRequeteAnalysee\)\)/);
   assert.match(html, /requetePersonnalisee = normaliserRecherche\(input\?\.value\) !== normaliserRecherche\(composerRequeteProposee\(\)\)/);
 });
 
-test("la relance envoie identité, ville, activité, recherche et zone géographique confirmée au backend admin", () => {
-  assert.match(html, /JSON\.stringify\(\{operation:"refresh_search", analysisId, company, city, activity, searchQuery, searchZone\}\)/);
+test("la relance sépare ville de l’entreprise et zone de recherche confirmée", () => {
+  assert.match(html, /JSON\.stringify\(\{operation:"refresh_search", analysisId, company, companyCity, activity, searchQuery, searchZone\}\)/);
   assert.match(route, /payload\?\.operation !== "refresh_search"/);
   assert.match(route, /requete: payload\.searchQuery/);
+  assert.match(route, /ville: anchor\.locality\.city/);
   assert.match(html, /id="d-zone-recherche"/);
   assert.match(html, /id="d-zone-pays"/);
-  assert.match(html, /Zone géographique utilisée pour la recherche Google/);
+  assert.match(html, /id="d-zone-confirmee"/);
+  assert.match(html, /Ville de l’entreprise/);
+  assert.match(html, /Zone de recherche Google \(ancrage local\)/);
   assert.match(html, /Source : \$\{sourceLabels\[localitySource\]/);
-  assert.match(html, /champsBrouillonD1\(\)[\s\S]*"d-zone-recherche","d-zone-pays"/);
+  assert.match(html, /champsBrouillonD1\(\)[\s\S]*"d-zone-recherche","d-zone-pays","d-zone-confirmee"/);
+  assert.match(html, /propositionZoneDepuisRequete\(\)/);
+  assert.match(html, /actualiserZoneGeographique\(business\);[\s\S]*proposerZoneRechercheDepuisRequete\(\);[\s\S]*mettreAJourEtatRecherche\(\);/);
+  assert.match(html, /confirmed && city && PAYS_ZONE_RECHERCHE\[countryCode\]/);
+  assert.match(route, /const companyCity = normalizeText\(payload\.companyCity \?\? payload\.city\)/);
+  assert.match(route, /confirmedSearchZone: payload\.confirmedSearchZone/);
+});
+
+test("la zone confirmée est conservée dans le brouillon et reste la source de l’aperçu/PDF", () => {
+  assert.match(html, /field\?\.type === "checkbox" \? Boolean\(field\.checked\) : field\?\.value \|\| ""/);
+  assert.match(html, /if\(field\?\.type === "checkbox"\) field\.checked = value === true/);
+  assert.match(html, /function villeAncrageRapport[\s\S]*zoneGeographique\?\.locality\?\.city/);
+  assert.match(route, /if \(!payload\.confirmedSearchZone\) \{[\s\S]*geographicAnchorUnavailableFailure/);
+  assert.doesNotMatch(html, /zoneInput\.value = normaliserRecherche\(document\.getElementById\("p-ville"\)/);
 });
 
 test("la position et les trois concurrents proviennent exclusivement de la réponse serveur", () => {
@@ -49,7 +65,7 @@ test("la demande historique et les réponses manuelles ne sont pas remplacées p
 });
 
 test("la catégorie Google observée reste distincte de l’activité confirmée", () => {
-  assert.match(route, /normalizedWithCategories = mergeCategoryObservation\(resolvedNormalized, result\.targetObservation, payload\.activity\)/);
+  assert.match(route, /normalizedWithCategories = mergeCategoryObservation\(normalized, result\.targetObservation, payload\.activity\)/);
   const refreshSql = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   assert.doesNotMatch(refreshSql, /SET[^`]*activity\s*=/);
 });

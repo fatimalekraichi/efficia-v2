@@ -144,6 +144,18 @@ test("fallback confirmé : la zone de recherche reste distincte de l’adresse e
   assert.doesNotMatch(locality.label, /Arlon|Belgique/);
 });
 
+test("zone confirmée — Houffalize est prioritaire pour la recherche, Wibrin reste la ville de l’entreprise", () => {
+  const locality = resolveGeographicAnchorLocality({
+    normalized: { city: "Wibrin", country_code: "BE", postal_code: "6666" },
+    fiche: { city: "Wibrin", country_code: "BE" },
+    confirmedSearchZone: { city: "Houffalize", countryCode: "BE", countryName: "Belgique" },
+  });
+  assert.equal(locality.ok, true);
+  assert.equal(locality.city, "Houffalize");
+  assert.equal(locality.region, "BE");
+  assert.equal(locality.localitySource, "admin_confirmed_search_zone");
+});
+
 test("fallback confirmé : une ville sans pays reste refusée, même si une adresse ou zone de service existe", () => {
   const locality = resolveGeographicAnchorLocality({
     normalized: { address: "Luxembourg", service_area: ["Luxembourg"] },
@@ -388,6 +400,29 @@ test("geographicAnchorStale reste false quand la localité analysée correspond 
   };
   const state = buildFreeDiagnosticCollectionState(analysis);
   assert.equal(state.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
+  assert.equal(state.business.geographicAnchorStale, false);
+});
+
+test("zone confirmée mémorisée — Wibrin ne rend pas périmée une recherche menée depuis Houffalize", async () => {
+  const { buildFreeDiagnosticCollectionState } = await import("../functions/lib/freeDiagnosticProductionLink.js");
+  const analysis = {
+    business: {
+      name: "MBGE", placeId: "place-mbge", searchQuery: "Électricien Houffalize", competitors: [],
+      normalized: {
+        name: "MBGE", place_id: "place-mbge", city: "Wibrin", postal_code: "6666", country: "Belgique", country_code: "BE",
+        confirmed_search_zone: { city: "Houffalize", countryCode: "BE", countryName: "Belgique", source: "admin_confirmed_search_zone" },
+        geographic_anchor: {
+          tier: 1, source: "outscraper_geocoding", region: "BE", label: "Houffalize, Belgique", coordinates: "50.132,5.789",
+          localitySource: "admin_confirmed_search_zone",
+          locality: { city: "Houffalize", postalCode: "", country: "Belgique", countryCode: "BE" },
+          resolvedAt: "2026-09-08T20:00:00.000Z",
+        },
+      },
+      fiche: { city: "Wibrin", country_code: "BE" },
+    },
+  };
+  const state = buildFreeDiagnosticCollectionState(analysis);
+  assert.equal(state.business.geographicAnchor.locality.city, "Houffalize");
   assert.equal(state.business.geographicAnchorStale, false);
 });
 
