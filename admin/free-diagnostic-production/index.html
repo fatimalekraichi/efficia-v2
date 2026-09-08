@@ -1298,8 +1298,7 @@ function majChecklist(id){
 function lirePoints(id){
   const critere = trouverCritere(id);
   if(critere?.key === "adresse") return scoreLocalisation();
-  if(critere && conditionPhotos() === "none" && PHOTO_DEPENDENT_KEYS.includes(critere.key)) return 0;
-  if(critere && conditionAvis() === "none" && (critere.key === "noteMoyenne" || REVIEW_DEPENDENT_KEYS.includes(critere.key))) return 0;
+  if(critere && critereEstNonApplicable(critere)) return null;
   const coche = document.querySelector(`input[name="c${id}"]:checked`);
   return coche ? parseFloat(coche.value) : null;
 }
@@ -1425,8 +1424,19 @@ function critereEstMasque(cr){
   return document.getElementById("crit-"+cr.id)?.classList.contains("condition-hidden") === true;
 }
 
+function raisonCritereNonApplicable(cr){
+  if(!cr) return null;
+  if(conditionPhotos() === "none" && PHOTO_DEPENDENT_KEYS.includes(cr.key)) return "no_photos";
+  if(conditionAvis() === "none" && REVIEW_DEPENDENT_KEYS.includes(cr.key)) return "no_reviews";
+  const dependency = CRITERIA_DEPENDENCIES.find(({parent, child}) => {
+    const selected = document.querySelector(`input[name="c${CRITERE_IDS[parent]}"]:checked`);
+    return child === cr.key && Boolean(selected) && Number(selected.value) === 0;
+  });
+  return dependency ? `parent_${dependency.parent}_absent` : null;
+}
+
 function critereEstNonApplicable(cr){
-  return conditionAvis() === "none" && cr?.key === "tauxReponseAvis";
+  return Boolean(raisonCritereNonApplicable(cr));
 }
 
 function critereEstNonVerifiablePubliquement(cr){
@@ -2581,9 +2591,12 @@ function detecterProfilSecteur(place, activite){
 function calculScoreDetail(){
   const moteur = globalThis.EfficiaScoreCore;
   if(!moteur) throw new Error("score_efficia_core_unavailable");
+  const notApplicableCriteria = GRILLE.flatMap(cat => cat.criteres)
+    .filter(cr => critereEstMasque(cr) || critereEstNonApplicable(cr))
+    .map(cr => cr.key);
   const answers = Object.fromEntries(GRILLE.flatMap(cat => cat.criteres.map(cr => [
     cr.key,
-    (critereEstNote(cr) || critereEstManuellementNote(cr)) && critereEstMasque(cr) ? 0 : lirePoints(cr.id)
+    notApplicableCriteria.includes(cr.key) ? null : lirePoints(cr.id)
   ])));
   return moteur.calculateScoreDetail({
     grid:GRILLE,
@@ -2592,7 +2605,8 @@ function calculScoreDetail(){
     profileKey:profilActif || "default",
     scoringVersion:scoringVersionActif,
     legacyScoringVersion:LEGACY_SCORING_VERSION,
-    manualScoredCriteria:criteresManuellementNotes()
+    manualScoredCriteria:criteresManuellementNotes(),
+    notApplicableCriteria
   });
 }
 
@@ -5210,6 +5224,7 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
   const nbPriorites = Array.isArray(priorites) ? priorites.length : 0;
   const lienSiteAbsent = typeof etatSiteOfficielCourant === "function"
     && etatSiteOfficielCourant()?.etat === "aucun";
+  const descriptionAbsente = estNombre(d.descriptionLongueur) && Number(d.descriptionLongueur) === 0;
   const phrases = [];
   if(positionNonDetecteeApresRecherche){
     phrases.push(`Lors de notre test sur « ${recherche} », votre fiche n’est pas apparue parmi les premiers résultats affichés. Un client qui effectue cette recherche voit donc d’abord d’autres entreprises, avant même d’avoir la possibilité de découvrir la vôtre.`);
@@ -5239,38 +5254,25 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
     ]));
   }
 
-  if(positionNonDetecteeApresRecherche && estNombre(d.nbAvis) && Number(d.nbAvis) === 0 && estNombre(d.descriptionLongueur) && Number(d.descriptionLongueur) === 0){
-    phrases.push("Votre fiche ne présente actuellement aucun avis ni description visible de vos services.");
-  }else if(manques.length){
-    phrases.push(`Votre fiche ne contient ${joinFr(manques)}.`);
-  }
-  if(lienSiteAbsent){
-    phrases.push("Aucun lien vers le site officiel n’est renseigné sur la fiche Google.");
-  }
-  if(positionNonDetecteeApresRecherche && estNombre(d.nbAvis) && Number(d.nbAvis) === 0 && estNombre(d.descriptionLongueur) && Number(d.descriptionLongueur) === 0){
-    phrases.push("Un prospect qui la trouve peut donc encore hésiter à vous contacter.");
+  if(descriptionAbsente){
+    phrases.push("En revanche, elle ne présente pas encore clairement vos services.");
+    phrases.push("Pour une personne qui ne vous connaît pas, il devient alors difficile de comprendre en quelques secondes ce que vous proposez — et pourquoi vous contacter plutôt qu’une autre entreprise.");
   }else if(manques.length || lienSiteAbsent){
-    phrases.push(choisirVarianteNarrative("summary.general.client", "missing_information", [
-      "Un client qui ne vous connaît pas peut donc hésiter à vous contacter. Il peut aussi choisir une autre entreprise qui montre mieux son travail.",
-      "Un nouveau client peut hésiter avant d'appeler. Il peut préférer une autre entreprise qui donne plus d'informations.",
-      "Une personne qui découvre votre entreprise peut manquer d'éléments pour vous choisir. Elle peut alors contacter une autre entreprise."
-    ]));
+    if(manques.length) phrases.push(`En revanche, certains repères manquent encore : ${joinFr(manques)}.`);
+    if(lienSiteAbsent) phrases.push("Aucun lien vers le site officiel n’est renseigné sur la fiche Google.");
+    phrases.push("Une personne qui découvre l’entreprise peut alors hésiter avant de prendre contact, ou se tourner vers une fiche plus claire.");
   }else if(nbPriorites > 0){
-    phrases.push(choisirVarianteNarrative("summary.general.client", "other_priorities", [
-      "Quelques points restent à améliorer sur votre fiche.",
-      "Votre fiche peut encore être améliorée sur certains points.",
-      "Certaines informations de votre fiche peuvent encore être renforcées."
-    ]));
+    phrases.push("Quelques éléments peuvent encore être améliorés pour rendre les informations plus faciles à trouver.");
   }
 
   if(positionNonDetecteeApresRecherche && critereConfirmeMax("revendiquee") && categoriePrincipaleValideePourRapport()){
     phrases.push("La bonne nouvelle : votre fiche est revendiquée et votre catégorie principale est bien choisie. Des actions ciblées peuvent améliorer à la fois sa visibilité et les repères qu’elle donne aux clients.");
   }else if(nbPriorites === 3){
-    phrases.push("La bonne nouvelle, c’est que trois actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+    phrases.push("La bonne nouvelle : quelques ajustements ciblés peuvent rendre votre présence Google plus claire et plus rassurante. Ce diagnostic vous présente les trois priorités à traiter en premier.");
   }else if(nbPriorites === 2){
-    phrases.push("La bonne nouvelle, c’est que deux actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+    phrases.push("La bonne nouvelle : quelques ajustements ciblés peuvent rendre votre présence Google plus claire et plus rassurante. Ce diagnostic vous présente les deux priorités à traiter en premier.");
   }else if(nbPriorites === 1){
-    phrases.push("La bonne nouvelle, c’est qu’une action simple peut déjà améliorer votre fiche et donner plus confiance aux clients.");
+    phrases.push("La bonne nouvelle : un ajustement ciblé peut déjà rendre votre présence Google plus claire et plus rassurante. Ce diagnostic présente cette priorité en premier.");
   }else{
     phrases.push("Aucune action prioritaire n’est proposée dans ce diagnostic.");
   }
@@ -6860,9 +6862,14 @@ function prioritePhotosPorteSurActualite(item){
   if(!item || item.famille !== "photos") return false;
   const d = donneesAnalyse || {};
   const comparaison = comparerVolumePhotos(d.nbPhotos, d.moyennesConcurrents?.photos);
+  const id = CRITERE_IDS.photoRecente;
+  const actualiteConfirmeeManuellement = id !== undefined
+    && typeof sourcesCriteres !== "undefined" && sourcesCriteres.get(id) === "manual"
+    && etatCritere("photoRecente") === "insuffisant";
   // Une priorité d'actualité demeure pertinente même sans benchmark, mais un
   // volume inférieur ne doit jamais être présenté comme une simple actualité.
-  if(item.critere?.key === "photoRecente") return comparaison !== "inferieur";
+  // Sans date fournie ou validation manuelle, l'ancienneté n'est pas affirmée.
+  if(item.critere?.key === "photoRecente") return actualiteConfirmeeManuellement && comparaison !== "inferieur";
   return comparaison === "comparable" || comparaison === "superieur";
 }
 
@@ -7094,12 +7101,12 @@ function consequencePhotos(item, ctx){
   const volumeConnu = comparaison !== "inconnu";
   const volumeSuffisant = comparaison === "comparable" || comparaison === "superieur";
   const volumeInsuffisant = comparaison === "inferieur";
-  const actualiteInsuffisante = etatCritere("photoRecente") === "insuffisant";
-  // Zéro photo : "photoRecente" est forcé à "insuffisant" (voir lirePoints,
-  // PHOTO_DEPENDENT_KEYS) alors qu'il n'y a précisément AUCUNE photo dont la
-  // récence pourrait se juger — évoquer des "visuels qui ne sont plus
-  // récents" laisserait croire qu'il en existe. La formulation sur la
-  // récence reste utilisée uniquement à partir d'une photo (voir plus bas).
+  const photoRecenteId = CRITERE_IDS.photoRecente;
+  const actualiteInsuffisante = photoRecenteId !== undefined
+    && typeof sourcesCriteres !== "undefined" && sourcesCriteres.get(photoRecenteId) === "manual"
+    && etatCritere("photoRecente") === "insuffisant";
+  // Sans date fournie ou validation manuelle, l'ancienneté reste inconnue :
+  // aucun texte ne peut laisser croire que les photos sont anciennes.
   const aucunePhoto = estNombre(d.nbPhotos) && Number(d.nbPhotos) === 0;
 
   if(aucunePhoto)

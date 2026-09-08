@@ -26,9 +26,10 @@ const completeCriteria = () => GRILLE.flatMap((category) => category.criteres.ma
   points: criterion.max,
 })));
 
-test("Aucune photo supprime les quatre réponses masquées et applique leur score nul", () => {
+test("Aucune photo conserve la pénalité parent et rend les sous-questions masquées non applicables", () => {
   const manualReview = normalizeManualReview({
     reportType: "free",
+    scoringVersion: "score-efficia-v5",
     photoPresence: "none",
     reviewsPresence: "present",
     criteriaReview: completeCriteria(),
@@ -40,16 +41,45 @@ test("Aucune photo supprime les quatre réponses masquées et applique leur scor
   const first = runScoreEfficia({ manualReview });
   const second = runScoreEfficia({ manualReview });
   PHOTO_DEPENDENT_KEYS.forEach((key) => {
-    assert.equal(first.scoreInputs.answers[key], 0);
-    assert.equal(first.scoreInputs.criteria.find((item) => item.key === key).source, "conditional_absence");
+    const criterion = first.scoreInputs.criteria.find((item) => item.key === key);
+    assert.equal(first.scoreInputs.answers[key], null);
+    assert.equal(criterion.status, "not_applicable");
+    assert.equal(criterion.source, "conditional_dependency");
+    assert.equal(criterion.max, 0);
+    assert.equal(criterion.scored, false);
   });
+  assert.equal(first.scoreInputs.answers.nombrePhotos, 0);
+  assert.equal(first.scoreInputs.notApplicableCriteria.includes("nombrePhotos"), false);
+  assert.deepEqual(first.scoreInputs.notApplicableCriteria, PHOTO_DEPENDENT_KEYS);
   assert.deepEqual(first, second);
-  assert.equal(first.reviewedScore.repondus, 29);
+  assert.equal(first.reviewedScore.repondus, 25);
+  assert.equal(first.reviewedScore.totalCrit, 25);
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
+});
+
+test("zéro photo ne reçoit pas un meilleur score qu'une présence minimale", () => {
+  const zeroPhoto = normalizeManualReview({
+    scoringVersion: "score-efficia-v5",
+    photoPresence: "none",
+    reviewsPresence: "present",
+    criteriaReview: completeCriteria(),
+  });
+  const minimalPhoto = normalizeManualReview({
+    scoringVersion: "score-efficia-v5",
+    photoPresence: "present",
+    reviewsPresence: "present",
+    criteriaReview: completeCriteria().map((item) => PHOTO_DEPENDENT_KEYS.includes(item.key) || item.key === "nombrePhotos"
+      ? { ...item, value: "deficient", selectedOptionIndex: 2, points: 0 }
+      : item),
+  });
+  const zeroScore = runScoreEfficia({ manualReview: zeroPhoto }).reviewedScore.score;
+  const minimalScore = runScoreEfficia({ manualReview: minimalPhoto }).reviewedScore.score;
+  assert.ok(zeroScore <= minimalScore, `${zeroScore} ne doit pas dépasser ${minimalScore}`);
 });
 
 test("le retour à Oui ne restaure pas silencieusement les anciennes réponses photo", () => {
   const withoutPhotos = normalizeManualReview({
+    scoringVersion: "score-efficia-v5",
     photoPresence: "none",
     reviewsPresence: "present",
     criteriaReview: completeCriteria(),
@@ -67,6 +97,7 @@ test("le retour à Oui ne restaure pas silencieusement les anciennes réponses p
 
 test("Aucun avis est distinct d’une note artificielle de 0 sur 5", () => {
   const manualReview = normalizeManualReview({
+    scoringVersion: "score-efficia-v5",
     photoPresence: "present",
     reviewsPresence: "none",
     criteriaReview: completeCriteria(),
@@ -77,12 +108,16 @@ test("Aucun avis est distinct d’une note artificielle de 0 sur 5", () => {
   assert.equal(manualReview.criteriaReview.some((item) => item.key === "noteMoyenne"), false);
   REVIEW_DEPENDENT_KEYS.forEach((key) => assert.equal(manualReview.criteriaReview.some((item) => item.key === key), false));
   const score = runScoreEfficia({ manualReview });
-  ["noteMoyenne", ...REVIEW_DEPENDENT_KEYS].forEach((key) => {
-    assert.equal(score.scoreInputs.answers[key], 0);
+  assert.equal(score.scoreInputs.answers.noteMoyenne, 0);
+  REVIEW_DEPENDENT_KEYS.forEach((key) => {
+    const criterion = score.scoreInputs.criteria.find((item) => item.key === key);
+    assert.equal(score.scoreInputs.answers[key], null);
+    assert.equal(criterion.status, "not_applicable");
+    assert.equal(criterion.scored, false);
   });
   const responseCriterion = score.scoreInputs.criteria.find((item) => item.key === "tauxReponseAvis");
   assert.equal(responseCriterion.label, "Non applicable — aucun avis");
-  assert.equal(responseCriterion.status, "absence_confirmed");
+  assert.equal(responseCriterion.status, "not_applicable");
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
 });
 
@@ -199,7 +234,7 @@ test("un brouillon v3 ne recycle pas l’ancienne réponse et exige le nouveau c
   assert.equal(incompleteQuestionnaireFields(legacy).includes("nomConforme"), true);
 });
 
-test("les quatre dépendances serveur suppriment les sous-réponses forgées et les notent à zéro", () => {
+test("les quatre dépendances serveur suppriment les sous-réponses forgées et les rendent non applicables", () => {
   const pairs = [
     ["tauxReponseAvis", "qualiteReponsesAvis"],
     ["descriptionRemplie", "descriptionQualite"],
@@ -210,9 +245,12 @@ test("les quatre dépendances serveur suppriment les sous-réponses forgées et 
     const criteriaReview = completeCriteria().map((item) => item.key === parent
       ? { ...item, value: "deficient", selectedOptionIndex: 2, points: 0 }
       : item);
-    const manualReview = normalizeManualReview({ photoPresence: "present", reviewsPresence: "present", criteriaReview });
+    const manualReview = normalizeManualReview({ scoringVersion: "score-efficia-v5", photoPresence: "present", reviewsPresence: "present", criteriaReview });
     assert.equal(manualReview.criteriaReview.some((item) => item.key === child), false);
-    assert.equal(runScoreEfficia({ manualReview }).scoreInputs.answers[child], 0);
+    const score = runScoreEfficia({ manualReview });
+    assert.equal(score.scoreInputs.answers[child], null);
+    assert.equal(score.scoreInputs.criteria.find((item) => item.key === child).status, "not_applicable");
+    assert.equal(score.scoreInputs.criteria.find((item) => item.key === child).scored, false);
     assert.equal(incompleteQuestionnaireFields(manualReview).includes(child), false);
     const reactivated = normalizeManualReview({
       ...manualReview,

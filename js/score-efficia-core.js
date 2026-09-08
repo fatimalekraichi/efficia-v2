@@ -14,10 +14,13 @@ function calculateEfficiaScoreDetail({
   scoringVersion,
   legacyScoringVersion,
   manualScoredCriteria = [],
+  notApplicableCriteria = [],
+  applyConditionalScoreCeiling = true,
 } = {}) {
   const profile = sectors[profileKey] || sectors.default || {};
   const legacy = scoringVersion === legacyScoringVersion;
   const manuallyScored = new Set(Array.isArray(manualScoredCriteria) ? manualScoredCriteria : []);
+  const notApplicable = new Set(Array.isArray(notApplicableCriteria) ? notApplicableCriteria : []);
   let total = 0;
   let effectiveProfileMaximum = 0;
   let answered = 0;
@@ -37,6 +40,7 @@ function calculateEfficiaScoreDetail({
     category.criteres.forEach((criterion) => {
       const scored = legacy || criterion.scored !== false || manuallyScored.has(criterion.key);
       if (!scored) return;
+      if (!legacy && notApplicable.has(criterion.key)) return;
       scoredCriteriaCount += 1;
       evaluatedMaximum += Number(criterion.max || 0);
       const points = answers[criterion.key];
@@ -87,8 +91,31 @@ function calculateEfficiaScoreDetail({
     });
   }
 
+  /* Retirer du dénominateur des sous-questions sans objet ne doit jamais
+     récompenser une absence confirmée (zéro photo, zéro avis, etc.) par un
+     score supérieur à celui d'une fiche identique avec le minimum évalué.
+     Le plafond compare uniquement la normalisation : les critères restent
+     exclus de `maxEvalue`, des priorités et des narratifs du calcul courant. */
+  const unboundedScore = Number.isFinite(normalizedScore) ? normalizedScore : 0;
+  const conditionalScoreCeiling = !legacy && applyConditionalScoreCeiling && notApplicable.size
+    ? calculateEfficiaScoreDetail({
+      grid,
+      sectors,
+      answers,
+      profileKey,
+      scoringVersion,
+      legacyScoringVersion,
+      manualScoredCriteria,
+      notApplicableCriteria: [],
+      applyConditionalScoreCeiling: false,
+    }).total
+    : null;
+  const finalScore = conditionalScoreCeiling === null
+    ? unboundedScore
+    : Math.min(unboundedScore, conditionalScoreCeiling);
+
   return {
-    total: Number.isFinite(normalizedScore) ? normalizedScore : 0,
+    total: finalScore,
     repondus: answered,
     totalCrit: scoredCriteriaCount,
     categories,

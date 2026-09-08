@@ -136,7 +136,7 @@ test("introduction EGS : première position, manques établis et trois priorité
     scoreProjete: 44,
     priorites: [{}, {}, {}],
   });
-  assert.equal(text, "Bonjour,<br>Votre fiche Google apparaît en première position quand un client recherche « Électricien Steinfort ». C’est un très bon point. Votre fiche ne contient aucun avis, aucune photo et aucune description de vos services. Un client qui ne vous connaît pas peut donc hésiter à vous contacter. Il peut aussi choisir une autre entreprise qui montre mieux son travail. La bonne nouvelle, c’est que trois actions simples peuvent déjà améliorer votre fiche et donner plus confiance aux clients.");
+  assert.equal(text, "Bonjour,<br>Votre fiche Google apparaît en première position quand un client recherche « Électricien Steinfort ». C’est un très bon point. En revanche, elle ne présente pas encore clairement vos services. Pour une personne qui ne vous connaît pas, il devient alors difficile de comprendre en quelques secondes ce que vous proposez — et pourquoi vous contacter plutôt qu’une autre entreprise. La bonne nouvelle : quelques ajustements ciblés peuvent rendre votre présence Google plus claire et plus rassurante. Ce diagnostic vous présente les trois priorités à traiter en premier.");
   assert.equal(context.phraseDirecteScoreDiagnosticGratuit(44, context.donneesAnalyse).texte, "Votre fiche est bien placée, mais elle ne rassure pas encore assez.");
 });
 
@@ -181,8 +181,8 @@ test("introduction : une fiche non détectée après une recherche réelle décr
   });
   assert.equal(context.phraseDirecteScoreDiagnosticGratuit(42, context.donneesAnalyse).texte, "Votre fiche reste difficile à trouver sur Google.");
   assert.match(text, /Lors de notre test sur « Électricien Neufchâteau », votre fiche n’est pas apparue parmi les premiers résultats affichés\./u);
-  assert.match(text, /Votre fiche ne présente actuellement aucun avis ni description visible de vos services\./u);
-  assert.match(text, /Un prospect qui la trouve peut donc encore hésiter à vous contacter\./u);
+  assert.match(text, /En revanche, elle ne présente pas encore clairement vos services\./u);
+  assert.match(text, /difficile de comprendre en quelques secondes ce que vous proposez/u);
   assert.match(text, /La bonne nouvelle : votre fiche est revendiquée et votre catégorie principale est bien choisie\./u);
   assert.doesNotMatch(text, /La place de votre fiche dans cette recherche n’est pas encore connue|pas pu être confirmée|reste à confirmer/u);
 });
@@ -213,9 +213,9 @@ test("introduction : le nombre réel de priorités est annoncé, y compris zéro
   const build = (priorites) => context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 60, scoreProjete: 60, priorites });
   assert.match(build([]), /Aucune action prioritaire n’est proposée/u);
   assert.doesNotMatch(build([]), /\b(?:trois|deux|une) actions?\b/u);
-  assert.match(build([{}]), /qu’une action simple/u);
-  assert.match(build([{}, {}]), /deux actions simples/u);
-  assert.match(build([{}, {}, {}]), /trois actions simples/u);
+  assert.match(build([{}]), /cette priorité en premier/u);
+  assert.match(build([{}, {}]), /deux priorités à traiter en premier/u);
+  assert.match(build([{}, {}, {}]), /trois priorités à traiter en premier/u);
 });
 
 test("introduction : textes longs, données partielles et variantes restent stables et lisibles", () => {
@@ -228,8 +228,8 @@ test("introduction : textes longs, données partielles et variantes restent stab
   const build = () => context.texteConsultantPage1({ contact: "", entreprise: "Entreprise", activite: "Électricien", ville: "Luxembourg", score: 45, scoreProjete: 45, priorites: [{}, {}, {}] });
   assert.equal(build(), build());
   assert.match(build(), /en 4e position/u);
-  assert.match(build(), /aucun avis/u);
-  assert.match(build(), /aucune description de vos services/u);
+  assert.match(build(), /elle ne présente pas encore clairement vos services/u);
+  assert.doesNotMatch(build(), /aucune photo|undefined|null|\{[^}]+\}/iu);
   assert.doesNotMatch(build(), /aucune photo|undefined|null|\{[^}]+\}/iu);
 });
 

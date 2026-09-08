@@ -169,6 +169,21 @@ export function conditionForCriterion(key, conditions = {}, criteriaReview = [])
   return null;
 }
 
+/* Une absence confirmée reste notée sur le critère parent (par exemple
+   « Aucune photo » pour `nombrePhotos`). En revanche, les questions qui ne
+   peuvent plus être évaluées à cause de cette absence sont explicitement
+   non applicables : elles ne sont ni des zéros ni des informations manquantes.
+   Cette règle alimente aussi le moteur de score, pas seulement l'interface
+   qui masque les radios. */
+export function isConditionallyNotApplicable(key, conditions = {}, criteriaReview = []) {
+  if (conditions.photoPresence === "none" && PHOTO_DEPENDENT_KEYS.includes(key)) return true;
+  if (conditions.reviewsPresence === "none" && REVIEW_DEPENDENT_KEYS.includes(key)) return true;
+  const criteria = new Map((Array.isArray(criteriaReview) ? criteriaReview : []).map((item) => [item?.key, item]));
+  return CRITERIA_DEPENDENCIES.some(({ parent, child, hideWhen }) => (
+    child === key && hideWhen.includes(criteria.get(parent)?.value)
+  ));
+}
+
 export function requiredVisibleCriterionKeys(conditions = {}, criteriaReview = [], scoringVersion = null) {
   const version = resolveScoringVersion(scoringVersion, { historicalFallback: scoringVersion === null });
   return GRILLE.flatMap((category) => category.criteres

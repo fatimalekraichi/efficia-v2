@@ -1238,6 +1238,104 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
   assert.match(result.captured, /42\s*\/100/u);
 });
 
+test("Chrome réel : aucune photo exclut les sous-questions dépendantes du brouillon, de l’aperçu et du PDF", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 75 && !document.getElementById("p-entreprise")?.value; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const choose = (key, value, special = null) => {
+          const id = CRITERE_IDS[key];
+          const input = [...document.querySelectorAll('input[name="c' + id + '"]')]
+            .find(item => (special ? item.dataset.special === special : Number(item.value) === value && !item.dataset.special));
+          if (!input) throw new Error('option introuvable : ' + key + '/' + (special || value));
+          input.checked = true;
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+        };
+        const groups = {};
+        document.querySelectorAll('input[type="radio"][name^="c"]').forEach(input => (groups[input.name] ??= []).push(input));
+        Object.entries(groups).forEach(([name, inputs]) => {
+          if (name === "c" + CRITERE_IDS.attractiviteConcurrents) return;
+          const input = inputs.find(item => !item.dataset.special && !item.disabled) || inputs[0];
+          input.checked = true;
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+        });
+        const locationMode = document.querySelector('input[name="condition-location-mode"][value="storefront"]');
+        const address = document.querySelector('input[name="location-address"][value="exact"]');
+        locationMode.checked = true; locationMode.dispatchEvent(new Event("change", { bubbles:true }));
+        address.checked = true; address.dispatchEvent(new Event("change", { bubbles:true }));
+        choose("nombrePhotos", 0, "no_photos");
+        majConditionsQuestionnaire();
+        collecteDiagnosticValidee = true;
+        calc();
+        const detailBeforeSave = calculScoreDetail();
+        const hiddenBeforeSave = ["photoRecente", "varietePhotos", "qualitePhotos"].map((key) => ({
+          key,
+          hidden: document.getElementById("crit-" + CRITERE_IDS[key])?.classList.contains("condition-hidden") === true,
+          answer: detailBeforeSave.categories.flatMap(category => category.cat.criteres).some(criterion => criterion.key === key)
+            ? lirePoints(CRITERE_IDS[key])
+            : "criterion-missing",
+        }));
+        const scoreBeforeSave = Number(document.getElementById("score-live").textContent);
+        await enregistrerBrouillonD1(true);
+        const savedResponses = window.__workflowFixture.answers.responses;
+        document.querySelectorAll('input[name="c' + CRITERE_IDS.nombrePhotos + '"]').forEach(input => { input.checked = false; });
+        majConditionsQuestionnaire(); calc();
+        await restaurerBrouillonD1();
+        majConditionsQuestionnaire(); calc();
+        const detailAfterReload = calculScoreDetail();
+        const scoreAfterReload = Number(document.getElementById("score-live").textContent);
+        let previews = 0;
+        window.print = () => { previews += 1; };
+        document.getElementById("btn-apercu").click();
+        for (let attempt = 0; attempt < 200 && !previews; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
+        if (!previews) throw new Error("aperçu non ouvert");
+        if (!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
+        const report = document.getElementById("rapport-contenu");
+        const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+        if (!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
+        const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+        const captured = [];
+        for (const [index, page] of [...report.querySelectorAll(".page")].entries()) {
+          captured.push(page.innerText || "");
+          const canvas = await html2canvasFn(page, optionsCapturePdfDiagnostic());
+          if (index > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(canvas.toDataURL("image/jpeg", .98), "JPEG", 0, 0, 210, 297);
+        }
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          scoreBeforeSave,
+          scoreAfterReload,
+          previews,
+          hiddenBeforeSave,
+          totalCritBeforeSave: detailBeforeSave.totalCrit,
+          totalCritAfterReload: detailAfterReload.totalCrit,
+          savedPhotoPresence: window.__workflowFixture.answers.photoPresence,
+          savedDependentResponses: ["photoRecente", "varietePhotos", "qualitePhotos"].filter(key => Object.hasOwn(savedResponses, key)),
+          restoredNoPhotos: document.querySelector('input[name="c' + CRITERE_IDS.nombrePhotos + '"]:checked')?.dataset.special || "",
+          reportText: captured.join("\\n"),
+          pdfPages: pdf.internal.getNumberOfPages(),
+          pdfBytes: pdf.output("arraybuffer").byteLength,
+        });
+      } catch (error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, {}, { timeout: 55_000, resultWait: 50_000 });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.savedPhotoPresence, "none");
+  assert.deepEqual(result.savedDependentResponses, []);
+  assert.equal(result.restoredNoPhotos, "no_photos");
+  assert.equal(result.scoreAfterReload, result.scoreBeforeSave);
+  assert.equal(result.previews, 1);
+  assert.equal(result.totalCritBeforeSave, 25);
+  assert.equal(result.totalCritAfterReload, 25);
+  assert.ok(result.hiddenBeforeSave.every((item) => item.hidden && item.answer === null));
+  assert.equal(result.pdfPages, 6);
+  assert.ok(result.pdfBytes > 0);
+  assert.doesNotMatch(result.reportText, /Photos récentes|Photos variées|Qualité des photos/u);
+});
+
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {
   const rawDns = "The DNS records for tecelec.lu are not properly configured. Please check your DNS settings.";
   const firstPass = await runAdminBrowserHarness(`

@@ -9,6 +9,7 @@ import {
 import {
   QUESTIONNAIRE_VERSION,
   conditionForCriterion,
+  isConditionallyNotApplicable,
   isPubliclyUnverifiableLocation,
   normalizeQuestionnaireConditions,
 } from "./questionnaireRules.js";
@@ -63,6 +64,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
   const answers = {};
   const criteria = [];
   const manualScoredCriteria = [];
+  const notApplicableCriteria = [];
 
   for (const category of GRILLE) {
     for (const criterion of category.criteres) {
@@ -73,31 +75,34 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
         && selectedOptionIndex(review?.selectedOptionIndex, criterion.opts.length) !== null;
       const scored = scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false || manualAttractivenessOverride;
       const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
+      const conditionallyNotApplicable = scoringVersion !== LEGACY_SCORING_VERSION
+        && isConditionallyNotApplicable(criterion.key, conditions, manualReview.criteriaReview);
       const explicitAbsence = Boolean(absenceCondition);
       const locationPoints = criterion.key === "adresse" && conditions.locationMode !== "unknown"
         ? (Number.isFinite(review?.points) ? Math.max(0, Math.min(2, Number(review.points))) : null)
         : undefined;
-      const points = scored
+      const points = scored && !conditionallyNotApplicable
         ? (explicitAbsence ? 0 : (locationPoints !== undefined ? locationPoints : pointsFromManualStatus(criterion, review)))
         : null;
       const noReviewsResponse = absenceCondition === "no_reviews" && criterion.key === "tauxReponseAvis";
       answers[criterion.key] = points;
       if (manualAttractivenessOverride) manualScoredCriteria.push(criterion.key);
+      if (conditionallyNotApplicable) notApplicableCriteria.push(criterion.key);
       criteria.push({
         key: criterion.key,
         category: category.key,
         categoryLabel: category.cat,
         question: review?.question || criterion.q,
-        status: explicitAbsence ? "absence_confirmed" : (absenceCondition ? "not_applicable" : (review?.value || "not_verified")),
+        status: conditionallyNotApplicable ? "not_applicable" : (explicitAbsence ? "absence_confirmed" : (absenceCondition ? "not_applicable" : (review?.value || "not_verified"))),
         label: noReviewsResponse ? "Non applicable — aucun avis" : (absenceCondition === "no_photos" ? "Aucune photo" : (absenceCondition === "no_reviews" ? "Aucun avis" : (absenceCondition ? "Sans objet" : (review?.label || null)))),
         checklist: absenceCondition ? [] : (Array.isArray(review?.checklist) ? review.checklist : []),
         selectedOptionIndex: absenceCondition ? null : (review?.selectedOptionIndex ?? null),
-        source: explicitAbsence ? "conditional_absence" : (absenceCondition ? "conditional_dependency" : (review?.source || null)),
+        source: conditionallyNotApplicable ? "conditional_dependency" : (explicitAbsence ? "conditional_absence" : (absenceCondition ? "conditional_dependency" : (review?.source || null))),
         evidence: absenceCondition ? { condition: absenceCondition } : (review?.evidence || null),
         points,
-        max: scored ? criterion.max : 0,
+        max: scored && !conditionallyNotApplicable ? criterion.max : 0,
         historicalMax: criterion.max,
-        scored,
+        scored: scored && !conditionallyNotApplicable,
       });
     }
   }
@@ -114,10 +119,11 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
     answers,
     criteria,
     manualScoredCriteria,
+    notApplicableCriteria,
   };
 }
 
-export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION, { manualScoredCriteria = [] } = {}) {
+export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION, { manualScoredCriteria = [], notApplicableCriteria = [] } = {}) {
   const scoringVersion = resolveScoringVersion(requestedScoringVersion);
   return globalThis.EfficiaScoreCore.calculateScoreDetail({
     grid: GRILLE,
@@ -127,6 +133,7 @@ export function calculateScoreDetail(answers = {}, profileKey = "default", reque
     scoringVersion,
     legacyScoringVersion: LEGACY_SCORING_VERSION,
     manualScoredCriteria,
+    notApplicableCriteria,
   });
 }
 
@@ -178,7 +185,7 @@ const PACK_CRITERIA = new Set([
   "liensAction",
 ]);
 
-export function scoreProjetePack(answers = {}, profileKey = "default", scoringVersion = SCORING_VERSION, { manualScoredCriteria = [] } = {}) {
+export function scoreProjetePack(answers = {}, profileKey = "default", scoringVersion = SCORING_VERSION, { manualScoredCriteria = [], notApplicableCriteria = [] } = {}) {
   const projected = { ...answers };
   let corriges = 0;
   let ameliorables = 0;
@@ -196,7 +203,7 @@ export function scoreProjetePack(answers = {}, profileKey = "default", scoringVe
     }
   }
   return {
-    projete: Math.min(97, Math.round(calculateScoreDetail(projected, profileKey, scoringVersion, { manualScoredCriteria }).total)),
+    projete: Math.min(97, Math.round(calculateScoreDetail(projected, profileKey, scoringVersion, { manualScoredCriteria, notApplicableCriteria }).total)),
     corriges,
     ameliorables,
   };
@@ -211,6 +218,7 @@ export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {
   const scoreInputs = buildScoreInputsFromManualReview(manualReview, resolvedScoringVersion);
   const detail = calculateScoreDetail(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion, {
     manualScoredCriteria: scoreInputs.manualScoredCriteria,
+    notApplicableCriteria: scoreInputs.notApplicableCriteria,
   });
   const roundedScore = Math.round(detail.total);
   const score = resolvedScoringVersion === LEGACY_SCORING_VERSION
@@ -228,6 +236,7 @@ export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {
       indices: indicesProspect(scoreInputs.answers),
       projectedPackScore: scoreProjetePack(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion, {
         manualScoredCriteria: scoreInputs.manualScoredCriteria,
+        notApplicableCriteria: scoreInputs.notApplicableCriteria,
       }),
       band: findBand(roundedScore),
       categories: detail.categories,

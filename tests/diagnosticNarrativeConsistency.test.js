@@ -62,7 +62,7 @@ const MK_ELEC = {
 const ID_BY_KEY = { recenceAvis: 1, tauxReponseAvis: 2, qualiteReponsesAvis: 3, photoRecente: 4, varietePhotos: 5 };
 const MAX_PAR_ID = 4;
 
-function createPriorityHarness({ etats = {}, donneesAnalyse = {} } = {}) {
+function createPriorityHarness({ etats = {}, donneesAnalyse = {}, manualCriteria = [] } = {}) {
   const photoComparator = sliceBetween(html, "function comparerVolumePhotos(", "/* ============ PAGE 2");
   const code = sliceBetween(html, "function critereConfirmeMax(key){", "function resultatAttenduPriorite(item, ctx){");
   const points = {};
@@ -83,6 +83,7 @@ function createPriorityHarness({ etats = {}, donneesAnalyse = {} } = {}) {
     // existantes de contrôler les mêmes faits indépendamment du tirage.
     choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
     CRITERE_IDS: ID_BY_KEY,
+    sourcesCriteres: new Map(manualCriteria.map((key) => [ID_BY_KEY[key], "manual"])),
     trouverCritere: (id) => (id !== undefined && id !== null ? { max: MAX_PAR_ID } : null),
     lirePoints: (id) => (id in points ? points[id] : null),
     // prioritePhotosPorteSurActualite lit la variable globale donneesAnalyse
@@ -141,9 +142,9 @@ test("avis récents insuffisants (recenceAvis non conforme) : la phrase de réce
 /* 3) Photos : volume supérieur mais anciennes -> jamais "insuffisantes"  */
 /* ---------------------------------------------------------------------- */
 
-test("cas MK Elec : 8 photos vs 3 en moyenne (volume supérieur), photos récentes non conforme -> texte exact requis", () => {
+test("cas MK Elec : 8 photos vs 3 en moyenne, ancienneté confirmée manuellement -> texte exact requis", () => {
   const donnees = { nbPhotos: MK_ELEC.nbPhotos, moyennesConcurrents: { photos: MK_ELEC.moyennePhotosConcurrents } };
-  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees });
+  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees, manualCriteria: ["photoRecente"] });
   const item = { famille: "photos", critere: { key: "photoRecente" } };
   const ctx = { data: donnees };
   const texte = context.consequenceBusinessPriorite(item, ctx);
@@ -166,9 +167,18 @@ test("photos : volume insuffisant et actualité correcte ou inconnue -> texte hi
   );
 });
 
+test("photos : une réponse automatique insuffisante sans date ni validation manuelle ne les présente jamais comme anciennes", () => {
+  const donnees = { nbPhotos: 8, moyennesConcurrents: { photos: 3 } };
+  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees });
+  const item = { famille: "photos", critere: { key: "photoRecente" } };
+  const texte = context.consequenceBusinessPriorite(item, { data: donnees });
+  assert.equal(context.prioritePhotosPorteSurActualite(item), false);
+  assert.doesNotMatch(texte, /photos ne sont pas récentes|ne sont plus récents|photos anciennes/u);
+});
+
 test("photos : volume insuffisant ET photos anciennes -> texte distinct combinant les deux, sans confondre les causes", () => {
   const donnees = { nbPhotos: 2, moyennesConcurrents: { photos: 10 } };
-  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees });
+  const context = createPriorityHarness({ etats: { photoRecente: "insuffisant" }, donneesAnalyse: donnees, manualCriteria: ["photoRecente"] });
   const item = { famille: "photos", critere: { key: "varietePhotos" } };
   const ctx = { data: donnees };
   const texte = context.consequenceBusinessPriorite(item, ctx);

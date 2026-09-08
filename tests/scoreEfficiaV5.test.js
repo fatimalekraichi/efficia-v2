@@ -27,7 +27,7 @@ function extractFunction(source, name, nextName) {
   return source.slice(start, end);
 }
 
-function calculateAdminScore(answersByKey, profileKey = "default", manualScoredCriteria = []) {
+function calculateAdminScore(answersByKey, profileKey = "default", manualScoredCriteria = [], notApplicableCriteria = []) {
   const adminGrid = GRILLE.map((category) => ({
     ...category,
     criteres: category.criteres.map((criterion) => ({ ...criterion, id: criterion.key })),
@@ -44,6 +44,7 @@ function calculateAdminScore(answersByKey, profileKey = "default", manualScoredC
     criteresManuellementNotes: () => manualScoredCriteria,
     critereEstManuellementNote: (criterion) => manualScoredCriteria.includes(criterion.key),
     critereEstMasque: () => false,
+    critereEstNonApplicable: (criterion) => notApplicableCriteria.includes(criterion.key),
     lirePoints: (id) => answersByKey[id] ?? null,
   };
   vm.runInNewContext(`${extractFunction(html, "calculScoreDetail", "listerElementsRestantsPourFinalisation")}\nresult = calculScoreDetail();`, context);
