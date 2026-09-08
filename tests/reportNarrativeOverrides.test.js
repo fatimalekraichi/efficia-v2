@@ -130,7 +130,7 @@ function longestAutomaticText(fieldId) {
     || `Texte automatique complet pour ${fieldId}.`;
 }
 
-async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
+async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, options = {}) {
   const fixture = {
     analysisId: ANALYSIS_ID,
     context: {
@@ -217,6 +217,8 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
           overrides: window.__workflowFixture.overrides
         });
       }
+      if (url.includes("/api/admin/audit-snapshots/")) return json({ success: true });
+      if (url.includes("/admin/tasks/")) return json({ success: true });
       if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
         success: false,
         error: "SEARCH_REFRESH_FAILED",
@@ -238,7 +240,8 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}) {
       url: `${pathToFileURL(htmlPath).href}?analysisId=${fixture.analysisId}`,
       profileDir: join(directory, "chrome-profile"),
       phase: "parcours navigateur des textes personnalisés",
-      timeout: 15_000,
+      timeout: options.timeout || 15_000,
+      resultWait: options.resultWait || 8_000,
       selector: "#workflow-browser-result",
     });
     assert.ok(result, "résultat du parcours navigateur absent");
@@ -1032,6 +1035,120 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   assert.equal(result.finalBenchmark, result.initial.benchmark);
   assert.equal(result.finalPriorityKey, result.initial.priorityKey);
   assert.deepEqual(result.finalPrices, result.initial.prices);
+});
+
+test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le brouillon puis rendent six pages", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
+  const catalog = ["page1.verdict_title"].map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 75 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        await initialisationContexteAdminPromise;
+        const chooseAll = () => {
+          const groups = {};
+          document.querySelectorAll('input[type="radio"][name^="c"]').forEach(input => (groups[input.name] ??= []).push(input));
+          Object.values(groups).forEach(inputs => {
+            const selected = inputs.find(input => !input.disabled && !input.closest("[hidden]") && !input.dataset.special) || inputs[0];
+            selected.checked = true;
+            selected.dispatchEvent(new Event("change", {bubbles:true}));
+          });
+        };
+        chooseAll();
+        const locationMode = document.querySelector('input[name="condition-location-mode"][value="storefront"]');
+        const address = document.querySelector('input[name="location-address"][value="exact"]');
+        locationMode.checked = true; locationMode.dispatchEvent(new Event("change", {bubbles:true}));
+        address.checked = true; address.dispatchEvent(new Event("change", {bubbles:true}));
+        collecteDiagnosticValidee = true;
+        donneesAnalyse.derniereRequeteAnalysee = "Électricien Arlon";
+        donneesAnalyse.derniereActiviteAnalysee = "Électricien";
+        const activity = document.getElementById("p-activite");
+        const contact = document.getElementById("p-contact");
+        activity.value = "Entreprise d’électricité";
+        activity.dispatchEvent(new Event("input", {bubbles:true}));
+        contact.value = "Jean-Michel";
+        contact.dispatchEvent(new Event("input", {bubbles:true}));
+        if(rechercheEstPerimee()) throw new Error("la correction du libellé d’activité ne doit pas invalider la recherche collectée");
+        const query = document.getElementById("d-requete");
+        query.value = "Entreprise d’électricité Arlon";
+        if(!rechercheEstPerimee()) throw new Error("une requête réellement modifiée doit rester bloquante");
+        query.value = "Électricien Arlon";
+
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu initial refusé");
+        await ouvrirEditeurTextesRapport();
+        const title = document.querySelector('[data-report-text-field="page1.verdict_title"] [data-custom-text]');
+        if(!title) throw new Error("champ titre de verdict absent");
+        title.value = "Verdict de Jean-Michel";
+        title.dispatchEvent(new Event("input", {bubbles:true}));
+        await enregistrerTextesRapport();
+
+        const labels = [];
+        const previewButton = document.getElementById("btn-apercu");
+        const pdfButton = document.getElementById("btn-pdf");
+        const observer = new MutationObserver(() => labels.push(previewButton.textContent + "|" + pdfButton.textContent));
+        observer.observe(previewButton, {childList:true, subtree:true, characterData:true});
+        observer.observe(pdfButton, {childList:true, subtree:true, characterData:true});
+        let previews = 0;
+        window.print = () => { previews += 1; };
+        previewButton.click();
+        for(let attempt = 0; attempt < 400 && !previews; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
+        if(!previews) throw new Error("aperçu non ouvert");
+
+        await assurerLibrairiesPDF();
+        const captures = [];
+        const realHtml2canvas = window.html2canvas;
+        window.html2canvas = async (page, options) => {
+          captures.push(page.innerText || "");
+          return realHtml2canvas(page, options);
+        };
+        const RealJsPDF = window.jspdf.jsPDF;
+        let savedPdf = null;
+        window.jspdf.jsPDF = new Proxy(RealJsPDF, {
+          construct(Target, args) {
+            const pdf = Reflect.construct(Target, args);
+            pdf.save = (filename) => {
+              savedPdf = {
+                filename,
+                pages: pdf.internal.getNumberOfPages(),
+                bytes: pdf.output("arraybuffer").byteLength
+              };
+            };
+            return pdf;
+          }
+        });
+        pdfButton.click();
+        for(let attempt = 0; attempt < 800 && (captures.length < 6 || pdfButton.disabled); attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
+        observer.disconnect();
+        const error = document.getElementById("erreur-rendu-diagnostic");
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          previews, filename:dernierNomPdfGenere, savedPdf, captures, labels,
+          previewDisabled:previewButton.disabled,
+          pdfDisabled:pdfButton.disabled,
+          visibleError:error?.hidden === false ? error.textContent : "",
+          activity:document.getElementById("p-activite")?.value,
+          contact:document.getElementById("p-contact")?.value,
+          storedTitle:window.__workflowFixture.overrides.find(item => item.fieldId === "page1.verdict_title")?.customText || ""
+        });
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, { catalog, overrides: [] }, { timeout: 45_000, resultWait: 40_000 });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.previews, 1);
+  assert.equal(result.captures.length, 6, JSON.stringify(result));
+  assert.match(String(result.filename), /Score-Efficia_/u);
+  assert.match(String(result.savedPdf?.filename), /Score-Efficia_/u);
+  assert.equal(result.savedPdf?.pages, 6);
+  assert.ok(result.savedPdf?.bytes > 0);
+  assert.ok(result.labels.some(label => label.includes("Préparation de l’aperçu…")));
+  assert.ok(result.labels.some(label => label.includes("Génération du PDF en cours…")));
+  assert.equal(result.previewDisabled, false);
+  assert.equal(result.pdfDisabled, false);
+  assert.equal(result.visibleError, "");
+  assert.equal(result.storedTitle, "Verdict de Jean-Michel");
+  const capturedReport = result.captures.join("\n");
+  assert.match(capturedReport, /Entreprise d’électricité/u);
+  assert.match(capturedReport, /Bonjour Jean-Michel,/u);
 });
 
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {

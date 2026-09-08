@@ -274,8 +274,8 @@ test("les deux interfaces chargent le moteur commun et ne conservent pas l’anc
   assert.match(html, /élément\(s\) restant à vérifier/);
   assert.match(html, /Tous les éléments sont renseignés/);
   assert.match(html, /scrollIntoView/);
-  assert.match(html, /async function apercuImpression\(\)\{\s*if\(!questionnairePretPourFinalisation\(\)\) return/);
-  assert.match(html, /async function telechargerPDF\(\)\{[\s\S]*if\(!questionnairePretPourFinalisation\(\)\) return/);
+  assert.match(html, /async function apercuImpression\(\)\{\s*effacerErreurRenduDiagnostic\(\);[\s\S]*if\(!questionnairePretPourFinalisation\(\)\)/);
+  assert.match(html, /async function telechargerPDF\(\)\{\s*effacerErreurRenduDiagnostic\(\);[\s\S]*if\(!questionnairePretPourFinalisation\(\)\)/);
   assert.match(html, /async function telechargerAuditPremium\(\)\{[\s\S]*if\(!questionnairePretPourFinalisation\(\)\)/);
 });
 
@@ -291,6 +291,7 @@ test("le module de finalisation chargé comme un script navigateur expose la vé
 
 test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
+  const preparationCode = sliceBetween(html, "function boutonsGenerationDiagnosticGratuit()", "/* ================= AUDIT EFFICIA PREMIUM");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
   let composed = 0;
   let canvasCalls = 0;
@@ -308,7 +309,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     link() {}
     save(filename) { savedFilename = filename; }
   }
-  const buttons = [{ disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
+  const buttons = [{ id: "btn-pdf", disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
   const context = {
     document: {
       getElementById(id) {
@@ -321,6 +322,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     },
     questionnairePretPourFinalisation: () => true,
     assurerVersionAnalyseRapport: async () => true,
+    sauvegardeBrouillonD1EnCours: false,
     enregistrerBrouillonD1: async () => { savedDraft += 1; return true; },
     chargerLogoRapportDataUrl: async () => {},
     genererRapport: () => { composed += 1; return true; },
@@ -336,9 +338,11 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     finaliserBrouillonD1ApresPDF: async () => { finalizedSnapshot += 1; return true; },
     enregistrerPdfGenereBackOffice: async () => {},
     alert: () => assert.fail("aucune alerte attendue"),
+    statut: () => {},
+    window: { setTimeout },
     console,
   };
-  vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
   assert.equal(canvasCalls, 6);
@@ -349,17 +353,80 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
 });
 
 test("un élément restant bloque le PDF avant toute composition", async () => {
+  const preparationCode = sliceBetween(html, "function boutonsGenerationDiagnosticGratuit()", "/* ================= AUDIT EFFICIA PREMIUM");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
   let composed = 0;
+  const message = { hidden: true, textContent: "" };
+  const status = { textContent: "1 élément restant à vérifier" };
   const context = {
-    document: { getElementById: () => null },
+    document: {
+      getElementById(id) {
+        if(id === "erreur-rendu-diagnostic") return message;
+        if(id === "statut") return status;
+        return null;
+      },
+      querySelectorAll: () => [],
+    },
     questionnairePretPourFinalisation: () => false,
     genererRapport: () => { composed += 1; return true; },
+    statut: () => {},
     console,
   };
-  vm.runInNewContext(`${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
-  await context.run();
+  vm.runInNewContext(`${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  assert.equal(await context.run(), false);
   assert.equal(composed, 0);
+  assert.equal(message.hidden, false);
+  assert.equal(message.textContent, "1 élément restant à vérifier");
+});
+
+test("les échecs de préparation, d’aperçu et de PDF sont visibles et réactivent les boutons", async () => {
+  const preparationCode = sliceBetween(html, "function boutonsGenerationDiagnosticGratuit()", "/* ================= AUDIT EFFICIA PREMIUM");
+  const previewCode = sliceBetween(html, "async function apercuImpression()", "function questionnairePretPourFinalisation()");
+  const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
+
+  const createContext = ({ preview = false } = {}) => {
+    const alert = { hidden: true, textContent: "" };
+    const button = { id: preview ? "btn-apercu" : "btn-pdf", disabled: false, textContent: preview ? "Aperçu avant impression" : "Générer le Diagnostic (gratuit)" };
+    const context = {
+      document: {
+        getElementById(id) {
+          if(id === "erreur-rendu-diagnostic") return alert;
+          if(id === "statut") return { textContent: "" };
+          if(id === button.id) return button;
+          return null;
+        },
+        querySelectorAll(selector) { return selector === "#rapport-contenu .page" ? Array.from({ length: 6 }, () => ({})) : []; },
+      },
+      questionnairePretPourFinalisation: () => true,
+      assurerVersionAnalyseRapport: async () => true,
+      sauvegardeBrouillonD1EnCours: false,
+      enregistrerBrouillonD1: async () => true,
+      chargerLogoRapportDataUrl: async () => {},
+      genererRapport: () => false,
+      statut: () => {},
+      window: { print: () => assert.fail("un aperçu en erreur ne doit pas imprimer"), setTimeout },
+      console: { error() {} },
+    };
+    context.globalThis = context;
+    return { context, alert, button };
+  };
+
+  const previewHarness = createContext({ preview: true });
+  vm.runInNewContext(`${preparationCode}\n${previewCode}\nglobalThis.run=apercuImpression;`, previewHarness.context);
+  assert.equal(await previewHarness.context.run(), false);
+  assert.equal(previewHarness.alert.hidden, false);
+  assert.match(previewHarness.alert.textContent, /rapport n’a pas pu être préparé/u);
+  assert.equal(previewHarness.button.disabled, false);
+
+  const pdfHarness = createContext();
+  pdfHarness.context.genererRapport = () => true;
+  pdfHarness.context.nomFichierDiagnosticPDF = () => "diagnostic.pdf";
+  pdfHarness.context.assurerLibrairiesPDF = async () => ({ jsPDFCtor: null, html2canvasFn: null });
+  vm.runInNewContext(`${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, pdfHarness.context);
+  assert.equal(await pdfHarness.context.run(), false);
+  assert.equal(pdfHarness.alert.hidden, false);
+  assert.match(pdfHarness.alert.textContent, /génération du PDF est indisponible/u);
+  assert.equal(pdfHarness.button.disabled, false);
 });
 
 test("le modèle narratif exclut les contradictions avis, top 3, catégorie et zone", () => {

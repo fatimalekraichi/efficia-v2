@@ -1059,8 +1059,9 @@ test("Offre 4 : description courte (non vide) -> formulation de brièveté, jama
 /* n'existe pas de second chemin de génération de texte pour le PDF.       */
 /* ---------------------------------------------------------------------- */
 test("rendu — l'aperçu admin et le PDF partagent la même génération de rapport (aucun chemin narratif distinct)", () => {
-  assert.match(html, /async function apercuImpression\(\)\{[\s\S]*?genererRapport\(\)/);
-  assert.match(html, /async function telechargerPDF\(\)\{[\s\S]*?genererRapport\(\)/);
+  assert.match(html, /async function preparerRenduDiagnosticGratuit\(\)\{[\s\S]*?genererRapport\(\)/);
+  assert.match(html, /async function apercuImpression\(\)\{[\s\S]*?preparerRenduDiagnosticGratuit\(\)/);
+  assert.match(html, /async function telechargerPDF\(\)\{[\s\S]*?preparerRenduDiagnosticGratuit\(\)/);
   assert.match(html, /async function telechargerPDFNatif\(filename\)\{[\s\S]*?genererRapport\(\)|function telechargerPDFNatif/);
 
   // telechargerPDF() est la dernière fonction déclarée dans le fichier (elle

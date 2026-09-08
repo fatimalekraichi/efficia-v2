@@ -696,6 +696,7 @@
     </div>
     <p id="statut-brouillon-d1" class="brouillon-etat" data-state="dirty" role="status" aria-live="polite">Modifications non enregistrées</p>
     <p id="alerte-textes-personnalises" class="report-text-alert" role="alert" hidden>Certaines données ont changé. Vérifiez les textes personnalisés avant de générer le rapport.</p>
+    <p id="erreur-rendu-diagnostic" class="report-text-alert" role="alert" hidden></p>
   </div>
 
   <div class="conteneur">
@@ -2938,9 +2939,10 @@ function composerRequeteProposee(){
 function rechercheEstPerimee(){
   if(!collecteDiagnosticValidee || !donneesAnalyse.derniereRequeteAnalysee) return false;
   const requete = normaliserRecherche(document.getElementById("d-requete")?.value);
-  const activite = normaliserRecherche(document.getElementById("p-activite")?.value);
-  return requete !== normaliserRecherche(donneesAnalyse.derniereRequeteAnalysee)
-    || activite !== normaliserRecherche(donneesAnalyse.derniereActiviteAnalysee);
+  // Le libellé d’activité peut être corrigé manuellement pour présenter
+  // l’entreprise. Seule la requête effectivement collectée invalide les
+  // résultats concurrentiels et doit imposer une nouvelle recherche.
+  return requete !== normaliserRecherche(donneesAnalyse.derniereRequeteAnalysee);
 }
 function zoneRechercheSaisie(){
   const city = normaliserRecherche(document.getElementById("d-zone-recherche")?.value);
@@ -3095,7 +3097,12 @@ function actualiserZoneGeographique(business = {}){
 function proposerRequeteDepuisActivite(){
   const input = document.getElementById("d-requete");
   if(!input) return;
-  if(!requetePersonnalisee) input.value = composerRequeteProposee();
+  // Après une collecte, la recherche affichée est une preuve distincte :
+  // corriger le libellé d’activité ne doit pas la réécrire silencieusement.
+  // Une modification volontaire de cette requête reste, elle, bloquante.
+  if(!requetePersonnalisee && !(collecteDiagnosticValidee && donneesAnalyse.derniereRequeteAnalysee)){
+    input.value = composerRequeteProposee();
+  }
   donneesAnalyse.requeteAffichee = normaliserRecherche(input.value) || null;
   mettreAJourEtatRecherche();
 }
@@ -7815,14 +7822,27 @@ function validerMiseEnPageRapport(){
 }
 
 async function apercuImpression(){
-  if(!questionnairePretPourFinalisation()) return;
-  if(!await assurerVersionAnalyseRapport()) return;
-  if(!await enregistrerBrouillonD1(true)){
-    statut("Le questionnaire n’a pas pu être sauvegardé. L’aperçu n’a pas été ouvert.", "erreur");
-    return;
+  effacerErreurRenduDiagnostic();
+  if(!questionnairePretPourFinalisation()){
+    afficherErreurRenduDiagnostic(null, document.getElementById("statut")?.textContent?.trim() || "Le diagnostic doit être complété avant de préparer l’aperçu.");
+    return false;
   }
-  if(typeof chargerRemplacementsNarratifsRapport === "function") await chargerRemplacementsNarratifsRapport();
-  if(genererRapport()) window.print();
+  const btns = boutonsGenerationDiagnosticGratuit();
+  const labels = btns.map(button => button.textContent);
+  btns.forEach(button => {
+    button.disabled = true;
+    if(button.id.includes("apercu")) button.textContent = "Préparation de l’aperçu…";
+  });
+  try{
+    await preparerRenduDiagnosticGratuit();
+    window.print();
+    return true;
+  }catch(cause){
+    afficherErreurRenduDiagnostic(cause, "L’aperçu n’a pas pu être préparé. Rechargez la page puis réessayez.");
+    return false;
+  }finally{
+    btns.forEach((button, index) => { button.disabled = false; button.textContent = labels[index]; });
+  }
 }
 
 function questionnairePretPourFinalisation(){
@@ -8054,6 +8074,54 @@ function ajouterLiensPdfPourPage(pdf, page){
     const height = (rect.height / pageRect.height) * 297;
     pdf.link(x, y, width, height, {url});
   });
+}
+
+function boutonsGenerationDiagnosticGratuit(){
+  return [
+    document.getElementById("btn-pdf"),
+    document.getElementById("btn-pdf-rapport"),
+    document.getElementById("btn-apercu"),
+    document.getElementById("btn-apercu-rapport")
+  ].filter(Boolean);
+}
+
+function effacerErreurRenduDiagnostic(){
+  const message = document.getElementById("erreur-rendu-diagnostic");
+  if(message){ message.hidden = true; message.textContent = ""; }
+}
+
+function afficherErreurRenduDiagnostic(cause, fallback){
+  if(cause) console.error("Rendu du diagnostic gratuit impossible", cause);
+  const message = cause?.userMessage || fallback;
+  const alert = document.getElementById("erreur-rendu-diagnostic");
+  if(alert){ alert.textContent = message; alert.hidden = false; }
+  statut(message, "erreur");
+}
+
+function erreurRenduDiagnostic(code, userMessage){
+  const error = new Error(code);
+  error.userMessage = userMessage;
+  return error;
+}
+
+async function enregistrerBrouillonAvantRendu(){
+  if(!await enregistrerBrouillonD1(true)){
+    throw erreurRenduDiagnostic("DRAFT_SAVE_FAILED", "Le brouillon n’a pas pu être enregistré. Le rendu n’a pas été lancé.");
+  }
+}
+
+async function preparerRenduDiagnosticGratuit(){
+  if(!await assurerVersionAnalyseRapport()){
+    throw erreurRenduDiagnostic("ANALYSIS_VERSION_UNAVAILABLE", "La version de ce diagnostic n’est pas disponible. Rechargez la page puis réessayez.");
+  }
+  await enregistrerBrouillonAvantRendu();
+  if(typeof chargerRemplacementsNarratifsRapport === "function" && !await chargerRemplacementsNarratifsRapport()){
+    throw erreurRenduDiagnostic("TEXT_OVERRIDES_LOAD_FAILED", "Les textes personnalisés n’ont pas pu être relus. Le rendu n’a pas été lancé.");
+  }
+  await chargerLogoRapportDataUrl();
+  if(!genererRapport()){
+    throw erreurRenduDiagnostic("REPORT_MODEL_BUILD_FAILED", "Le rapport n’a pas pu être préparé. Vérifiez les informations du diagnostic puis réessayez.");
+  }
 }
 
 /* ================= AUDIT EFFICIA PREMIUM (produit payant) =================
@@ -8564,35 +8632,32 @@ async function telechargerAuditPremium(){
 }
 
 async function telechargerPDF(){
-  const btns = [document.getElementById("btn-pdf"), document.getElementById("btn-pdf-rapport")].filter(Boolean);
-  if(!questionnairePretPourFinalisation()) return;
-  if(!await assurerVersionAnalyseRapport()) return;
-  if(!await enregistrerBrouillonD1(true)){
-    statut("Le questionnaire n’a pas pu être sauvegardé. Le PDF n’a pas été généré.", "erreur");
-    return;
+  effacerErreurRenduDiagnostic();
+  if(!questionnairePretPourFinalisation()){
+    afficherErreurRenduDiagnostic(null, document.getElementById("statut")?.textContent?.trim() || "Le diagnostic doit être complété avant de générer le PDF.");
+    return false;
   }
-  if(typeof chargerRemplacementsNarratifsRapport === "function") await chargerRemplacementsNarratifsRapport();
-  await chargerLogoRapportDataUrl();
-  if(!genererRapport()) return;
-  const filename = nomFichierDiagnosticPDF();
-  dernierNomPdfGenere = filename;
-  const originalLabels = btns.map(btn => btn.textContent);
-  btns.forEach(btn => { btn.disabled = true; btn.textContent = "Génération du PDF en cours…"; });
+  const btns = boutonsGenerationDiagnosticGratuit();
+  const originalLabels = btns.map(button => button.textContent);
+  btns.forEach(button => {
+    button.disabled = true;
+    if(button.id.includes("pdf")) button.textContent = "Génération du PDF en cours…";
+  });
   try{
+    await preparerRenduDiagnosticGratuit();
+    const filename = nomFichierDiagnosticPDF();
+    dernierNomPdfGenere = filename;
     const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
     if(!jsPDFCtor || !html2canvasFn){
-      alert("La génération du PDF premium est indisponible pour le moment. Vérifiez votre connexion internet puis réessayez.");
-      return;
+      throw erreurRenduDiagnostic("PDF_LIBRARIES_UNAVAILABLE", "La génération du PDF est indisponible pour le moment. Vérifiez votre connexion internet puis réessayez.");
     }
     const pages = [...document.querySelectorAll("#rapport-contenu .page")];
     if(pages.length !== 6){
-      alert(`Erreur de mise en page : le rapport contient ${pages.length} pages au lieu de 6.`);
-      return;
+      throw erreurRenduDiagnostic("REPORT_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${pages.length} pages au lieu de 6.`);
     }
     const layout = validerMiseEnPageRapport();
     if(!layout.ok){
-      alert(`Erreur de mise en page : le contenu de la page ${layout.page} descend trop près du pied de page.`);
-      return;
+      throw erreurRenduDiagnostic("REPORT_LAYOUT_INVALID", `Erreur de mise en page : le contenu de la page ${layout.page} descend trop près du pied de page.`);
     }
     await waitForReportImages(document.getElementById("rapport-contenu"));
     const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
@@ -8604,17 +8669,17 @@ async function telechargerPDF(){
     }
     const totalPdf = pdf.internal.getNumberOfPages();
     if(totalPdf !== 6){
-      alert(`Erreur de mise en page : le rapport contient ${totalPdf} pages au lieu de 6.`);
-      return;
+      throw erreurRenduDiagnostic("PDF_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${totalPdf} pages au lieu de 6.`);
     }
     pdf.save(filename);
     await finaliserBrouillonD1ApresPDF(filename);
     await enregistrerPdfGenereBackOffice(filename);
+    return true;
   }catch(e){
-    console.error("Génération PDF échouée", e);
-    alert("La génération du PDF a échoué. Vous pouvez utiliser l'aperçu avant impression.");
+    afficherErreurRenduDiagnostic(e, "La génération du PDF a échoué. Vous pouvez utiliser l’aperçu avant impression.");
+    return false;
   }finally{
-    btns.forEach((btn, i) => { btn.disabled = false; btn.textContent = originalLabels[i]; });
+    btns.forEach((button, index) => { button.disabled = false; button.textContent = originalLabels[index]; });
   }
 }
 </script>
