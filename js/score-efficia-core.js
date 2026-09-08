@@ -13,9 +13,11 @@ function calculateEfficiaScoreDetail({
   profileKey = "default",
   scoringVersion,
   legacyScoringVersion,
+  manualScoredCriteria = [],
 } = {}) {
   const profile = sectors[profileKey] || sectors.default || {};
   const legacy = scoringVersion === legacyScoringVersion;
+  const manuallyScored = new Set(Array.isArray(manualScoredCriteria) ? manualScoredCriteria : []);
   let total = 0;
   let effectiveProfileMaximum = 0;
   let answered = 0;
@@ -33,7 +35,7 @@ function calculateEfficiaScoreDetail({
     );
 
     category.criteres.forEach((criterion) => {
-      const scored = legacy || criterion.scored !== false;
+      const scored = legacy || criterion.scored !== false || manuallyScored.has(criterion.key);
       if (!scored) return;
       scoredCriteriaCount += 1;
       evaluatedMaximum += Number(criterion.max || 0);

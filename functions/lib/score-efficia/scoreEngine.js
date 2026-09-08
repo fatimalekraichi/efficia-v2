@@ -62,11 +62,16 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
   const conditions = normalizeQuestionnaireConditions(manualReview, manualReview.criteriaReview);
   const answers = {};
   const criteria = [];
+  const manualScoredCriteria = [];
 
   for (const category of GRILLE) {
     for (const criterion of category.criteres) {
       const review = reviews.get(criterion.key) || null;
-      const scored = scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false;
+      const manualAttractivenessOverride = scoringVersion !== LEGACY_SCORING_VERSION
+        && criterion.key === "attractiviteConcurrents"
+        && review?.source === "manual"
+        && selectedOptionIndex(review?.selectedOptionIndex, criterion.opts.length) !== null;
+      const scored = scoringVersion === LEGACY_SCORING_VERSION || criterion.scored !== false || manualAttractivenessOverride;
       const absenceCondition = conditionForCriterion(criterion.key, conditions, manualReview.criteriaReview);
       const explicitAbsence = Boolean(absenceCondition);
       const locationPoints = criterion.key === "adresse" && conditions.locationMode !== "unknown"
@@ -77,6 +82,7 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
         : null;
       const noReviewsResponse = absenceCondition === "no_reviews" && criterion.key === "tauxReponseAvis";
       answers[criterion.key] = points;
+      if (manualAttractivenessOverride) manualScoredCriteria.push(criterion.key);
       criteria.push({
         key: criterion.key,
         category: category.key,
@@ -107,10 +113,11 @@ export function buildScoreInputsFromManualReview(manualReview = {}, requestedSco
     profileKey: manualReview.profileKey || "default",
     answers,
     criteria,
+    manualScoredCriteria,
   };
 }
 
-export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION) {
+export function calculateScoreDetail(answers = {}, profileKey = "default", requestedScoringVersion = SCORING_VERSION, { manualScoredCriteria = [] } = {}) {
   const scoringVersion = resolveScoringVersion(requestedScoringVersion);
   return globalThis.EfficiaScoreCore.calculateScoreDetail({
     grid: GRILLE,
@@ -119,6 +126,7 @@ export function calculateScoreDetail(answers = {}, profileKey = "default", reque
     profileKey,
     scoringVersion,
     legacyScoringVersion: LEGACY_SCORING_VERSION,
+    manualScoredCriteria,
   });
 }
 
@@ -170,7 +178,7 @@ const PACK_CRITERIA = new Set([
   "liensAction",
 ]);
 
-export function scoreProjetePack(answers = {}, profileKey = "default", scoringVersion = SCORING_VERSION) {
+export function scoreProjetePack(answers = {}, profileKey = "default", scoringVersion = SCORING_VERSION, { manualScoredCriteria = [] } = {}) {
   const projected = { ...answers };
   let corriges = 0;
   let ameliorables = 0;
@@ -188,7 +196,7 @@ export function scoreProjetePack(answers = {}, profileKey = "default", scoringVe
     }
   }
   return {
-    projete: Math.min(97, Math.round(calculateScoreDetail(projected, profileKey, scoringVersion).total)),
+    projete: Math.min(97, Math.round(calculateScoreDetail(projected, profileKey, scoringVersion, { manualScoredCriteria }).total)),
     corriges,
     ameliorables,
   };
@@ -201,7 +209,9 @@ function findBand(score) {
 export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {}) {
   const resolvedScoringVersion = resolveScoringVersion(scoringVersion || manualReview.scoringVersion);
   const scoreInputs = buildScoreInputsFromManualReview(manualReview, resolvedScoringVersion);
-  const detail = calculateScoreDetail(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion);
+  const detail = calculateScoreDetail(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion, {
+    manualScoredCriteria: scoreInputs.manualScoredCriteria,
+  });
   const roundedScore = Math.round(detail.total);
   const score = resolvedScoringVersion === LEGACY_SCORING_VERSION
     ? Number(detail.total.toFixed(2))
@@ -216,7 +226,9 @@ export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {
       repondus: detail.repondus,
       totalCrit: detail.totalCrit,
       indices: indicesProspect(scoreInputs.answers),
-      projectedPackScore: scoreProjetePack(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion),
+      projectedPackScore: scoreProjetePack(scoreInputs.answers, scoreInputs.profileKey, resolvedScoringVersion, {
+        manualScoredCriteria: scoreInputs.manualScoredCriteria,
+      }),
       band: findBand(roundedScore),
       categories: detail.categories,
       provisional: scoreInputs.provisional,

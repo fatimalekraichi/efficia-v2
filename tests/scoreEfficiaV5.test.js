@@ -27,7 +27,7 @@ function extractFunction(source, name, nextName) {
   return source.slice(start, end);
 }
 
-function calculateAdminScore(answersByKey, profileKey = "default") {
+function calculateAdminScore(answersByKey, profileKey = "default", manualScoredCriteria = []) {
   const adminGrid = GRILLE.map((category) => ({
     ...category,
     criteres: category.criteres.map((criterion) => ({ ...criterion, id: criterion.key })),
@@ -41,6 +41,8 @@ function calculateAdminScore(answersByKey, profileKey = "default") {
     profilActif: profileKey,
     result: null,
     critereEstNote: (criterion) => criterion.scored !== false,
+    criteresManuellementNotes: () => manualScoredCriteria,
+    critereEstManuellementNote: (criterion) => manualScoredCriteria.includes(criterion.key),
     critereEstMasque: () => false,
     lirePoints: (id) => answersByKey[id] ?? null,
   };
@@ -96,15 +98,72 @@ test("v5 borne le score, normalise le maximum à 100 et le minimum à 0", () => 
   assert.equal(calculateScoreDetail(excessive, "default", SCORING_VERSION).total, 100);
 });
 
-test("attractivité Devant, Derrière ou ancienne valeur AUTO ne change jamais le score v5", () => {
+test("la synthèse automatique reste non notée en v5, mais un choix manuel explicite devient canonique", () => {
   const answers = fullAnswers();
-  const ahead = calculateScoreDetail({ ...answers, attractiviteConcurrents: 4 }, "artisan", SCORING_VERSION);
-  const behind = calculateScoreDetail({ ...answers, attractiviteConcurrents: 0 }, "artisan", SCORING_VERSION);
-  const missing = calculateScoreDetail({ ...answers, attractiviteConcurrents: null }, "artisan", SCORING_VERSION);
-  assert.equal(ahead.total, behind.total);
-  assert.equal(behind.total, missing.total);
-  assert.equal(ahead.totalCrit, 28);
-  assert.ok(Math.abs(ahead.categories.find((item) => item.key === "visibilite").maximumEffectifCategorie - 7.2) < 1e-9);
+  const automaticAhead = calculateScoreDetail({ ...answers, attractiviteConcurrents: 4 }, "artisan", SCORING_VERSION);
+  const automaticBehind = calculateScoreDetail({ ...answers, attractiviteConcurrents: 0 }, "artisan", SCORING_VERSION);
+  const manualAhead = calculateScoreDetail({ ...answers, attractiviteConcurrents: 4 }, "artisan", SCORING_VERSION, { manualScoredCriteria: ["attractiviteConcurrents"] });
+  const manualBehind = calculateScoreDetail({ ...answers, attractiviteConcurrents: 0 }, "artisan", SCORING_VERSION, { manualScoredCriteria: ["attractiviteConcurrents"] });
+  assert.equal(automaticAhead.total, automaticBehind.total);
+  assert.equal(automaticAhead.totalCrit, 28);
+  assert.equal(manualAhead.totalCrit, 29);
+  assert.ok(manualAhead.total > manualBehind.total);
+});
+
+test("choix manuel de confiance visible : administration, brouillon et moteur partagé donnent 46, 44 et 42", () => {
+  const jorgeAnswers = {
+    revendiquee: 3, categoriePrincipale: 4, categoriesSecondaires: 2, horaires: 0, contact: 3,
+    adresse: 0, attributs: 0, nap: 3, nomConforme: 2,
+    logoCouverture: 1, nombrePhotos: 1, photoRecente: 0, varietePhotos: 1, qualitePhotos: 2,
+    noteMoyenne: 4, volumeAvis: 3, recenceAvis: 2, tauxReponseAvis: 3, qualiteReponsesAvis: 2,
+    descriptionRemplie: 0, descriptionQualite: 0, servicesPresents: 0, servicesDecrits: 0,
+    questionsReponses: 0, liensAction: 0, publicationRecente: 0, rythmePublication: 0,
+    classementLocal: 6,
+  };
+  const allCriteria = GRILLE.flatMap((category) => category.criteres);
+  const reviewFor = (key, points, source = "manual") => {
+    const criterion = allCriteria.find((item) => item.key === key);
+    const selectedOptionIndex = criterion.opts.findIndex(([, optionPoints]) => optionPoints === points);
+    return {
+      key,
+      question: criterion.q,
+      value: points === criterion.max ? "compliant" : (points === 0 ? "deficient" : "partial"),
+      label: criterion.opts[selectedOptionIndex]?.[0] || "",
+      selectedOptionIndex,
+      points,
+      source,
+    };
+  };
+  const manualReviewFor = (points) => ({
+    scoringVersion: SCORING_VERSION,
+    profileKey: "default",
+    locationMode: "service_area",
+    serviceAreaVerification: "not_verifiable",
+    criteriaReview: [
+      ...Object.entries(jorgeAnswers).map(([key, value]) => reviewFor(key, value)),
+      reviewFor("attractiviteConcurrents", points, "manual"),
+    ],
+  });
+
+  for(const [points, expected] of [[4, 46], [2, 44], [0, 42]]) {
+    const admin = calculateAdminScore({ ...jorgeAnswers, attractiviteConcurrents: points }, "default", ["attractiviteConcurrents"]);
+    const saved = runScoreEfficia({ manualReview: manualReviewFor(points) });
+    assert.equal(Math.round(admin.total), expected);
+    assert.equal(saved.reviewedScore.roundedScore, expected);
+    assert.deepEqual(saved.scoreInputs.manualScoredCriteria, ["attractiviteConcurrents"]);
+  }
+
+  const automatic = runScoreEfficia({
+    manualReview: {
+      ...manualReviewFor(2),
+      criteriaReview: [
+        ...manualReviewFor(2).criteriaReview.filter((item) => item.key !== "attractiviteConcurrents"),
+        reviewFor("attractiviteConcurrents", 2, "auto"),
+      ],
+    },
+  });
+  assert.equal(automatic.reviewedScore.roundedScore, 44);
+  assert.deepEqual(automatic.scoreInputs.manualScoredCriteria, []);
 });
 
 test("le classement local ne récupère pas les 4,8 points retirés au profil Artisan", () => {

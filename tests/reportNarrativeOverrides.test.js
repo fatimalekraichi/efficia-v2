@@ -189,12 +189,18 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, opti
       });
       if (url.includes("/api/admin/audit-drafts/")) return json({
         success: true,
-        draft: {
-          reportType: "free",
-          currentStep: "questionnaire",
-          updatedAt: "2026-08-30T10:00:00.000Z",
-          answers: window.__workflowFixture.answers
-        }
+        ...(function(){
+          if((options.method || "GET") === "PUT") {
+            const payload = JSON.parse(options.body || "{}");
+            window.__workflowFixture.answers = payload.answers || window.__workflowFixture.answers;
+          }
+          return { draft: {
+            reportType: "free",
+            currentStep: "questionnaire",
+            updatedAt: "2026-08-30T10:00:00.000Z",
+            answers: window.__workflowFixture.answers
+          }};
+        })()
       });
       if (url.includes("/api/admin/report-text-overrides/")) {
         if ((options.method || "GET") === "PUT") {
@@ -1149,6 +1155,87 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
   const capturedReport = result.captures.join("\n");
   assert.match(capturedReport, /Entreprise d’électricité/u);
   assert.match(capturedReport, /Bonjour Jean-Michel,/u);
+});
+
+test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restauré et capturé avec le même score", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 75 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        await initialisationContexteAdminPromise;
+        const points = {
+          revendiquee:3, categoriePrincipale:4, categoriesSecondaires:2, horaires:0, contact:3,
+          attributs:0, nap:3, nomConforme:2,
+          logoCouverture:1, nombrePhotos:1, photoRecente:0, varietePhotos:1, qualitePhotos:2,
+          noteMoyenne:4, volumeAvis:3, recenceAvis:2, tauxReponseAvis:3, qualiteReponsesAvis:2,
+          descriptionRemplie:0, descriptionQualite:0, servicesPresents:0, servicesDecrits:0,
+          questionsReponses:0, liensAction:0, publicationRecente:0, rythmePublication:0, classementLocal:6
+        };
+        const choose = (key, value) => {
+          const id = CRITERE_IDS[key];
+          const input = [...document.querySelectorAll('input[name="c' + id + '"]')]
+            .find(item => Number(item.value) === value && !item.dataset.special);
+          if(!input) throw new Error('option introuvable : ' + key + '/' + value);
+          input.checked = true;
+          input.dispatchEvent(new Event("change", {bubbles:true}));
+        };
+        const mode = document.querySelector('input[name="condition-location-mode"][value="service_area"]');
+        const serviceArea = document.querySelector('input[name="location-service-area"][value="not_verifiable"]');
+        mode.checked = true; mode.dispatchEvent(new Event("change", {bubbles:true}));
+        serviceArea.checked = true; serviceArea.dispatchEvent(new Event("change", {bubbles:true}));
+        Object.entries(points).forEach(([key, value]) => choose(key, value));
+        collecteDiagnosticValidee = true;
+        donneesAnalyse.derniereRequeteAnalysee = "Électricien Arlon";
+        donneesAnalyse.derniereActiviteAnalysee = "Électricien";
+        donneesAnalyse.requeteTestee = "Électricien Arlon";
+        document.getElementById("d-requete").value = "Électricien Arlon";
+        const confidence = value => {
+          choose("attractiviteConcurrents", value);
+          return Number(document.getElementById("score-live").textContent);
+        };
+        const ahead = confidence(4);
+        const comparable = confidence(2);
+        await enregistrerBrouillonD1(true);
+        const stored = window.__workflowFixture.answers.responses.attractiviteConcurrents;
+        document.querySelectorAll('input[name="c' + CRITERE_IDS.attractiviteConcurrents + '"]').forEach(input => { input.checked = false; });
+        sourcesCriteres.delete(CRITERE_IDS.attractiviteConcurrents);
+        await restaurerBrouillonD1();
+        const restored = Number(document.getElementById("score-live").textContent);
+        const restoredValue = document.querySelector('input[name="c' + CRITERE_IDS.attractiviteConcurrents + '"]:checked')?.value || "";
+        const behind = confidence(0);
+        if(!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
+        const reportScore = document.querySelector('[data-report-page="1"] .jauge-int .n')?.textContent || "";
+        const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+        if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
+        const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+        const captured = [];
+        for(const [index, page] of [...document.querySelectorAll("#rapport-contenu .page")].entries()) {
+          captured.push(page.innerText || "");
+          const canvas = await html2canvasFn(page, optionsCapturePdfDiagnostic());
+          if(index > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(canvas.toDataURL("image/jpeg", .98), "JPEG", 0, 0, 210, 297);
+        }
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          ahead, comparable, behind, restored, restoredValue, stored,
+          reportScore, pdfPages:pdf.internal.getNumberOfPages(), pdfBytes:pdf.output("arraybuffer").byteLength,
+          captured:captured.join("\\n")
+        });
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, {}, { timeout: 55_000, resultWait: 50_000 });
+  assert.equal(result.error, undefined, result.error);
+  assert.deepEqual([result.ahead, result.comparable, result.behind], [46, 44, 42]);
+  assert.equal(result.restored, 44);
+  assert.equal(result.restoredValue, "2");
+  assert.deepEqual(result.stored, {
+    points:2, value:"partial", statut:"manuelle", source:"manual", selectedOptionIndex:1, checklist:[]
+  });
+  assert.equal(result.reportScore, "42");
+  assert.equal(result.pdfPages, 6);
+  assert.ok(result.pdfBytes > 0);
+  assert.match(result.captured, /42\s*\/100/u);
 });
 
 test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et le rapport ne rend que la formulation sûre", { skip: !existsSync(CHROME), timeout: 30_000 }, async () => {

@@ -1469,6 +1469,16 @@ const LEGACY_SCORING_VERSION = "score-efficia-v4";
 const SCORING_VERSION = "score-efficia-v5";
 let scoringVersionActif = SCORING_VERSION;
 function critereEstNote(cr){ return scoringVersionActif === LEGACY_SCORING_VERSION || cr?.scored !== false; }
+function critereEstManuellementNote(cr){
+  if(scoringVersionActif === LEGACY_SCORING_VERSION || cr?.key !== "attractiviteConcurrents") return false;
+  const selected = document.querySelector(`input[name="c${cr.id}"]:checked`);
+  return sourcesCriteres.get(cr.id) === "manual" && Boolean(selected);
+}
+function criteresManuellementNotes(){
+  return GRILLE.flatMap(cat => cat.criteres)
+    .filter(critereEstManuellementNote)
+    .map(cr => cr.key);
+}
 const AUDIT_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=audit&audit={{auditPublicId}}";
 const PACK_PAYMENT_URL = "https://www.efficiadigital.com/achat?offre=visibility&audit={{auditPublicId}}";
 let auditPublicIdActif = null;
@@ -2573,7 +2583,7 @@ function calculScoreDetail(){
   if(!moteur) throw new Error("score_efficia_core_unavailable");
   const answers = Object.fromEntries(GRILLE.flatMap(cat => cat.criteres.map(cr => [
     cr.key,
-    critereEstNote(cr) && critereEstMasque(cr) ? 0 : lirePoints(cr.id)
+    (critereEstNote(cr) || critereEstManuellementNote(cr)) && critereEstMasque(cr) ? 0 : lirePoints(cr.id)
   ])));
   return moteur.calculateScoreDetail({
     grid:GRILLE,
@@ -2581,7 +2591,8 @@ function calculScoreDetail(){
     answers,
     profileKey:profilActif || "default",
     scoringVersion:scoringVersionActif,
-    legacyScoringVersion:LEGACY_SCORING_VERSION
+    legacyScoringVersion:LEGACY_SCORING_VERSION,
+    manualScoredCriteria:criteresManuellementNotes()
   });
 }
 
@@ -3656,7 +3667,7 @@ async function relancerAnalyseRecherche(){
 function collecterReponses(){
   const reponses = {};
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
-    if(!critereEstNote(cr)) return;
+    if(!critereEstNote(cr) && !critereEstManuellementNote(cr)) return;
     const element = document.getElementById("crit-"+cr.id);
     if(element?.classList.contains("condition-hidden")) return;
     const selected = cr.key === "adresse"
@@ -4659,6 +4670,10 @@ if(!modeLectureSeule()){
         element.classList.remove("a-verifier");
         element.querySelector(".badges").innerHTML = `<span class="badge-verif" style="background:var(--bleu)">MANUEL</span>`;
       }
+      // Le gestionnaire inline des radios recalcule d'abord les conditions.
+      // Pour cette synthèse V5, le caractère noté dépend explicitement de la
+      // source MANUEL : recalcule une fois la source canonique enregistrée.
+      if(trouverCritere(id)?.key === "attractiviteConcurrents") calc();
     }
   });
 }
@@ -4693,7 +4708,7 @@ function appliquerVersionScoring(version){
   const legacy = scoringVersionActif === LEGACY_SCORING_VERSION;
   const summary = document.querySelector('[data-informational-criterion="attractiviteConcurrents"]');
   const legacyOptions = summary?.querySelector("[data-legacy-attractiveness-options]");
-  if(legacyOptions) legacyOptions.hidden = !legacy;
+  if(legacyOptions) legacyOptions.hidden = false;
   const badge = summary?.querySelector(".badges");
   if(badge) badge.innerHTML = legacy
     ? '<span class="badge-auto">AUTO — critère historique noté</span>'
