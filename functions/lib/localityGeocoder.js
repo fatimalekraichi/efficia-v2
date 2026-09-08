@@ -265,13 +265,47 @@ function extractLatLng(result) {
 //      uniquement en casse/espaces/accents — jamais une simple
 //      inclusion/troncature ;
 //    · si country_code ET country (nom) sont tous deux absents -> rejet ;
-//  - city de la réponse compatible avec la ville attendue (obligatoire —
-//    absente ou différente -> rejet, jamais une coïncidence supposée) ;
+//  - la localité demandée doit figurer dans un composant de localité
+//    structuré de la réponse (obligatoire — absente ou différente -> rejet,
+//    jamais une coïncidence supposée). Certains géocodeurs renvoient la
+//    commune administrative dans `city` et le village exact dans `village` ;
+//    par exemple Wibrin / Houffalize. Une adresse libre ne participe jamais
+//    à cette comparaison ;
 //  - postal_code de la réponse compatible avec le code postal attendu
 //    LORSQUE les deux sont disponibles (réponse ET requête) — un
 //    fournisseur ne renvoyant jamais ce champ ne doit pas bloquer
 //    indéfiniment une localité par ailleurs confirmée par ville+pays, mais
 //    un code postal renvoyé ET différent de celui attendu est un rejet net.
+const STRUCTURED_LOCALITY_COMPONENT_FIELDS = Object.freeze([
+  "city", "town", "village", "municipality", "commune", "locality", "borough", "hamlet", "suburb", "neighbourhood",
+]);
+
+function normalizeLocalityComponent(value) {
+  return normalizeKey(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function structuredLocalityComponents(result) {
+  const seen = new Set();
+  return STRUCTURED_LOCALITY_COMPONENT_FIELDS.flatMap((field) => {
+    const component = normalizeLocalityComponent(result?.[field]);
+    if (!component || seen.has(component)) return [];
+    seen.add(component);
+    return [component];
+  });
+}
+
+function localityComponentMatches(component, expectedCity) {
+  return component === expectedCity
+    // Compatibilité explicite avec des libellés structurés comme
+    // "Luxembourg City" pour la localité demandée "Luxembourg". Le mot
+    // suivant doit être un séparateur : jamais de sous-chaîne arbitraire.
+    || component.startsWith(`${expectedCity} `)
+    || expectedCity.startsWith(`${component} `);
+}
+
 function validateLocalityMatch(result, expected) {
   const responseCountryCode = String(result?.country_code || "").trim().toUpperCase();
   const expectedCountryCode = String(expected?.countryCode || "").trim().toUpperCase();
@@ -287,12 +321,10 @@ function validateLocalityMatch(result, expected) {
     }
   }
 
-  const responseCity = normalizeKey(result?.city);
-  const expectedCity = normalizeKey(expected?.city);
-  if (!responseCity || !expectedCity) return { ok: false, reason: "city_missing" };
-  const cityMatches = responseCity === expectedCity
-    || responseCity.includes(expectedCity)
-    || expectedCity.includes(responseCity);
+  const expectedCity = normalizeLocalityComponent(expected?.city);
+  const localityComponents = structuredLocalityComponents(result);
+  if (!localityComponents.length || !expectedCity) return { ok: false, reason: "city_missing" };
+  const cityMatches = localityComponents.some((component) => localityComponentMatches(component, expectedCity));
   if (!cityMatches) return { ok: false, reason: "city_mismatch" };
 
   const responsePostal = normalizePostal(result?.postal_code);

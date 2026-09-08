@@ -850,6 +850,70 @@ test("8quater. les zones confirmées Wibrin, Esch-sur-Alzette et Ell propagent s
   }
 });
 
+test("8quaterbis. MBGE / Wibrin dépasse le centre géographique et lance la collecte seulement après validation du village structuré", async () => {
+  const db = new LocalD1();
+  const analysisId = "geo-mbge-wibrin";
+  seedAnalysis(db, { analysisId, companyName: "MBGE Marville Benjamin Électricien", city: "Wibrin" });
+  seedManualMetadata(db, analysisId);
+  marksInitialCollection(db, analysisId, {
+    companyName: "MBGE Marville Benjamin Électricien",
+    city: "Wibrin",
+    geo: { country: "Belgium", countryCode: "BE", postalCode: "6666" },
+  });
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) {
+      calls.push("geocoding");
+      return Response.json({
+        data: [[{
+          latitude: 50.1622,
+          longitude: 5.7304,
+          city: "Houffalize",
+          town: "Houffalize",
+          village: "Wibrin",
+          municipality: "Houffalize",
+          postal_code: "6666",
+          country_code: "BE",
+        }]],
+      });
+    }
+    calls.push("competitors");
+    return Response.json({
+      data: [[
+        { name: "Concurrent Wibrin 1", place_id: "wibrin-1", rating: 4.5, reviews: 14, city: "Houffalize" },
+        { name: "Concurrent Wibrin 2", place_id: "wibrin-2", rating: 4.3, reviews: 10, city: "Houffalize" },
+        { name: "Concurrent Wibrin 3", place_id: "wibrin-3", rating: 4.1, reviews: 8, city: "Houffalize" },
+        { name: "MBGE Marville Benjamin Électricien", place_id: "place-computelec", rating: 5, reviews: 6, city: "Wibrin" },
+      ]],
+    });
+  };
+  try {
+    const response = await collectDiagnostic(await context(db, analysisId, {
+      body: refreshBody({
+        analysisId,
+        company: "MBGE Marville Benjamin Électricien",
+        city: "Wibrin",
+        searchQuery: "Électricien Houffalize",
+        searchZone: { city: "Wibrin", countryCode: "BE" },
+      }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.operation, "refresh_search");
+    assert.deepEqual(calls, ["geocoding", "competitors"]);
+    assert.equal(body.business.searchQuery, "Électricien Houffalize");
+    assert.equal(body.business.geographicAnchor.locality.city, "Wibrin");
+    assert.equal(body.business.geographicAnchor.region, "BE");
+    const persisted = db.sqlite.prepare("SELECT search_query, normalized_json FROM analyses WHERE analysis_id = ?").get(analysisId);
+    assert.equal(persisted.search_query, "Électricien Houffalize");
+    assert.equal(JSON.parse(persisted.normalized_json).geographic_anchor.locality.city, "Wibrin");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("8quinquies. Wolwelange sans pays confirmé demande toujours la confirmation manuelle, sans code fournisseur ni écriture", async () => {
   const db = new LocalD1();
   const analysisId = "geo-wolwelange";

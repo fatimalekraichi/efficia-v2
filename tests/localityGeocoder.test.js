@@ -256,6 +256,119 @@ test("ville incompatible — city de la réponse différente ou absente, jamais 
   }
 });
 
+test("Wibrin / BE — le village structuré Wibrin valide un centre dont la commune administrative est Houffalize", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 50.1622,
+      longitude: 5.7304,
+      city: "Houffalize",
+      town: "Houffalize",
+      village: "Wibrin",
+      municipality: "Houffalize",
+      country_code: "BE",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Wibrin", countryName: "Belgium", countryCode: "BE", apiKey: "k",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.source, "outscraper_geocoding");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Wibrin / BE — une autre commune belge sans composant Wibrin reste rejetée", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 50.15,
+      longitude: 5.65,
+      city: "Houffalize",
+      town: "Houffalize",
+      village: "Nadrin",
+      municipality: "Houffalize",
+      country_code: "BE",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Wibrin", countryName: "Belgium", countryCode: "BE", apiKey: "k",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.CITY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Wibrin / BE — un village homonyme dans un mauvais pays reste rejeté avant toute validation de localité", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 50.1622,
+      longitude: 5.7304,
+      city: "Houffalize",
+      village: "Wibrin",
+      municipality: "Houffalize",
+      country_code: "FR",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Wibrin", countryName: "Belgium", countryCode: "BE", apiKey: "k",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Ell / LU — une localité luxembourgeoise reste acceptée quand elle figure dans un composant structuré", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 49.763,
+      longitude: 5.857,
+      city: "Redange",
+      commune: "Redange",
+      village: "Ell",
+      country_code: "LU",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Ell", countryName: "Luxembourg", countryCode: "LU", apiKey: "k",
+    });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Esch-sur-Alzette / LU — la ville directement renvoyée reste validée", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 49.4958,
+      longitude: 5.9806,
+      city: "Esch-sur-Alzette",
+      country_code: "LU",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Esch-sur-Alzette", countryName: "Luxembourg", countryCode: "LU", apiKey: "k",
+    });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("localité homonyme (Neufchâteau France répond à une requête Neufchâteau Belgique) — rejetée sur le country_code, jamais confondue", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({
