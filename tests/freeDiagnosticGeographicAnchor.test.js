@@ -803,6 +803,90 @@ test("8ter. localité connue mais geocoding du centre en échec : bloqué, aucun
   }
 });
 
+test("8quater. les zones confirmées Wibrin, Esch-sur-Alzette et Ell propagent seulement un code de géocodage sûr, sans écriture partielle", async () => {
+  const scenarios = [
+    { id: "geo-wibrin", company: "MBGE", city: "Wibrin", country: "Belgium", countryCode: "BE" },
+    { id: "geo-esch", company: "electralux", city: "Esch-sur-Alzette", country: "Luxembourg", countryCode: "LU" },
+    { id: "geo-ell-test", company: "Technique Energy", city: "Ell", country: "Luxembourg", countryCode: "LU" },
+  ];
+  const originalFetch = globalThis.fetch;
+  let competitorSearchCalled = false;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) return new Response("provider-body-must-not-leak", { status: 500 });
+    competitorSearchCalled = true;
+    return Response.json({ data: [[]] });
+  };
+  try {
+    for (const scenario of scenarios) {
+      const db = new LocalD1();
+      seedAnalysis(db, { analysisId: scenario.id, companyName: scenario.company, city: scenario.city });
+      seedManualMetadata(db, scenario.id);
+      marksInitialCollection(db, scenario.id, {
+        companyName: scenario.company,
+        city: scenario.city,
+        geo: { country: scenario.country, countryCode: scenario.countryCode },
+      });
+      const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(scenario.id);
+      const response = await collectDiagnostic(await context(db, scenario.id, {
+        body: refreshBody({
+          analysisId: scenario.id,
+          company: scenario.company,
+          city: scenario.city,
+          searchQuery: `Électricien ${scenario.city}`,
+          searchZone: { city: scenario.city, countryCode: scenario.countryCode },
+        }),
+      }));
+      const body = await response.json();
+      assert.equal(response.status, 409, scenario.city);
+      assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE", scenario.city);
+      assert.equal(body.diagnosticCode, "GEOCODING_HTTP_ERROR", scenario.city);
+      assert.doesNotMatch(JSON.stringify(body), /provider-body-must-not-leak|https?:|simulated-provider-key/i, scenario.city);
+      assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(scenario.id), before, scenario.city);
+    }
+    assert.equal(competitorSearchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("8quinquies. Wolwelange sans pays confirmé demande toujours la confirmation manuelle, sans code fournisseur ni écriture", async () => {
+  const db = new LocalD1();
+  const analysisId = "geo-wolwelange";
+  seedAnalysis(db, { analysisId, companyName: "VM Electricité", city: "Wolwelange" });
+  seedManualMetadata(db, analysisId);
+  marksInitialCollection(db, analysisId, { companyName: "VM Electricité", city: "Wolwelange" });
+  const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(analysisId);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ data: [[]] });
+  try {
+    const response = await collectDiagnostic(await context(db, analysisId, {
+      body: refreshBody({
+        analysisId,
+        company: "VM Electricité",
+        city: "Wolwelange",
+        searchQuery: "Électricien Wolwelange",
+        searchZone: { city: "Wolwelange", countryCode: "" },
+      }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE");
+    assert.deepEqual(body.missing, ["searchZone.city", "searchZone.countryCode"]);
+    assert.equal("diagnosticCode" in body, false);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(analysisId), before);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("8sexies. l’admin ne rend qu’un diagnostic GEOCODING sûr, jamais un détail fournisseur", () => {
+  const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  assert.match(html, /failure\.diagnosticCode = \/\^GEOCODING_\[A-Z_\]\+\$\/\.test\(String\(data\.diagnosticCode \|\| ""\)\)/);
+  assert.match(html, /Code de diagnostic : \$\{escapeHtml\(error\.diagnosticCode\)\}/);
+  assert.doesNotMatch(html, /data\.centerErrorCode/);
+});
+
 // --- 9. Échec fournisseur (ancrage résolu) : aucune mise à jour partielle ---
 
 test("9. un échec fournisseur après résolution de l’ancrage ne modifie rien partiellement", async () => {

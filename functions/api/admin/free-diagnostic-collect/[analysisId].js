@@ -13,8 +13,19 @@ import {
   buildGeographicAnchorRecord, normalizeConfirmedSearchZone,
   resolveGeographicAnchor,
 } from "../../../lib/geographicAnchor.js";
+import { LOCALITY_CENTER_ERROR } from "../../../lib/localityGeocoder.js";
 
 const VILLE_PLACEHOLDER = "Non renseignée";
+
+// Seuls ces identifiants stables et sans donnée fournisseur peuvent quitter
+// l'endpoint admin. Ne jamais transmettre d'URL, de réponse brute, de pile,
+// de coordonnées ou de message réseau dans le navigateur.
+const SAFE_LOCALITY_CENTER_DIAGNOSTIC_CODES = new Set(Object.values(LOCALITY_CENTER_ERROR));
+
+function safeLocalityCenterDiagnosticCode(anchor = null) {
+  const code = normalizeText(anchor?.centerErrorCode);
+  return SAFE_LOCALITY_CENTER_DIAGNOSTIC_CODES.has(code) ? code : null;
+}
 
 const numberOrNull = (value) => (
   value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
@@ -157,6 +168,7 @@ function mergeCategoryObservation(base, observation, confirmedActivity) {
 
 function geographicAnchorUnavailableFailure({ confirmedSearchZoneProvided = false, anchor = null } = {}) {
   const confirmedButUnverified = confirmedSearchZoneProvided && anchor?.code !== "GEOGRAPHIC_ANCHOR_LOCALITY_UNKNOWN";
+  const diagnosticCode = safeLocalityCenterDiagnosticCode(anchor);
   return jsonResponse({
     success: false,
     error: "GEOGRAPHIC_ANCHOR_UNAVAILABLE",
@@ -164,6 +176,7 @@ function geographicAnchorUnavailableFailure({ confirmedSearchZoneProvided = fals
       ? "La zone géographique confirmée n’a pas pu être vérifiée. Vérifiez la ville et le pays avant de relancer l’analyse."
       : "Confirmez la zone géographique utilisée pour la recherche Google et son pays avant de relancer l’analyse.",
     missing: confirmedButUnverified ? [] : ["searchZone.city", "searchZone.countryCode"],
+    ...(diagnosticCode ? { diagnosticCode } : {}),
   }, 409, { "Cache-Control": "no-store" });
 }
 
@@ -284,10 +297,13 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     });
   }
   if (!anchor.ok) {
+    const diagnosticCode = safeLocalityCenterDiagnosticCode(anchor);
     console.error("free-diagnostic-collect: geographic anchor unavailable", {
       phase: "geographic_anchor",
       analysis_id: analysisId,
-      reason: anchor.centerErrorCode || anchor.code || null,
+      city: normalizeText(payload.confirmedSearchZone?.city || resolvedNormalized?.city || resolvedFiche?.city).slice(0, 160) || null,
+      country_code: normalizeText(anchor.region || payload.confirmedSearchZone?.countryCode).slice(0, 2).toUpperCase() || null,
+      reason: diagnosticCode || anchor.code || null,
     });
     return geographicAnchorUnavailableFailure({
       confirmedSearchZoneProvided: payload.confirmedSearchZoneProvided,

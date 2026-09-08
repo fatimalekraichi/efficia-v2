@@ -3658,6 +3658,9 @@ async function relancerAnalyseRecherche(){
     if(!response.ok || !data.success || data.operation !== "refresh_search" || data.analysisId !== analysisId || data.reportType !== "free"){
       const failure = new Error(String(data.message || "La nouvelle analyse n’a pas pu être terminée."));
       failure.code = data.error || null;
+      failure.diagnosticCode = /^GEOCODING_[A-Z_]+$/.test(String(data.diagnosticCode || ""))
+        ? String(data.diagnosticCode)
+        : "";
       throw failure;
     }
     appliquerResultatsRecherche(data.business, data.scorePrefill, data.searchAnalyzedAt, searchQuery, data.competitiveDataChanged !== false);
@@ -3670,7 +3673,10 @@ async function relancerAnalyseRecherche(){
     // est maintenu par mettreAJourEtatRecherche() ci-dessous.
     if(error?.code === "GEOGRAPHIC_ANCHOR_UNAVAILABLE" && zoneAlert) zoneAlert.hidden = false;
     mettreAJourEtatRecherche();
-    statut(`${escapeHtml(error?.message || "La nouvelle analyse n’a pas pu être terminée.")} Les résultats précédents sont conservés et restent signalés comme périmés.`, "erreur");
+    const diagnostic = error?.diagnosticCode
+      ? `<br><small>Code de diagnostic : ${escapeHtml(error.diagnosticCode)}</small>`
+      : "";
+    statut(`${escapeHtml(error?.message || "La nouvelle analyse n’a pas pu être terminée.")} Les résultats précédents sont conservés et restent signalés comme périmés.${diagnostic}`, "erreur");
   }finally{
     relanceRechercheEnCours = false;
     if(button){ button.textContent = initialLabel; }
