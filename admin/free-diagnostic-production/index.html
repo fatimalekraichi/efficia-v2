@@ -5993,6 +5993,12 @@ function libellePositionRapport(d = donneesAnalyse, {avecRecherche = true} = {})
     : `${d.position === 1 ? "1re" : d.position + "e"} position${recherche}`;
 }
 
+function libelleIndiceVisibilite(d = donneesAnalyse){
+  return estNombre(d?.position) && Number(d.position) > 0
+    ? libellePositionRapport(d)
+    : "présence locale à confirmer";
+}
+
 // Mission "corriger la méthode d'ancrage géographique" (point 6) : le
 // classement local n'est plus mesuré depuis l'entreprise analysée mais
 // depuis le centre de sa localité (voir functions/lib/geographicAnchor.js /
@@ -7575,7 +7581,7 @@ function genererRapport(options = {}){
   const compteursPriorites = compteursPrioritesPage5(checklistV3.counts.ko, top3p.length);
   const indicesV3 = indicesProspect();
   const domainesV3 = [
-    ["Visibilité", indicesV3.visibilite, estNombre(dIdent?.position) && Number(dIdent.position) > 0 ? `position ${libellePositionRapport(dIdent)}` : "présence locale à confirmer"],
+    ["Visibilité", indicesV3.visibilite, libelleIndiceVisibilite(dIdent)],
     ["Confiance", indicesV3.confiance, estNombre(dIdent?.nbAvis) ? `${nEntier(dIdent.nbAvis)} avis observé${Number(dIdent.nbAvis) > 1 ? "s" : ""}` : "preuves clients à confirmer"],
     ["Conversion", indicesV3.conversion, conversionSousScoreEstIncomplet(dIdent) ? "offre ou passage à l'action incomplet" : "offre et contact visibles"]
   ];

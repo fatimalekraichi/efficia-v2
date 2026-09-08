@@ -15,6 +15,29 @@ function sliceBetween(source, start, end) {
   return source.slice(from, to);
 }
 
+test("le sous-libellé Visibilité ne préfixe pas deux fois une position déjà formatée", () => {
+  const positionCode = sliceBetween(html, "function libellePositionRapport", "// Mission \"corriger la méthode d'ancrage géographique\"");
+  const context = {
+    Number,
+    estNombre: (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)),
+    estTexte: (value) => typeof value === "string" && value.trim().length > 0,
+    libelleRechercheRapport: (value) => String(value).trim(),
+    positionOrganiqueConfirmee: (data) => data?.positionKind === "organic",
+    ordinalOrganique: (value) => Number(value) === 1 ? "1er" : `${Number(value)}e`,
+    donneesAnalyse: {},
+    globalThis: null,
+  };
+  context.globalThis = context;
+  vm.runInNewContext(`${positionCode}\nglobalThis.libelle = libelleIndiceVisibilite;`, context);
+
+  assert.equal(context.libelle({ position: 5, requeteTestee: "Électricien Dudelange" }), "5e position sur « Électricien Dudelange »");
+  assert.equal(context.libelle({ position: 5, requeteTestee: "" }), "5e position");
+  assert.equal(context.libelle({ position: 0, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
+  assert.equal(context.libelle({ position: null, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
+  assert.match(html, /\["Visibilité", indicesV3\.visibilite, libelleIndiceVisibilite\(dIdent\)\]/u);
+  assert.doesNotMatch(html, /position \$\{libellePositionRapport\(dIdent\)\}/u);
+});
+
 test("la page 5 reprend exclusivement le compteur prioritaire canonique de la page 3", () => {
   const helperCode = sliceBetween(html, "function compteursPrioritesPage5", "function prioriteInfosRevendiquee");
   const context = { Math, Number, globalThis: null };
