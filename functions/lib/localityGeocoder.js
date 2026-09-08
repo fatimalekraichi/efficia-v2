@@ -297,6 +297,28 @@ function structuredLocalityComponents(result) {
   });
 }
 
+function safeLocalityText(value, maxLength = 80) {
+  const text = String(value || "")
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Uniquement un nom de localité humain : jamais une URL, un fragment HTML,
+  // une coordonnée, une erreur amont ou une autre donnée technique.
+  if (!/^[\p{L}\p{M}][\p{L}\p{M}\s.'’\-]{0,159}$/u.test(text)) return "";
+  return text.slice(0, maxLength).trim();
+}
+
+function localityMismatchDiagnostic(result, expected) {
+  const requestedLocality = safeLocalityText(expected?.city);
+  const countryCode = String(expected?.countryCode || "").trim().toUpperCase();
+  if (!requestedLocality || !/^[A-Z]{2}$/.test(countryCode)) return null;
+  const components = STRUCTURED_LOCALITY_COMPONENT_FIELDS.flatMap((key) => {
+    const value = safeLocalityText(result?.[key]);
+    return value ? [{ key, value }] : [];
+  });
+  return { requestedLocality, countryCode, components };
+}
+
 function localityComponentMatches(component, expectedCity) {
   return component === expectedCity
     // Compatibilité explicite avec des libellés structurés comme
@@ -445,7 +467,14 @@ export async function resolveLocalityCenter({
   if (!validation.ok) {
     console.error("resolveLocalityCenter: réponse incohérente avec la localité attendue", validation.reason);
     const specificCode = VALIDATION_REASON_TO_CODE[validation.reason];
-    return { ok: false, code: LOCALITY_CENTER_ERROR[specificCode] || LOCALITY_CENTER_ERROR.CITY_MISMATCH };
+    const code = LOCALITY_CENTER_ERROR[specificCode] || LOCALITY_CENTER_ERROR.CITY_MISMATCH;
+    return {
+      ok: false,
+      code,
+      ...(code === LOCALITY_CENTER_ERROR.CITY_MISMATCH
+        ? { localityMismatchDiagnostic: localityMismatchDiagnostic(result, { city, countryCode: regionTrim }) }
+        : {}),
+    };
   }
 
   return {
@@ -459,5 +488,5 @@ export async function resolveLocalityCenter({
 
 export const __test__ = {
   buildLocalityGeocodingQuery, extractLatLng, firstResult, validateLocalityMatch,
-  pendingRequestId, requestResultsUrl,
+  pendingRequestId, requestResultsUrl, localityMismatchDiagnostic,
 };

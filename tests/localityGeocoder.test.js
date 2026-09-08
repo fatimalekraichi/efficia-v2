@@ -299,6 +299,44 @@ test("Wibrin / BE — une autre commune belge sans composant Wibrin reste rejet�
     });
     assert.equal(result.ok, false);
     assert.equal(result.code, LOCALITY_CENTER_ERROR.CITY_MISMATCH);
+    assert.deepEqual(result.localityMismatchDiagnostic, {
+      requestedLocality: "Wibrin",
+      countryCode: "BE",
+      components: [
+        { key: "city", value: "Houffalize" },
+        { key: "town", value: "Houffalize" },
+        { key: "village", value: "Nadrin" },
+        { key: "municipality", value: "Houffalize" },
+      ],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("diagnostic de mismatch — expose seulement la localité demandée, le pays et les composants de localité sûrs", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [[{
+      latitude: 50.1622,
+      longitude: 5.7304,
+      city: "Houffalize",
+      village: "Nadrin",
+      municipality: "Houffalize",
+      address: "Chemin des Iettes 32A, 6666 Wibrin, Belgique",
+      full_address: "Chemin des Iettes 32A, 6666 Wibrin, Belgique",
+      country_code: "BE",
+    }]],
+  });
+  try {
+    const result = await resolveLocalityCenter({
+      city: "Wibrin", countryName: "Belgium", countryCode: "BE", apiKey: "k",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.CITY_MISMATCH);
+    const serialized = JSON.stringify(result.localityMismatchDiagnostic);
+    assert.match(serialized, /requestedLocality|countryCode|city|village|municipality/);
+    assert.doesNotMatch(serialized, /latitude|longitude|address|Chemin des Iettes|6666|https?:|apiKey/i);
   } finally {
     globalThis.fetch = originalFetch;
   }

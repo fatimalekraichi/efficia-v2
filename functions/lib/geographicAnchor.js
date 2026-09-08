@@ -224,6 +224,7 @@ export async function resolveGeographicAnchor({
   if (!center.ok) {
     return {
       ok: false, code: GEOGRAPHIC_ANCHOR_ERROR.CENTER_UNAVAILABLE, centerErrorCode: center.code,
+      ...(center.localityMismatchDiagnostic ? { centerLocalityMismatchDiagnostic: center.localityMismatchDiagnostic } : {}),
       tier: 0, source: "none", coordinates: null, region: locality.region, label: locality.label, locality: null,
     };
   }

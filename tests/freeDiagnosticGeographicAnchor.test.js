@@ -841,10 +841,73 @@ test("8quater. les zones confirmées Wibrin, Esch-sur-Alzette et Ell propagent s
       assert.equal(response.status, 409, scenario.city);
       assert.equal(body.error, "GEOGRAPHIC_ANCHOR_UNAVAILABLE", scenario.city);
       assert.equal(body.diagnosticCode, "GEOCODING_HTTP_ERROR", scenario.city);
+      assert.equal("localityDetail" in body, false, scenario.city);
       assert.doesNotMatch(JSON.stringify(body), /provider-body-must-not-leak|https?:|simulated-provider-key/i, scenario.city);
       assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(scenario.id), before, scenario.city);
     }
     assert.equal(competitorSearchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("8quaterter. un mismatch de ville renvoie seulement le détail de localité sûr et reste bloquant sans collecte ni écriture", async () => {
+  const db = new LocalD1();
+  const analysisId = "geo-wibrin-mismatch";
+  seedAnalysis(db, { analysisId, companyName: "MBGE", city: "Wibrin" });
+  seedManualMetadata(db, analysisId);
+  marksInitialCollection(db, analysisId, {
+    companyName: "MBGE",
+    city: "Wibrin",
+    geo: { country: "Belgium", countryCode: "BE", postalCode: "6666" },
+  });
+  const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(analysisId);
+  const originalFetch = globalThis.fetch;
+  let competitorSearchCalled = false;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (isGeocodingRequest(url)) {
+      return Response.json({
+        data: [[{
+          latitude: 50.1622,
+          longitude: 5.7304,
+          city: "Houffalize",
+          village: "Nadrin",
+          municipality: "Houffalize",
+          address: "Chemin des Iettes 32A, 6666 Wibrin, Belgique",
+          full_address: "Chemin des Iettes 32A, 6666 Wibrin, Belgique",
+          country_code: "BE",
+        }]],
+      });
+    }
+    competitorSearchCalled = true;
+    return Response.json({ data: [[]] });
+  };
+  try {
+    const response = await collectDiagnostic(await context(db, analysisId, {
+      body: refreshBody({
+        analysisId,
+        company: "MBGE",
+        city: "Wibrin",
+        searchQuery: "Électricien Houffalize",
+        searchZone: { city: "Wibrin", countryCode: "BE" },
+      }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.diagnosticCode, "GEOCODING_CITY_MISMATCH");
+    assert.deepEqual(body.localityDetail, {
+      requestedLocality: "Wibrin",
+      countryCode: "BE",
+      components: [
+        { key: "city", value: "Houffalize" },
+        { key: "village", value: "Nadrin" },
+        { key: "municipality", value: "Houffalize" },
+      ],
+    });
+    assert.equal(competitorSearchCalled, false);
+    assert.doesNotMatch(JSON.stringify(body), /latitude|longitude|address|Chemin des Iettes|6666|https?:|simulated-provider-key/i);
+    assert.deepEqual(db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(analysisId), before);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -948,6 +1011,8 @@ test("8sexies. l’admin ne rend qu’un diagnostic GEOCODING sûr, jamais un d�
   const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
   assert.match(html, /failure\.diagnosticCode = \/\^GEOCODING_\[A-Z_\]\+\$\/\.test\(String\(data\.diagnosticCode \|\| ""\)\)/);
   assert.match(html, /Code de diagnostic : \$\{escapeHtml\(error\.diagnosticCode\)\}/);
+  assert.match(html, /failure\.localityDetail = failure\.diagnosticCode === "GEOCODING_CITY_MISMATCH"/);
+  assert.match(html, /Détail localité : demandée/);
   assert.doesNotMatch(html, /data\.centerErrorCode/);
 });
 

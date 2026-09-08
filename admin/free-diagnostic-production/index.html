@@ -3661,6 +3661,25 @@ async function relancerAnalyseRecherche(){
       failure.diagnosticCode = /^GEOCODING_[A-Z_]+$/.test(String(data.diagnosticCode || ""))
         ? String(data.diagnosticCode)
         : "";
+      const rawLocalityDetail = data?.localityDetail;
+      const requestedLocality = String(rawLocalityDetail?.requestedLocality || "").trim();
+      const countryCode = String(rawLocalityDetail?.countryCode || "").trim().toUpperCase();
+      const allowedLocalityKeys = new Set(["city", "town", "village", "municipality", "commune", "locality", "borough", "hamlet", "suburb", "neighbourhood"]);
+      const safeLocalityValue = (value) => {
+        const text = String(value || "").normalize("NFC").replace(/\s+/g, " ").trim();
+        return /^[\p{L}\p{M}][\p{L}\p{M}\s.'’\-]{0,79}$/u.test(text) ? text : "";
+      };
+      const components = Array.isArray(rawLocalityDetail?.components)
+        ? rawLocalityDetail.components.flatMap((component) => {
+          const key = String(component?.key || "").trim().toLowerCase();
+          const value = safeLocalityValue(component?.value);
+          return allowedLocalityKeys.has(key) && value ? [{ key, value }] : [];
+        })
+        : [];
+      failure.localityDetail = failure.diagnosticCode === "GEOCODING_CITY_MISMATCH"
+        && safeLocalityValue(requestedLocality) && /^[A-Z]{2}$/.test(countryCode)
+        ? { requestedLocality, countryCode, components }
+        : null;
       throw failure;
     }
     appliquerResultatsRecherche(data.business, data.scorePrefill, data.searchAnalyzedAt, searchQuery, data.competitiveDataChanged !== false);
@@ -3676,7 +3695,10 @@ async function relancerAnalyseRecherche(){
     const diagnostic = error?.diagnosticCode
       ? `<br><small>Code de diagnostic : ${escapeHtml(error.diagnosticCode)}</small>`
       : "";
-    statut(`${escapeHtml(error?.message || "La nouvelle analyse n’a pas pu être terminée.")} Les résultats précédents sont conservés et restent signalés comme périmés.${diagnostic}`, "erreur");
+    const localityDetail = error?.localityDetail
+      ? `<br><small>Détail localité : demandée « ${escapeHtml(error.localityDetail.requestedLocality)} » (${escapeHtml(error.localityDetail.countryCode)}) ; composants reçus : ${error.localityDetail.components.length ? error.localityDetail.components.map(({ key, value }) => `${escapeHtml(key)}=&quot;${escapeHtml(value)}&quot;`).join(", ") : "aucun composant de localité exploitable"}</small>`
+      : "";
+    statut(`${escapeHtml(error?.message || "La nouvelle analyse n’a pas pu être terminée.")} Les résultats précédents sont conservés et restent signalés comme périmés.${diagnostic}${localityDetail}`, "erreur");
   }finally{
     relanceRechercheEnCours = false;
     if(button){ button.textContent = initialLabel; }

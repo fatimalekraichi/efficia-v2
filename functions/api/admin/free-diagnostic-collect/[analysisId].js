@@ -21,10 +21,30 @@ const VILLE_PLACEHOLDER = "Non renseignée";
 // l'endpoint admin. Ne jamais transmettre d'URL, de réponse brute, de pile,
 // de coordonnées ou de message réseau dans le navigateur.
 const SAFE_LOCALITY_CENTER_DIAGNOSTIC_CODES = new Set(Object.values(LOCALITY_CENTER_ERROR));
+const SAFE_LOCALITY_COMPONENT_KEYS = new Set([
+  "city", "town", "village", "municipality", "commune", "locality", "borough", "hamlet", "suburb", "neighbourhood",
+]);
 
 function safeLocalityCenterDiagnosticCode(anchor = null) {
   const code = normalizeText(anchor?.centerErrorCode);
   return SAFE_LOCALITY_CENTER_DIAGNOSTIC_CODES.has(code) ? code : null;
+}
+
+function safeLocalityMismatchDetail(anchor = null) {
+  if (safeLocalityCenterDiagnosticCode(anchor) !== LOCALITY_CENTER_ERROR.CITY_MISMATCH) return null;
+  const raw = anchor?.centerLocalityMismatchDiagnostic;
+  const requestedLocality = normalizeText(raw?.requestedLocality).slice(0, 80);
+  const countryCode = normalizeText(raw?.countryCode).slice(0, 2).toUpperCase();
+  if (!requestedLocality || !/^[A-Z]{2}$/.test(countryCode)) return null;
+  const components = Array.isArray(raw?.components)
+    ? raw.components.flatMap((component) => {
+      const key = normalizeText(component?.key).toLowerCase();
+      const value = normalizeText(component?.value).slice(0, 80);
+      if (!SAFE_LOCALITY_COMPONENT_KEYS.has(key) || !/^[\p{L}\p{M}][\p{L}\p{M}\s.'’\-]{0,79}$/u.test(value)) return [];
+      return [{ key, value }];
+    })
+    : [];
+  return { requestedLocality, countryCode, components };
 }
 
 const numberOrNull = (value) => (
@@ -169,6 +189,7 @@ function mergeCategoryObservation(base, observation, confirmedActivity) {
 function geographicAnchorUnavailableFailure({ confirmedSearchZoneProvided = false, anchor = null } = {}) {
   const confirmedButUnverified = confirmedSearchZoneProvided && anchor?.code !== "GEOGRAPHIC_ANCHOR_LOCALITY_UNKNOWN";
   const diagnosticCode = safeLocalityCenterDiagnosticCode(anchor);
+  const localityDetail = safeLocalityMismatchDetail(anchor);
   return jsonResponse({
     success: false,
     error: "GEOGRAPHIC_ANCHOR_UNAVAILABLE",
@@ -177,6 +198,7 @@ function geographicAnchorUnavailableFailure({ confirmedSearchZoneProvided = fals
       : "Confirmez la zone géographique utilisée pour la recherche Google et son pays avant de relancer l’analyse.",
     missing: confirmedButUnverified ? [] : ["searchZone.city", "searchZone.countryCode"],
     ...(diagnosticCode ? { diagnosticCode } : {}),
+    ...(localityDetail ? { localityDetail } : {}),
   }, 409, { "Cache-Control": "no-store" });
 }
 
