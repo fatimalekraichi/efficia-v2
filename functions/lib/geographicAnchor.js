@@ -37,47 +37,14 @@
 //     jamais une recherche lancée à l'aveugle.
 
 import { resolveLocalityCenter } from "./localityGeocoder.js";
+import {
+  canonicalCountryCode, COUNTRY_CODE_TO_NAME, COUNTRY_NAME_TO_CODE, normalizeCountryKey,
+} from "./countryCodes.js";
 
-// Table de correspondance volontairement restreinte : uniquement les pays
-// pour lesquels Outscraper documente déjà `country` en toutes lettres sans
-// `country_code` associé. Le `country_code` (ISO, 2 lettres) fourni
-// directement par Outscraper reste toujours prioritaire sur cette table —
-// elle ne sert que de repli, jamais de source principale.
-const COUNTRY_NAME_TO_CODE = {
-  france: "FR",
-  belgique: "BE",
-  belgium: "BE",
-  luxembourg: "LU",
-  suisse: "CH",
-  switzerland: "CH",
-  "pays-bas": "NL",
-  netherlands: "NL",
-  allemagne: "DE",
-  germany: "DE",
-};
-
-const COUNTRY_CODE_TO_NAME = Object.freeze({
-  BE: "Belgique",
-  FR: "France",
-  LU: "Luxembourg",
-  CH: "Suisse",
-  NL: "Pays-Bas",
-  DE: "Allemagne",
-});
-
-function normalizeKey(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toLowerCase();
-}
+const normalizeKey = normalizeCountryKey;
 
 function resolveRegionCode(record) {
-  const explicit = String(record?.country_code || "").trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(explicit)) return explicit;
-  const byName = COUNTRY_NAME_TO_CODE[normalizeKey(record?.country)];
-  return byName || null;
+  return canonicalCountryCode({ countryCode: record?.country_code, countryName: record?.country });
 }
 
 export function normalizeConfirmedSearchZone(value = {}) {
@@ -86,8 +53,8 @@ export function normalizeConfirmedSearchZone(value = {}) {
   const postalCode = firstNonEmpty(value.postalCode, value.postal_code).slice(0, 32);
   const explicitCode = firstNonEmpty(value.countryCode, value.country_code).toUpperCase();
   const suppliedCountryName = firstNonEmpty(value.countryName, value.country).slice(0, 80);
-  const codeFromName = COUNTRY_NAME_TO_CODE[normalizeKey(suppliedCountryName)] || null;
-  const countryCode = /^[A-Z]{2}$/.test(explicitCode) ? explicitCode : codeFromName;
+  const codeFromName = canonicalCountryCode({ countryName: suppliedCountryName });
+  const countryCode = canonicalCountryCode({ countryCode: explicitCode, countryName: suppliedCountryName });
   if (!city || !countryCode || !COUNTRY_CODE_TO_NAME[countryCode]) return null;
   if (codeFromName && codeFromName !== countryCode) return null;
   const countryName = COUNTRY_CODE_TO_NAME[countryCode];

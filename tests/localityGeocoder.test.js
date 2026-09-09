@@ -25,6 +25,8 @@ import {
 } from "../functions/lib/localityGeocoder.js";
 
 const NEUFCHATEAU_BE = { postalCode: "6840", city: "Neufchâteau", countryName: "Belgique", countryCode: "BE" };
+const HOUFFALIZE_BE = { city: "Houffalize", countryName: "Belgique", countryCode: "BE" };
+const ESCH_LU = { city: "Esch-sur-Alzette", countryName: "Luxembourg", countryCode: "LU" };
 
 test("buildLocalityGeocodingQuery combine postalCode/city/countryName, jamais une adresse ou un nom d'entreprise", () => {
   assert.equal(
@@ -213,6 +215,79 @@ test("country (nom) incompatible quand country_code est absent — rejeté, jama
     const result = await resolveLocalityCenter({ ...NEUFCHATEAU_BE, apiKey: "k" });
     assert.equal(result.ok, false);
     assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Houffalize / BE — country:\"Belgium\" sans code ISO est canonisé en BE", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [{ latitude: 50.132, longitude: 5.789, city: "Houffalize", country: "Belgium" }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...HOUFFALIZE_BE, apiKey: "k" });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Houffalize / BE — country:\"Belgique\" sans code ISO est canonisé en BE", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [{ latitude: 50.132, longitude: 5.789, city: "Houffalize", country: "Belgique" }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...HOUFFALIZE_BE, apiKey: "k" });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Esch-sur-Alzette / LU — country:\"Luxembourg\" sans code ISO est accepté", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [{ latitude: 49.495, longitude: 5.98, city: "Esch-sur-Alzette", country: "Luxembourg" }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...ESCH_LU, apiKey: "k" });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("zone BE — un code fournisseur FR reste strictement rejeté", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: [{ latitude: 50.132, longitude: 5.789, city: "Houffalize", country_code: "FR", country: "Belgium" }],
+  });
+  try {
+    const result = await resolveLocalityCenter({ ...HOUFFALIZE_BE, apiKey: "k" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("pays inconnu ou absent des deux côtés — rejet strict, sans requête fournisseur pour une zone incomplète", async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return Response.json({ data: [{ latitude: 50.132, longitude: 5.789, city: "Houffalize", country: "Atlantis" }] });
+  };
+  try {
+    const unknown = await resolveLocalityCenter({ ...HOUFFALIZE_BE, apiKey: "k" });
+    assert.equal(unknown.ok, false);
+    assert.equal(unknown.code, LOCALITY_CENTER_ERROR.COUNTRY_MISMATCH);
+    const absent = await resolveLocalityCenter({ city: "Houffalize", apiKey: "k" });
+    assert.equal(absent.ok, false);
+    assert.equal(absent.code, LOCALITY_CENTER_ERROR.MISSING_LOCALITY);
+    assert.equal(called, true, "seule la réponse au pays inconnu a atteint le fournisseur simulé");
   } finally {
     globalThis.fetch = originalFetch;
   }

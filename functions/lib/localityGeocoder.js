@@ -61,6 +61,8 @@ const DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_PENDING_POLL_DELAYS_MS = Object.freeze([750, 1500, 3000, 5000, 7500, 10000]);
 const OUTSCRAPER_REQUEST_RESULTS_ORIGIN = "https://api.outscraper.com";
 
+import { canonicalCountryCode } from "./countryCodes.js";
+
 // Codes techniques précis (mission "corriger le geocodeur de localité") —
 // un code par cause distincte, jamais un code générique unique pour
 // plusieurs causes différentes. Ne révèlent et ne dérivent jamais une clé
@@ -95,20 +97,6 @@ function normalizeKey(value) {
     .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase();
-}
-
-// Normalisation du NOM de pays — casse, espaces et accents uniquement (pas
-// de table de correspondance ici : la table pays->code vit dans
-// geographicAnchor.js et sert à résoudre le country_code ATTENDU en amont ;
-// ici on compare deux noms déjà en toutes lettres, celui attendu et celui
-// renvoyé par le fournisseur).
-function normalizeCountryName(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
 }
 
 function normalizePostal(value) {
@@ -329,18 +317,16 @@ function localityComponentMatches(component, expectedCity) {
 }
 
 function validateLocalityMatch(result, expected) {
-  const responseCountryCode = String(result?.country_code || "").trim().toUpperCase();
-  const expectedCountryCode = String(expected?.countryCode || "").trim().toUpperCase();
-  if (responseCountryCode) {
-    if (!expectedCountryCode || responseCountryCode !== expectedCountryCode) {
-      return { ok: false, reason: "country_code_mismatch" };
-    }
-  } else {
-    const responseCountryName = normalizeCountryName(result?.country);
-    const expectedCountryName = normalizeCountryName(expected?.countryName);
-    if (!responseCountryName || !expectedCountryName || responseCountryName !== expectedCountryName) {
-      return { ok: false, reason: "country_name_mismatch" };
-    }
+  const responseCountryCode = canonicalCountryCode({
+    countryCode: result?.country_code,
+    countryName: result?.country,
+  });
+  const expectedCountryCode = canonicalCountryCode({
+    countryCode: expected?.countryCode,
+    countryName: expected?.countryName,
+  });
+  if (!responseCountryCode || !expectedCountryCode || responseCountryCode !== expectedCountryCode) {
+    return { ok: false, reason: "country_mismatch" };
   }
 
   const expectedCity = normalizeLocalityComponent(expected?.city);
@@ -362,8 +348,7 @@ function validateLocalityMatch(result, expected) {
 // éviter que deux causes distinctes (pays vs ville vs code postal) ne soient
 // jamais confondues sous un unique code générique "incohérent".
 const VALIDATION_REASON_TO_CODE = Object.freeze({
-  country_code_mismatch: "COUNTRY_MISMATCH",
-  country_name_mismatch: "COUNTRY_MISMATCH",
+  country_mismatch: "COUNTRY_MISMATCH",
   city_missing: "CITY_MISMATCH",
   city_mismatch: "CITY_MISMATCH",
   postal_code_mismatch: "POSTAL_CODE_MISMATCH",
