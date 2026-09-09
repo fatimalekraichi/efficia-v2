@@ -1,7 +1,11 @@
 import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
-import { addSearchResultContext, collectCompetitors } from "../../../lib/collectCompetitors.js";
+import {
+  addSearchResultContext,
+  collectCompetitors,
+  COMPETITOR_QUALIFICATION_VERSION,
+} from "../../../lib/collectCompetitors.js";
 import { markReportNarrativeOverridesForCurrentContext } from "../../../lib/reportNarrativeOverrides.js";
 import {
   buildFreeDiagnosticCollectionState,
@@ -329,6 +333,13 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   }, { minimumCompetitors: 3 });
   const updatedAt = new Date().toISOString();
   const normalizedWithCategories = mergeCategoryObservation(normalized, result.targetObservation, payload.activity);
+  // Écrit seulement après le retour réussi de collectCompetitors(), donc
+  // après son filtrage strict par catégories. L'absence de ce marqueur dans
+  // les analyses historiques impose une relance plutôt qu'une comparaison.
+  const normalizedWithQualifiedCompetitors = {
+    ...normalizedWithCategories,
+    competitor_qualification_version: COMPETITOR_QUALIFICATION_VERSION,
+  };
   const ficheWithCategories = mergeCategoryObservation(fiche, result.targetObservation, payload.activity);
   // Séparation obligatoire : l’ancrage réellement utilisé est tracé à part,
   // distinct de `result.requete` (requête affichée/saisie par l’administrateur,
@@ -341,7 +352,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
   // être détectée sans jamais présenter une ancienne analyse comme
   // correspondant à de nouvelles coordonnées.
   const normalizedWithAnchor = {
-    ...normalizedWithCategories,
+    ...normalizedWithQualifiedCompetitors,
     ...(anchor.localitySource === "admin_confirmed_search_zone"
       ? { confirmed_search_zone: payload.confirmedSearchZone }
       : {}),
@@ -646,7 +657,7 @@ export async function onRequestPost(context) {
   const initialAnchor = await resolveGeographicAnchor({ normalized, fiche, apiKey: context.env.OUTSCRAPER_API_KEY });
   const updatedAt = new Date().toISOString();
 
-  let competitorData = { requete: "", position: null, concurrents: [] };
+  let competitorData = { requete: "", position: null, concurrents: [], qualificationVersion: null };
   if (activity && city && initialAnchor.ok) {
     const competitorResult = await collectCompetitors({
       activite: activity,
@@ -667,6 +678,7 @@ export async function onRequestPost(context) {
         positionKind: competitorResult.positionKind,
         sponsoredResultsExcluded: competitorResult.sponsoredResultsExcluded,
         rankEvidence: competitorResult.rankEvidence,
+        qualificationVersion: COMPETITOR_QUALIFICATION_VERSION,
       };
     }
   }
@@ -674,6 +686,9 @@ export async function onRequestPost(context) {
   const normalizedWithConfirmedActivity = {
     ...normalized,
     ...(manualActivity ? { confirmed_activity: manualActivity } : {}),
+    ...(competitorData.qualificationVersion === COMPETITOR_QUALIFICATION_VERSION
+      ? { competitor_qualification_version: COMPETITOR_QUALIFICATION_VERSION }
+      : {}),
     // Ancrage mémorisé uniquement quand une recherche a réellement été
     // lancée avec cet ancrage (activity && city && competitorResult.ok) —
     // jamais persisté "au cas où", jamais pour une recherche qui n'a pas eu

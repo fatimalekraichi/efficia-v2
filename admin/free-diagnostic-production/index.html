@@ -2713,7 +2713,7 @@ function statsScore(){
   return {ameliorables, pointsPerdus};
 }
 
-let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
+let donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, competitorQualificationVersion:null, competitorQualificationStatus:"refresh_required", descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
 
 /* ====== COUCHE DONNÉES SÛRES ======
    Règle absolue du rapport client : une donnée absente ne s'affiche pas.
@@ -2917,7 +2917,7 @@ function reinitialiserAnalyse(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, competitorQualificationVersion:null, competitorQualificationStatus:"refresh_required", descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null};
   auditPublicIdActif = null;
   auditSourceActif = null;
   auditFallbackLocalId = null;
@@ -3348,23 +3348,28 @@ function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   }));
 }
 
-function actualiserPanneauConcurrentsQualifies(nombre){
+function actualiserPanneauConcurrentsQualifies(nombre, qualificationStatus = donneesAnalyse.competitorQualificationStatus){
   const count = Math.max(0, Math.min(3, Number(nombre) || 0));
+  const refreshRequired = qualificationStatus === "refresh_required";
   const sufficient = count === 3;
   const title = document.getElementById("competitor-panel-title");
   const status = document.getElementById("competitor-panel-status");
   const header = document.getElementById("competitor-panel-header");
-  if(title) title.textContent = sufficient
+  if(title) title.textContent = refreshRequired
+    ? "Panel concurrentiel à actualiser"
+    : sufficient
     ? "Top 3 concurrents qualifiés sur la recherche testée"
     : "Concurrents qualifiés sur la recherche testée";
-  if(status) status.textContent = sufficient
+  if(status) status.textContent = refreshRequired
+    ? "Panel concurrentiel à actualiser — relance nécessaire."
+    : sufficient
     ? "3 concurrents qualifiés : comparaison concurrentielle disponible."
     : count === 0
       ? "0 concurrent qualifié : panel concurrentiel insuffisant pour comparaison."
       : `${count} concurrent${count > 1 ? "s" : ""} qualifié${count > 1 ? "s" : ""} : panel concurrentiel insuffisant pour comparaison.`;
-  if(header) header.hidden = count === 0;
+  if(header) header.hidden = refreshRequired || count === 0;
   document.querySelectorAll("[data-competitor-row]").forEach((row, index) => {
-    row.hidden = index >= count;
+    row.hidden = refreshRequired || index >= count;
   });
 }
 
@@ -3380,7 +3385,12 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     if(field && clean) field.value = clean;
   });
 
-  const concurrents = Array.isArray(business.competitors) ? business.competitors.slice(0, 3) : [];
+  const qualificationVersion = Number(business.competitorQualificationVersion);
+  const qualificationStatus = business.competitorQualificationStatus
+    || (qualificationVersion === 1 ? (Array.isArray(business.competitors) && business.competitors.length === 3 ? "qualified" : "insufficient") : "refresh_required");
+  const concurrents = qualificationStatus === "refresh_required"
+    ? []
+    : (Array.isArray(business.competitors) ? business.competitors.slice(0, 3) : []);
   ["d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete"].forEach((id) => {
     const field = document.getElementById(id);
     if(field) field.value = "";
@@ -3415,6 +3425,8 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
     concurrence:null,
     moyennesConcurrents:null,
+    competitorQualificationVersion: qualificationStatus === "refresh_required" ? null : qualificationVersion,
+    competitorQualificationStatus: qualificationStatus,
     concurrents: concurrents.map((item) => ({
       label: item.name || "Concurrent",
       note: estNombre(item.rating) ? Number(item.rating) : null,
@@ -3440,7 +3452,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
       if(field && value !== null && value !== undefined) field.value = value;
     });
   });
-  actualiserPanneauConcurrentsQualifies(concurrents.length);
+  actualiserPanneauConcurrentsQualifies(concurrents.length, qualificationStatus);
 
   collecteDiagnosticValidee = true;
   const collectionButton = document.getElementById("btn-analyser");
@@ -3499,7 +3511,7 @@ function neutraliserCollecteDiagnosticGratuit(){
     if(badges) badges.innerHTML = "";
     if(note) note.innerHTML = "";
   });
-  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null, zoneGeographique:null, zoneGeographiqueStale:false};
+  donneesAnalyse = {nbAvis:null, nbPhotos:null, note:null, position:null, positionKind:"observed", sponsoredResultsExcluded:0, requeteTestee:null, derniereRequeteAnalysee:null, derniereAnalyseRechercheAt:null, derniereActiviteAnalysee:null, requeteAffichee:null, concurrence:null, concurrents:[], moyennesConcurrents:null, competitorQualificationVersion:null, competitorQualificationStatus:"refresh_required", descriptionLongueur:null, dernierAvis:null, dernierePublication:null, nbServices:null, nbPublications:null, avisAnalyses:null, reponsesProprietaire:null, activiteConfirmee:null, categoriePrincipaleObservee:null, categoriesSecondairesObservees:[], statutCategoriesSecondaires:"unavailable", verificationMaps:null, liensAction:[], statutLiensAction:"unavailable", preuveRang:null, zoneGeographique:null, zoneGeographiqueStale:false};
   requetePersonnalisee = false;
   actualiserZoneGeographique({});
   mettreAJourEtatRecherche();
@@ -3584,12 +3596,42 @@ function calculerComparaisonsRecherche(concurrents){
   };
 }
 
+function neutraliserPanelConcurrentielHistorique(){
+  if(donneesAnalyse.competitorQualificationStatus !== "refresh_required") return false;
+  donneesAnalyse.concurrents = [];
+  donneesAnalyse.concurrence = null;
+  donneesAnalyse.moyennesConcurrents = {note:null, avis:null, photos:null, services:null, pubs:null};
+  // Un ancien brouillon peut contenir une réponse manuelle issue d'un panel
+  // qui n'avait pas été filtré par activité. Ces réponses sont conservées
+  // dans le brouillon historique, mais ne peuvent jamais recréer un score ou
+  // une priorité tant qu'une nouvelle collecte qualifiée n'a pas été faite.
+  ["volumeAvis", "attractiviteConcurrents"].forEach((key) => {
+    const id = CRITERE_IDS[key];
+    if(id === undefined) return;
+    document.querySelectorAll(`input[name="c${id}"]`).forEach((radio) => { radio.checked = false; });
+    criteresTouchesManuellement.delete(id);
+    sourcesCriteres.set(id, "unknown");
+    const element = document.getElementById(`crit-${id}`);
+    if(element){
+      element.classList.add("a-verifier");
+      const badges = element.querySelector(".badges");
+      const note = element.querySelector(".zone-note");
+      if(badges) badges.innerHTML = `<span class="badge-auto" style="background:var(--ambre)">AUTO — à confirmer</span>`;
+      if(note) note.innerHTML = `<span class="note-auto" style="background:#fffbeb;color:#92400e">🔎 Panel concurrentiel à actualiser avant toute comparaison.</span>`;
+    }
+  });
+  actualiserPanneauConcurrentsQualifies(0, "refresh_required");
+  return true;
+}
+
 function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expectedQuery, competitiveDataChanged = true){
   const actualQuery = normaliserRecherche(business?.searchQuery);
   if(!actualQuery || actualQuery !== normaliserRecherche(expectedQuery) || !Array.isArray(business?.competitors)){
     throw new Error("invalid_search_refresh_response");
   }
-  const competitors = business.competitors.slice(0, 3).map((item) => ({
+  const qualificationStatus = business.competitorQualificationStatus || "refresh_required";
+  const qualificationVersion = Number(business.competitorQualificationVersion);
+  const competitors = (qualificationStatus === "refresh_required" ? [] : business.competitors.slice(0, 3)).map((item) => ({
     label:String(item.name || "").trim() || null,
     note:estNombre(item.rating) ? Number(item.rating) : null,
     avis:estNombre(item.reviews) ? Number(item.reviews) : null,
@@ -3616,6 +3658,8 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     preuveRang:business.rankEvidence || null,
     liensAction:Array.isArray(business.actionLinks) ? business.actionLinks : [],
     statutLiensAction:business.actionLinksStatus === "available" ? "available" : "unavailable",
+    competitorQualificationVersion:qualificationStatus === "refresh_required" ? null : qualificationVersion,
+    competitorQualificationStatus:qualificationStatus,
     concurrents:competitors,
     ...comparisons
   };
@@ -3631,7 +3675,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     });
   }
   donneesAnalyse = next;
-  actualiserPanneauConcurrentsQualifies(competitors.length);
+  actualiserPanneauConcurrentsQualifies(competitors.length, qualificationStatus);
   actualiserZoneGeographique(business);
   actualiserPreuvesCategories(business);
   actualiserPreuvesAutomatiques(business, scorePrefill);
@@ -4025,6 +4069,11 @@ function appliquerReponses(reponses){
   if(!reponses) return;
   GRILLE.forEach(cat => cat.criteres.forEach(cr => {
     if(reponses[cr.key] === undefined) return;
+    // Les anciennes réponses issues d'un panel sans marqueur de qualification
+    // restent auditables dans le brouillon, mais ne sont pas réinjectées dans
+    // le score, les priorités ou le PDF avant une relance qualifiée.
+    if(donneesAnalyse.competitorQualificationStatus === "refresh_required"
+      && ["volumeAvis", "attractiviteConcurrents"].includes(cr.key)) return;
     const saved = typeof reponses[cr.key] === "object" ? reponses[cr.key] : {};
     const savedManual = saved.source === "manual" || saved.statut === "manuelle";
     if((cr.key === "categoriePrincipale" || cr.key === "categoriesSecondaires") && !savedManual) return;
@@ -4310,6 +4359,14 @@ async function restaurerBrouillonD1(){
   proposerZoneRechercheDepuisRequete();
   profilActif = answers.profileKey || profilActif;
   donneesAnalyse = answers.observedData && typeof answers.observedData === "object" ? {...donneesAnalyse, ...answers.observedData} : donneesAnalyse;
+  // Le contexte serveur est la source de vérité du statut de qualification.
+  // Un brouillon historique ne peut jamais réinjecter son ancien panel dans
+  // le rapport après que le serveur l'a déclaré à actualiser.
+  if(window.efficiaAdminOrderContext?.collection?.competitorQualificationStatus === "refresh_required"){
+    donneesAnalyse.competitorQualificationVersion = null;
+    donneesAnalyse.competitorQualificationStatus = "refresh_required";
+    neutraliserPanelConcurrentielHistorique();
+  }
   if(answers.photoPresence && answers.photoPresence !== "unknown"){
     const radio = answers.photoPresence === "none"
       ? document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`)
@@ -5939,6 +5996,7 @@ function synchroniserDonneesManuelles(){
   const req = document.getElementById("d-requete")?.value.trim();
   d.requeteAffichee = estTexte(req) ? req : null;
   if(estTexte(req) && !rechercheEstPerimee()) d.requeteTestee = req;
+  if(neutraliserPanelConcurrentielHistorique()) return;
   // Concurrents saisis manuellement (prioritaires sur l'API : plus complets)
   const saisis = [];
   for(let i = 1; i <= 3; i++){
@@ -5949,7 +6007,7 @@ function synchroniserDonneesManuelles(){
   }
   if(saisis.length){
     d.concurrents = saisis;
-    actualiserPanneauConcurrentsQualifies(saisis.length);
+    actualiserPanneauConcurrentsQualifies(saisis.length, d.competitorQualificationStatus);
     if(saisis.length !== 3){
       d.concurrence = null;
       d.moyennesConcurrents = {note:null, avis:null, photos:null, services:null, pubs:null};
@@ -5969,7 +6027,7 @@ function synchroniserDonneesManuelles(){
     d.concurrents = [];
     d.concurrence = null;
     d.moyennesConcurrents = {note:null, avis:null, photos:null, services:null, pubs:null};
-    actualiserPanneauConcurrentsQualifies(0);
+    actualiserPanneauConcurrentsQualifies(0, d.competitorQualificationStatus);
   }
 }
 function preRemplirDonneesObservees(){
@@ -6635,7 +6693,8 @@ function elementsIndeterminesPage5(checklist){
   if(!categorieConfirmee) items.push("les catégories exactes à conserver ou modifier");
   const servicesAnalyses = critereConfirmeMax("servicesPresents") && critereConfirmeMax("servicesDecrits");
   if(!servicesAnalyses) items.push("les services les plus importants à mettre en avant");
-  const comparaisonPossible = (donneesAnalyse.concurrents || []).length === 3 || estNombre(donneesAnalyse.position);
+  const comparaisonPossible = donneesAnalyse.competitorQualificationStatus !== "refresh_required"
+    && (donneesAnalyse.concurrents || []).length === 3;
   if(comparaisonPossible) items.push("les écarts détaillés avec les concurrents mieux positionnés");
   items.push("les textes complets à publier");
   items.push("l'ordre exact des modifications");
@@ -7711,10 +7770,13 @@ function genererRapport(options = {}){
   ];
   const elementsRestants = elementsIndeterminesPage5(checklist);
   const benchTable = benchmarkTableHtml();
-  const panelConcurrentielSuffisant = (donneesAnalyse.concurrents || []).length === 3;
+  const panelConcurrentielHistorique = donneesAnalyse.competitorQualificationStatus === "refresh_required";
+  const panelConcurrentielSuffisant = !panelConcurrentielHistorique && (donneesAnalyse.concurrents || []).length === 3;
   const notePanelConcurrentiel = panelConcurrentielSuffisant
     ? ""
-    : "Panel concurrentiel insuffisant pour comparaison.";
+    : panelConcurrentielHistorique
+      ? "Panel concurrentiel à actualiser — relance nécessaire."
+      : "Panel concurrentiel insuffisant pour comparaison.";
   const ecartsBloc = ecartsExpliquesHtml();
   const idParts = [];
   if(estNombre(dIdent.note)) idParts.push(`<span>Note <b>${fmtNote(dIdent.note)} ★</b></span>`);

@@ -8,6 +8,7 @@ import { resolveScoringVersion } from "./score-efficia/scoreConfig.js";
 import { isCanonicalGoogleMapsUrl } from "./googleMapsUrl.js";
 import { normalizeStoredActionLinkEvidence } from "./actionLinkEvidence.js";
 import { evaluateGeographicAnchorReadiness } from "./geographicAnchor.js";
+import { COMPETITOR_QUALIFICATION_VERSION } from "./collectCompetitors.js";
 
 export function isRefreshableFreeDiagnosticStatus(status) {
   return status === "awaiting_review" || status === "pdf_generated";
@@ -160,7 +161,17 @@ export function buildFreeDiagnosticCollectionState(analysis) {
   // gratuit persiste déjà le panel brut : on adapte ces données au contrat du
   // moteur, sans relancer le fournisseur et sans créer une seconde formule.
   const scoringVersion = resolveScoringVersion(analysis?.scoringVersion, { historicalFallback: true });
-  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark(analysis), {
+  const qualificationVersion = numberOrNull(normalized.competitor_qualification_version);
+  const competitorPanelCurrent = qualificationVersion === COMPETITOR_QUALIFICATION_VERSION;
+  const storedCompetitors = Array.isArray(business.competitors) ? business.competitors : [];
+  // Les résultats antérieurs à la qualification par catégories n'ont aucune
+  // preuve métier exploitable. Ils ne quittent donc jamais ce point de
+  // lecture du diagnostic gratuit, même si un ancien brouillon les contient.
+  const competitors = competitorPanelCurrent ? storedCompetitors : [];
+  const scorePrefill = buildScorePrefill(analysisWithCollectedBenchmark({
+    ...analysis,
+    business: { ...business, competitors },
+  }), {
     verifiedCategoryEvidence: true,
     scoringVersion,
   });
@@ -209,6 +220,10 @@ export function buildFreeDiagnosticCollectionState(analysis) {
       },
       positionKind: business.positionKind === "organic" ? "organic" : "observed",
       sponsoredResultsExcluded: numberOrNull(business.sponsoredResultsExcluded) ?? 0,
+      competitorQualificationVersion: competitorPanelCurrent ? qualificationVersion : null,
+      competitorQualificationStatus: competitorPanelCurrent
+        ? (competitors.length === 3 ? "qualified" : "insufficient")
+        : "refresh_required",
       searchQuery: firstNonEmpty(business.searchQuery),
       searchAnalyzedAt: firstNonEmpty(analysis?.timestamps?.updatedAt),
       // Ancrage géographique automatique (mission "ancrage géographique") :
@@ -234,7 +249,7 @@ export function buildFreeDiagnosticCollectionState(analysis) {
           geographicAnchorIssue: readiness.ok ? null : readiness.code,
         };
       })(),
-      competitors: (Array.isArray(business.competitors) ? business.competitors : []).map((competitor) => ({
+      competitors: competitors.map((competitor) => ({
         name: firstNonEmpty(competitor?.name),
         rating: numberOrNull(competitor?.rating),
         reviews: numberOrNull(competitor?.reviews),

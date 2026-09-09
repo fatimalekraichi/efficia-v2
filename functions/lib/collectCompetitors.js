@@ -8,6 +8,12 @@
 
 import { extractActionLinkEvidence } from "./actionLinkEvidence.js";
 
+// Seuls les panels passés par le filtre de catégories correspondant à cette
+// version peuvent être utilisés comme comparaison concurrentielle. Un panel
+// antérieur ne portait pas assez de données pour être qualifié de manière
+// fiable et doit être relancé.
+export const COMPETITOR_QUALIFICATION_VERSION = 1;
+
 const OUTSCRAPER_HOST = "https://api.app.outscraper.com";
 const OUTSCRAPER_SEARCH_PATH = "/maps/search-v3";
 const DEFAULT_TIMEOUT_MS = 25000;

@@ -125,7 +125,7 @@ test("moins de trois volumes concurrents valides reste À confirmer sans point",
   assert.equal(missingTarget.points, null);
 });
 
-test("un panel qualifié insuffisant ne calcule ni moyenne, ni confiance visible, ni benchmark PDF", () => {
+test("un panel qualifié et versionné insuffisant ne calcule ni moyenne, ni confiance visible, ni benchmark PDF", () => {
   const competitors = [
     { name:"Électricien A", rating:4.9, reviews:20, photos_count:8 },
     { name:"Électricien B", rating:4.8, reviews:12, photos_count:5 },
@@ -150,7 +150,7 @@ test("un panel qualifié insuffisant ne calcule ni moyenne, ni confiance visible
   assert.equal(confidence.points, null);
 
   const state = buildFreeDiagnosticCollectionState({
-    business:{ name:"Fiche test", placeId:"place-test", rating:3.5, reviews:4, competitors, normalized:{} },
+    business:{ name:"Fiche test", placeId:"place-test", rating:3.5, reviews:4, competitors, normalized:{ competitor_qualification_version:1 } },
     benchmark:{ averages:{ rating:4.9, reviews:20, photos:8 } },
   });
   const restoredConfidence = state.scorePrefill.criteria.find((criterion) => criterion.key === "attractiviteConcurrents");
@@ -160,6 +160,59 @@ test("un panel qualifié insuffisant ne calcule ni moyenne, ni confiance visible
   assert.match(html, /Panel concurrentiel insuffisant pour comparaison\./);
   assert.match(html, /concurrents\.length !== 3/);
   assert.match(route, /minimumCompetitors: 3/);
+});
+
+test("un panel historique non versionné est fail closed : aucun concurrent ni benchmark ne quitte le serveur", () => {
+  const historicalCompetitors = [
+    { name:"Boulange / François", rating:4.9, reviews:28, photos_count:12 },
+    { name:"Camperplaats Houffalize", rating:4.7, reviews:44, photos_count:9 },
+    { name:"Recyparc d’Houffalize", rating:4.6, reviews:31, photos_count:7 },
+  ];
+  const state = buildFreeDiagnosticCollectionState({
+    business:{
+      name:"MBGE Marville Benjamin Électricien",
+      placeId:"mbge-place",
+      rating:4.1,
+      reviews:8,
+      competitors:historicalCompetitors,
+      normalized:{},
+    },
+    benchmark:{ averages:{ rating:4.7, reviews:34, photos:9 } },
+  });
+  assert.equal(state.business.competitorQualificationStatus, "refresh_required");
+  assert.equal(state.business.competitorQualificationVersion, null);
+  assert.deepEqual(state.business.competitors, []);
+  const volume = state.scorePrefill.criteria.find((criterion) => criterion.key === "volumeAvis");
+  const confidence = state.scorePrefill.criteria.find((criterion) => criterion.key === "attractiviteConcurrents");
+  assert.equal(volume.points, null);
+  assert.equal(confidence.points, null);
+  assert.match(html, /competitorQualificationStatus === "refresh_required"\s*&& \["volumeAvis", "attractiviteConcurrents"\]\.includes\(cr\.key\)/);
+});
+
+test("un panel versionné n'est affichable que s'il contient exactement trois concurrents qualifiés", () => {
+  for (const count of [0, 1, 2, 3]) {
+    const competitors = Array.from({ length:count }, (_, index) => ({
+      name:`Électricien qualifié ${index + 1}`,
+      rating:4.8,
+      reviews:10 + index,
+      photos_count:4 + index,
+    }));
+    const state = buildFreeDiagnosticCollectionState({
+      business:{
+        name:"Fiche test",
+        placeId:"place-test",
+        rating:4.1,
+        reviews:8,
+        competitors,
+        normalized:{ competitor_qualification_version:1 },
+      },
+      benchmark:{ averages:{ rating:4.8, reviews:11, photos:5 } },
+    });
+    assert.equal(state.business.competitorQualificationStatus, count === 3 ? "qualified" : "insufficient");
+    assert.equal(state.business.competitors.length, count);
+    const volume = state.scorePrefill.criteria.find((criterion) => criterion.key === "volumeAvis");
+    assert.equal(volume.points, count === 3 ? 0 : null);
+  }
 });
 
 test("la collecte exclut cible, doublon, sponsorisé et volume inexploitable avant de retenir les trois premiers valides", async () => {
@@ -213,7 +266,7 @@ test("la relance recalcule et réapplique volumeAvis, conserve le manuel contrad
   assert.match(html, /id="review-volume-manual-warning"/);
 });
 
-test("la collecte initiale et la relance persistent concurrents et moyenne dans une seule mise à jour", () => {
+test("la collecte initiale et la relance persistent concurrents, moyenne et version de qualification dans une seule mise à jour", () => {
   const initial = route.slice(route.indexOf("const competitorsJson = JSON.stringify(competitorData.concurrents)"));
   const refresh = route.slice(route.indexOf("async function refreshSearchAnalysis"), route.indexOf("async function clearFailedCollection"));
   for (const source of [initial, refresh]) {
@@ -221,6 +274,8 @@ test("la collecte initiale et la relance persistent concurrents et moyenne dans 
     assert.match(source, /avg_reviews = \?/);
     assert.match(source, /reviews_gap = \?/);
   }
+  assert.match(route, /competitor_qualification_version/);
+  assert.match(route, /normalizedWithQualifiedCompetitors/);
 });
 
 test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni concurrent hors profil", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
@@ -250,6 +305,8 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
           positionKind:"organic",
           searchQuery:"Électricien Houffalize",
           confirmedActivity:"Électricien",
+          competitorQualificationVersion:1,
+          competitorQualificationStatus:count === 3 ? "qualified" : "insufficient",
           competitors:competitors(count)
         });
         const snapshot = (count) => {
@@ -273,6 +330,32 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
         const one = snapshot(1);
         const two = snapshot(2);
         const three = snapshot(3);
+        const historical = (() => {
+          appliquerCollecteDiagnosticGratuit({
+            ...business(3),
+            competitorQualificationVersion:null,
+            competitorQualificationStatus:"refresh_required",
+            competitors:[
+              { name:"Boulange / François", rating:4.9, reviews:28, photos_count:12 },
+              { name:"Camperplaats Houffalize", rating:4.7, reviews:44, photos_count:9 },
+              { name:"Recyparc d’Houffalize", rating:4.6, reviews:31, photos_count:7 }
+            ]
+          }, { criteria:[], conditions:{} });
+          majConditionsQuestionnaire();
+          calc();
+          if(!genererRapport({exigerVersion:false})) throw new Error("rendu refusé pour le panel historique");
+          const report = document.getElementById("rapport-contenu");
+          return {
+            title:document.getElementById("competitor-panel-title")?.textContent || "",
+            status:document.getElementById("competitor-panel-status")?.textContent || "",
+            visibleRows:[...document.querySelectorAll("[data-competitor-row]")].filter(row => !row.hidden).length,
+            averageRating:donneesAnalyse.moyennesConcurrents?.note ?? null,
+            averageReviews:donneesAnalyse.moyennesConcurrents?.avis ?? null,
+            hasComparison:donneesAnalyse.concurrence !== null,
+            hasComparableBenchmark:!!report.querySelector(".v3-benchmark-row"),
+            reportText:report.textContent || ""
+          };
+        })();
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
         if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
         const pages = [...document.querySelectorAll("#rapport-contenu .page")];
@@ -285,7 +368,7 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
         }
         document.getElementById("qualified-competitors-smoke-result").textContent = JSON.stringify({
-          zero, one, two, three,
+          zero, one, two, three, historical,
           pdfPages:pdf.internal.getNumberOfPages(),
           canvasCount,
           pdfBytes:pdf.output("arraybuffer").byteLength
@@ -310,7 +393,15 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
   assert.equal(result.three.title, "Top 3 concurrents qualifiés sur la recherche testée");
   assert.match(result.three.status, /3 concurrents qualifiés : comparaison concurrentielle disponible\./u);
   assert.equal(result.three.visibleRows, 3);
-  assert.doesNotMatch(result.one.reportText, /Camperplaats Houffalize|Recyparc d’Houffalize/u);
+  assert.equal(result.historical.title, "Panel concurrentiel à actualiser");
+  assert.match(result.historical.status, /Panel concurrentiel à actualiser — relance nécessaire\./u);
+  assert.equal(result.historical.visibleRows, 0);
+  assert.equal(result.historical.averageRating, null);
+  assert.equal(result.historical.averageReviews, null);
+  assert.equal(result.historical.hasComparison, false);
+  assert.equal(result.historical.hasComparableBenchmark, false);
+  assert.match(result.historical.reportText, /Panel concurrentiel à actualiser — relance nécessaire\./u);
+  assert.doesNotMatch(result.historical.reportText, /Boulange \/ François|Camperplaats Houffalize|Recyparc d’Houffalize/u);
   assert.equal(result.pdfPages, 6);
   assert.equal(result.canvasCount, 6);
   assert.ok(result.pdfBytes > 0);

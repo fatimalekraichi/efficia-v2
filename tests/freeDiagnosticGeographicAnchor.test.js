@@ -480,6 +480,8 @@ test("2bis. la collecte automatique INITIALE (pas une relance) résout aussi l�
     assert.equal(body.business.geographicAnchor.region, "BE");
     assert.equal(body.business.geographicAnchor.label, "6840 Neufchâteau, Belgique");
     assert.equal(body.business.geographicAnchorStale, false);
+    assert.equal(body.business.competitorQualificationVersion, 1);
+    assert.equal(body.business.competitorQualificationStatus, "qualified");
 
     // Preuve directe en base (pas seulement dans la réponse HTTP) :
     // normalized_json contient geographic_anchor dès cette toute première
@@ -489,6 +491,7 @@ test("2bis. la collecte automatique INITIALE (pas une relance) résout aussi l�
     assert.ok(persisted.geographic_anchor);
     assert.equal(persisted.geographic_anchor.region, "BE");
     assert.equal(persisted.geographic_anchor.tier, 1);
+    assert.equal(persisted.competitor_qualification_version, 1);
   } finally {
     restoreFetch();
   }
@@ -513,6 +516,8 @@ test("3. la requête affichée, la requête fournisseur, l’ancrage et la date 
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.business.searchQuery, "Électricien Neufchâteau");
+    assert.equal(body.business.competitorQualificationVersion, 1);
+    assert.equal(body.business.competitorQualificationStatus, "qualified");
     assert.equal(body.business.geographicAnchor.label, "Neufchâteau, Belgique");
     assert.ok(body.searchAnalyzedAt);
     assert.notEqual(body.business.searchQuery, body.business.geographicAnchor.label);
