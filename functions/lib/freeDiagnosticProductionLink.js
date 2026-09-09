@@ -101,7 +101,21 @@ export function buildGoogleMapsVerificationLink({ locationLink, placeId, cid, co
 
 function analysisWithCollectedBenchmark(analysis) {
   const competitors = Array.isArray(analysis?.business?.competitors) ? analysis.business.competitors : [];
-  if (!competitors.length) return analysis;
+
+  // Une comparaison concurrentielle du diagnostic gratuit exige exactement
+  // trois fiches qualifiées. Un panel plus court reste visible comme tel,
+  // mais ne peut pas ressusciter une moyenne historique ni alimenter le
+  // score, les priorités ou le rapport.
+  if (competitors.length !== 3) {
+    return {
+      ...analysis,
+      benchmark: {
+        ...(analysis.benchmark || {}),
+        averages: { rating:null, reviews:null, photos:null },
+        gaps: { rating:null, reviews:null, photos:null },
+      },
+    };
+  }
 
   const average = (key) => {
     const values = competitors.map((item) => numberOrNull(item?.[key])).filter((value) => value !== null);

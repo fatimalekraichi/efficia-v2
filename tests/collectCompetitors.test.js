@@ -14,7 +14,11 @@ function mockFetchOnce(payload) {
   const withReviewVolumes = {
     ...payload,
     data: Array.isArray(payload?.data) ? payload.data.map((query) => Array.isArray(query)
-      ? query.map((place) => Object.prototype.hasOwnProperty.call(place, "reviews") ? place : { ...place, reviews:0 })
+      ? query.map((place) => ({
+          ...place,
+          ...(Object.prototype.hasOwnProperty.call(place, "reviews") ? {} : { reviews:0 }),
+          ...(Object.prototype.hasOwnProperty.call(place, "category") ? {} : { category:"Électricien" }),
+        }))
       : query) : payload?.data,
   };
   globalThis.fetch = async () => Response.json(withReviewVolumes);
@@ -245,10 +249,10 @@ test("une annonce sponsorisée est exclue avant le calcul de la position et du t
 test("plusieurs annonces sponsorisées sont toutes exclues du classement et des concurrents", async () => {
   const restore = mockFetchOnce({
     data: [[
-      { name: "Annonce A", place_id: "ad-a", isAd: true },
-      { name: "Annonce B", place_id: "ad-b", result_type: "Sponsored" },
-      { name: "Cible", place_id: "target", isAd: false },
-      { name: "Concurrent A", place_id: "organic-a", isAd: false },
+      { name: "Annonce A", place_id: "ad-a", isAd: true, category:"Garage" },
+      { name: "Annonce B", place_id: "ad-b", result_type: "Sponsored", category:"Garage" },
+      { name: "Cible", place_id: "target", isAd: false, category:"Garage" },
+      { name: "Concurrent A", place_id: "organic-a", isAd: false, category:"Garage" },
     ]],
   });
   try {
@@ -264,9 +268,9 @@ test("plusieurs annonces sponsorisées sont toutes exclues du classement et des 
 test("sans donnée publicitaire disponible, la position historique est conservée sans déduction arbitraire", async () => {
   const restore = mockFetchOnce({
     data: [[
-      { name: "Résultat A", place_id: "a" },
-      { name: "Cible", place_id: "target" },
-      { name: "Résultat B", place_id: "b" },
+      { name: "Résultat A", place_id: "a", category:"Garage" },
+      { name: "Cible", place_id: "target", category:"Garage" },
+      { name: "Résultat B", place_id: "b", category:"Garage" },
     ]],
   });
   try {
@@ -325,6 +329,61 @@ test("une recherche personnalisée est transmise au fournisseur sans être recon
     assert.equal(result.ok, true);
     assert.equal(receivedQuery, "Dépannage électricien agréé Attert");
     assert.equal(result.requete, "Dépannage électricien agréé Attert");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Électricien Houffalize : seuls les résultats catégorisés électricité entrent dans le panel", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ data:[[
+    { name:"Boulange / François", place_id:"electrician", category:"Electrician", reviews:12 },
+    { name:"Camperplaats Houffalize", place_id:"camping", category:"Campground", reviews:42 },
+    { name:"Recyparc d’Houffalize", place_id:"recyparc", category:"Recycling center", reviews:9 },
+    { name:"Électricien sans catégorie", place_id:"missing-category", reviews:7 },
+    { name:"Installations locales", place_id:"secondary-electric", category:"Home improvement store", subtypes:["Electrical installation service"], reviews:5 },
+  ]] });
+  try {
+    const result = await collectCompetitors({
+      activite:"Électricien",
+      ville:"Houffalize",
+      requete:"Électricien Houffalize",
+      apiKey:"fixture-key",
+      suppressSensitiveLogs:true,
+    });
+    assert.deepEqual(result.concurrents.map((competitor) => competitor.name), ["Boulange / François", "Installations locales"]);
+    assert.equal(result.qualifiedCompetitorCount, 2);
+    assert.ok(result.concurrents.every((competitor) => competitor.primary_category || competitor.secondary_categories.length));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("un panel électricien conserve exactement 0, 1, 2 ou 3 concurrents qualifiés", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const expectedCount of [0, 1, 2, 3]) {
+      const qualified = Array.from({ length: expectedCount }, (_, index) => ({
+        name:`Électricien ${index + 1}`,
+        place_id:`electrician-${index + 1}`,
+        category:"Électricien",
+        reviews:index + 1,
+      }));
+      globalThis.fetch = async () => Response.json({ data:[[...
+        qualified,
+        { name:"Camping hors profil", place_id:"camping", category:"Campground", reviews:99 },
+        { name:"Sans catégorie", place_id:"unknown", reviews:99 },
+      ]] });
+      const result = await collectCompetitors({
+        activite:"Électricien",
+        ville:"Houffalize",
+        requete:"Électricien Houffalize",
+        apiKey:"fixture-key",
+        suppressSensitiveLogs:true,
+      });
+      assert.equal(result.concurrents.length, expectedCount);
+      assert.equal(result.qualifiedCompetitorCount, expectedCount);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

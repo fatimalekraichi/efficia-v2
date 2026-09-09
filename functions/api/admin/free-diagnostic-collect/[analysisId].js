@@ -326,7 +326,7 @@ async function refreshSearchAnalysis({ context, db, analysis, analysisId, payloa
     reviews: analysis.business?.reviews,
     photos_count: analysis.business?.photosCount,
     competitors_json: competitorsJson,
-  });
+  }, { minimumCompetitors: 3 });
   const updatedAt = new Date().toISOString();
   const normalizedWithCategories = mergeCategoryObservation(normalized, result.targetObservation, payload.activity);
   const ficheWithCategories = mergeCategoryObservation(fiche, result.targetObservation, payload.activity);
@@ -688,7 +688,7 @@ export async function onRequestPost(context) {
     reviews: normalized.reviews,
     photos_count: normalized.photos_count,
     competitors_json: competitorsJson,
-  });
+  }, { minimumCompetitors: 3 });
   try {
     await db.prepare(`
       UPDATE analyses

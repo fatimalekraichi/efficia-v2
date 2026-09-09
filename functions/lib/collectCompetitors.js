@@ -50,6 +50,8 @@ function mapCompetitor(place) {
     services_count: services,
     posts_count: publications,
     photo: firstPhotoUrl(place),
+    primary_category: primaryCompetitorCategory(place),
+    secondary_categories: secondaryCompetitorCategories(place),
   };
 }
 
@@ -61,6 +63,111 @@ function normalizeCategoryList(value) {
     return value.split(",").map((item) => item.trim()).filter(Boolean);
   }
   return [];
+}
+
+function normalizeCategoryText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function categoryLabels(value) {
+  if (Array.isArray(value)) return value.flatMap(categoryLabels);
+  if (value && typeof value === "object") {
+    return categoryLabels(value.name || value.label || value.category || value.type || value.title);
+  }
+  return normalizeCategoryList(value);
+}
+
+function firstCategoryValue(place, fields) {
+  for (const field of fields) {
+    const values = categoryLabels(place?.[field]);
+    if (values.length) return values[0];
+  }
+  return "";
+}
+
+function primaryCompetitorCategory(place) {
+  return firstCategoryValue(place, ["category", "primary_category", "main_category", "category_name", "type"]);
+}
+
+function secondaryCompetitorCategories(place) {
+  return [...new Set([
+    ...categoryLabels(place?.subtypes),
+    ...categoryLabels(place?.secondary_categories),
+    ...categoryLabels(place?.categories),
+    ...categoryLabels(place?.types),
+  ])];
+}
+
+const COMPETITOR_ACTIVITY_PROFILES = Object.freeze([
+  {
+    key: "electrician",
+    signals: ["electricien", "electrician", "electricite", "electric", "electrical"],
+    categoryPatterns: [
+      /\belectricien\b/,
+      /\belectrician\b/,
+      /\bentreprise d electricite\b/,
+      /\bservice d installation electrique\b/,
+      /\belectric installation\b/,
+      /\belectrical installation\b/,
+      /\belectrical contractor\b/,
+    ],
+    excludedPatterns: [
+      /\bfournisseur d electricite\b/,
+      /\bcompagnie d electricite\b/,
+      /\bservice public d electricite\b/,
+      /\belectricity supplier\b/,
+      /\belectric utility\b/,
+      /\belectric power company\b/,
+    ],
+  },
+]);
+
+function resolveCompetitorActivityProfile({ activite, requete } = {}) {
+  const scope = normalizeCategoryText(`${activite || ""} ${requete || ""}`);
+  const knownProfile = COMPETITOR_ACTIVITY_PROFILES
+    .find((profile) => profile.signals.some((signal) => scope.includes(signal)));
+  if (knownProfile) return knownProfile;
+
+  // Pour les activités qui ne font pas encore partie d'un profil explicite,
+  // on conserve une règle prudente : une catégorie doit reprendre au moins
+  // un terme métier non générique de l'activité confirmée. Sans ce signal,
+  // le résultat reste hors panel plutôt que d'être deviné depuis son nom.
+  const genericTerms = normalizeCategoryText(activite).split(" ")
+    .filter((term) => term.length >= 4 && !["entreprise", "service", "societe"].includes(term));
+  if (!genericTerms.length) return null;
+  return {
+    key: "generic",
+    categoryPatterns: genericTerms.map((term) => new RegExp(`\\b${term}\\b`)),
+    excludedPatterns: [],
+  };
+}
+
+export function qualifyCompetitorByCategory(place, context = {}) {
+  const profile = resolveCompetitorActivityProfile(context);
+  const primaryCategory = primaryCompetitorCategory(place);
+  const secondaryCategories = secondaryCompetitorCategories(place);
+  const categories = [primaryCategory, ...secondaryCategories]
+    .map(normalizeCategoryText)
+    .filter(Boolean);
+  if (!profile) {
+    return { qualified:false, reason:"activity_profile_unknown", primaryCategory, secondaryCategories };
+  }
+  if (!categories.length) {
+    return { qualified:false, reason:"category_missing", primaryCategory, secondaryCategories };
+  }
+  if (categories.some((category) => profile.excludedPatterns.some((pattern) => pattern.test(category)))) {
+    return { qualified:false, reason:"category_incompatible", primaryCategory, secondaryCategories };
+  }
+  if (!categories.some((category) => profile.categoryPatterns.some((pattern) => pattern.test(category)))) {
+    return { qualified:false, reason:"category_incompatible", primaryCategory, secondaryCategories };
+  }
+  return { qualified:true, reason:"category_compatible", primaryCategory, secondaryCategories };
 }
 
 function mapTargetObservation(place) {
@@ -375,12 +482,15 @@ export async function collectCompetitors({
     });
   }
 
-  const concurrents = selectValidReviewCompetitors(afterExclusion, 3).map(mapCompetitor);
+  const qualificationContext = { activite: activiteTrim, requete };
+  const qualifiedCandidates = afterExclusion.filter((place) => qualifyCompetitorByCategory(place, qualificationContext).qualified);
+  const concurrents = selectValidReviewCompetitors(qualifiedCandidates, 3).map(mapCompetitor);
 
   if (!suppressSensitiveLogs) {
     console.log("collectCompetitors:retained", {
       retainedCount: concurrents.length,
-      retainedNames: concurrents.map((c) => c.name || "(sans nom)"),
+      candidateCount: afterExclusion.length,
+      categoryQualifiedCount: qualifiedCandidates.length,
     });
   }
 
@@ -391,6 +501,7 @@ export async function collectCompetitors({
     concurrents,
     positionKind: sponsorshipClassificationAvailable ? "organic" : "observed",
     sponsoredResultsExcluded: sponsoredResults.length,
+    qualifiedCompetitorCount: concurrents.length,
     targetObservation,
     rankEvidence,
     // Séparation obligatoire (mission "ancrage géographique") : l'ancrage

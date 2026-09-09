@@ -79,6 +79,28 @@ function findTopCompetitor(competitors) {
 export function benchmarkEngine(analysis, options = {}) {
   const competitors = parseCompetitors(analysis?.competitors_json);
   const weights = options.weights || BENCHMARK_WEIGHTS;
+  const minimumCompetitors = Number.isInteger(options.minimumCompetitors) && options.minimumCompetitors > 0
+    ? options.minimumCompetitors
+    : 0;
+
+  if (minimumCompetitors && competitors.length < minimumCompetitors) {
+    return {
+      benchmark_score: null,
+      competitor_count: competitors.length,
+      avg_rating: null,
+      avg_reviews: null,
+      avg_photos: null,
+      rating_gap: null,
+      reviews_gap: null,
+      photos_gap: null,
+      rating_percentile: null,
+      reviews_percentile: null,
+      photos_percentile: null,
+      top_competitor_name: null,
+      top_competitor_rating: null,
+      top_competitor_reviews: null,
+    };
+  }
 
   const clientRating = toNumber(analysis?.rating);
   const clientReviews = toNumber(analysis?.reviews);

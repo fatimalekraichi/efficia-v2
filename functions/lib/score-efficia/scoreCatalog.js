@@ -449,7 +449,7 @@ export function buildScorePrefill(analysis = {}, { verifiedCategoryEvidence = fa
     averageRating:avgRating,
     averageReviews:avgReviews,
   });
-  if (!competitors.length || attractiveness.optionIndex === null) {
+  if (competitors.length !== 3 || attractiveness.optionIndex === null) {
     addCriterion(criteria, notVerified("attractiviteConcurrents", "unknown", {
       rating,
       reviews:reviewsCount,

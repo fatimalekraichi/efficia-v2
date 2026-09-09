@@ -214,7 +214,7 @@ function isGeocodingRequest(url) {
 function installProviderFixtureCapturingRequest(onRequest, { center = NEUFCHATEAU_BE_CENTER } = {}) {
   const originalFetch = globalThis.fetch;
   const before = Array.from({ length: 8 }, (_, index) => ({
-    name: `Concurrent BE ${index + 1}`, place_id: `place-be-${index}`, rating: 4.1, reviews: 12, city: "Neufchâteau",
+    name: `Concurrent BE ${index + 1}`, place_id: `place-be-${index}`, rating: 4.1, reviews: 12, city: "Neufchâteau", category:"Électricien",
   }));
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -281,9 +281,9 @@ function installLuxSmartFixture(counters, { recoveredLocality = false } = {}) {
     assert.equal(url.searchParams.get("region"), "LU");
     assert.equal(url.searchParams.get("coordinates"), "49.6116,6.1319");
     return Response.json({ data: [[
-      { name: "Électricien Luxembourg 1", place_id: "lux-c1", rating: 4.8, reviews: 31, sponsored: false },
-      { name: "Électricien Luxembourg 2", place_id: "lux-c2", rating: 4.6, reviews: 18, sponsored: false },
-      { name: "Électricien Luxembourg 3", place_id: "lux-c3", rating: 4.5, reviews: 12, sponsored: false },
+      { name: "Électricien Luxembourg 1", place_id: "lux-c1", rating: 4.8, reviews: 31, sponsored: false, category:"Électricien" },
+      { name: "Électricien Luxembourg 2", place_id: "lux-c2", rating: 4.6, reviews: 18, sponsored: false, category:"Électricien" },
+      { name: "Électricien Luxembourg 3", place_id: "lux-c3", rating: 4.5, reviews: 12, sponsored: false, category:"Électricien" },
       { name: "lux smart energie", place_id: LUX_PLACE_ID, rating: null, reviews: null, sponsored: false },
     ]] });
   };
@@ -430,7 +430,7 @@ function installInitialCollectionProviderFixture(onCompetitorRequest, { center =
     }
     onCompetitorRequest(url.toString());
     const before = Array.from({ length: 3 }, (_, index) => ({
-      name: `Concurrent BE ${index + 1}`, place_id: `place-be-${index}`, rating: 4.1, reviews: 12, city: "Neufchâteau",
+      name: `Concurrent BE ${index + 1}`, place_id: `place-be-${index}`, rating: 4.1, reviews: 12, city: "Neufchâteau", category:"Électricien",
     }));
     return Response.json({
       data: [[

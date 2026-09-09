@@ -790,11 +790,12 @@
       <p class="recherche-etat" id="zone-geo-detectee" aria-live="polite" hidden></p>
       <p class="recherche-alerte" id="alerte-zone-geo-manquante" role="alert" hidden>La zone géographique n’a pas pu être déterminée automatiquement. Vérifiez la fiche avant de relancer l’analyse.</p>
       <p class="recherche-alerte" id="alerte-zone-geo-perimee" role="alert" hidden></p>
-      <h3 style="font-size:.95rem;margin:18px 0 8px">Top 3 concurrents sur la recherche testée <span style="font-weight:400;color:var(--gris);font-size:.82rem">(au moins le 1er ; noms affichés dans le rapport)</span></h3>
-      <div class="conc-grid entete"><span>Nom de la fiche concurrente</span><span>Note</span><span>Avis</span><span>Photos</span><span>Services</span><span>Publis</span></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-1" placeholder="Nom"><input type="text" id="dc-note-1" placeholder="Note"><input type="text" id="dc-avis-1" placeholder="Avis"><input type="text" id="dc-photos-1" placeholder="Photos"><input type="text" id="dc-services-1" placeholder="Services"><input type="text" id="dc-pubs-1" placeholder="Publications"></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-2" placeholder="Nom"><input type="text" id="dc-note-2" placeholder="Note"><input type="text" id="dc-avis-2" placeholder="Avis"><input type="text" id="dc-photos-2" placeholder="Photos"><input type="text" id="dc-services-2" placeholder="Services"><input type="text" id="dc-pubs-2" placeholder="Publications"></div>
-      <div class="conc-grid"><input type="text" id="dc-nom-3" placeholder="Nom"><input type="text" id="dc-note-3" placeholder="Note"><input type="text" id="dc-avis-3" placeholder="Avis"><input type="text" id="dc-photos-3" placeholder="Photos"><input type="text" id="dc-services-3" placeholder="Services"><input type="text" id="dc-pubs-3" placeholder="Publications"></div>
+      <h3 id="competitor-panel-title" style="font-size:.95rem;margin:18px 0 8px">Top 3 concurrents qualifiés sur la recherche testée</h3>
+      <p class="recherche-etat" id="competitor-panel-status" aria-live="polite"></p>
+      <div class="conc-grid entete" id="competitor-panel-header"><span>Nom de la fiche concurrente</span><span>Note</span><span>Avis</span><span>Photos</span><span>Services</span><span>Publis</span></div>
+      <div class="conc-grid" data-competitor-row="1"><input type="text" id="dc-nom-1" placeholder="Nom"><input type="text" id="dc-note-1" placeholder="Note"><input type="text" id="dc-avis-1" placeholder="Avis"><input type="text" id="dc-photos-1" placeholder="Photos"><input type="text" id="dc-services-1" placeholder="Services"><input type="text" id="dc-pubs-1" placeholder="Publications"></div>
+      <div class="conc-grid" data-competitor-row="2"><input type="text" id="dc-nom-2" placeholder="Nom"><input type="text" id="dc-note-2" placeholder="Note"><input type="text" id="dc-avis-2" placeholder="Avis"><input type="text" id="dc-photos-2" placeholder="Photos"><input type="text" id="dc-services-2" placeholder="Services"><input type="text" id="dc-pubs-2" placeholder="Publications"></div>
+      <div class="conc-grid" data-competitor-row="3"><input type="text" id="dc-nom-3" placeholder="Nom"><input type="text" id="dc-note-3" placeholder="Note"><input type="text" id="dc-avis-3" placeholder="Avis"><input type="text" id="dc-photos-3" placeholder="Photos"><input type="text" id="dc-services-3" placeholder="Services"><input type="text" id="dc-pubs-3" placeholder="Publications"></div>
     </div>
 
     <div id="zone-criteres"></div>
@@ -3347,6 +3348,26 @@ function appliquerPreRemplissageDiagnosticGratuit(scorePrefill){
   }));
 }
 
+function actualiserPanneauConcurrentsQualifies(nombre){
+  const count = Math.max(0, Math.min(3, Number(nombre) || 0));
+  const sufficient = count === 3;
+  const title = document.getElementById("competitor-panel-title");
+  const status = document.getElementById("competitor-panel-status");
+  const header = document.getElementById("competitor-panel-header");
+  if(title) title.textContent = sufficient
+    ? "Top 3 concurrents qualifiés sur la recherche testée"
+    : "Concurrents qualifiés sur la recherche testée";
+  if(status) status.textContent = sufficient
+    ? "3 concurrents qualifiés : comparaison concurrentielle disponible."
+    : count === 0
+      ? "0 concurrent qualifié : panel concurrentiel insuffisant pour comparaison."
+      : `${count} concurrent${count > 1 ? "s" : ""} qualifié${count > 1 ? "s" : ""} : panel concurrentiel insuffisant pour comparaison.`;
+  if(header) header.hidden = count === 0;
+  document.querySelectorAll("[data-competitor-row]").forEach((row, index) => {
+    row.hidden = index >= count;
+  });
+}
+
 function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
   const detectedFields = {
     "p-entreprise": business.company,
@@ -3392,6 +3413,8 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     liensAction: Array.isArray(business.actionLinks) ? business.actionLinks : [],
     statutLiensAction: business.actionLinksStatus === "available" ? "available" : "unavailable",
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
+    concurrence:null,
+    moyennesConcurrents:null,
     concurrents: concurrents.map((item) => ({
       label: item.name || "Concurrent",
       note: estNombre(item.rating) ? Number(item.rating) : null,
@@ -3417,6 +3440,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
       if(field && value !== null && value !== undefined) field.value = value;
     });
   });
+  actualiserPanneauConcurrentsQualifies(concurrents.length);
 
   collecteDiagnosticValidee = true;
   const collectionButton = document.getElementById("btn-analyser");
@@ -3533,6 +3557,12 @@ async function lancerCollecteDiagnosticGratuit(){
 }
 
 function calculerComparaisonsRecherche(concurrents){
+  if(!Array.isArray(concurrents) || concurrents.length !== 3){
+    return {
+      moyennesConcurrents:{note:null, avis:null, photos:null, services:null, pubs:null},
+      concurrence:null
+    };
+  }
   const moyenne = (key) => {
     const values = concurrents.map((item) => item[key]).filter(estNombre).map(Number);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
@@ -3601,6 +3631,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     });
   }
   donneesAnalyse = next;
+  actualiserPanneauConcurrentsQualifies(competitors.length);
   actualiserZoneGeographique(business);
   actualiserPreuvesCategories(business);
   actualiserPreuvesAutomatiques(business, scorePrefill);
@@ -5872,9 +5903,7 @@ function buildReviewsResponseSentence(reviewsAnalyzed, ownerResponses, verificat
 }
 
 function buildAnonymousCompetitorComparison(competitorCount, queryDisplay){
-  if(!competitorCount) return "";
-  if(competitorCount === 1) return `Votre fiche, comparée à la fiche concurrente observée sur ${queryDisplay}.`;
-  if(competitorCount === 2) return `Votre fiche, comparée à la moyenne des deux fiches concurrentes observées sur ${queryDisplay}.`;
+  if(competitorCount !== 3) return "";
   return `Votre fiche, comparée à la moyenne des trois fiches les mieux placées observées sur ${queryDisplay}.`;
 }
 
@@ -5920,6 +5949,12 @@ function synchroniserDonneesManuelles(){
   }
   if(saisis.length){
     d.concurrents = saisis;
+    actualiserPanneauConcurrentsQualifies(saisis.length);
+    if(saisis.length !== 3){
+      d.concurrence = null;
+      d.moyennesConcurrents = {note:null, avis:null, photos:null, services:null, pubs:null};
+      return;
+    }
     const moy = champ => { const vals = saisis.map(c => c[champ]).filter(estNombre); return vals.length ? vals.reduce((s,v) => s + Number(v), 0) / vals.length : null; };
     const volC = moy("avis"), noteC = moy("note");
     if(volC !== null && noteC !== null && estNombre(d.nbAvis) && estNombre(d.note)){
@@ -5930,6 +5965,11 @@ function synchroniserDonneesManuelles(){
       d.concurrence = null;
     }
     d.moyennesConcurrents = {note:noteC, avis:volC, photos:moy("photos"), services:moy("services"), pubs:moy("pubs")};
+  }else{
+    d.concurrents = [];
+    d.concurrence = null;
+    d.moyennesConcurrents = {note:null, avis:null, photos:null, services:null, pubs:null};
+    actualiserPanneauConcurrentsQualifies(0);
   }
 }
 function preRemplirDonneesObservees(){
@@ -6278,6 +6318,7 @@ function comparerVolumePhotos(volumeFiche, moyenneConcurrentielle){
 /* ============ PAGE 2 : BENCHMARK CONCURRENTIEL ============ */
 function benchmarkLignes(){
   const d = donneesAnalyse, m = d.moyennesConcurrents || {};
+  if((d.concurrents || []).length !== 3) return [];
   const api = d.concurrence; // moyennes note/avis issues de l'API si pas de saisie manuelle
   const lignes = [];
   const push = (label, vous, top3, formatV, sensPositif, statutForce = null) => {
@@ -6301,10 +6342,11 @@ function benchmarkLignes(){
   return lignes;
 }
 function benchmarkTableHtml(){
+  if((donneesAnalyse.concurrents || []).length !== 3) return "";
   const lignes = benchmarkLignes();
   if(!lignes.length) return "";
   const nbConcurrents = (donneesAnalyse.concurrents || []).length;
-  const libelle = nbConcurrents >= 3 ? "Moyenne concurrentielle anonymisée" : nbConcurrents === 2 ? "Moyenne anonymisée" : nbConcurrents === 1 ? "Fiche concurrente observée" : "Fiches concurrentes observées";
+  const libelle = nbConcurrents >= 3 ? "Moyenne concurrentielle anonymisée" : "";
   return `<div class="bench-table">
     <div class="bench-row entete"><span>Critère</span><span>Vous</span><span>${libelle}</span><span></span></div>
     ${lignes.map(l => `<div class="bench-row"><span>${l.label}</span><strong>${l.vous}</strong><span>${l.top3}</span>
@@ -6324,6 +6366,7 @@ function pourcentageBarreFamille(pointsFamille, maximumFamille){
 }
 
 function benchmarkV3Html(){
+  if((donneesAnalyse.concurrents || []).length !== 3) return "";
   const lignes = benchmarkLignes().slice(0, 4);
   if(!lignes.length) return "";
   const d = donneesAnalyse;
@@ -6592,7 +6635,7 @@ function elementsIndeterminesPage5(checklist){
   if(!categorieConfirmee) items.push("les catégories exactes à conserver ou modifier");
   const servicesAnalyses = critereConfirmeMax("servicesPresents") && critereConfirmeMax("servicesDecrits");
   if(!servicesAnalyses) items.push("les services les plus importants à mettre en avant");
-  const comparaisonPossible = (donneesAnalyse.concurrents || []).length > 0 || estNombre(donneesAnalyse.position);
+  const comparaisonPossible = (donneesAnalyse.concurrents || []).length === 3 || estNombre(donneesAnalyse.position);
   if(comparaisonPossible) items.push("les écarts détaillés avec les concurrents mieux positionnés");
   items.push("les textes complets à publier");
   items.push("l'ordre exact des modifications");
@@ -7668,6 +7711,10 @@ function genererRapport(options = {}){
   ];
   const elementsRestants = elementsIndeterminesPage5(checklist);
   const benchTable = benchmarkTableHtml();
+  const panelConcurrentielSuffisant = (donneesAnalyse.concurrents || []).length === 3;
+  const notePanelConcurrentiel = panelConcurrentielSuffisant
+    ? ""
+    : "Panel concurrentiel insuffisant pour comparaison.";
   const ecartsBloc = ecartsExpliquesHtml();
   const idParts = [];
   if(estNombre(dIdent.note)) idParts.push(`<span>Note <b>${fmtNote(dIdent.note)} ★</b></span>`);
@@ -7688,6 +7735,7 @@ function genererRapport(options = {}){
     .sort((a,b) => a.pct - b.pct)
     .slice(0,2);
   const page2SansBenchmark = `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
+       ${notePanelConcurrentiel ? `<p class="comparison-note">${notePanelConcurrentiel}</p>` : ""}
        ${catsHtml}
        <div class="comparison-insight">
          <h2>En résumé</h2>
@@ -7730,7 +7778,9 @@ function genererRapport(options = {}){
     .map((text, index) => texteEffectifRapport(`page1.strength.${index + 1}`, text));
   const vigilancesV3Effectives = (vigilancesV3.length ? vigilancesV3 : ["Aucun frein majeur confirmé n'a été retenu dans les données disponibles."])
     .map((text, index) => texteEffectifRapport(`page1.weakness.${index + 1}`, text));
-  const noteComparaisonV3 = ecartsExpliquesHtml() || "Les concurrents restent anonymisés : il s'agit de repères de zone, pas d'un classement public d'entreprises.";
+  const noteComparaisonV3 = ecartsExpliquesHtml() || (panelConcurrentielSuffisant
+    ? "Les concurrents restent anonymisés : il s'agit de repères de zone, pas d'un classement public d'entreprises."
+    : notePanelConcurrentiel);
   const faitsV3 = [
     estNombre(dIdent.note) ? ["Note", `${fmtNote(dIdent.note)}/5`] : null,
     estNombre(dIdent.nbAvis) ? ["Avis", nEntier(dIdent.nbAvis)] : null,
@@ -7743,7 +7793,7 @@ function genererRapport(options = {}){
   }).join("");
   const comparisonIntroV3 = benchTable
     ? `Lecture simplifiée à partir de ${(donneesAnalyse.concurrents || []).length} fiche${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} concurrente${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} anonymisée${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} réellement comparable${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""}.`
-    : "Les données concurrentielles publiques ne permettent pas une comparaison suffisamment fiable sur cette fiche.";
+    : notePanelConcurrentiel || "Les données concurrentielles publiques ne permettent pas une comparaison suffisamment fiable sur cette fiche.";
   const titrePage2Effectif = texteEffectifRapport("page2.title", "Comment votre fiche se situe localement");
   const comparaisonLocaleEffectif = texteEffectifRapport("page2.comparison_intro", comparisonIntroV3);
   const titreLectureEfficiaEffectif = texteEffectifRapport("page2.efficia_label", "Lecture Efficia");

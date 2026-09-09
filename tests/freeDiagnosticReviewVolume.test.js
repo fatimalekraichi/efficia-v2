@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { collectCompetitors } from "../functions/lib/collectCompetitors.js";
+import { benchmarkEngine } from "../functions/lib/benchmarkEngine.js";
+import { buildFreeDiagnosticCollectionState } from "../functions/lib/freeDiagnosticProductionLink.js";
+import { collectPageResultWithIsolatedChrome } from "./chromeHeadlessHarness.js";
 import {
   buildScorePrefill,
   classifyReviewVolume,
@@ -10,6 +16,57 @@ import {
 
 const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
 const route = readFileSync(new URL("../functions/api/admin/free-diagnostic-collect/[analysisId].js", import.meta.url), "utf8");
+const CHROME = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+async function runQualifiedCompetitorsBrowserSmoke(harnessSource) {
+  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
+    .replace(
+      '<script src="/js/score-efficia-core.js?v=1"></script>',
+      `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,
+    )
+    .replace(
+      '<script src="/js/questionnaire-finalization.js?v=7ee0654"></script>',
+      `<script>${readFileSync(new URL("../js/questionnaire-finalization.js", import.meta.url), "utf8")}</script>`,
+    )
+    .replace(
+      '<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>',
+      `<script>${readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8")}</script>`,
+    );
+  const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
+  assert.ok(source.includes(marker), "point d'instrumentation du renderer absent");
+  const fetchFixture = `<script>
+    window.fetch = async (input, options = {}) => {
+      const url = String(input);
+      const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers:{"Content-Type":"application/json"} });
+      if(url.includes("/api/admin/free-diagnostic-context/")) return json({ success:true, context:{ company:"MBGE Marville Benjamin Électricien", city:"Wibrin", activity:"Électricien", collectionAvailable:false, premiumAllowed:false } });
+      if(url.includes("/api/admin/audit-drafts/")) return json({ success:true, draft:{ reportType:"free", currentStep:"questionnaire", updatedAt:"2026-09-09T10:00:00.000Z", answers:{ questionnaireVersion:"score-efficia-questionnaire-v4", profileKey:"default", fields:{ "p-entreprise":"MBGE Marville Benjamin Électricien", "p-ville":"Wibrin", "p-activite":"Électricien", "d-requete":"Électricien Houffalize" }, observedData:{}, responses:{} } } });
+      if(url.includes("/api/admin/report-text-overrides/")) return json({ success:true, catalog:[], overrides:[] });
+      if(url.includes("/api/admin/audit-snapshots/") || url.includes("/admin/tasks/")) return json({ success:true });
+      return json({ success:false, error:"UNEXPECTED_TEST_REQUEST", url }, 500);
+    };
+  </script>`;
+  const instrumentedSource = source.replace(marker, `${fetchFixture}\n${marker}`);
+  const closingBody = instrumentedSource.lastIndexOf("</body>");
+  assert.ok(closingBody > 0, "balise body finale absente");
+  const instrumented = `${instrumentedSource.slice(0, closingBody)}<output id="qualified-competitors-smoke-result"></output><script>${harnessSource}</script>${instrumentedSource.slice(closingBody)}`;
+  const directory = mkdtempSync(join(tmpdir(), "efficia-qualified-competitors-"));
+  try {
+    const page = join(directory, "smoke.html");
+    writeFileSync(page, instrumented);
+    const output = await collectPageResultWithIsolatedChrome({
+      chrome: CHROME,
+      url: `${pathToFileURL(page).href}?analysisId=qualified-competitors-smoke`,
+      profileDir: join(directory, "chrome-profile"),
+      phase: "smoke concurrents qualifiés",
+      timeout: 30_000,
+      resultWait: 20_000,
+      selector: "#qualified-competitors-smoke-result",
+    });
+    return JSON.parse(output);
+  } finally {
+    rmSync(directory, { recursive:true, force:true });
+  }
+}
 
 function decision(reviews, competitorReviews) {
   return classifyReviewVolume({
@@ -68,17 +125,54 @@ test("moins de trois volumes concurrents valides reste À confirmer sans point",
   assert.equal(missingTarget.points, null);
 });
 
+test("un panel qualifié insuffisant ne calcule ni moyenne, ni confiance visible, ni benchmark PDF", () => {
+  const competitors = [
+    { name:"Électricien A", rating:4.9, reviews:20, photos_count:8 },
+    { name:"Électricien B", rating:4.8, reviews:12, photos_count:5 },
+  ];
+  const benchmark = benchmarkEngine({
+    rating:3.5,
+    reviews:4,
+    photos_count:2,
+    competitors_json:JSON.stringify(competitors),
+  }, { minimumCompetitors:3 });
+  assert.equal(benchmark.competitor_count, 2);
+  assert.equal(benchmark.avg_rating, null);
+  assert.equal(benchmark.avg_reviews, null);
+
+  const prefill = buildScorePrefill({
+    business:{ rating:3.5, reviews:4, competitors, normalized:{} },
+    benchmark:{ averages:{ rating:4.9, reviews:20 } },
+  }, { verifiedCategoryEvidence:true });
+  const volume = prefill.criteria.find((criterion) => criterion.key === "volumeAvis");
+  const confidence = prefill.criteria.find((criterion) => criterion.key === "attractiviteConcurrents");
+  assert.equal(volume.points, null);
+  assert.equal(confidence.points, null);
+
+  const state = buildFreeDiagnosticCollectionState({
+    business:{ name:"Fiche test", placeId:"place-test", rating:3.5, reviews:4, competitors, normalized:{} },
+    benchmark:{ averages:{ rating:4.9, reviews:20, photos:8 } },
+  });
+  const restoredConfidence = state.scorePrefill.criteria.find((criterion) => criterion.key === "attractiviteConcurrents");
+  assert.equal(restoredConfidence.points, null);
+  assert.equal(restoredConfidence.evidence.averageRating, null);
+  assert.equal(restoredConfidence.evidence.averageReviews, null);
+  assert.match(html, /Panel concurrentiel insuffisant pour comparaison\./);
+  assert.match(html, /concurrents\.length !== 3/);
+  assert.match(route, /minimumCompetitors: 3/);
+});
+
 test("la collecte exclut cible, doublon, sponsorisé et volume inexploitable avant de retenir les trois premiers valides", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ data:[[ 
-    { name:"Annonce", place_id:"ad", reviews:999, sponsored:true },
-    { name:"Bivert Alain", place_id:"target", reviews:5, sponsored:false },
-    { name:"Concurrent A", place_id:"a", reviews:5, sponsored:false },
-    { name:"Concurrent A dupliqué", place_id:"a", reviews:9, sponsored:false },
-    { name:"Sans avis exploitable", place_id:"invalid", reviews:"—", sponsored:false },
-    { name:"Concurrent B", place_id:"b", reviews:7, sponsored:false },
-    { name:"Concurrent C", place_id:"c", reviews:20, sponsored:false },
-    { name:"Concurrent D", place_id:"d", reviews:30, sponsored:false },
+    { name:"Annonce", place_id:"ad", reviews:999, sponsored:true, category:"Électricien" },
+    { name:"Bivert Alain", place_id:"target", reviews:5, sponsored:false, category:"Électricien" },
+    { name:"Concurrent A", place_id:"a", reviews:5, sponsored:false, category:"Électricien" },
+    { name:"Concurrent A dupliqué", place_id:"a", reviews:9, sponsored:false, category:"Électricien" },
+    { name:"Sans avis exploitable", place_id:"invalid", reviews:"—", sponsored:false, category:"Électricien" },
+    { name:"Concurrent B", place_id:"b", reviews:7, sponsored:false, category:"Électricien" },
+    { name:"Concurrent C", place_id:"c", reviews:20, sponsored:false, category:"Électricien" },
+    { name:"Concurrent D", place_id:"d", reviews:30, sponsored:false, category:"Électricien" },
   ]] });
   try {
     const result = await collectCompetitors({
@@ -127,4 +221,97 @@ test("la collecte initiale et la relance persistent concurrents et moyenne dans 
     assert.match(source, /avg_reviews = \?/);
     assert.match(source, /reviews_gap = \?/);
   }
+});
+
+test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni concurrent hors profil", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
+  const result = await runQualifiedCompetitorsBrowserSmoke(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 80 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
+        const competitors = (count) => Array.from({length:count}, (_, index) => ({
+          name:index === 0 ? "Boulange / François" : "Électricien qualifié " + (index + 1),
+          rating:4.5,
+          reviews:10 + index,
+          photos_count:4 + index,
+          services_count:2,
+          posts_count:1,
+          primary_category:"Electrician"
+        }));
+        const business = (count) => ({
+          company:"MBGE Marville Benjamin Électricien",
+          city:"Wibrin",
+          activity:"Électricien",
+          rating:4.1,
+          reviews:8,
+          photosCount:3,
+          servicesCount:1,
+          postsCount:0,
+          localPosition:2,
+          positionKind:"organic",
+          searchQuery:"Électricien Houffalize",
+          confirmedActivity:"Électricien",
+          competitors:competitors(count)
+        });
+        const snapshot = (count) => {
+          appliquerCollecteDiagnosticGratuit(business(count), { criteria:[], conditions:{} });
+          majConditionsQuestionnaire();
+          calc();
+          if(!genererRapport({exigerVersion:false})) throw new Error("rendu refusé pour " + count + " concurrent(s)");
+          const report = document.getElementById("rapport-contenu");
+          return {
+            title:document.getElementById("competitor-panel-title")?.textContent || "",
+            status:document.getElementById("competitor-panel-status")?.textContent || "",
+            visibleRows:[...document.querySelectorAll("[data-competitor-row]")].filter(row => !row.hidden).length,
+            averageRating:donneesAnalyse.moyennesConcurrents?.note ?? null,
+            averageReviews:donneesAnalyse.moyennesConcurrents?.avis ?? null,
+            hasComparison:donneesAnalyse.concurrence !== null,
+            hasComparableBenchmark:!!report.querySelector(".v3-benchmark-row"),
+            reportText:report.textContent || ""
+          };
+        };
+        const zero = snapshot(0);
+        const one = snapshot(1);
+        const two = snapshot(2);
+        const three = snapshot(3);
+        const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
+        if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
+        const pages = [...document.querySelectorAll("#rapport-contenu .page")];
+        const pdf = new jsPDFCtor({unit:"mm", format:"a4", orientation:"portrait"});
+        let canvasCount = 0;
+        for(const [index, page] of pages.entries()) {
+          const canvas = await html2canvasFn(page, optionsCapturePdfDiagnostic());
+          canvasCount += 1;
+          if(index > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
+        }
+        document.getElementById("qualified-competitors-smoke-result").textContent = JSON.stringify({
+          zero, one, two, three,
+          pdfPages:pdf.internal.getNumberOfPages(),
+          canvasCount,
+          pdfBytes:pdf.output("arraybuffer").byteLength
+        });
+      } catch(error) {
+        document.getElementById("qualified-competitors-smoke-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `);
+  assert.equal(result.error, undefined, result.error);
+  for(const [count, scenario] of [[0, result.zero], [1, result.one], [2, result.two]]) {
+    assert.equal(scenario.title, "Concurrents qualifiés sur la recherche testée", `${count} concurrent(s) ne doit pas être présenté comme un Top 3`);
+    assert.match(scenario.status, new RegExp(`^${count} concurrent`, "u"));
+    assert.match(scenario.status, /panel concurrentiel insuffisant pour comparaison\./u);
+    assert.equal(scenario.visibleRows, count);
+    assert.equal(scenario.averageRating, null);
+    assert.equal(scenario.averageReviews, null);
+    assert.equal(scenario.hasComparison, false);
+    assert.equal(scenario.hasComparableBenchmark, false);
+    assert.match(scenario.reportText, /Panel concurrentiel insuffisant pour comparaison\./u);
+  }
+  assert.equal(result.three.title, "Top 3 concurrents qualifiés sur la recherche testée");
+  assert.match(result.three.status, /3 concurrents qualifiés : comparaison concurrentielle disponible\./u);
+  assert.equal(result.three.visibleRows, 3);
+  assert.doesNotMatch(result.one.reportText, /Camperplaats Houffalize|Recyparc d’Houffalize/u);
+  assert.equal(result.pdfPages, 6);
+  assert.equal(result.canvasCount, 6);
+  assert.ok(result.pdfBytes > 0);
 });
