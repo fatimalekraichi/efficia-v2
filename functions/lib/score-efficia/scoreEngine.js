@@ -240,6 +240,8 @@ export function runScoreEfficia({ manualReview = {}, scoringVersion = null } = {
       }),
       band: findBand(roundedScore),
       categories: detail.categories,
+      pointsObtenusApplicables: detail.pointsObtenusApplicables,
+      pointsApplicables: detail.pointsApplicables,
       provisional: scoreInputs.provisional,
       maximumEffectifProfil: detail.maximumEffectifProfil,
       facteurNormalisation: detail.facteurNormalisation,

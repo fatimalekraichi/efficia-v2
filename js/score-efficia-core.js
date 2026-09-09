@@ -2,6 +2,13 @@ function bounded(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function scoreFromApplicablePoints(pointsObtenus, pointsApplicables) {
+  const numerator = Number(pointsObtenus);
+  const denominator = Number(pointsApplicables);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+  return bounded((numerator / denominator) * 100, 0, 100);
+}
+
 /**
  * Source de vérité unique du calcul Score Efficia, utilisable dans le
  * navigateur comme par les fonctions Cloudflare.
@@ -15,7 +22,6 @@ function calculateEfficiaScoreDetail({
   legacyScoringVersion,
   manualScoredCriteria = [],
   notApplicableCriteria = [],
-  applyConditionalScoreCeiling = true,
 } = {}) {
   const profile = sectors[profileKey] || sectors.default || {};
   const legacy = scoringVersion === legacyScoringVersion;
@@ -83,7 +89,6 @@ function calculateEfficiaScoreDetail({
   const normalizationFactor = Number.isFinite(effectiveProfileMaximum) && effectiveProfileMaximum > 0
     ? 100 / effectiveProfileMaximum
     : 0;
-  const normalizedScore = bounded(total * normalizationFactor, 0, 100);
   if (!legacy) {
     categories.forEach((category) => {
       category.pointsPonderes = category.pointsPonderesBruts * normalizationFactor;
@@ -91,34 +96,25 @@ function calculateEfficiaScoreDetail({
     });
   }
 
-  /* Retirer du dénominateur des sous-questions sans objet ne doit jamais
-     récompenser une absence confirmée (zéro photo, zéro avis, etc.) par un
-     score supérieur à celui d'une fiche identique avec le minimum évalué.
-     Le plafond compare uniquement la normalisation : les critères restent
-     exclus de `maxEvalue`, des priorités et des narratifs du calcul courant. */
-  const unboundedScore = Number.isFinite(normalizedScore) ? normalizedScore : 0;
-  const conditionalScoreCeiling = !legacy && applyConditionalScoreCeiling && notApplicable.size
-    ? calculateEfficiaScoreDetail({
-      grid,
-      sectors,
-      answers,
-      profileKey,
-      scoringVersion,
-      legacyScoringVersion,
-      manualScoredCriteria,
-      notApplicableCriteria: [],
-      applyConditionalScoreCeiling: false,
-    }).total
-    : null;
-  const finalScore = conditionalScoreCeiling === null
-    ? unboundedScore
-    : Math.min(unboundedScore, conditionalScoreCeiling);
+  /* En v5, le score global est strictement le ratio des sous-scores
+     applicables affichés dans le rapport. Un critère not_applicable est déjà
+     absent de chaque catégorie : il ne peut donc pas réapparaître sous la
+     forme d'un plafond global implicite. */
+  const pointsObtenusApplicables = legacy
+    ? total
+    : categories.reduce((sum, category) => sum + Math.round(category.pointsPonderes), 0);
+  const pointsApplicables = legacy
+    ? effectiveProfileMaximum
+    : categories.reduce((sum, category) => sum + Math.round(category.maximumEffectifNormalise), 0);
+  const finalScore = scoreFromApplicablePoints(pointsObtenusApplicables, pointsApplicables);
 
   return {
     total: finalScore,
     repondus: answered,
     totalCrit: scoredCriteriaCount,
     categories,
+    pointsObtenusApplicables,
+    pointsApplicables,
     profil: profile,
     poidsPrisEnCompte: effectiveProfileMaximum,
     maximumEffectifProfil: effectiveProfileMaximum,
@@ -129,4 +125,5 @@ function calculateEfficiaScoreDetail({
 
 globalThis.EfficiaScoreCore = Object.freeze({
   calculateScoreDetail: calculateEfficiaScoreDetail,
+  scoreFromApplicablePoints,
 });

@@ -57,7 +57,7 @@ test("Aucune photo conserve la pénalité parent et rend les sous-questions masq
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
 });
 
-test("zéro photo ne reçoit pas un meilleur score qu'une présence minimale", () => {
+test("zéro photo exclut les sous-questions non applicables du score canonique", () => {
   const zeroPhoto = normalizeManualReview({
     scoringVersion: "score-efficia-v5",
     photoPresence: "none",
@@ -73,8 +73,21 @@ test("zéro photo ne reçoit pas un meilleur score qu'une présence minimale", (
       : item),
   });
   const zeroScore = runScoreEfficia({ manualReview: zeroPhoto }).reviewedScore.score;
-  const minimalScore = runScoreEfficia({ manualReview: minimalPhoto }).reviewedScore.score;
-  assert.ok(zeroScore <= minimalScore, `${zeroScore} ne doit pas dépasser ${minimalScore}`);
+  const zeroDetail = runScoreEfficia({ manualReview: zeroPhoto }).reviewedScore;
+  const minimalDetail = runScoreEfficia({ manualReview: minimalPhoto }).reviewedScore;
+  assert.equal(zeroScore, Math.round((zeroDetail.pointsObtenusApplicables / zeroDetail.pointsApplicables) * 100));
+  assert.equal(
+    zeroDetail.pointsApplicables,
+    zeroDetail.categories.reduce((sum, category) => sum + Math.round(category.maximumEffectifNormalise), 0),
+  );
+  assert.equal(
+    zeroDetail.pointsObtenusApplicables,
+    zeroDetail.categories.reduce((sum, category) => sum + Math.round(category.pointsPonderes), 0),
+  );
+  assert.ok(
+    zeroDetail.maximumEffectifProfil < minimalDetail.maximumEffectifProfil,
+    "les sous-questions photo non applicables sont exclues du dénominateur",
+  );
 });
 
 test("le retour à Oui ne restaure pas silencieusement les anciennes réponses photo", () => {

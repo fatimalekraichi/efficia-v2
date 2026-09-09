@@ -15,6 +15,7 @@ import { calculateScoreDetail, runScoreEfficia } from "../functions/lib/score-ef
 import { incompleteQuestionnaireFields } from "../functions/lib/score-efficia/questionnaireRules.js";
 
 const calculateEfficiaScoreDetail = globalThis.EfficiaScoreCore.calculateScoreDetail;
+const scoreFromApplicablePoints = globalThis.EfficiaScoreCore.scoreFromApplicablePoints;
 
 const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
 const premiumAdmin = readFileSync(new URL("../js/admin-audit-review.js", import.meta.url), "utf8");
@@ -99,6 +100,45 @@ test("v5 borne le score, normalise le maximum à 100 et le minimum à 0", () => 
   assert.equal(calculateScoreDetail(excessive, "default", SCORING_VERSION).total, 100);
 });
 
+test("54 points sur 98 applicables donnent 55 sur 100 au seul arrondi final", () => {
+  assert.equal(Math.round(scoreFromApplicablePoints(54, 98)), 55);
+});
+
+test("v5 déduit le score global des mêmes sous-scores applicables que le rapport", () => {
+  const grid = [
+    {
+      key: "familleA",
+      cat: "Famille A",
+      pts: 50,
+      criteres: [
+        { key: "visibleA", max: 1 },
+        { key: "masqueA", max: 1 },
+      ],
+    },
+    {
+      key: "familleB",
+      cat: "Famille B",
+      pts: 50,
+      criteres: [{ key: "visibleB", max: 1 }],
+    },
+  ];
+  const detail = calculateEfficiaScoreDetail({
+    grid,
+    sectors: { default: { familleA: 50, familleB: 50 } },
+    answers: { visibleA: 1, visibleB: 1 },
+    profileKey: "default",
+    scoringVersion: SCORING_VERSION,
+    legacyScoringVersion: LEGACY_SCORING_VERSION,
+    notApplicableCriteria: ["masqueA"],
+  });
+  const displayedPoints = detail.categories.reduce((sum, category) => sum + Math.round(category.pointsPonderes), 0);
+  const displayedMaximum = detail.categories.reduce((sum, category) => sum + Math.round(category.maximumEffectifNormalise), 0);
+  assert.equal(detail.pointsObtenusApplicables, displayedPoints);
+  assert.equal(detail.pointsApplicables, displayedMaximum);
+  assert.equal(detail.total, scoreFromApplicablePoints(displayedPoints, displayedMaximum));
+  assert.equal(Math.round(detail.total), 100);
+});
+
 test("la synthèse automatique reste non notée en v5, mais un choix manuel explicite devient canonique", () => {
   const answers = fullAnswers();
   const automaticAhead = calculateScoreDetail({ ...answers, attractiviteConcurrents: 4 }, "artisan", SCORING_VERSION);
@@ -111,7 +151,7 @@ test("la synthèse automatique reste non notée en v5, mais un choix manuel expl
   assert.ok(manualAhead.total > manualBehind.total);
 });
 
-test("choix manuel de confiance visible : administration, brouillon et moteur partagé donnent 46, 44 et 42", () => {
+test("choix manuel de confiance visible : administration, brouillon et moteur partagé utilisent la rubrique Visibilité", () => {
   const jorgeAnswers = {
     revendiquee: 3, categoriePrincipale: 4, categoriesSecondaires: 2, horaires: 0, contact: 3,
     adresse: 0, attributs: 0, nap: 3, nomConforme: 2,
@@ -146,13 +186,30 @@ test("choix manuel de confiance visible : administration, brouillon et moteur pa
     ],
   });
 
-  for(const [points, expected] of [[4, 46], [2, 44], [0, 42]]) {
-    const admin = calculateAdminScore({ ...jorgeAnswers, attractiviteConcurrents: points }, "default", ["attractiviteConcurrents"]);
+  const dependentNotApplicable = ["descriptionQualite", "servicesDecrits", "rythmePublication"];
+  const savedByPoints = new Map();
+  for(const [points, expected] of [[4, 51], [2, 49], [0, 47]]) {
+    const admin = calculateAdminScore(
+      { ...jorgeAnswers, attractiviteConcurrents: points },
+      "default",
+      ["attractiviteConcurrents"],
+      dependentNotApplicable,
+    );
     const saved = runScoreEfficia({ manualReview: manualReviewFor(points) });
     assert.equal(Math.round(admin.total), expected);
     assert.equal(saved.reviewedScore.roundedScore, expected);
     assert.deepEqual(saved.scoreInputs.manualScoredCriteria, ["attractiviteConcurrents"]);
+    assert.equal(
+      Math.round(saved.reviewedScore.score),
+      Math.round(scoreFromApplicablePoints(saved.reviewedScore.pointsObtenusApplicables, saved.reviewedScore.pointsApplicables)),
+    );
+    savedByPoints.set(points, saved.reviewedScore);
   }
+
+  const visibilityAhead = savedByPoints.get(4).categories.find((category) => category.key === "visibilite");
+  const visibilityBehind = savedByPoints.get(0).categories.find((category) => category.key === "visibilite");
+  assert.ok(visibilityAhead.pointsPonderes > visibilityBehind.pointsPonderes);
+  assert.equal(visibilityAhead.maximumEffectifNormalise, visibilityBehind.maximumEffectifNormalise);
 
   const automatic = runScoreEfficia({
     manualReview: {
@@ -163,7 +220,7 @@ test("choix manuel de confiance visible : administration, brouillon et moteur pa
       ],
     },
   });
-  assert.equal(automatic.reviewedScore.roundedScore, 44);
+  assert.equal(automatic.reviewedScore.roundedScore, 49);
   assert.deepEqual(automatic.scoreInputs.manualScoredCriteria, []);
 });
 
@@ -225,15 +282,16 @@ test("questionnaire incomplet : administration, brouillon, aperçu et PDF partag
     },
   });
   const adminScore = Math.round(admin.total);
-  const savedScore = adminScore;
-  const previewScore = endpoint.reviewedScore.roundedScore;
-  const pdfScore = endpoint.reviewedScore.roundedScore;
+  const savedScore = endpoint.reviewedScore.roundedScore;
+  const previewScore = Math.round(admin.total);
+  const pdfScore = Math.round(admin.total);
   assert.equal(adminScore, 8);
   assert.equal(adminScore, savedScore);
   assert.equal(savedScore, previewScore);
   assert.equal(previewScore, pdfScore);
   assert.equal(endpoint.reviewedScore.provisional, true);
   assert.match(html, /scoreSnapshot:\{[\s\S]*score:Math\.round\(detail\.total\)/);
+  assert.match(html, /const detailScore = calculScoreDetail\(\);\s*const score = Math\.round\(detailScore\.total\);/);
   assert.match(serverRenderer, /free\.provisional \? `<p class="methode-note">\$\{PROVISIONAL_SCORE_NOTE\}/);
 });
 
