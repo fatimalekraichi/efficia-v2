@@ -578,22 +578,150 @@ test("le modèle de réponse aux avis universel reste éditable et ne présume p
   assert.doesNotMatch(adminSource, /Nous sommes désolés qu'elle n'ait pas répondu à vos attentes/);
 });
 
-test("le benchmark photos applique le comparateur canonique à la ligne réellement rendue", () => {
+function photoBenchmarkHarness(data) {
   const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
   const comparator = source.match(/function comparerVolumePhotos\([\s\S]*?(?=\n\/\* ============ PAGE 2)/u)?.[0];
   assert.ok(comparator, "comparateur photos canonique introuvable");
-  const match = source.match(/function benchmarkLignes\(\)\{[\s\S]*?\n\}\nfunction benchmarkTableHtml/u);
-  assert.ok(match, "benchmarkLignes doit rester une fonction isolée testable");
-  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${comparator}\n${match[0].replace(/\nfunction benchmarkTableHtml$/u, "")}\nreturn benchmarkLignes();`);
+  const renderer = source.match(/function benchmarkLignes\(\)\{[\s\S]*?(?=\nfunction ecartsExpliquesHtml\()/u)?.[0];
+  assert.ok(renderer, "fonctions réelles des benchmarks HTML et V3.2 introuvables");
+  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${comparator}\n${renderer}\nreturn { benchmarkLignes, benchmarkTableHtml, benchmarkV3Html };`);
   const estNombre = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  return factory(estNombre, (value) => Math.round(Number(value)), (value) => String(value), data);
+}
+
+function qualifiedPhotoCompetitors(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    label: `Électricien qualifié ${index + 1}`,
+    category: "Electrician",
+    photos: 15,
+    avis: 15,
+    note: 4.6,
+  }));
+}
+
+test("le benchmark photos applique le comparateur canonique à la ligne réellement rendue", () => {
   for (const [photos, moyenne, expected] of [[2, 15, "À renforcer"], [15, 15, "Dans la moyenne"], [16, 15, "Avantage"], [0, 15, "À renforcer"]]) {
-    const lignes = factory(estNombre, (value) => Math.round(Number(value)), (value) => String(value), {
+    const renderer = photoBenchmarkHarness({
       nbPhotos: photos,
       moyennesConcurrents: { photos: moyenne },
+      concurrents: qualifiedPhotoCompetitors(3),
+      competitorQualificationVersion: 1,
+      competitorQualificationStatus: "qualified",
       concurrence: null,
     });
-    assert.equal(lignes.find((item) => item.label === "Photos")?.statut, expected, `${photos}/${moyenne}`);
+    const lignes = renderer.benchmarkLignes();
+    const ligne = lignes.find((item) => item.label === "Photos");
+    assert.ok(ligne, `ligne Photos absente malgré trois concurrents qualifiés : ${photos}/${moyenne}`);
+    assert.deepEqual(ligne, { label: "Photos", vous: String(photos), top3: String(moyenne), statut: expected });
+    assert.match(renderer.benchmarkTableHtml(), new RegExp(`>${expected}</span>`), `${photos}/${moyenne}`);
   }
+});
+
+test("les panels photos de 0, 1 ou 2 concurrents ne créent aucune ligne, valeur ou statut benchmark", () => {
+  for (const count of [0, 1, 2]) {
+    const renderer = photoBenchmarkHarness({
+      nbPhotos: 2,
+      // Même une moyenne résiduelle ne doit pas contourner le minimum du panel.
+      moyennesConcurrents: { photos: 15 },
+      concurrents: qualifiedPhotoCompetitors(count),
+      competitorQualificationVersion: 1,
+      competitorQualificationStatus: "insufficient",
+      concurrence: null,
+    });
+    assert.deepEqual(renderer.benchmarkLignes(), [], `panel de ${count}`);
+    assert.equal(renderer.benchmarkTableHtml(), "", `table vide pour ${count}`);
+    assert.equal(renderer.benchmarkV3Html(), "", `comparaison V3.2 vide pour ${count}`);
+  }
+});
+
+test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres photos et les panels insuffisants", { skip: !existsSync(CHROME), timeout: 25_000 }, async () => {
+  const cases = [
+    { photos: 2, count: 3, status: "À renforcer", color: "rgb(201, 113, 9)", width: 100 * 2 / 15 },
+    { photos: 0, count: 3, status: "À renforcer", color: "rgb(201, 113, 9)", width: 0 },
+    { photos: 15, count: 3, status: "Dans la moyenne", color: "rgb(34, 95, 219)", width: 100 },
+    { photos: 16, count: 3, status: "Avantage", color: "rgb(7, 140, 104)", width: 100 },
+    ...[0, 1, 2].map(count => ({ photos: 2, count })),
+  ];
+  const result = await runAdminBrowserHarness(`
+    (async () => {
+      try {
+        for(let attempt = 0; attempt < 75 && !document.getElementById("p-entreprise")?.value; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+        const groups = {};
+        document.querySelectorAll('input[type="radio"][name^="c"]').forEach(input => (groups[input.name] ??= []).push(input));
+        Object.values(groups).forEach(inputs => { (inputs.find(input => !input.disabled && !input.dataset.special) || inputs[0]).checked = true; });
+        document.querySelector('input[name="condition-location-mode"][value="storefront"]').checked = true;
+        document.querySelector('input[name="location-address"][value="exact"]').checked = true;
+        remplacementsTextesRapport = new Map();
+        const scenarios = [];
+        for(const scenario of ${JSON.stringify(cases)}) {
+          document.getElementById("d-photos").value = String(scenario.photos);
+          for(let i = 1; i <= 3; i++) {
+            const values = {nom:"Électricien qualifié " + i, note:"4.6", avis:"15", photos:"15", services:"4", pubs:"1"};
+            Object.entries(values).forEach(([key, value]) => { document.getElementById("dc-" + key + "-" + i).value = i <= scenario.count ? value : ""; });
+          }
+          donneesAnalyse.competitorQualificationVersion = 1;
+          donneesAnalyse.competitorQualificationStatus = scenario.count === 3 ? "qualified" : "insufficient";
+          majConditionsQuestionnaire(); majLocalisation(); synchroniserDonneesManuelles(); calc();
+          const before = JSON.stringify(calculScoreDetail());
+          if(!genererRapport({exigerVersion:false})) throw new Error("rendu réel refusé");
+          const page = document.querySelector('[data-report-page="2"]');
+          const rows = [...page.querySelectorAll(".v3-benchmark-row")];
+          const row = rows.find(item => item.querySelector("b")?.textContent === "Photos");
+          const bar = row?.querySelector(".v3-bar i");
+          scenarios.push({
+            photos:scenario.photos, count:scenario.count,
+            pages:document.querySelectorAll("#rapport-contenu .page").length,
+            rows:benchmarkLignes(), renderedRowCount:rows.length,
+            values:row?.querySelector(".v3-benchmark-value")?.innerText.replace(/\\s+/g, " ").trim() ?? null,
+            rowText:row?.innerText.replace(/\\s+/g, " ").trim() ?? null,
+            color:bar ? getComputedStyle(bar).backgroundColor : null,
+            width:bar ? parseFloat(bar.style.width) : null,
+            badges:page.querySelectorAll(".bench-ecart").length,
+            intro:page.querySelector(".rapport-subtitle")?.textContent,
+            average:donneesAnalyse.moyennesConcurrents?.photos,
+            panel:donneesAnalyse.concurrents,
+            scoreUnchanged:before === JSON.stringify(calculScoreDetail()),
+          });
+        }
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({scenarios,writes:window.__workflowFetchCalls.filter(call => call.method !== "GET")});
+      } catch(error) {
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
+      }
+    })();
+  `, { overrides: [] });
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.scenarios.length, cases.length);
+  assert.deepEqual(result.writes, [], "le contrôle navigateur ne sauvegarde aucune donnée");
+  result.scenarios.forEach((scenario, index) => {
+    const expected = cases[index];
+    const label = `${expected.photos}/15, panel de ${expected.count}`;
+    assert.equal(scenario.photos, expected.photos, label);
+    assert.equal(scenario.count, expected.count, label);
+    assert.equal(scenario.pages, 6, label);
+    assert.equal(scenario.scoreUnchanged, true, label);
+    assert.equal(scenario.badges, 0, "V3.2 exprime le statut par la barre, pas par un badge textuel");
+    assert.equal(scenario.panel.length, expected.count, label);
+    if (expected.count === 3) {
+      const row = scenario.rows.find(item => item.label === "Photos");
+      assert.ok(row, `ligne Photos canonique absente : ${label}`);
+      assert.deepEqual(row, { label: "Photos", vous: String(expected.photos), top3: "15", statut: expected.status });
+      assert.equal(scenario.average, 15, label);
+      assert.equal(scenario.panel.every(item => item.photos === 15), true, label);
+      assert.equal(scenario.values, `${expected.photos} vs 15`, label);
+      assert.equal(scenario.rowText, `Photos ${expected.photos} vs 15`, label);
+      assert.equal(scenario.color, expected.color, label);
+      assert.ok(Math.abs(scenario.width - expected.width) < 0.0001, `${label} : largeur ${scenario.width}`);
+    } else {
+      assert.deepEqual(scenario.rows, [], label);
+      assert.equal(scenario.renderedRowCount, 0, label);
+      assert.equal(scenario.average, null, label);
+      assert.equal(scenario.values, null, label);
+      assert.equal(scenario.rowText, null, label);
+      assert.equal(scenario.color, null, label);
+      assert.equal(scenario.width, null, label);
+      assert.equal(scenario.intro, "Panel concurrentiel insuffisant pour comparaison.", label);
+    }
+  });
 });
 
 test("les textes proches de leur nouvelle limite restent dans les pages PDF 1, 4 et 5 sans franchir le footer", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {
