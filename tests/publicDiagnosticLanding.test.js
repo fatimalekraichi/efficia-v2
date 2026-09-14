@@ -11,6 +11,8 @@ import { onRequestGet } from "../functions/diagnostic-gratuit.js";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const home = readFileSync(join(root, "index.html"), "utf8");
 const source = readFileSync(join(root, "functions/diagnostic-gratuit.js"), "utf8");
+const removedTimingCopy = "En moins de 2 minutes, découvrez les principaux points qui limitent votre visibilité sur Google.";
+const confirmationTimingCopy = "Vous recevrez votre rapport personnalisé dans un délai de 48 à 72 heures ouvrées.";
 const chrome = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 // Optional local Workers runtime; no remote bindings, provider calls or real D1.
 // MINIFLARE_MODULE may point to the Miniflare 4 module shipped with local Wrangler.
@@ -40,6 +42,10 @@ test("la route publique dédiée réutilise le formulaire et l'envoi existants, 
   assert.match(home, /id="diagnostic-modal"/);
   assert.match(home, /name="firstName"/);
   assert.match(home, /name="googleBusiness"/);
+  assert.equal(home.includes(removedTimingCopy), false, "la promesse de délai est absente du pop-up partagé");
+  assert.equal(source.includes(removedTimingCopy), false, "la promesse de délai est absente des métadonnées");
+  assert.equal(home.includes("Vous recevrez votre rapport personnalisé sous 24 heures ouvrées."), false);
+  assert.ok(home.includes(confirmationTimingCopy));
   assert.doesNotMatch(source, /<form\b|fetch\("\/subscribe"|ORDERS_DB|\.prepare\(/);
 });
 
@@ -57,6 +63,7 @@ test("HTTP 200 avec ou sans UTM : champs, étapes et messages identiques au pop-
       assert.equal(response.headers.get("etag"), null);
       assert.equal(response.headers.get("referrer-policy"), "strict-origin");
       const html = await response.text();
+      assert.equal(html.includes(removedTimingCopy), false, "la page dédiée ne réintroduit pas la phrase supprimée");
       assert.match(html, /<title>Diagnostic Google gratuit \| Efficia Digital<\/title>/);
       assert.match(html, /rel="canonical" href="https:\/\/efficiadigital.com\/diagnostic-gratuit"/);
       assert.match(html, /name="description" content="Obtenez gratuitement votre Score Efficia™/);
@@ -132,6 +139,8 @@ for (const scenario of [
             ensure(!modal.hasAttribute('inert'),'Escape closed standalone form');
           }
           const first=modal.querySelector('[data-step="1"]'), second=modal.querySelector('[data-step="2"]');
+          ensure(!modal.textContent.includes(${JSON.stringify(removedTimingCopy)}),'removed timing copy still displayed');
+          ensure(first.querySelector('h2').nextElementSibling.matches('.conversion-fields'),'unexpected replacement or empty paragraph before fields');
           first.querySelector('button').click();
           ensure(__calls.length===0 && first.querySelectorAll('.has-error').length===2,'required fields not validated');
           fill('firstName','Jean-Michel'); fill('email','incorrect'); first.querySelector('button').click();
@@ -155,6 +164,7 @@ for (const scenario of [
           second.querySelector('button').click(); second.querySelector('button').click();
           ensure(second.querySelector('button').disabled,'submission not locked');
           await waitFor(()=>modal.querySelector('[data-step="3"]').classList.contains('is-active'));
+          ensure(Array.from(modal.querySelectorAll('[data-step="3"] p')).some(p=>p.textContent===${JSON.stringify(confirmationTimingCopy)}),'confirmation delay differs from approved copy');
           ensure(__calls.length===3,'unexpected duplicate submission');
           ensure(__calls[1].idempotency_key===__calls[2].idempotency_key,'retry changed idempotency key');
           ensure(__errors.length===0,'JavaScript initialization error');

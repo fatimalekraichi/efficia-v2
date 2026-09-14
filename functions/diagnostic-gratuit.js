@@ -1,5 +1,5 @@
 const TITLE = "Diagnostic Google gratuit | Efficia Digital";
-const DESCRIPTION = "Obtenez gratuitement votre Score Efficia™. En moins de 2 minutes, découvrez les principaux points qui limitent votre visibilité sur Google.";
+const DESCRIPTION = "Obtenez gratuitement votre Score Efficia™.";
 const CANONICAL = "https://efficiadigital.com/diagnostic-gratuit";
 
 // Project the existing home-page form, rather than maintaining a second form.
