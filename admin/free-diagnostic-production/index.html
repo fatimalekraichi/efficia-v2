@@ -6606,7 +6606,7 @@ function libelleStatutRapportV3(statut){
 
 function texteControleRapportV3(item){
   const {cr, statut} = item;
-  if(statut === "not_verifiable") return "Ce contrôle a été traité manuellement, mais ne peut pas être vérifié publiquement.";
+  if(statut === "not_verifiable") return "Ce point ne peut pas être vérifié publiquement.";
   if(statut === "unknown") return cr.key === "adresse"
     ? "Un contrôle de localisation reste à confirmer séparément dans le compte Google Business."
     : "Ce point ne peut pas être établi avec certitude à partir des informations publiques disponibles.";

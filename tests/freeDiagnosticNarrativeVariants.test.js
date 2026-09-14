@@ -20,6 +20,22 @@ function between(start, end) {
 const narrativeSeedCode = between("function manquesIntroductionPage1(d = donneesAnalyse){", "function buildPhotoContext(");
 const freeScoreTitleCode = between("function phraseDirecteScoreDiagnosticGratuit(score, data = donneesAnalyse){", "function significationHtml(");
 
+test("constat V3 non vérifiable : phrase exacte sans prétendre à un contrôle manuel", () => {
+  const context = {};
+  vm.runInNewContext(between("function texteControleRapportV3(item){", "function checklistV3Html(){"), context);
+  for (const key of ["adresse", "zoneDesservie"]) {
+    const item = { cr: { key }, statut: "not_verifiable" };
+    const before = structuredClone(item);
+    assert.equal(context.texteControleRapportV3(item), "Ce point ne peut pas être vérifié publiquement.");
+    assert.deepEqual(item, before, "le texte ne modifie pas le contrôle ou son statut");
+  }
+  assert.equal(
+    context.texteControleRapportV3({ cr: { key: "adresse" }, statut: "unknown" }),
+    "Un contrôle de localisation reste à confirmer séparément dans le compte Google Business.",
+    "la vraie absence de vérification conserve sa formulation distincte",
+  );
+});
+
 function createNarrativeHarness({ analysisId = "analysis-demo", enterprise = "Atelier Démo", data = {} } = {}) {
   const context = {
     Math,
