@@ -26,6 +26,7 @@ if ("IntersectionObserver" in window) {
 }
 
 const modal = document.querySelector("#diagnostic-modal");
+const isDiagnosticPage = Boolean(modal?.hasAttribute("data-diagnostic-page"));
 const modalDialog = modal?.querySelector(".conversion-modal__dialog");
 const modalTriggers = document.querySelectorAll('[data-form-step="diagnostic-start"]');
 const closeButtons = modal?.querySelectorAll("[data-modal-close]") || [];
@@ -82,6 +83,10 @@ const openModal = () => {
 
 const closeModal = () => {
   if (!modal) return;
+  if (isDiagnosticPage) {
+    window.location.assign("/");
+    return;
+  }
   if (modal.contains(document.activeElement)) {
     if (lastFocusedElement?.isConnected) {
       lastFocusedElement.focus({ preventScroll: true });
@@ -379,6 +384,11 @@ stepTwoForm?.addEventListener("submit", async (event) => {
     }
   }
 });
+
+if (isDiagnosticPage) {
+  resetModal();
+  window.trackAnalyticsEvent?.("diagnostic_step_1_view");
+}
 
 document.addEventListener("keydown", (event) => {
   if (!modal?.classList.contains("is-open")) return;
