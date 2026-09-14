@@ -368,7 +368,8 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       created_at: leadDraft.createdAt || new Date().toISOString(),
       submitted_at: new Date().toISOString(),
     };
-    await Promise.all([submitLeadRequest(payload), wait(650)]);
+    const [result] = await Promise.all([submitLeadRequest(payload), wait(650)]);
+    try { window.efficiaAds?.leadCreated?.(result); } catch { /* Measurement must never block the form. */ }
     setLoading(stepTwoForm, false);
     window.trackAnalyticsEvent?.("diagnostic_submitted");
     showStep(3);

@@ -51,15 +51,16 @@
 }
 
 .cookie-consent__actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .cookie-consent__actions [data-cookie-accept],
-.cookie-consent__actions [data-cookie-refuse] {
-  flex: 0 0 123px;
+.cookie-consent__actions [data-cookie-refuse],
+.cookie-consent__actions [data-cookie-customize] {
+  flex: 1 1 123px;
 }
 
 .cookie-btn {
@@ -219,16 +220,16 @@
   }
 
   .cookie-consent__actions [data-cookie-accept],
-  .cookie-consent__actions [data-cookie-refuse] {
-    flex: 1 1 calc(50% - 4px);
+  .cookie-consent__actions [data-cookie-refuse],
+  .cookie-consent__actions [data-cookie-customize] {
+    flex: 1 1 0;
+    padding: 0 6px;
     min-width: 0;
   }
-
-  .cookie-consent__actions [data-cookie-customize] {
-    flex-basis: 100%;
-  }
-
   .cookie-preferences__panel {
     padding: 24px;
   }
 }
+
+.cookie-manage { text-align: center; padding: 12px; }
+.cookie-manage a { color: var(--blue); text-decoration: underline; }

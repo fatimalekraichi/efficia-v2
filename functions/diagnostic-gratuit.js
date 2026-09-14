@@ -28,7 +28,7 @@ export async function onRequestGet({ request, env }) {
         if (value && !/^(?:[a-z]+:|\/|#)/i.test(value)) element.setAttribute(attribute, `/${value}`);
         // The new page must not reuse an older cached version without standalone support.
         if (element.getAttribute("src")?.startsWith("/js/app.js")) {
-          element.setAttribute("src", "/js/app.js?v=20260914-diagnostic-page");
+          element.setAttribute("src", "/js/app.js?v=20260914-ads");
         }
       },
     })

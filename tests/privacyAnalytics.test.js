@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 
 import { onRequestPost as checkoutStatus } from "../functions/api/checkout-status.js";
 import { onRequestGet as freeDiagnosticContext } from "../functions/api/admin/free-diagnostic-context/[analysisId].js";
@@ -8,6 +9,100 @@ import { buildFreeDiagnosticProductionContext } from "../functions/lib/freeDiagn
 
 const root = new URL("../", import.meta.url);
 const readProjectFile = (path) => readFile(new URL(path, root), "utf8");
+
+async function clarityWithdrawalHarness() {
+  const scripts = [], calls = [];
+  const document = {
+    body: { dataset: {} },
+    cookie: "",
+    getElementById: id => scripts.find(script => script.id === id) || null,
+    createElement: () => ({ listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; } }),
+    head: { appendChild: script => scripts.push(script) },
+    addEventListener() {},
+  };
+  const window = {
+    location: { hostname: "efficiadigital.com", reload() { throw new Error("Le retrait ne doit pas dépendre du rechargement"); } },
+    clarity: (...args) => calls.push(JSON.parse(JSON.stringify(args))),
+  };
+  vm.runInNewContext(await readProjectFile("js/analytics.js"), { window, document, URL });
+  return { api: window.efficiaAnalytics, scripts, calls, window };
+}
+
+test("retrait Clarity après chargement : les événements applicatifs sont bloqués immédiatement sans rechargement", async () => {
+  const { api, scripts, calls } = await clarityWithdrawalHarness();
+  const loading = api.loadClarity();
+  scripts[0].listeners.load();
+  await loading;
+  assert.equal(api.trackAnalyticsEvent("diagnostic_cta_click"), true);
+  api.denyClarityConsent();
+  const afterWithdrawal = calls.length;
+  assert.equal(api.isClarityEnabled(), false);
+  assert.equal(api.trackAnalyticsEvent("diagnostic_submitted"), false);
+  assert.equal(calls.length, afterWithdrawal);
+  assert.deepEqual(calls.at(-1), ["stop"]);
+});
+
+test("retrait Clarity pendant chargement : le callback tardif ne doit jamais réactiver le suivi sans nouvel accord", async () => {
+  const { api, scripts, calls } = await clarityWithdrawalHarness();
+  const loading = api.loadClarity();
+  api.denyClarityConsent();
+  assert.equal(api.trackAnalyticsEvent("diagnostic_submitted"), false);
+  const afterWithdrawal = calls.length;
+  scripts[0].listeners.load();
+  await loading;
+  const state = {
+    enabled: api.isClarityEnabled(),
+    eventAccepted: api.trackAnalyticsEvent("diagnostic_submitted"),
+    callsAfterWithdrawal: calls.slice(afterWithdrawal),
+  };
+  assert.deepEqual(state, { enabled: false, eventAccepted: false, callsAfterWithdrawal: [["stop"]] });
+});
+
+test("Clarity reprend après un nouvel accord explicite, sans second script ni événement dupliqué", async () => {
+  const { api, scripts, calls } = await clarityWithdrawalHarness();
+  const loading = api.loadClarity();
+  scripts[0].listeners.load();
+  await loading;
+  assert.equal(api.trackAnalyticsEvent("diagnostic_cta_click"), true);
+  api.denyClarityConsent();
+  assert.equal(api.trackAnalyticsEvent("diagnostic_submitted"), false);
+  await api.loadClarity();
+  await api.loadClarity();
+  assert.equal(api.isClarityEnabled(), true);
+  assert.equal(scripts.length, 1);
+  assert.equal(calls.filter(call => call[0] === "start").length, 1);
+  assert.equal(api.trackAnalyticsEvent("diagnostic_cta_click"), false);
+  assert.equal(api.trackAnalyticsEvent("diagnostic_submitted"), true);
+  assert.equal(api.trackAnalyticsEvent("diagnostic_submitted"), false);
+});
+
+test("Clarity : un nouvel accord pendant le chargement utilise seulement le consentement courant", async () => {
+  const { api, scripts, calls } = await clarityWithdrawalHarness();
+  const loading = api.loadClarity();
+  api.denyClarityConsent();
+  api.loadClarity();
+  assert.equal(api.isClarityEnabled(), false);
+  scripts[0].listeners.load();
+  await loading;
+  assert.equal(api.isClarityEnabled(), true);
+  assert.equal(scripts.length, 1);
+  assert.equal(calls.filter(call => call[0] === "consentv2").length, 1);
+});
+
+test("Clarity : commandes en attente purgées au retrait et ancien stop non rejoué à la réacceptation", async () => {
+  const { api, scripts, window } = await clarityWithdrawalHarness();
+  delete window.clarity;
+  const loading = api.loadClarity();
+  window.clarity("event", "diagnostic_submitted");
+  api.denyClarityConsent();
+  scripts[0].listeners.load();
+  await loading;
+  const queued = () => JSON.parse(JSON.stringify(window.clarity.q.map(args => [...args])));
+  assert.deepEqual(queued(), [["stop"]]);
+  assert.equal(await api.loadClarity(), true);
+  assert.deepEqual(queued(), [["start"], ["consentv2", { ad_Storage: "denied", analytics_Storage: "granted" }]]);
+  assert.equal(scripts.length, 1);
+});
 
 const publicPages = [
   "index.html",
@@ -21,6 +116,21 @@ const publicPages = [
   "404.html",
 ];
 
+test("le bandeau, la personnalisation et les politiques expliquent les empreintes hachées après accord publicitaire", async () => {
+  const cookies = await readProjectFile("js/cookies.js");
+  assert.match(cookies, /OpenAI mesure les conversions publicitaires et peut recevoir vos coordonnées sous forme d’empreintes hachées/);
+  assert.match(cookies, /Vos coordonnées, comme votre e-mail, peuvent être transformées dans votre navigateur en empreintes hachées, puis transmises à OpenAI/);
+  assert.match(cookies, /data-cookie-advertising>/);
+  assert.doesNotMatch(cookies, /<input[^>]*checked[^>]*data-cookie-advertising|<input[^>]*data-cookie-advertising[^>]*checked/);
+  for (const path of ["politique-cookies.html", "politique-confidentialite.html"]) {
+    const html = await readProjectFile(path);
+    assert.match(html, /empreintes hachées SHA-256/);
+    assert.match(html, /Les coordonnées brutes ne sont pas transmises par cette fonctionnalité/);
+    assert.match(html, /Gérer mes cookies/);
+    assert.doesNotMatch(html, /correspondance avancée automatique doit rester désactivée|sans transmission des coordonnées saisies|sans coordonnées du formulaire/);
+  }
+});
+
 test("Clarity est centralisé et différé jusqu’au consentement explicite", async () => {
   const [analytics, cookies, ...pages] = await Promise.all([
     readProjectFile("js/analytics.js"),
@@ -31,27 +141,27 @@ test("Clarity est centralisé et différé jusqu’au consentement explicite", a
   assert.match(analytics, /CLARITY_PROJECT_ID = "y4bpqqcrs7"/);
   assert.match(analytics, /script\.src = `https:\/\/www\.clarity\.ms\/tag\/\$\{CLARITY_PROJECT_ID\}`/);
   assert.doesNotMatch(analytics, /loadClarity\(\);\s*\}\)\(\);$/);
-  assert.match(cookies, /CONSENT_VERSION = "2026-08-18-clarity-v1"/);
+  assert.match(cookies, /CONSENT_VERSION = "2026-09-14-ads-v2"/);
   assert.match(cookies, /storedConsent\.analytics/);
   assert.match(cookies, /analytics\?\.loadClarity/);
   assert.match(cookies, /analytics\?\.denyClarityConsent/);
   assert.doesNotMatch(cookies, /data-cookie-dismiss|dismissWithFullConsent/);
-  assert.match(analytics, /callClarity\("consentv2", \{[\s\S]*analytics_Storage: "denied"/);
-  assert.match(analytics, /callClarity\("consent", false\)/);
+  assert.match(analytics, /callClarity\("stop"\)/);
   assert.match(analytics, /Max-Age=0/);
-  assert.match(cookies, /previouslyAllowed && clarityWasLoaded/);
-  assert.match(cookies, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(cookies, /location\.reload|reloadAfterWithdrawal/);
 
   const acceptClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-accept/)?.[1];
   const refuseClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-refuse/)?.[1];
+  const customizeClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-customize/)?.[1];
   assert.equal(acceptClass, refuseClass, "Accepter et Refuser doivent avoir une visibilité comparable");
+  assert.equal(acceptClass, customizeClass, "Personnaliser doit avoir la même visibilité");
 
   pages.forEach((html, index) => {
     assert.match(html, /js\/analytics\.js/u, `${publicPages[index]} doit charger l’orchestrateur analytics`);
     assert.match(html, /js\/cookies\.js/u, `${publicPages[index]} doit charger le consentement`);
     assert.doesNotMatch(html, /clarity\.ms\/tag/u, `${publicPages[index]} ne doit pas intégrer Clarity directement`);
     assert.doesNotMatch(html, /cloudflareinsights\.com\/beacon|data-cf-beacon/u, `${publicPages[index]} ne doit pas dupliquer Cloudflare Web Analytics`);
-    assert.match(html, /data-cookie-preferences>Gérer mes préférences de confidentialité</u, `${publicPages[index]} doit permettre le retrait du consentement`);
+    assert.match(html, /data-cookie-preferences>Gérer mes cookies</u, `${publicPages[index]} doit permettre le retrait du consentement`);
   });
 });
 
@@ -62,9 +172,9 @@ test("les textes simplifiés conservent les actions explicites de consentement",
   ]);
 
   assert.match(cookies, /<strong>Votre confidentialité<\/strong>/);
-  assert.match(cookies, /Nous utilisons Microsoft Clarity pour améliorer le site, uniquement avec votre accord\. Vous pouvez changer d’avis à tout moment\. <a href="\/politique-cookies">En savoir plus<\/a>/);
+  assert.match(cookies, /Avec votre accord, Clarity nous aide à améliorer le site\. OpenAI mesure les conversions publicitaires et peut recevoir vos coordonnées sous forme d’empreintes hachées\. Vous pouvez choisir séparément ou retirer votre accord à tout moment\. <a href="\/politique-cookies">En savoir plus<\/a>/);
   assert.match(cookies, /<h2 id="cookie-preferences-title">Gérer mes préférences<\/h2>/);
-  assert.match(cookies, /Clarity reste désactivé tant que vous ne l’acceptez pas\./);
+  assert.match(cookies, /Clarity et OpenAI restent désactivés sans votre accord pour chaque finalité\./);
   assert.match(cookies, /<strong>Fonctions nécessaires<\/strong>\s*<span>Indispensables au fonctionnement et à la sécurité du site\.<\/span>/);
   assert.match(cookies, /<strong>Mesure d’audience<\/strong>\s*<span>Nous aide à comprendre l’utilisation du site et à l’améliorer\.<\/span>/);
   assert.match(cookies, /data-cookie-close>Retour<\/button>/);
@@ -72,12 +182,13 @@ test("les textes simplifiés conservent les actions explicites de consentement",
   assert.doesNotMatch(cookies, /Mesure d’audience avec Clarity|masquage renforcé|Enregistrer mon choix|>Annuler<\/button>/);
 
   assert.match(cookieStyles, /\.cookie-btn\s*\{[\s\S]*?min-height:\s*44px/);
-  assert.match(cookieStyles, /\.cookie-consent__actions \[data-cookie-accept\],\s*\.cookie-consent__actions \[data-cookie-refuse\]\s*\{\s*flex:\s*0 0 123px/);
-  assert.match(cookieStyles, /flex:\s*1 1 calc\(50% - 4px\)/);
+  assert.match(cookieStyles, /flex:\s*1 1 123px/);
+  assert.match(cookieStyles, /flex:\s*1 1 0/);
+  assert.match(cookieStyles, /\.cookie-consent__actions\s*\{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 
   assert.match(cookies, /target\.matches\("\[data-cookie-accept\]"\)\) applyConsent\(true\)/);
   assert.match(cookies, /target\.matches\("\[data-cookie-refuse\]"\)\) applyConsent\(false\)/);
-  assert.match(cookies, /target\.matches\("\[data-cookie-save\]"\)\) applyConsent\(analyticsInput\.checked\)/);
+  assert.match(cookies, /target\.matches\("\[data-cookie-save\]"\)\) applyConsent\(analyticsInput\.checked, advertisingInput\.checked\)/);
   assert.match(cookies, /target\.matches\("\[data-cookie-close\]"\)\) closeCookiePreferences\(\)/);
   assert.doesNotMatch(cookies, /data-cookie-close[^\n]*applyConsent/);
 });

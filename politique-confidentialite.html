@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="css/header.css">
   <link rel="stylesheet" href="css/footer.css?v=20260807-bce">
   <link rel="stylesheet" href="css/legal.css">
-  <link rel="stylesheet" href="css/cookies.css">
+  <link rel="stylesheet" href="css/cookies.css?v=20260914-ads">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -129,6 +129,7 @@
         <ul>
           <li>Cloudflare, pour l’hébergement, la sécurité et Cloudflare Web Analytics&nbsp;;</li>
           <li>Microsoft, pour Microsoft Clarity lorsque vous y avez consenti&nbsp;;</li>
+          <li>OpenAI, uniquement avec votre consentement publicitaire, pour mesurer les conversions, notamment à l’aide d’empreintes hachées de coordonnées lorsque la correspondance avancée automatique est activée&nbsp;;</li>
           <li>outil de formulaire&nbsp;;</li>
           <li>outil d’e-mailing&nbsp;;</li>
           <li>outil de paiement&nbsp;;</li>
@@ -162,7 +163,8 @@
         <h2>9. Cookies</h2>
         <p>Cloudflare Web Analytics est utilisé pour mesurer l’audience et les performances du site. Cet outil reste distinct de Microsoft Clarity.</p>
         <p>Microsoft Clarity est utilisé uniquement après votre consentement explicite afin de comprendre la navigation, les clics, les défilements et les étapes génériques du parcours. Les formulaires et résultats susceptibles de contenir des données personnelles sont masqués et les événements personnalisés ne contiennent aucune donnée client.</p>
-        <p>Vous pouvez retirer votre consentement à tout moment au moyen du lien « Gérer mes préférences de confidentialité » présent dans le footer. Pour connaître les catégories de données et les durées applicables, consultez notre <a href="/politique-cookies">politique de cookies</a>.</p>
+        <p>La mesure publicitaire OpenAI est soumise à un accord distinct de Clarity. Aucun SDK ni suivi OpenAI n’est activé avant cet accord. Après enregistrement d’une demande complète, un événement et son identifiant technique de déduplication peuvent être envoyés à OpenAI, sans valeur d’achat. Lorsque la correspondance avancée automatique est activée, le SDK peut détecter des coordonnées, comme votre e-mail, les normaliser et les transformer dans votre navigateur en empreintes hachées SHA-256 avant de les transmettre à OpenAI pour mesurer les conversions publicitaires. Les coordonnées brutes ne sont pas transmises par cette fonctionnalité ; le hachage ne constitue pas une anonymisation. Le SDK traite aussi l’identifiant publicitaire éventuel, l’origine de la page et l’heure de l’événement.</p>
+        <p>Vous pouvez retirer votre consentement à tout moment au moyen du lien « Gérer mes cookies ». Pour connaître les catégories de données et les durées applicables, consultez notre <a href="/politique-cookies">politique de cookies</a>.</p>
       </section>
 
       <section class="legal-section">
@@ -206,7 +208,7 @@
         <a href="/politique-confidentialite">Politique de confidentialité</a>
         <a href="/politique-cookies">Politique de cookies</a>
         <a href="/cgv">CGV</a>
-        <a href="#" data-cookie-preferences>Gérer mes préférences de confidentialité</a>
+        <a href="#" data-cookie-preferences>Gérer mes cookies</a>
         <a href="mailto:contact@efficiadigital.com">Contact</a>
       </nav>
     </div>
@@ -216,7 +218,7 @@
     </div>
   </div>
 </footer>
-<script src="js/analytics.js"></script>
-<script src="js/cookies.js?v=20260818-clarity"></script>
+<script src="js/analytics.js?v=20260914-consent"></script>
+<script src="js/cookies.js?v=20260914-ads-v2"></script>
 </body>
 </html>

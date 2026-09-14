@@ -1,9 +1,9 @@
 /
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js https://bzrcdn.openai.com; connect-src 'self' https://bzr.openai.com https://bzrcdn.openai.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://bzr.openai.com data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   Referrer-Policy: strict-origin
 
 /index.html
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js; connect-src 'self' https://*.clarity.ms https://c.bing.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js https://bzrcdn.openai.com; connect-src 'self' https://bzr.openai.com https://bzrcdn.openai.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://bzr.openai.com data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   Referrer-Policy: strict-origin
 
 /audit-google-business*

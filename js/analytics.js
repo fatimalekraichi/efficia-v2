@@ -19,6 +19,9 @@
   const ALLOWED_OFFERS = new Set(["audit", "visibility", "performance"]);
   const sentEvents = new Set();
   let clarityEnabled = false;
+  let clarityConsentGranted = false;
+  let clarityReady = false;
+  let clarityStopped = false;
   let clarityLoadPromise = null;
 
   const callClarity = (...args) => {
@@ -52,40 +55,61 @@
   };
 
   const loadClarity = () => {
+    clarityConsentGranted = true;
+    if (clarityReady) {
+      activateClarity();
+      return Promise.resolve(clarityEnabled);
+    }
     if (clarityLoadPromise) return clarityLoadPromise;
 
     clarityLoadPromise = new Promise((resolve) => {
       initializeClarityQueue();
-      grantClarityConsent();
-      const existingScript = document.getElementById(CLARITY_SCRIPT_ID);
-      if (existingScript) {
-        clarityEnabled = true;
-        grantClarityConsent();
-        trackPendingCheckoutConfirmation();
-        resolve(true);
-        return;
-      }
-
       const script = document.createElement("script");
       script.id = CLARITY_SCRIPT_ID;
       script.async = true;
       script.src = `https://www.clarity.ms/tag/${CLARITY_PROJECT_ID}`;
       script.referrerPolicy = "strict-origin-when-cross-origin";
       script.addEventListener("load", () => {
-        clarityEnabled = true;
-        grantClarityConsent();
-        trackPendingCheckoutConfirmation();
-        resolve(true);
+        clarityReady = true;
+        if (!clarityConsentGranted) {
+          stopClarity();
+          resolve(false);
+          return;
+        }
+        activateClarity();
+        resolve(clarityEnabled);
       }, { once: true });
       script.addEventListener("error", () => {
         clarityEnabled = false;
+        clarityReady = false;
         clarityLoadPromise = null;
+        script.remove();
         resolve(false);
       }, { once: true });
       document.head.appendChild(script);
     });
 
     return clarityLoadPromise;
+  };
+
+  const stopClarity = () => {
+    // Drop commands waiting for the SDK; revoked events must never be replayed.
+    if (Array.isArray(window.clarity?.q)) window.clarity.q.length = 0;
+    callClarity("stop");
+    clarityStopped = true;
+  };
+
+  const activateClarity = () => {
+    if (!clarityConsentGranted || clarityEnabled) return;
+    if (clarityStopped) {
+      // A stop queued before SDK initialization must not cancel this explicit new consent.
+      if (Array.isArray(window.clarity?.q)) window.clarity.q.length = 0;
+      if (!callClarity("start")) return;
+      clarityStopped = false;
+    }
+    grantClarityConsent();
+    clarityEnabled = true;
+    trackPendingCheckoutConfirmation();
   };
 
   const deleteClarityCookies = () => {
@@ -103,22 +127,17 @@
   };
 
   const denyClarityConsent = () => {
+    clarityConsentGranted = false;
     const wasLoaded = Boolean(document.getElementById(CLARITY_SCRIPT_ID)) || clarityEnabled;
-    if (wasLoaded) {
-      callClarity("consentv2", {
-        ad_Storage: "denied",
-        analytics_Storage: "denied",
-      });
-      callClarity("consent", false);
-    }
     clarityEnabled = false;
-    sentEvents.clear();
+    // consent(false) can restart Clarity in cookieless mode. Stop tracking instead.
+    if (wasLoaded) stopClarity();
     deleteClarityCookies();
     return wasLoaded;
   };
 
   const trackAnalyticsEvent = (eventName, options = {}) => {
-    if (!clarityEnabled || !ALLOWED_EVENTS.has(eventName)) return false;
+    if (!clarityConsentGranted || !clarityEnabled || !ALLOWED_EVENTS.has(eventName)) return false;
 
     const offer = ALLOWED_OFFERS.has(options.offer) ? options.offer : "";
     const dedupeKey = `${eventName}:${offer}`;

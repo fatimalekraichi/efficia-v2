@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="css/header.css">
   <link rel="stylesheet" href="css/footer.css?v=20260807-bce">
   <link rel="stylesheet" href="css/legal.css">
-  <link rel="stylesheet" href="css/cookies.css">
+  <link rel="stylesheet" href="css/cookies.css?v=20260914-ads">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -57,7 +57,7 @@
       </nav>
 
       <section class="legal-section">
-        <p>Efficia Digital utilise les fonctions strictement nécessaires au site et deux outils de mesure distincts : Cloudflare Web Analytics et, uniquement avec votre accord, Microsoft Clarity.</p>
+        <p>Efficia Digital utilise les fonctions strictement nécessaires au site et Cloudflare Web Analytics. Microsoft Clarity et la mesure publicitaire OpenAI sont facultatifs, avec un choix indépendant pour chaque finalité.</p>
       </section>
 
       <section class="legal-section" id="definition">
@@ -74,8 +74,9 @@
 
       <section class="legal-section" id="consentement">
         <h2>3. Gestion du consentement</h2>
-        <p>Lors de votre première visite, une bannière vous permet d’accepter ou de refuser Microsoft Clarity. Aucun script, cookie ou événement Clarity n’est lancé avant votre acceptation explicite. Le refus n’empêche aucune fonctionnalité du site.</p>
-        <p>Vous pouvez modifier ou retirer votre choix à tout moment via le lien « Gérer mes préférences de confidentialité » placé dans le footer. En cas de retrait, le site transmet le refus à Clarity, efface les cookies Clarity accessibles et recharge la page sans Clarity.</p>
+        <p>Microsoft Clarity aide à améliorer le parcours sur le site. OpenAI mesure les demandes de diagnostic enregistrées en lien avec les publicités ChatGPT. Aucun script Clarity ou OpenAI n’est chargé avant votre accord pour la finalité concernée. « Tout accepter » autorise les deux, « Tout refuser » refuse les deux et « Personnaliser » permet de les choisir séparément, sans case précochée lors de la première visite. Ignorer ou fermer le bandeau ne vaut pas acceptation. Un ancien accord Clarity n’autorise pas OpenAI. Le refus n’empêche aucune fonctionnalité du formulaire.</p>
+        <p>Vous pouvez modifier ou retirer votre choix via « Gérer mes cookies ». Le retrait arrête le suivi pour l’outil concerné et supprime ses cookies accessibles, sans recharger la page. Les événements bloqués ne sont pas envoyés ultérieurement après une acceptation.</p>
+        <p>Le pixel OpenAI est limité à l’accueil et à la page de diagnostic gratuit, uniquement après votre consentement publicitaire. L’événement « lead_created » est envoyé après confirmation de l’enregistrement complet par le serveur. Il contient un identifiant technique stable de la demande pour éviter les doublons, sans valeur d’achat. Lorsque la correspondance avancée automatique est activée, des coordonnées, comme votre e-mail, peuvent être détectées, normalisées et transformées dans votre navigateur en empreintes hachées SHA-256, puis transmises à OpenAI avec les conversions publicitaires. Les coordonnées brutes ne sont pas transmises par cette fonctionnalité ; le hachage ne constitue pas une anonymisation. Le SDK peut conserver l’identifiant publicitaire « oppref » dans le cookie « __oppref » et transmettre l’origine de la page ainsi que l’heure de l’événement. Voir la <a href="https://developers.openai.com/ads/measurement-pixel" target="_blank" rel="noopener noreferrer">documentation du pixel OpenAI</a>.</p>
       </section>
 
       <section class="legal-section" id="conservation">
@@ -124,7 +125,7 @@
         <a href="/politique-confidentialite">Politique de confidentialité</a>
         <a href="/politique-cookies">Politique de cookies</a>
         <a href="/cgv">CGV</a>
-        <a href="#" data-cookie-preferences>Gérer mes préférences de confidentialité</a>
+        <a href="#" data-cookie-preferences>Gérer mes cookies</a>
         <a href="mailto:contact@efficiadigital.com">Contact</a>
       </nav>
     </div>
@@ -134,7 +135,7 @@
     </div>
   </div>
 </footer>
-<script src="js/analytics.js"></script>
-<script src="js/cookies.js?v=20260818-clarity"></script>
+<script src="js/analytics.js?v=20260914-consent"></script>
+<script src="js/cookies.js?v=20260914-ads-v2"></script>
 </body>
 </html>
