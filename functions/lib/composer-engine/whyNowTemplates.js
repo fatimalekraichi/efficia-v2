@@ -4,7 +4,7 @@ import { labelForSignal } from "./vocabulary.js";
 const WHY_NOW_BY_SIGNAL = {
   position: "Chaque semaine où votre fiche reste dans cette configuration, une partie des internautes peut contacter une entreprise mieux positionnée avant même de découvrir votre établissement.",
   description: "Chaque semaine où votre fiche reste peu explicite, certains prospects doivent deviner si votre entreprise répond vraiment à leur besoin.",
-  photos: "Chaque semaine sans visuels récents, votre fiche montre moins clairement que votre activité est active et concrète aujourd'hui.",
+  photos: "Sans visuels récents, la fiche donne moins de repères concrets sur votre activité.",
   reviews: "Chaque semaine sans stratégie d'avis structurée, votre réputation progresse moins vite qu'elle le pourrait.",
   rating: "Chaque semaine sans suivi des avis, votre note reste plus exposée aux retours négatifs isolés.",
 };

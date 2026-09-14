@@ -187,13 +187,20 @@ test("introduction : une fiche non détectée après une recherche réelle décr
   assert.doesNotMatch(text, /La place de votre fiche dans cette recherche n’est pas encore connue|pas pu être confirmée|reste à confirmer/u);
 });
 
-test("introduction : une position nulle sans recherche analysée conserve une formulation neutre", () => {
+test("introduction : une recherche existante sans position mesurée utilise la formulation exacte", () => {
   const context = createNarrativeHarness({
     data: { position: 0, requeteTestee: "Électricien Neufchâteau", nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 },
   });
   const text = context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Neufchâteau", score: 70, scoreProjete: 70, priorites: [{}] });
   assert.doesNotMatch(text, /n’est pas apparue parmi les premiers résultats affichés|difficile à trouver sur Google/u);
-  assert.match(text, /pas pu être confirmée|reste à confirmer|n’est pas encore connue/u);
+  assert.match(text, /La position de votre fiche reste à confirmer pour la recherche « Électricien Neufchâteau »\./u);
+});
+
+test("introduction : sans recherche, aucune position n’est inventée", () => {
+  const context = createNarrativeHarness({ data: { nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 } });
+  const text = context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Neufchâteau", score: 70, scoreProjete: 70, priorites: [{}] });
+  assert.match(text, /La position de votre fiche n’a pas encore été mesurée\./u);
+  assert.doesNotMatch(text, /pour cette recherche|pour la recherche «/u);
 });
 
 test("introduction : les ouvertures sont déterministes, variées et sans classement inventé", () => {

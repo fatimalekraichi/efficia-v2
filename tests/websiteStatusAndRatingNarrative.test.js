@@ -125,6 +125,13 @@ function createSiteStateHarness({ url = "", etat = "", codeHttp = "", napRadioSp
   return context;
 }
 
+function normalizeProspectText(value) {
+  const code = sliceBetween(html, "function normaliserTexteProspectRapport(value){", "function texteEffectifRapport(");
+  const context = {};
+  vm.runInNewContext(code, context);
+  return context.normaliserTexteProspectRapport(value);
+}
+
 test("aucune URL, réponse explicite 'Aucun lien renseigné' => le rendu ne conclut jamais à l’absence de site officiel", () => {
   const context = createSiteStateHarness({ etat: "aucun" });
   const etat = context.etatSiteOfficielCourant();
@@ -171,6 +178,13 @@ test("URL présente et inaccessible avec code HTTP 500 saisi => erreur serveur p
   );
 });
 
+test("erreur HTTP non serveur : le code technique n’est pas affiché au prospect", () => {
+  const context = createSiteStateHarness({ url: "https://exemple.lu", etat: "inaccessible", codeHttp: "404" });
+  const message = context.messageEtatSiteOfficiel(context.etatSiteOfficielCourant());
+  assert.equal(message, "Le site officiel était inaccessible lors de notre contrôle.");
+  assert.doesNotMatch(message, /HTTP|404/i);
+});
+
 test("erreur DNS Tecelec : le message technique brut est remplacé par une formulation professionnelle", () => {
   const rawDns = "DNS records for tecelec.lu are not properly configured. Please check your DNS settings..";
   const context = createSiteStateHarness({ url: "https://tecelec.lu", etat: "inaccessible", codeHttp: rawDns });
@@ -193,6 +207,19 @@ test("erreur technique inattendue : aucun détail brut, anglais ou trace ne peut
   assert.equal(context.__fields["d-site-code"].value, rawError);
   assert.equal(message, "Le site officiel n’a pas pu être consulté lors de notre contrôle.");
   assert.doesNotMatch(message, /TypeError|resolver\.js|img|onerror|upstream|unavailable/i);
+});
+
+test("normalisation prospect : un détail technique inattendu utilise le repli sûr sans écraser un texte métier", () => {
+  const raw = "Socket timeout while resolving upstream gateway";
+  assert.equal(
+    normalizeProspectText(raw),
+    "Une vérification technique du site est nécessaire avant de diffuser cette information.",
+  );
+  assert.equal(
+    normalizeProspectText("<!doctype html><title>Service unavailable</title>"),
+    "Une vérification technique du site est nécessaire avant de diffuser cette information.",
+  );
+  assert.equal(normalizeProspectText("Le site reste inaccessible lors de notre contrôle."), "Le site reste inaccessible lors de notre contrôle.");
 });
 
 test("analyse ancienne (pas de nouveau contrôle rempli), critère NAP répondu normalement => comportement historique inchangé", () => {

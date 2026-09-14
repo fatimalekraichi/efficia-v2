@@ -6,6 +6,8 @@ import { COMPOSER_CONFIG } from "../functions/lib/composer-engine/composerConfig
 import { COMPOSER_VERSION } from "../functions/lib/composer-engine/composerVersion.js";
 import { runReasoningEngine } from "../functions/lib/reasoning-engine/reasoningEngine.js";
 import { respectsToneRules } from "../functions/lib/composer-engine/toneRules.js";
+import { buildExpectedResult } from "../functions/lib/composer-engine/expectedResultTemplates.js";
+import { buildWhyNow } from "../functions/lib/composer-engine/whyNowTemplates.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -144,6 +146,14 @@ test("Sprint 2 : les textes respectent les règles de ton", () => {
   assert.doesNotMatch(text, /votre fiche est mauvaise|vous perdez des clients/i);
 });
 
+test("les textes photos ne déduisent pas une activité actuelle de l’entreprise", () => {
+  const whyNow = buildWhyNow({ priorities: [{ signal: "photos" }] }).text;
+  const expectedResult = buildExpectedResult("photos");
+  assert.equal(whyNow.startsWith("Sans visuels récents, la fiche donne moins de repères concrets sur votre activité."), true);
+  assert.equal(expectedResult, "Une galerie actualisée peut donner des repères plus concrets sur votre activité.");
+  assert.doesNotMatch(`${whyNow} ${expectedResult}`, /activité est active|activité active aujourd'hui|prouvent que vous travaillez/i);
+});
+
 test("Sprint 2 : keyFindings utilisent les templates de synthèse", () => {
   const output = runComposer(laPlancheBundle());
 
@@ -201,7 +211,7 @@ test("Sprint 1 (point 3) : model.domains reprend les 6 domaines du Score Efficia
   ]);
 });
 
-test("Sprint 1 (point 3) : hero.rank restitue le nombre de concurrents mieux notés", () => {
+test("Sprint 1 (point 3) : hero.rank restitue le singulier et le pluriel corrects des concurrents mieux classés", () => {
   const bundle = laPlancheBundle();
   bundle.benchmark = { ...bundle.benchmark, rank: { aheadCount: 2, totalCompetitors: 3 } };
 
@@ -209,8 +219,14 @@ test("Sprint 1 (point 3) : hero.rank restitue le nombre de concurrents mieux not
 
   assert.equal(output.hero.rank.aheadCount, 2);
   assert.equal(output.hero.rank.totalCompetitors, 3);
-  assert.match(output.hero.rank.text, /derrière 2 concurrents/i);
-  assert.match(output.hero.rank.text, /sur 3 observés/i);
+  assert.equal(output.hero.rank.text, "Sur cette recherche, 2 fiches concurrentes observées apparaissent avant la vôtre.");
+  assert.doesNotMatch(output.hero.rank.text, /\(s\)|apparaît\/apparaissent/i);
+  const singular = runComposer({
+    ...laPlancheBundle(),
+    benchmark: { ...laPlancheBundle().benchmark, rank: { aheadCount: 1, totalCompetitors: 3 } },
+  });
+  assert.equal(singular.hero.rank.text, "Sur cette recherche, 1 fiche concurrente observée apparaît avant la vôtre.");
+  assert.doesNotMatch(singular.hero.rank.text, /\(s\)|apparaît\/apparaissent/i);
 });
 
 test("Sprint 1 (point 3) : hero.rank.text est null sans avance concurrentielle connue", () => {

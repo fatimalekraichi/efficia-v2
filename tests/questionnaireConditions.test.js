@@ -346,7 +346,7 @@ test("zone non vérifiable vaut zéro, reste neutre et ne bloque plus la finalis
   assert.equal(result.reviewedScore.totalCrit, 29);
   assert.equal(locationCriterion.status, "not_verified");
   assert.equal(locationCriterion.source, "publicly_unverifiable");
-  assert.equal(locationCriterion.label, "Zone desservie : à confirmer — information non vérifiable publiquement.");
+  assert.equal(locationCriterion.label, "Zone desservie : non vérifiable publiquement.");
   assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
 
   const scoreContext = buildScoreContext({ reviewedScore: result.reviewedScore, scoreInputs: result.scoreInputs });
@@ -374,7 +374,7 @@ test("adresse non vérifiable vaut zéro, reste provisoire et ne bloque pas la f
     assert.equal(result.reviewedScore.provisional, true);
     assert.equal(locationCriterion.status, "not_verified");
     assert.equal(locationCriterion.source, "publicly_unverifiable");
-    assert.equal(locationCriterion.label, "Adresse et épingle : à confirmer — information non vérifiable publiquement.");
+    assert.equal(locationCriterion.label, "Adresse et épingle : non vérifiable publiquement.");
     assert.deepEqual(incompleteQuestionnaireFields(manualReview), []);
   }
 });
@@ -474,7 +474,9 @@ test("les deux interfaces partagent la règle non vérifiable et les rapports la
   assert.match(legacy, /formaterResumeElementsRestants\(elementsRestants\)/);
   assert.match(legacy, /Ce score est provisoire : \$\{resume\}/);
   assert.match(legacy, /critereEstNonVerifiablePubliquement\(cr\)/);
-  assert.match(legacy, /Zone desservie : à confirmer — information non vérifiable publiquement\./);
+  assert.match(legacy, /Zone desservie : non vérifiable publiquement\./);
+  assert.match(modern, /Zone desservie : non vérifiable publiquement\./);
+  assert.doesNotMatch(legacy + modern, /à confirmer — information non vérifiable publiquement/);
   assert.match(legacy, /if\(critereEstNonVerifiablePubliquement\(cr\)\) return;/);
 });
 

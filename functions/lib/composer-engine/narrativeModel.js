@@ -16,7 +16,7 @@ const CRITERIA_STATUS_LABELS = {
   deficient: "prioritaire",
   not_verified: "à confirmer",
   not_applicable: "non applicable — aucun avis",
-  no_website: "Aucun site web officiel disponible",
+  no_website: "Aucun lien vers le site officiel n’est renseigné sur la fiche Google.",
 };
 
 // Passthrough des 6 domaines historiques (scoreEngine.calculateScoreDetail) —
@@ -91,7 +91,7 @@ function buildCriteriaSummary(criteria) {
 
 function websiteAvailabilityNote(scoreContext = {}) {
   return scoreContext.criteria?.some((item) => item?.key === "nap" && item?.status === "no_website")
-    ? "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google."
+    ? "Aucun lien vers le site officiel n’est renseigné sur la fiche Google ; les coordonnées ne peuvent donc pas être comparées avec le site."
     : null;
 }
 
@@ -219,12 +219,8 @@ function priorityCard(item) {
 // par computeCompetitiveRank() (auditComposition.js) — aucun recalcul ici.
 function rankSentence(rank) {
   if (!rank || !Number.isFinite(rank.aheadCount) || rank.aheadCount <= 0) return null;
-  const { aheadCount, totalCompetitors } = rank;
-  const competitorWord = aheadCount > 1 ? "concurrents" : "concurrent";
-  const panelNote = Number.isFinite(totalCompetitors) && totalCompetitors > 0
-    ? ` (sur ${totalCompetitors} observé${totalCompetitors > 1 ? "s" : ""})`
-    : "";
-  return `Vous êtes actuellement derrière ${aheadCount} ${competitorWord} sur cette recherche${panelNote}.`;
+  const { aheadCount } = rank;
+  return `Sur cette recherche, ${aheadCount} fiche${aheadCount > 1 ? "s" : ""} concurrente${aheadCount > 1 ? "s" : ""} observée${aheadCount > 1 ? "s" : ""} ${aheadCount > 1 ? "apparaissent" : "apparaît"} avant la vôtre.`;
 }
 
 function footerMethodology(bundle = {}) {

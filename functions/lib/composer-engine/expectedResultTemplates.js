@@ -9,7 +9,7 @@
 const EXPECTED_RESULT_BY_SIGNAL = {
   rating: "Une note mieux valorisée peut rassurer davantage de prospects dès la comparaison.",
   reviews: "Un volume d'avis plus visible peut renforcer la preuve sociale au moment du choix.",
-  photos: "Une galerie plus actuelle peut mieux démontrer une activité active aujourd'hui.",
+  photos: "Une galerie actualisée peut donner des repères plus concrets sur votre activité.",
   position: "Une meilleure position peut vous rendre visible avant qu'un prospect ne contacte une fiche concurrente.",
   description: "Une description plus claire peut aider un prospect à comprendre l'offre avant même d'appeler.",
   categories: "Des catégories mieux ajustées peuvent aider votre fiche à apparaître sur davantage de recherches locales pertinentes.",

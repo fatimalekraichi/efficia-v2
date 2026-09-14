@@ -78,9 +78,9 @@ function publiclyUnverifiableLocationLabel(conditions = {}) {
     && conditions.addressVerification === "not_verifiable";
   const serviceArea = ["service_area", "hybrid"].includes(conditions.locationMode)
     && conditions.serviceAreaVerification === "not_verifiable";
-  if (address && serviceArea) return "Localisation : à confirmer — information non vérifiable publiquement.";
-  if (address) return "Adresse et épingle : à confirmer — information non vérifiable publiquement.";
-  return "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  if (address && serviceArea) return "Localisation : non vérifiable publiquement.";
+  if (address) return "Adresse et épingle : non vérifiable publiquement.";
+  return "Zone desservie : non vérifiable publiquement.";
 }
 
 export function locationScore(conditions = {}) {

@@ -110,10 +110,10 @@ test("les rapports décrivent factuellement l’absence de site sans incohérenc
   const model = buildNarrativeModel(bundle, {
     strengths: [], weaknesses: [], opportunities: [], priorities: [], actionPlan: [],
   });
-  const factual = "Aucun site web officiel n’est disponible pour comparer les coordonnées avec celles de la fiche Google.";
+  const factual = "Aucun lien vers le site officiel n’est renseigné sur la fiche Google ; les coordonnées ne peuvent donc pas être comparées avec le site.";
   assert.equal(model.websiteAvailabilityNote, factual);
   for (const html of [renderPremiumAuditHtml(model), renderFreeDiagnosticHtml({ ...model, reportType: "free" })]) {
-    assert.match(html, /Aucun site web officiel n’est disponible/);
+    assert.match(html, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/);
     assert.doesNotMatch(html, /coordonnées incohérentes/i);
     assert.doesNotMatch(html, /corriger les coordonnées sur le site/i);
     assert.doesNotMatch(html, /informations non vérifiées/i);

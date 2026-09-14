@@ -1073,10 +1073,10 @@ function updateLocationControls() {
     confirmation.hidden = !unresolved && !publiclyUnverifiable;
     confirmation.textContent = publiclyUnverifiable
       ? (addressPubliclyUnverifiable && serviceAreaPubliclyUnverifiable
-        ? "Localisation : à confirmer — information non vérifiable publiquement."
+        ? "Localisation : non vérifiable publiquement."
         : (addressPubliclyUnverifiable
-          ? "Adresse et épingle : à confirmer — information non vérifiable publiquement."
-          : "Zone desservie : à confirmer — information non vérifiable publiquement."))
+          ? "Adresse et épingle : non vérifiable publiquement."
+          : "Zone desservie : non vérifiable publiquement."))
       : "Cette information doit être confirmée avant la finalisation. Aucune anomalie n’est déduite automatiquement.";
   }
 }
@@ -1624,7 +1624,7 @@ function renderCompetitors(analysis) {
     // Couvre aussi bien "aucun concurrent collecté" que "tous les résultats bruts
     // correspondaient à la fiche analysée elle-même et ont donc été exclus" (voir
     // collectCompetitors.js) : dans les deux cas, la liste est vide et le message reste sobre.
-    competitorsBox.innerHTML = "<p class=\"admin-muted\">Aucun concurrent pertinent trouvé.</p>";
+    competitorsBox.innerHTML = "<p class=\"admin-muted\">Aucun concurrent qualifié n’est disponible pour la comparaison.</p>";
     updateCompetitorsSummary();
     return;
   }

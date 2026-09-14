@@ -1051,8 +1051,8 @@ const CONTENU_DIAGNOSTIC = {
     premiereAction:"Ajouter une série de photos récentes et variées."
   },
   photoRecente: {
-    constat:"La fiche manque de photos récentes.",
-    impact:"Une galerie actualisée montre que l'activité est suivie et vivante.",
+    constat:"La date des dernières photos visibles reste à confirmer.",
+    impact:"Une galerie actualisée aide à montrer que la fiche est tenue à jour.",
     premiereAction:"Publier quelques photos récentes ce mois-ci."
   },
   varietePhotos: {
@@ -1077,7 +1077,7 @@ const CONTENU_DIAGNOSTIC = {
   },
   recenceAvis: {
     constat:"Les avis récents ne semblent pas assez réguliers.",
-    impact:"Des avis récents rassurent sur l'activité actuelle de l'entreprise.",
+    impact:"Des avis récents constituent une preuve client actualisée.",
     premiereAction:"Relancer la collecte d'avis auprès des clients récents."
   },
   tauxReponseAvis: {
@@ -1122,7 +1122,7 @@ const CONTENU_DIAGNOSTIC = {
   },
   publicationRecente: {
     constat:"La fiche manque de publication récente.",
-    impact:"Une actualité récente montre une fiche tenue à jour.",
+    impact:"Une actualité récente aide à montrer que la fiche est tenue à jour.",
     premiereAction:"Publier une actualité simple : offre, réalisation ou nouveauté."
   },
   rythmePublication: {
@@ -1254,7 +1254,7 @@ GRILLE.forEach(cat => {
     }
     if(cr.key === "volumeAvis"){
       html += `<div class="category-evidence" id="review-volume-evidence" aria-live="polite">
-        <p id="review-volume-summary">Données concurrentielles insuffisantes : comparaison automatique à confirmer.</p>
+        <p id="review-volume-summary">Données concurrentielles insuffisantes : aucune comparaison automatique n’est affichée.</p>
         <div class="category-manual-warning" id="review-volume-manual-warning" hidden></div>
       </div>`;
     }
@@ -1324,9 +1324,9 @@ function messageLocalisationNonVerifiablePubliquement(){
   const mode = modeLocalisation();
   const adresse = ["storefront","hybrid"].includes(mode) && reponseAdresse() === "not_verifiable";
   const zone = ["service_area","hybrid"].includes(mode) && reponseZoneDesserte() === "not_verifiable";
-  if(adresse && zone) return "Localisation : à confirmer — information non vérifiable publiquement.";
-  if(adresse) return "Adresse et épingle : à confirmer — information non vérifiable publiquement.";
-  return "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  if(adresse && zone) return "Localisation : non vérifiable publiquement.";
+  if(adresse) return "Adresse et épingle : non vérifiable publiquement.";
+  return "Zone desservie : non vérifiable publiquement.";
 }
 function scoreLocalisation(){
   const mode = modeLocalisation(), adresse = reponseAdresse(), zone = reponseZoneDesserte();
@@ -3316,7 +3316,7 @@ function actualiserPreuvesAutomatiques(business = {}, scorePrefill = {}){
     : "—";
   setText("review-volume-summary", estNombre(reviewEvidence.value) && reviewValues.length === 3 && estNombre(reviewEvidence.average)
     ? `Votre fiche : ${formatReviews(reviewEvidence.value)} avis · Concurrents : ${reviewValues.map((value) => formatReviews(value)).join(", ")} · Moyenne : environ ${formatReviews(reviewEvidence.average)} · comparaison avec une tolérance de 10 %`
-    : "Données concurrentielles insuffisantes : comparaison automatique à confirmer.");
+    : "Données concurrentielles insuffisantes : aucune comparaison automatique n’est affichée.");
 
   donneesAnalyse.liensAction = actionLinks;
   donneesAnalyse.statutLiensAction = actionAvailable ? "available" : "unavailable";
@@ -4550,7 +4550,10 @@ function normaliserTexteProspectRapport(value){
     return "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.";
   }
   if(/<!doctype|<\/?(?:html|head|body|script|style|pre)\b|\b(?:stack trace|exception|typeorm|undefined|null reference)\b/i.test(texte)){
-    return "Le site officiel était inaccessible lors de notre contrôle. Une vérification technique est nécessaire avant de diffuser davantage d’informations.";
+    return "Une vérification technique du site est nécessaire avant de diffuser cette information.";
+  }
+  if(/\b(?:typeerror|referenceerror|syntaxerror|error|failed|failure|timeout|timed out|fetch failed|upstream|gateway|resolver|socket|econn|ssl|tls|curl|status code)\b/i.test(texte)){
+    return "Une vérification technique du site est nécessaire avant de diffuser cette information.";
   }
   return texte;
 }
@@ -5249,7 +5252,7 @@ function messageEtatSiteOfficiel(etatCourant){
       return "Le site officiel renvoie actuellement une erreur serveur lorsqu’un client tente de le consulter.";
     }
     if(etatCourant.problemeTechnique === "erreur_http"){
-      return `Le site officiel était inaccessible lors de notre contrôle et renvoyait une erreur HTTP ${etatCourant.codeHttp}.`;
+      return "Le site officiel était inaccessible lors de notre contrôle.";
     }
     if(etatCourant.problemeTechnique === "incident_technique"){
       return "Le site officiel n’a pas pu être consulté lors de notre contrôle.";
@@ -5394,11 +5397,10 @@ function texteConsultantPage1({contact, entreprise, activite, ville, score, scor
       `La fiche apparaît en ${position}e position dans les résultats observés.`
     ]));
   }else{
-    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_unknown", [
-      "La position de votre fiche n’a pas pu être confirmée pour cette recherche.",
-      "Le classement de votre fiche reste à confirmer pour cette recherche.",
-      "La place de votre fiche dans cette recherche n’est pas encore connue."
-    ]));
+    const positionInconnue = recherche
+      ? `La position de votre fiche reste à confirmer pour la recherche « ${recherche} ».`
+      : "La position de votre fiche n’a pas encore été mesurée.";
+    phrases.push(choisirVarianteNarrative("summary.general.opening", "position_unknown", [positionInconnue]));
   }
 
   if(descriptionAbsente){
@@ -5681,12 +5683,12 @@ function observationPersonnalisee(cr){
       : `Votre fiche n'a pas de présentation. C'est l'espace où vous pourriez expliquer, avec vos mots, qui vous êtes et pourquoi vous choisir.`,
     descriptionQualite: `En lisant votre présentation, un client ne trouve ni votre zone d'intervention, ni vos spécialités, ni ce qui vous distingue de la fiche suivante. Elle décrit une entreprise — pas la vôtre.`,
     servicesPresents: estNombre(d.nbServices)
-      ? `Votre fiche liste ${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""}. Nous sommes prêts à parier que vous en proposez bien davantage — mais un client, lui, ne parie pas : il conclut que vous ne faites pas ce qu'il cherche.`
+      ? `Votre fiche liste ${nEntier(d.nbServices)} service${d.nbServices > 1 ? "s" : ""}. Si le service recherché n’y apparaît pas, un client peut ne pas penser à vous contacter.`
       : `L'onglet Services de votre fiche est vide. Un client qui se demande si vous couvrez son besoin n'y trouve aucune réponse.`,
     servicesDecrits: `Vos services sont listés, mais sans description ni repère de prix : le client voit des intitulés, pas ce que vous feriez pour lui.`,
-    publicationRecente: `Nous avons cherché un signe de vie récent sur votre fiche — une actualité, une réalisation, une offre. ${estNombre(d.nbPublications) && d.nbPublications === 0 ? "Il n'y en a aucun." : "Le dernier remonte à plusieurs mois."} Votre entreprise est active ; votre fiche ne le montre pas.`,
+    publicationRecente: "Aucune publication récente n’a été relevée sur votre fiche lors de notre contrôle.",
     rythmePublication: `Les publications existantes sont trop espacées pour donner l'impression d'une entreprise en mouvement.`,
-    photoRecente: `En ouvrant votre galerie, les photos les plus récentes datent. Un client qui les regarde peut se demander si l'activité est encore en cours.`,
+    photoRecente: "La date de mise à jour récente de la galerie n’a pas pu être confirmée.",
     varietePhotos: `Votre galerie répète souvent les mêmes angles de votre activité. Il manque ce qu'un client cherche vraiment : vos réalisations, votre équipe, votre façon de travailler.`,
     nombrePhotos: (() => {
       if(!estNombre(d.nbPhotos)) return null;
@@ -5698,15 +5700,15 @@ function observationPersonnalisee(cr){
       return `Votre fiche compte ${photos}. Les visuels peuvent aider un client à se faire une idée plus concrète de votre activité.`;
     })(),
     tauxReponseAvis: `${buildReviewsResponseSentence(d.avisAnalyses, d.reponsesProprietaire, statutVerificationCritere(cr))} Ces avis, et vos réponses, sont lus par les clients qui hésitent : c'est une conversation publique qui influence la confiance.`,
-    qualiteReponsesAvis: `Vos réponses aux avis se ressemblent : le client qui les lit sent le copier-coller, et c'est l'inverse de l'effet recherché.`,
-    recenceAvis: estTexte(d.dernierAvis) ? `Votre dernier avis date du ${new Date(d.dernierAvis).toLocaleDateString("fr-FR")}. Une fiche dont les avis s'arrêtent laisse penser que l'activité s'est arrêtée avec eux.` : null,
+    qualiteReponsesAvis: "Vos réponses aux avis se ressemblent : des réponses trop similaires peuvent paraître moins personnelles aux lecteurs.",
+    recenceAvis: estTexte(d.dernierAvis) ? `Votre dernier avis date du ${new Date(d.dernierAvis).toLocaleDateString("fr-FR")}. Des avis anciens peuvent laisser un doute sur l’actualité de la fiche.` : null,
     classementLocal: estNombre(d.position) && estTexte(d.requeteTestee)
       ? (d.position === 0 ? `Nous avons cherché « ${libelleRechercheRapport(d.requeteTestee)} » comme le ferait un client : votre fiche existe, mais elle ne ressort pas encore dans les premiers résultats.`
                           : `Sur « ${libelleRechercheRapport(d.requeteTestee)} », votre fiche apparaît comme ${libellePositionRapport(d, {avecRecherche:false})}. Certains clients ne consultent que les tout premiers résultats organiques.`) : null,
     attractiviteConcurrents: estNombre(volC) ? `Nous avons mis votre fiche côte à côte avec celles qui l'entourent dans les résultats, comme le fait chaque client avant d'appeler. Sur ce qui se voit en premier — avis, photos, détail de l'offre — la comparaison ne tourne pas encore en votre faveur.` : null,
-    horaires: `Vos horaires sont incomplets. « Peut-être fermé » est l'une des mentions les plus dissuasives qu'une fiche puisse afficher.`,
+    horaires: "Vos horaires sont incomplets. Cette mention peut décourager un client qui hésite à se déplacer.",
     revendiquee: `Votre fiche affiche encore « Vous êtes le propriétaire ? » : elle vit sa vie sans vous, et vous ne pouvez ni la corriger ni y répondre.`,
-    questionsReponses: `La rubrique Questions/Réponses de votre fiche est vide — ou pire, alimentée par des internautes sans réponse de votre part.`,
+    questionsReponses: "La rubrique Questions/Réponses ne contient pas encore de réponses utiles aux questions fréquentes.",
     liensAction: `Un client convaincu doit encore trouver comment vous joindre facilement : il manque un bouton d'action direct (devis, rendez-vous).`
   };
   return obs[cr.key] || null;
@@ -5720,20 +5722,20 @@ function impactBusiness(cr){
     descriptionQualite: "Un client ne choisit pas l'entreprise « la meilleure » : il choisit celle dont il comprend qu'elle répond exactement à son besoin, près de chez lui.",
     servicesPresents: "Un client qui ne trouve pas sa demande dans votre liste peut ne pas vous appeler pour vérifier : il risque de poursuivre sa recherche vers une fiche plus explicite.",
     servicesDecrits: "Détailler un service, c'est répondre à l'avance aux questions que le client se pose — et chaque question résolue le rapproche de l'appel.",
-    publicationRecente: "Une fiche silencieuse fait naître un doute simple : « sont-ils toujours en activité ? répondront-ils vite ? ». Ce doute peut inciter à poursuivre la recherche vers une fiche jugée plus active.",
+    publicationRecente: "L’absence de publication récente peut laisser un doute sur la mise à jour de la fiche.",
     rythmePublication: "La régularité compte plus que le volume : elle dit au client qu'il y a quelqu'un derrière la fiche, aujourd'hui comme le mois prochain.",
-    photoRecente: "Des photos récentes prouvent que vous travaillez en ce moment. C'est la différence entre une vitrine allumée et une vitrine éteinte.",
+    photoRecente: "Des photos récemment ajoutées montrent que la fiche est mise à jour et aident le client à se projeter.",
     varietePhotos: "Le client cherche à se projeter : voir vos réalisations, c'est déjà imaginer la sienne.",
     nombrePhotos: "Une fiche riche en photos peut améliorer les chances d'être comprise ou contactée : le client se projette plus facilement sur ce qu'il peut voir.",
     tauxReponseAvis: "Vos réponses aux avis sont lues par les futurs clients bien plus que par leurs auteurs : elles montrent comment vous traiterez un problème si un jour il y en a un.",
-    qualiteReponsesAvis: "Une réponse personnelle et posée vaut une recommandation publique. Une réponse copiée-collée vaut un silence.",
-    recenceAvis: "Des avis récents disent : « des clients nous font confiance en ce moment ». Des avis anciens laissent le doute s'installer.",
+    qualiteReponsesAvis: "Des réponses personnelles montrent que les avis sont lus et pris en compte.",
+    recenceAvis: "Des avis anciens peuvent laisser un doute sur l’actualité de la fiche.",
     classementLocal: "Le problème n'est pas que votre fiche soit mauvaise. Le problème apparaît quand elle ne ressort pas sur les recherches que vos clients utilisent vraiment.",
     attractiviteConcurrents: "Le client compare souvent plusieurs fiches avant d'appeler. Ce comparatif silencieux se joue en quelques secondes — sur ce qui se voit, pas sur ce qui est vrai.",
-    horaires: "Un client prêt à se déplacer qui lit « peut-être fermé » ne prend pas le risque : il va là où c'est sûr d'être ouvert.",
+    horaires: "La mention « peut-être fermé » peut décourager un client qui hésite à se déplacer.",
     revendiquee: "Tant que la fiche n'est pas entre vos mains, c'est Google et les internautes qui racontent votre entreprise à votre place.",
-    questionsReponses: "Chaque question sans réponse est un client qui repart avec son doute — ou avec la réponse approximative d'un inconnu.",
-    liensAction: "Chaque étape évitée entre « je suis convaincu » et « je vous contacte » augmente le nombre de clients qui vont au bout."
+    questionsReponses: "Une question sans réponse peut laisser un client hésitant avant la prise de contact.",
+    liensAction: "Réduire les étapes entre l’intérêt et la prise de contact facilite la démarche du client."
   };
   return impacts[cr.key] || cr.impact;
 }
@@ -6528,7 +6530,7 @@ function checklistHtml(){
         ? `${LIBELLES_COURTS[cr.key] || cr.q} — Non applicable (aucun avis)`
         : siteMessage
         ? siteMessage
-        : (publiclyUnverifiable ? "Zone desservie : à confirmer — information non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
+        : (publiclyUnverifiable ? "Zone desservie : non vérifiable publiquement." : (LIBELLES_COURTS[cr.key] || cr.q));
       return `<div class="chk-item"><span class="chk-ic ${ic[0]}">${ic[1]}</span><span>${label}</span></div>`;
     }).join("");
     const evalues = visibleCriteria.filter(cr => critereEstNote(cr) && !critereEstNonApplicable(cr) && !critereEstNonVerifiablePubliquement(cr) && lirePoints(cr.id) !== null);
@@ -7095,12 +7097,12 @@ function recommandationPriorite(item, ctx){
       ? `${actionFamillePriorite(FAMILLES_PRIORITES.find(f => f.key === "visibilite"), item)} La recherche observée est « ${ctx.recherche} ».`
       : actionFamillePriorite(FAMILLES_PRIORITES.find(f => f.key === "visibilite"), item),
     photos: prioritePhotosPorteSurActualite(item)
-      ? "Actualiser la galerie avec quelques photos récentes et utiles pour montrer que l'activité est suivie aujourd'hui."
+      ? "Actualiser la galerie avec quelques photos utiles pour mettre en valeur des éléments récents."
       : estNombre(d.nbPhotos)
       ? `Ajouter des photos utiles et variées. Aujourd'hui, ${nEntier(d.nbPhotos)} photo${d.nbPhotos > 1 ? "s" : ""} ne suffisent pas toujours à rassurer une personne qui compare.`
       : "Ajouter des photos récentes, nettes et utiles pour montrer concrètement l'entreprise.",
     infos: premierPasInfos(item),
-    activite: "Publier un signe d'activité récent pour montrer que l'entreprise est disponible et suivie."
+    activite: "Publier une actualité récente pour montrer que la fiche est tenue à jour."
   };
   return reco[item.famille] || item.action;
 }
@@ -7305,7 +7307,7 @@ function consequenceBusinessPriorite(item, ctx){
     ]),
     photos: consequencePhotos(item, ctx),
     infos: consequenceInfos(item),
-    activite: "Une fiche sans signe d'activité récent peut laisser penser que l'entreprise ne suit plus sa présence en ligne — voire qu'elle a fermé."
+    activite: "L’absence de signe d’activité récent peut laisser un doute sur la mise à jour de la fiche."
   };
   return textes[item.famille] || "Cet écart peut réduire la confiance ou retarder la prise de contact.";
 }
@@ -7327,9 +7329,9 @@ function resultatAttenduPriorite(item, ctx){
         "votre fiche rend vos prestations, votre zone d'intervention et la raison de vous contacter plus faciles à comprendre.",
         "une personne qui compare identifie plus vite ce que vous proposez, où vous intervenez et comment vous joindre."
       ]),
-    photos: prioritePhotosPorteSurActualite(item) ? "votre galerie montre une entreprise active aujourd'hui." : "votre travail devient visible avant même le premier contact.",
+    photos: prioritePhotosPorteSurActualite(item) ? "votre galerie présente des éléments récemment ajoutés." : "votre travail devient visible avant même le premier contact.",
     infos: resultatAttenduInfos(item),
-    activite: "une fiche visiblement suivie et active."
+    activite: "une fiche mise à jour avec des informations récentes."
   };
   return textes[item.famille] || "";
 }

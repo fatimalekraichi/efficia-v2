@@ -318,17 +318,17 @@ test("Diagnostic gratuit : ne modifie pas le Score Efficia ni le contenu premium
 test("les rapports gratuit et Premium présentent la zone non vérifiable sans anomalie ni recommandation négative", async () => {
   const freeModel = await buildDocumentModel("free");
   freeModel.freeDiagnostic.provisional = true;
-  freeModel.freeDiagnostic.locationConfirmation = "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  freeModel.freeDiagnostic.locationConfirmation = "Zone desservie : non vérifiable publiquement.";
   const freeHtml = renderFreeDiagnosticHtml(freeModel);
 
   const premiumModel = await buildDocumentModel("premium");
   premiumModel.scoreProvisional = true;
-  premiumModel.locationConfirmation = "Zone desservie : à confirmer — information non vérifiable publiquement.";
+  premiumModel.locationConfirmation = "Zone desservie : non vérifiable publiquement.";
   const premiumHtml = renderPremiumAuditHtml(premiumModel);
 
   for (const html of [freeHtml, premiumHtml]) {
     assert.match(html, /Ce score est provisoire : certaines informations ne sont pas vérifiables depuis la fiche publique et restent à confirmer\./);
-    assert.match(html, /Zone desservie : à confirmer — information non vérifiable publiquement\./);
+    assert.match(html, /Zone desservie : non vérifiable publiquement\./);
     assert.doesNotMatch(html, /Zone desservie : absente ou incohérente/i);
     assert.doesNotMatch(html, /corriger la zone desservie/i);
   }
