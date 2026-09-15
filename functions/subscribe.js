@@ -1,5 +1,8 @@
 import {
   normalizeDiagnosticSubmission,
+  normalizeDiagnosticCapture,
+  persistDiagnosticCapture,
+  verifyDiagnosticJourney,
   updateDiagnosticMailerLiteStatus,
 } from "./lib/diagnosticRequests.js";
 import { resolvePublicSite } from "./lib/environmentIsolation.js";
@@ -16,7 +19,6 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 });
 
 const cleanText = (value, maxLength) => (typeof value === "string" ? value.trim().slice(0, maxLength) : "");
-const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
 const ANALYZE_ERROR_CODES = new Set([
   "ANALYZE_UNAUTHORIZED",
@@ -208,9 +210,14 @@ async function createDiagnosticAnalysis(context, submission) {
   };
 }
 
-async function safelyUpdateMailerLiteStatus(db, analysisId, status) {
+async function safelyUpdateMailerLiteStatus(db, analysisId, status, captureKey = null) {
   try {
-    await updateDiagnosticMailerLiteStatus(db, analysisId, status);
+    if (captureKey) {
+      await db.prepare(`UPDATE diagnostic_lead_captures SET mailerlite_status = ?, updated_at = ?
+        WHERE idempotency_key = ?`).bind(status, new Date().toISOString(), captureKey).run();
+    } else {
+      await updateDiagnosticMailerLiteStatus(db, analysisId, status);
+    }
   } catch {
     console.error("Diagnostic request: MailerLite status update failed.");
   }
@@ -247,12 +254,11 @@ export async function onRequestPost(context) {
     }
     submission = normalized.data;
   } else {
-    const email = cleanText(payload.email, 254).toLowerCase();
-    const firstName = cleanText(payload.first_name || payload.firstName, 100);
-    if (!isValidEmail(email) || !firstName) {
+    const normalized = normalizeDiagnosticCapture(payload);
+    if (!normalized.ok) {
       return jsonResponse({ success: false, error: "Missing required fields." }, 400);
     }
-    submission = { email, firstName, companyName: "", city: "", googleBusinessUrl: "" };
+    submission = { ...normalized.data, companyName: "", city: "", googleBusinessUrl: "" };
   }
 
   const site = resolvePublicSite(context.request, context.env);
@@ -262,6 +268,22 @@ export async function onRequestPost(context) {
   }
 
   let diagnostic = null;
+  try {
+    if (!context.env.ORDERS_DB) throw new Error("D1_BINDING_MISSING");
+    if (!await verifyDiagnosticJourney(context.env.ORDERS_DB, submission)
+        || (step === "lead_capture" && !await persistDiagnosticCapture(context.env.ORDERS_DB, submission))) {
+      return jsonResponse({ success: false, error: ERROR_MESSAGE }, 409);
+    }
+  } catch {
+    console.error("Diagnostic capture: Efficia persistence unavailable.");
+    return jsonResponse({ success: false, error: ERROR_MESSAGE }, 503);
+  }
+  const captureKey = step === "lead_capture" ? submission.idempotencyKey : null;
+  const captureSyncResult = async (status) => {
+    await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, null, status, captureKey);
+    return jsonResponse({ success: true, status: "incomplete",
+      ...(status !== "synced" ? { warning: "Marketing synchronization incomplete." } : {}) });
+  };
   if (step === "diagnostic_request") {
     try {
       diagnostic = await createDiagnosticAnalysis(context, submission);
@@ -305,8 +327,7 @@ export async function onRequestPost(context) {
         warning: "Marketing synchronization unavailable.",
       });
     }
-    console.error("MailerLite API key is not configured.");
-    return jsonResponse({ success: false, error: ERROR_MESSAGE }, 500);
+    return captureSyncResult("failed");
   }
 
   const source = cleanText(payload.source, 120) || "Score Efficia gratuit";
@@ -373,7 +394,7 @@ export async function onRequestPost(context) {
           warning: "Marketing synchronization unavailable.",
         });
       }
-      return jsonResponse({ success: false, error: "MailerLite request failed." }, 502);
+      return captureSyncResult("failed");
     }
     partialSync = true;
   }
@@ -388,8 +409,5 @@ export async function onRequestPost(context) {
     });
   }
 
-  return jsonResponse({
-    success: true,
-    ...(partialSync ? { warning: "Marketing synchronization incomplete." } : {}),
-  });
+  return captureSyncResult(partialSync ? "partial" : "synced");
 }

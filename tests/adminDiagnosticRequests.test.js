@@ -22,6 +22,7 @@ const migrationNames = [
   "0011_score_efficia_historical.sql",
   "0012_order_cgv_acceptance.sql",
   "0013_diagnostic_requests.sql",
+  "0019_diagnostic_lead_captures.sql",
 ];
 
 class LocalD1 {
@@ -204,7 +205,7 @@ test("l’interface admin ouvre Score Efficia avec le seul analysisId et conserv
   assert.match(html, /Diagnostics gratuits à traiter/);
   assert.match(html, /data-admin-diagnostics/);
   assert.match(html, /Commandes Stripe/);
-  assert.match(html, /<script src="\/js\/admin\.js"><\/script>/);
+  assert.match(html, /<script src="\/js\/admin\.js\?v=20260915-captures"><\/script>/);
   assert.equal(existsSync(obsoleteAdminFile), false, "admin/index.html ne doit plus concurrencer admin.html");
   assert.match(redirects, /^\/admin\/ \/admin 301$/m);
 

@@ -26,10 +26,7 @@ export async function onRequestGet({ request, env }) {
         const attribute = element.tagName === "link" ? "href" : "src";
         const value = element.getAttribute(attribute);
         if (value && !/^(?:[a-z]+:|\/|#)/i.test(value)) element.setAttribute(attribute, `/${value}`);
-        // The new page must not reuse an older cached version without standalone support.
-        if (element.getAttribute("src")?.startsWith("/js/app.js")) {
-          element.setAttribute("src", "/js/app.js?v=20260914-ads");
-        }
+        // Keep the shared form's versioned script URL; do not pin an older copy.
       },
     })
     .on("body > *", {

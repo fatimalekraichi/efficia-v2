@@ -32,6 +32,7 @@ const migrationNames = [
   "0011_score_efficia_historical.sql",
   "0012_order_cgv_acceptance.sql",
   "0013_diagnostic_requests.sql",
+  "0019_diagnostic_lead_captures.sql",
 ];
 
 class LocalD1 {
@@ -298,6 +299,7 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
 // Régressions du parcours public ; services externes entièrement simulés.
 const capturePayload = () => ({
   step: "lead_capture", first_name: "Fatima", email: "fatima@example.com",
+  idempotency_key: KEY_ONE,
   audit_status: "lead capturé", source: "Score Efficia gratuit",
 });
 const marketingPayloads = (router) => router.calls
@@ -320,12 +322,114 @@ test("capture seule : aucun groupe ni statut forcé, aucune fausse demande Effic
     assert.equal((await subscribe(makeSubscribeContext(db, capturePayload()))).status, 200);
     assert.equal(db.count("analyses"), 0);
     assert.equal(db.count("diagnostic_requests"), 0);
-    assert.deepEqual((await diagnosticsInAdmin(db)).diagnostics, []);
+    const listing = await diagnosticsInAdmin(db);
+    assert.equal(db.count("diagnostic_lead_captures"), 1);
+    assert.equal(listing.pendingCount, 1);
+    assert.equal(listing.diagnostics.length, 1);
+    assert.equal(listing.diagnostics[0].status, "incomplete");
+    assert.equal(listing.diagnostics[0].analysisId, null);
+    assert.equal(listing.diagnostics[0].company, null);
     assert.equal(router.calls.length, 1);
     assert.deepEqual(marketingPayloads(router)[0], {
       email: "fatima@example.com",
       fields: { name: "Fatima", source: "Score Efficia gratuit" },
     });
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("capture persistée, reprise et demande complète enrichissent une seule ligne sans fusion par e-mail", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    const captures = await Promise.all([subscribe(makeSubscribeContext(db, capturePayload())), subscribe(makeSubscribeContext(db, capturePayload()))]);
+    assert.ok(captures.every(response => response.status === 200));
+    assert.equal(db.count("diagnostic_lead_captures"), 1);
+    let listing = await diagnosticsInAdmin(db);
+    assert.equal(listing.pendingCount, 1);
+    assert.equal(listing.diagnostics[0].status, "incomplete");
+    assert.equal(listing.diagnostics[0].email, "fatima@example.com");
+    const resumed = await subscribe(makeSubscribeContext(db, capturePayload()));
+    assert.equal(resumed.status, 200);
+    assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, 1);
+    assert.equal((await subscribe(makeSubscribeContext(db, diagnosticPayload()))).status, 200);
+    listing = await diagnosticsInAdmin(db);
+    assert.equal(listing.pendingCount, 1);
+    assert.equal(listing.diagnostics.length, 1);
+    assert.equal(listing.diagnostics[0].status, "awaiting_review");
+    assert.equal(listing.diagnostics[0].company, "Entreprise Test");
+    assert.ok(listing.diagnostics[0].analysisId);
+    await subscribe(makeSubscribeContext(db, { ...capturePayload(), idempotency_key: KEY_TWO }));
+    listing = await diagnosticsInAdmin(db);
+    assert.equal(listing.pendingCount, 2, "a separate journey for the same email stays separate");
+    assert.equal(listing.diagnostics.length, 2);
+    db.sqlite.exec("UPDATE diagnostic_requests SET status = 'completed'");
+    assert.equal((await diagnosticsInAdmin(db)).pendingCount, 1, "completion never resurrects the original capture");
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+for (const missingKey of [false, true]) {
+  test(`capture Efficia survives failed MailerLite (missing API key=${missingKey})`, async () => {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db, mailerLiteOk: false });
+    try {
+      const context = makeSubscribeContext(db, capturePayload());
+      if (missingKey) delete context.env.MAILERLITE_API_KEY;
+      const response = await subscribe(context);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).success, true);
+      const listing = await diagnosticsInAdmin(db);
+      assert.equal(listing.pendingCount, 1);
+      assert.equal(listing.diagnostics[0].mailerLiteStatus, "failed");
+      assert.equal(db.count("analyses"), 0);
+    } finally { router.restore(); db.sqlite.close(); }
+  });
+}
+
+test("un échec d'insertion Efficia n'annonce aucun succès ni synchronisation distante", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    db.sqlite.exec("CREATE TRIGGER refuse_capture BEFORE INSERT ON diagnostic_lead_captures BEGIN SELECT RAISE(ABORT, 'storage_failure'); END");
+    const response = await subscribe(makeSubscribeContext(db, capturePayload()));
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).success, false);
+    assert.equal(db.count("diagnostic_lead_captures"), 0);
+    assert.equal(router.calls.length, 0);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("capture : clé obligatoire et synchronisation partielle conservée dans Efficia", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, mailerLiteStatuses: [422, 200] });
+  try {
+    for (const key of ["", "invalid"]) {
+      assert.equal((await subscribe(makeSubscribeContext(db, { ...capturePayload(), idempotency_key: key }))).status, 400);
+    }
+    assert.equal(router.calls.length, 0);
+    const response = await subscribe(makeSubscribeContext(db, capturePayload()));
+    assert.equal((await response.json()).warning, "Marketing synchronization incomplete.");
+    assert.equal((await diagnosticsInAdmin(db)).diagnostics[0].mailerLiteStatus, "partial");
+    for (const payload of marketingPayloads(router)) {
+      assert.equal(payload.groups, undefined);
+      assert.equal(payload.status, undefined);
+      assert.equal(payload.resubscribe, undefined);
+      assert.equal(payload.fields.audit_status, undefined);
+    }
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("une clé de parcours ne peut pas être réaffectée à un autre contact", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    await subscribe(makeSubscribeContext(db, capturePayload()));
+    const before = router.calls.length;
+    for (const payload of [capturePayload(), diagnosticPayload()]) {
+      assert.equal((await subscribe(makeSubscribeContext(db, { ...payload, email: "other@example.com" }))).status, 409);
+    }
+    assert.equal(router.calls.length, before);
+    assert.equal(db.first("SELECT email FROM diagnostic_lead_captures").email, "fatima@example.com");
+    assert.equal(db.count("analyses"), 0);
   } finally { router.restore(); db.sqlite.close(); }
 });
 
@@ -344,7 +448,9 @@ for (const scenario of [
       assert.equal(response.status, scenario.expectedHttp);
       assert.equal(db.count("analyses"), scenario.rows);
       assert.equal(db.count("diagnostic_requests"), scenario.rows);
-      assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, scenario.rows);
+      assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, 1);
+      assert.equal(db.count("diagnostic_lead_captures"), 1);
+      assert.equal((await diagnosticsInAdmin(db)).diagnostics[0].status, scenario.rows ? "awaiting_review" : "incomplete");
       assert.equal(marketingPayloads(router).length, 1);
       assert.equal(marketingPayloads(router)[0].fields.audit_status, undefined);
       if (scenario.rows) assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "pending");

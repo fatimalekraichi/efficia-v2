@@ -48,12 +48,21 @@ export async function onRequestGet(context) {
     FROM diagnostic_requests d
     INNER JOIN analyses a ON a.analysis_id = d.analysis_id
     WHERE a.report_type = 'free'
-    ORDER BY d.created_at DESC
+    UNION ALL
+    SELECT NULL, NULL, NULL, c.first_name, c.email, c.created_at,
+      'incomplete', c.mailerlite_status, NULL
+    FROM diagnostic_lead_captures c
+    WHERE NOT EXISTS (
+      SELECT 1 FROM diagnostic_requests d WHERE d.idempotency_key = c.idempotency_key
+    )
+    ORDER BY submitted_at DESC
     LIMIT ?
   `).bind(limit).all();
 
   const pending = await db.prepare(`
-    SELECT COUNT(*) AS count
+    SELECT COUNT(*) + (SELECT COUNT(*) FROM diagnostic_lead_captures c
+      WHERE NOT EXISTS (SELECT 1 FROM diagnostic_requests d
+        WHERE d.idempotency_key = c.idempotency_key)) AS count
     FROM diagnostic_requests d
     INNER JOIN analyses a ON a.analysis_id = d.analysis_id
     WHERE a.report_type = 'free'

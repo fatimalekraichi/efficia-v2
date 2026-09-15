@@ -73,8 +73,9 @@
             <h2>Audits terminés</h2>
             <p>Questionnaires figés lors de la génération du rapport.</p>
           </div>
+          <button type="button" class="admin-button is-secondary" data-admin-completed-toggle aria-expanded="false" aria-controls="completed-audits-list">Afficher les audits terminés (0)</button>
         </div>
-        <div class="admin-table-wrap">
+        <div class="admin-table-wrap" id="completed-audits-list" hidden>
           <table class="admin-table">
             <thead>
               <tr><th>Entreprise</th><th>Ville</th><th>Type</th><th>Terminé le</th><th>Actions</th></tr>
@@ -91,7 +92,7 @@
           <div>
             <span class="admin-kicker">Score Efficia</span>
             <h2>Diagnostics gratuits à traiter</h2>
-            <p>Demandes reçues depuis le diagnostic public, indépendamment des commandes Stripe.</p>
+            <p>Inscriptions à compléter et demandes reçues depuis le diagnostic public, indépendamment des commandes Stripe.</p>
           </div>
           <div class="admin-diagnostic-count" aria-label="Nombre de diagnostics gratuits à traiter">
             <span>À traiter</span>
@@ -210,6 +211,6 @@
     </form>
   </dialog>
 
-  <script src="/js/admin.js"></script>
+  <script src="/js/admin.js?v=20260915-captures"></script>
 </body>
 </html>

@@ -75,7 +75,7 @@ test("HTTP 200 avec ou sans UTM : champs, étapes et messages identiques au pop-
       assert.doesNotMatch(html, /\binert\b|class="hero"|<header\b|<footer\b|class="conversion-modal__backdrop"|class="conversion-modal__close"|FAQPage/);
       assert.deepEqual(html.match(/<form\b[\s\S]*?<\/form>/g), home.match(/<form\b[\s\S]*?<\/form>/g));
       assert.equal(html.match(/<div class="conversion-step conversion-confirmation"[\s\S]*?<\/ol>/)?.[0], home.match(/<div class="conversion-step conversion-confirmation"[\s\S]*?<\/ol>/)?.[0]);
-      for (const asset of ["/js/analytics.js?v=20260914-consent", "/js/app.js?v=20260914-ads", "/js/cookies.js?v=20260914-ads-v2", "/css/global.css"]) assert.ok(html.includes(`"${asset}"`), asset);
+      for (const asset of ["/js/analytics.js?v=20260914-consent", "/js/app.js?v=20260915-journey", "/js/cookies.js?v=20260914-ads-v2", "/css/global.css"]) assert.ok(html.includes(`"${asset}"`), asset);
     }
     const head = await mf.dispatchFetch("https://efficiadigital.com/diagnostic-gratuit", { method: "HEAD" });
     assert.equal(head.status, 200);
@@ -260,6 +260,7 @@ for (const scenario of [
           }
           ensure(window.efficiaConsent.read().advertising===['all','ads','blocked','reload'].includes(consent),'choice not persisted');
           ensure(__calls[1].idempotency_key===__calls[2].idempotency_key,'retry changed idempotency key');
+          ensure(__calls[0].idempotency_key===__calls[1].idempotency_key,'capture and request use different journeys');
           ensure(__errors.length===0,'JavaScript initialization error');
           if (${Boolean(scenario.popup)}) {
             document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));

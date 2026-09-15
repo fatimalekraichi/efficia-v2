@@ -3,6 +3,19 @@ const diagnosticsBody = document.querySelector("[data-admin-diagnostics]");
 const diagnosticCount = document.querySelector("[data-admin-diagnostic-count]");
 const draftsBody = document.querySelector("[data-admin-drafts]");
 const completedAuditsBody = document.querySelector("[data-admin-completed-audits]");
+const completedAuditsToggle = document.querySelector("[data-admin-completed-toggle]");
+const completedAuditsList = document.querySelector("#completed-audits-list");
+let completedAuditsCount = 0;
+const updateCompletedAuditsToggle = () => {
+  if (!completedAuditsToggle || !completedAuditsList) return;
+  const expanded = !completedAuditsList.hidden;
+  completedAuditsToggle.setAttribute("aria-expanded", String(expanded));
+  completedAuditsToggle.textContent = `${expanded ? "Masquer" : "Afficher"} les audits terminés (${completedAuditsCount})`;
+};
+completedAuditsToggle?.addEventListener("click", () => {
+  completedAuditsList.hidden = !completedAuditsList.hidden;
+  updateCompletedAuditsToggle();
+});
 const filtersForm = document.querySelector("[data-admin-filters]");
 const logoutButtons = document.querySelectorAll("[data-admin-logout]");
 const statElements = document.querySelectorAll("[data-stat]");
@@ -31,6 +44,7 @@ const offerLabels = {
 };
 
 const diagnosticStatusLabels = {
+  incomplete: "Demande à compléter",
   awaiting_review: "À traiter",
   in_progress: "En cours",
   completed: "Terminé",
@@ -223,8 +237,8 @@ const renderDiagnostics = (diagnostics) => {
 
   diagnosticsBody.innerHTML = diagnostics.map((diagnostic) => `
     <tr>
-      <td><strong>${escapeHtml(diagnostic.company || "—")}</strong></td>
-      <td>${escapeHtml(diagnostic.city || "—")}</td>
+      <td><strong>${escapeHtml(diagnostic.company || (diagnostic.status === "incomplete" ? "À compléter" : "—"))}</strong></td>
+      <td>${escapeHtml(diagnostic.city || (diagnostic.status === "incomplete" ? "À compléter" : "—"))}</td>
       <td>${escapeHtml(diagnostic.firstName || "—")}</td>
       <td>${escapeHtml(diagnostic.email || "—")}</td>
       <td>${formatDate(diagnostic.submittedAt)}</td>
@@ -232,7 +246,7 @@ const renderDiagnostics = (diagnostics) => {
       <td><span class="admin-badge is-mailerlite-${escapeHtml(diagnostic.mailerLiteStatus || "pending")}">${escapeHtml(mailerLiteStatusLabels[diagnostic.mailerLiteStatus] || diagnostic.mailerLiteStatus || "En attente")}</span></td>
       <td>${escapeHtml(reportTypeLabels[diagnostic.reportType] || diagnostic.reportType || "—")}</td>
       <td>
-        <a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>
+        ${diagnostic.analysisId ? `<a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>` : "—"}
       </td>
     </tr>
   `).join("");
@@ -285,6 +299,8 @@ const loadDrafts = async () => {
 
 const renderCompletedAudits = (audits) => {
   if (!completedAuditsBody) return;
+  completedAuditsCount = audits.length;
+  updateCompletedAuditsToggle();
   if (!audits.length) {
     completedAuditsBody.innerHTML = `<tr><td colspan="5" class="admin-empty">Aucun audit terminé.</td></tr>`;
     return;

@@ -41,6 +41,27 @@ const ambiguousCandidatesMessage = "Plusieurs fiches correspondent à votre rech
 let lastFocusedElement = null;
 let leadDraft = {};
 let diagnosticIdempotencyKey = "";
+let diagnosticJourneyOwner = "";
+let diagnosticJourneyCompleted = false;
+const diagnosticJourneyStorageKey = "efficia-diagnostic-journey-v1";
+
+// Persist only a journey token and a digest, never the contact's form fields.
+// A completed journey or a different contact starts a new request, not a merge
+// by email. An unfinished journey survives a reload in the same tab.
+const prepareDiagnosticJourney = async (email) => {
+  const bytes = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(email.trim().toLowerCase()));
+  const owner = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join("");
+  let saved = null;
+  try { saved = JSON.parse(window.sessionStorage.getItem(diagnosticJourneyStorageKey)); } catch { /* Storage may be blocked. */ }
+  if (!diagnosticIdempotencyKey && saved?.owner === owner && !saved.completed
+      && /^[0-9a-f-]{36}$/i.test(saved.key || "")) diagnosticIdempotencyKey = saved.key;
+  if (diagnosticJourneyCompleted || (diagnosticJourneyOwner && diagnosticJourneyOwner !== owner)) diagnosticIdempotencyKey = "";
+  diagnosticJourneyOwner = owner;
+  diagnosticJourneyCompleted = false;
+  const key = getDiagnosticIdempotencyKey();
+  try { window.sessionStorage.setItem(diagnosticJourneyStorageKey, JSON.stringify({ key, owner, completed: false })); } catch { /* In-memory retries still work. */ }
+  return key;
+};
 
 const getDiagnosticIdempotencyKey = () => {
   if (!diagnosticIdempotencyKey) diagnosticIdempotencyKey = window.crypto.randomUUID();
@@ -310,6 +331,7 @@ modal?.addEventListener("blur", (event) => {
 
 stepOneForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (stepOneForm.querySelector(".is-loading")) return;
   if (!validateForm(stepOneForm)) return;
 
   setLoading(stepOneForm, true, "Enregistrement…");
@@ -322,6 +344,7 @@ stepOneForm?.addEventListener("submit", async (event) => {
       step: "lead_capture",
       first_name: leadDraft.firstName,
       email: leadDraft.email,
+      idempotency_key: await prepareDiagnosticJourney(leadDraft.email),
       audit_status: "lead capturé",
       source: "Score Efficia gratuit",
       created_at: createdAt,
@@ -347,6 +370,7 @@ stepOneForm?.addEventListener("submit", async (event) => {
 
 stepTwoForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (stepTwoForm.querySelector(".is-loading")) return;
   if (!validateDiagnosticLookup(stepTwoForm)) return;
 
   setLoading(stepTwoForm, true);
@@ -369,6 +393,8 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       submitted_at: new Date().toISOString(),
     };
     const [result] = await Promise.all([submitLeadRequest(payload), wait(650)]);
+    diagnosticJourneyCompleted = true;
+    try { window.sessionStorage.setItem(diagnosticJourneyStorageKey, JSON.stringify({ key: diagnosticIdempotencyKey, owner: diagnosticJourneyOwner, completed: true })); } catch { /* The form remains usable without storage. */ }
     try { window.efficiaAds?.leadCreated?.(result); } catch { /* Measurement must never block the form. */ }
     setLoading(stepTwoForm, false);
     window.trackAnalyticsEvent?.("diagnostic_submitted");

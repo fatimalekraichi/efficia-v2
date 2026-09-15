@@ -9,6 +9,34 @@ const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
 const d1Nullable = (value) => (value === undefined ? null : value);
 
+export function normalizeDiagnosticCapture(payload = {}) {
+  const idempotencyKey = cleanText(payload.idempotency_key || payload.idempotencyKey, 80);
+  const firstName = cleanText(payload.first_name || payload.firstName, 100);
+  const email = cleanText(payload.email, 254).toLowerCase();
+  if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey) || !firstName || !isValidEmail(email)) {
+    return { ok: false };
+  }
+  return { ok: true, data: { idempotencyKey, firstName, email } };
+}
+
+export async function verifyDiagnosticJourney(db, submission) {
+  const owner = await db.prepare(`
+    SELECT email FROM diagnostic_lead_captures WHERE idempotency_key = ?
+    UNION ALL SELECT email FROM diagnostic_requests WHERE idempotency_key = ?
+  `).bind(submission.idempotencyKey, submission.idempotencyKey).all();
+  return (owner.results || []).every(row => row.email === submission.email);
+}
+
+export async function persistDiagnosticCapture(db, submission) {
+  const now = new Date().toISOString();
+  await db.prepare(`
+    INSERT INTO diagnostic_lead_captures
+      (idempotency_key, first_name, email, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(idempotency_key) DO NOTHING
+  `).bind(submission.idempotencyKey, submission.firstName, submission.email, now, now).run();
+  return verifyDiagnosticJourney(db, submission);
+}
+
 function persistenceError(phase, error) {
   if (error?.phase) return error;
   const wrapped = new Error(
