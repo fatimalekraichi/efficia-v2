@@ -2,10 +2,7 @@ import {
   normalizeDiagnosticSubmission,
   updateDiagnosticMailerLiteStatus,
 } from "./lib/diagnosticRequests.js";
-import {
-  resolveMailerLiteGroupId,
-  resolvePublicSite,
-} from "./lib/environmentIsolation.js";
+import { resolvePublicSite } from "./lib/environmentIsolation.js";
 
 const MAILERLITE_ENDPOINT = "https://connect.mailerlite.com/api/subscribers";
 const ERROR_MESSAGE = "Une erreur est survenue. Merci de réessayer dans quelques instants.";
@@ -101,6 +98,25 @@ const sendToMailerLite = (apiKey, payload) => fetch(MAILERLITE_ENDPOINT, {
   },
   body: JSON.stringify(payload),
 });
+
+async function diagnosticStatusFields(apiKey, email) {
+  const response = await fetch(`${MAILERLITE_ENDPOINT}/${encodeURIComponent(email)}`, {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+  });
+  if (response.status === 404) return { audit_status: "diagnostic demandé" };
+  if (!response.ok) throw new Error("MAILERLITE_SUBSCRIBER_LOOKUP_FAILED");
+  const body = await response.json();
+  if (!body?.data?.id || !body.data.fields || typeof body.data.fields !== "object"
+      || Array.isArray(body.data.fields)) {
+    throw new Error("MAILERLITE_SUBSCRIBER_RESPONSE_INVALID");
+  }
+  const current = body.data.fields.audit_status;
+  // Preserve every other status, including manual/custom values. Never replay
+  // an existing value: omitting it leaves newer remote updates untouched.
+  return current == null || current === "" || current === "lead capturé"
+    ? { audit_status: "diagnostic demandé" }
+    : {};
+}
 
 async function createDiagnosticAnalysis(context, submission) {
   const connectorToken = cleanText(context.env.CONNECTOR_TOKEN, 500);
@@ -245,22 +261,6 @@ export async function onRequestPost(context) {
     return jsonResponse({ success: false, error: site.error }, site.status);
   }
 
-  const mailerLiteGroup = resolveMailerLiteGroupId(context.env, site.environment, {
-    purpose: "diagnostic",
-  });
-  if (!mailerLiteGroup.ok && step === "lead_capture") {
-    console.error("Diagnostic MailerLite group configuration rejected.", {
-      error: mailerLiteGroup.error,
-      variable: mailerLiteGroup.variable || null,
-      conflicting_variable: mailerLiteGroup.conflictingVariable || null,
-    });
-    return jsonResponse({
-      success: false,
-      error: mailerLiteGroup.error,
-      variable: mailerLiteGroup.variable || null,
-    }, 500);
-  }
-
   let diagnostic = null;
   if (step === "diagnostic_request") {
     try {
@@ -292,20 +292,6 @@ export async function onRequestPost(context) {
         status: diagnostic.status,
       });
     }
-    if (!mailerLiteGroup.ok) {
-      console.error("Diagnostic MailerLite group configuration rejected after D1 persistence.", {
-        error: mailerLiteGroup.error,
-        variable: mailerLiteGroup.variable || null,
-        conflicting_variable: mailerLiteGroup.conflictingVariable || null,
-      });
-      await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "failed");
-      return jsonResponse({
-        success: true,
-        analysisId: diagnostic.analysisId,
-        status: diagnostic.status,
-        warning: mailerLiteGroup.error,
-      });
-    }
   }
 
   const apiKey = context.env.MAILERLITE_API_KEY;
@@ -324,14 +310,23 @@ export async function onRequestPost(context) {
   }
 
   const source = cleanText(payload.source, 120) || "Score Efficia gratuit";
-  const auditStatus = cleanText(payload.audit_status, 120)
-    || (step === "diagnostic_request" ? "diagnostic demandé" : "lead capturé");
   const fields = {
     name: submission.firstName,
     source,
-    audit_status: auditStatus,
   };
   if (step === "diagnostic_request") {
+    try {
+      Object.assign(fields, await diagnosticStatusFields(apiKey, submission.email));
+    } catch {
+      console.error("Diagnostic request: MailerLite subscriber lookup failed.");
+      await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "failed");
+      return jsonResponse({
+        success: true,
+        analysisId: diagnostic.analysisId,
+        status: diagnostic.status,
+        warning: "Marketing synchronization unavailable.",
+      });
+    }
     fields.company = submission.companyName;
     fields.google_business_url = submission.googleBusinessUrl;
     fields.city = submission.city;
@@ -339,13 +334,15 @@ export async function onRequestPost(context) {
 
   const mailerLitePayload = {
     email: submission.email,
-    status: "active",
-    resubscribe: true,
     fields,
-    groups: [mailerLiteGroup.groupId],
   };
+  // No groups or subscription-status fields, including in the fallback below.
+  // Capturing a lead is not sending a report and must not restart an automation.
+  // Capture also never writes audit_status, even for a new subscriber: a slow
+  // capture/retry must not overwrite a concurrent completed request.
 
   let response;
+  let partialSync = false;
   try {
     response = await sendToMailerLite(apiKey, mailerLitePayload);
   } catch {
@@ -356,10 +353,7 @@ export async function onRequestPost(context) {
     console.error("MailerLite request failed", { status: response?.status || null });
     const fallbackPayload = {
       email: submission.email,
-      status: "active",
-      resubscribe: true,
       fields: { name: submission.firstName },
-      groups: [mailerLiteGroup.groupId],
     };
     let fallbackResponse;
     try {
@@ -381,16 +375,21 @@ export async function onRequestPost(context) {
       }
       return jsonResponse({ success: false, error: "MailerLite request failed." }, 502);
     }
+    partialSync = true;
   }
 
   if (diagnostic) {
-    await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "synced");
+    await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, partialSync ? "partial" : "synced");
     return jsonResponse({
       success: true,
       analysisId: diagnostic.analysisId,
       status: diagnostic.status,
+      ...(partialSync ? { warning: "Marketing synchronization incomplete." } : {}),
     });
   }
 
-  return jsonResponse({ success: true });
+  return jsonResponse({
+    success: true,
+    ...(partialSync ? { warning: "Marketing synchronization incomplete." } : {}),
+  });
 }

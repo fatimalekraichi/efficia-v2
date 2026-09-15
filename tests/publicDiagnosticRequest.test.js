@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
+import vm from "node:vm";
 
 import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestGet as getDiagnosticContext } from "../functions/api/admin/free-diagnostic-context/[analysisId].js";
@@ -9,6 +10,8 @@ import { onRequestPost as analyze } from "../functions/api/analyze.js";
 import { onRequestPost as benchmark } from "../functions/api/benchmark.js";
 import { normalizeDiagnosticSubmission } from "../functions/lib/diagnosticRequests.js";
 import { onRequestPost as subscribe } from "../functions/subscribe.js";
+import { onRequestGet as listDiagnostics } from "../functions/api/admin/diagnostic-requests.js";
+import { finalizeQuestionnaireSnapshot } from "../functions/lib/auditQuestionnaireSnapshots.js";
 
 const TOKEN = "local-connector-token";
 const ADMIN_SECRET = "local-admin-secret";
@@ -50,6 +53,7 @@ class LocalD1 {
         return makeBound(nextParams);
       },
       first: async () => database.prepare(sql).get(...params) || null,
+      all: async () => ({ results: database.prepare(sql).all(...params) }),
       run: async () => {
         const result = database.prepare(sql).run(...params);
         return { success: true, meta: { changes: Number(result.changes) } };
@@ -118,6 +122,9 @@ const makeSubscribeContext = (db, payload) => ({
 function installFetchRouter({
   db,
   mailerLiteOk = true,
+  mailerLiteStatuses = [],
+  mailerLiteSubscriber = null,
+  mailerLiteLookupResponse = null,
   benchmarkOk = true,
   sparseBusiness = false,
   transformAnalyzeBody = null,
@@ -127,6 +134,7 @@ function installFetchRouter({
 }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
+  let subscriber = mailerLiteSubscriber ? structuredClone(mailerLiteSubscriber) : null;
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(String(input));
     calls.push({ url: url.href, options });
@@ -154,7 +162,21 @@ function installFetchRouter({
       });
     }
     if (url.hostname === "connect.mailerlite.com") {
-      return new Response("", { status: mailerLiteOk ? 200 : 500 });
+      if (!options.method || options.method === "GET") {
+        if (mailerLiteLookupResponse) return mailerLiteLookupResponse();
+        return subscriber ? Response.json({ data: subscriber }) : new Response(null, { status: 404 });
+      }
+      assert.equal(options.method, "POST");
+      assert.equal(url.pathname, "/api/subscribers");
+      const status = mailerLiteStatuses.shift() ?? (mailerLiteOk ? 200 : 500);
+      if (status >= 400) return new Response(null, { status });
+      const incoming = JSON.parse(options.body);
+      subscriber ||= { id: "local-subscriber", email: incoming.email, status: "active", fields: {}, groups: [] };
+      Object.assign(subscriber.fields, incoming.fields);
+      if (incoming.status) subscriber.status = incoming.status;
+      if (incoming.resubscribe) subscriber.status = "active";
+      for (const group of incoming.groups || []) if (!subscriber.groups.includes(group)) subscriber.groups.push(group);
+      return Response.json({ data: subscriber }, { status });
     }
     if (url.hostname.includes("outscraper")) {
       const isCompetitorRequest = url.searchParams.get("organizationsPerQueryLimit") === "10";
@@ -174,6 +196,7 @@ function installFetchRouter({
   };
   return {
     calls,
+    subscriber: () => structuredClone(subscriber),
     restore: () => { globalThis.fetch = originalFetch; },
   };
 }
@@ -253,8 +276,7 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
     assert.equal(request.email, "fatima@example.com");
     assert.equal(request.status, "awaiting_review");
     assert.equal(request.mailerlite_status, "synced");
-    const mailerLiteCall = router.calls.find(({ url }) => url.includes("connect.mailerlite.com"));
-    assert.deepEqual(JSON.parse(mailerLiteCall.options.body).groups, ["preview-diagnostic"]);
+    assert.equal(marketingPayloads(router)[0].groups, undefined);
     assert.equal(first.group_id, undefined);
 
     const duplicateResponse = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
@@ -262,7 +284,7 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
     assert.equal(duplicate.analysisId, first.analysisId);
     assert.equal(db.count("analyses"), 1);
     assert.equal(db.count("diagnostic_requests"), 1);
-    assert.equal(router.calls.filter(({ url }) => url.includes("connect.mailerlite.com")).length, 1);
+    assert.equal(marketingPayloads(router).length, 1);
 
     const laterResponse = await subscribe(makeSubscribeContext(db, diagnosticPayload(KEY_TWO)));
     assert.equal(laterResponse.status, 200);
@@ -270,6 +292,270 @@ test("une soumission publique crée exactement une analyse gratuite et reste ide
     assert.equal(db.count("diagnostic_requests"), 2);
   } finally {
     router.restore();
+  }
+});
+
+// Régressions du parcours public ; services externes entièrement simulés.
+const capturePayload = () => ({
+  step: "lead_capture", first_name: "Fatima", email: "fatima@example.com",
+  audit_status: "lead capturé", source: "Score Efficia gratuit",
+});
+const marketingPayloads = (router) => router.calls
+  .filter(({ url, options }) => new URL(url).hostname === "connect.mailerlite.com" && options.method === "POST")
+  .map(({ options }) => JSON.parse(options.body));
+async function diagnosticsInAdmin(db, query = "") {
+  const cookie = (await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET })).split(";")[0];
+  const response = await listDiagnostics({
+    request: new Request(`${PREVIEW_ORIGIN}/api/admin/diagnostic-requests${query}`, { headers: { Cookie: cookie } }),
+    env: { ADMIN_SESSION_SECRET: ADMIN_SECRET, ORDERS_DB: db },
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+test("capture seule : aucun groupe ni statut forcé, aucune fausse demande Efficia", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    assert.equal((await subscribe(makeSubscribeContext(db, capturePayload()))).status, 200);
+    assert.equal(db.count("analyses"), 0);
+    assert.equal(db.count("diagnostic_requests"), 0);
+    assert.deepEqual((await diagnosticsInAdmin(db)).diagnostics, []);
+    assert.equal(router.calls.length, 1);
+    assert.deepEqual(marketingPayloads(router)[0], {
+      email: "fatima@example.com",
+      fields: { name: "Fatima", source: "Score Efficia gratuit" },
+    });
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+for (const scenario of [
+  { name: "étape 2 invalide", payload: { company_name: "", city: "" }, expectedHttp: 400, rows: 0 },
+  { name: "analyse en erreur", routerOptions: { analyzeBoundaryResponse: () => Response.json({ error_code: "COLLECTION_FAILED" }, { status: 500 }) }, expectedHttp: 502, rows: 0 },
+  { name: "stockage Efficia en erreur", failBatch: true, expectedHttp: 502, rows: 0 },
+  { name: "benchmark en erreur après stockage", routerOptions: { benchmarkOk: false }, expectedHttp: 502, rows: 1 },
+]) {
+  test(`investigation : après capture réussie, ${scenario.name} conserve le contact capturé`, async () => {
+    const db = new LocalD1({ failBatch: scenario.failBatch });
+    const router = installFetchRouter({ db, ...scenario.routerOptions });
+    try {
+      assert.equal((await subscribe(makeSubscribeContext(db, capturePayload()))).status, 200);
+      const response = await subscribe(makeSubscribeContext(db, { ...diagnosticPayload(), ...scenario.payload }));
+      assert.equal(response.status, scenario.expectedHttp);
+      assert.equal(db.count("analyses"), scenario.rows);
+      assert.equal(db.count("diagnostic_requests"), scenario.rows);
+      assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, scenario.rows);
+      assert.equal(marketingPayloads(router).length, 1);
+      assert.equal(marketingPayloads(router)[0].fields.audit_status, undefined);
+      if (scenario.rows) assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "pending");
+    } finally { router.restore(); db.sqlite.close(); }
+  });
+}
+
+test("le repli sans champs métier signale une synchronisation partielle, sans groupe ni réactivation", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, mailerLiteStatuses: [200, 422, 200] });
+  try {
+    await subscribe(makeSubscribeContext(db, capturePayload()));
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).warning, "Marketing synchronization incomplete.");
+    assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, 1);
+    assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "partial");
+    const payloads = marketingPayloads(router);
+    assert.equal(payloads.length, 3);
+    assert.equal(payloads[0].fields.audit_status, undefined);
+    assert.equal(payloads[1].fields.audit_status, "diagnostic demandé");
+    assert.deepEqual(payloads[2].fields, { name: "Fatima" });
+    for (const p of payloads) {
+      assert.equal(p.groups, undefined);
+      assert.equal(p.status, undefined);
+      assert.equal(p.resubscribe, undefined);
+    }
+    // A partial sync must not short-circuit a retry as if it were fully synced.
+    await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(db.count("diagnostic_requests"), 1);
+    assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "synced");
+    assert.equal(router.subscriber().fields.audit_status, "diagnostic demandé");
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("reprendre la première étape ne régresse pas audit_status après une demande complète", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    await subscribe(makeSubscribeContext(db, capturePayload()));
+    assert.equal(db.count("diagnostic_requests"), 1);
+    assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, 1);
+    assert.deepEqual(marketingPayloads(router).map(p => p.fields.audit_status), ["diagnostic demandé", undefined]);
+    assert.equal(router.subscriber().fields.audit_status, "diagnostic demandé");
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+for (const subscriptionStatus of ["active", "unsubscribed", "unconfirmed", "bounced", "junk"]) {
+  for (const fallback of [false, true]) {
+    test(`capture et demande préservent ${subscriptionStatus}, les groupes et le statut avancé (repli=${fallback})`, async () => {
+      const db = new LocalD1();
+      const router = installFetchRouter({
+        db,
+        mailerLiteSubscriber: { id: "existing", status: subscriptionStatus, fields: { audit_status: "diagnostic envoyé" }, groups: ["existing-group"] },
+        mailerLiteStatuses: fallback ? [422, 200, 422, 200] : [],
+      });
+      try {
+        for (const payload of [capturePayload(), { ...diagnosticPayload(), audit_status: "lead capturé" }]) {
+          const response = await subscribe(makeSubscribeContext(db, payload));
+          assert.equal(response.status, 200);
+          const body = await response.json();
+          assert.equal(body.warning, fallback ? "Marketing synchronization incomplete." : undefined);
+          assert.equal(router.subscriber().status, subscriptionStatus);
+          assert.equal(router.subscriber().fields.audit_status, "diagnostic envoyé");
+          assert.deepEqual(router.subscriber().groups, ["existing-group"]);
+        }
+        for (const payload of marketingPayloads(router)) {
+          for (const field of ["status", "resubscribe", "groups"]) assert.equal(Object.hasOwn(payload, field), false);
+          assert.equal(Object.hasOwn(payload.fields, "audit_status"), false);
+        }
+        assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, fallback ? "partial" : "synced");
+      } finally { router.restore(); db.sqlite.close(); }
+    });
+  }
+}
+
+for (const previous of [null, "", "lead capturé", "diagnostic demandé", "pdf_generated", "statut manuel à conserver"]) {
+  test(`la demande complète respecte le statut existant ${JSON.stringify(previous)} et ignore le statut client`, async () => {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db, mailerLiteSubscriber: { id: "existing", status: "active", fields: { audit_status: previous } } });
+    try {
+      await subscribe(makeSubscribeContext(db, { ...diagnosticPayload(), audit_status: "diagnostic envoyé" }));
+      const advances = [null, "", "lead capturé"].includes(previous);
+      assert.equal(router.subscriber().fields.audit_status, advances ? "diagnostic demandé" : previous);
+      assert.equal(Object.hasOwn(marketingPayloads(router)[0].fields, "audit_status"), advances);
+    } finally { router.restore(); db.sqlite.close(); }
+  });
+}
+
+for (const lookup of [
+  { name: "HTTP 503", respond: () => new Response(null, { status: 503 }) },
+  { name: "réponse mal formée", respond: () => Response.json({ data: {} }) },
+  { name: "JSON invalide", respond: () => new Response("not-json") },
+  { name: "réseau indisponible", respond: () => { throw new Error("local-only failure"); } },
+]) {
+  test(`lecture MailerLite impossible (${lookup.name}) : demande conservée, aucune écriture distante aveugle`, async () => {
+    const db = new LocalD1();
+    const router = installFetchRouter({ db, mailerLiteLookupResponse: lookup.respond });
+    try {
+      const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).warning, "Marketing synchronization unavailable.");
+      assert.equal(db.count("diagnostic_requests"), 1);
+      assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "failed");
+      assert.equal(marketingPayloads(router).length, 0);
+    } finally { router.restore(); db.sqlite.close(); }
+  });
+}
+
+test("une capture livrée tardivement ne remplace jamais le statut d'une demande finalisée entre-temps", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    await subscribe(makeSubscribeContext(db, capturePayload()));
+    const delayedCapture = structuredClone(marketingPayloads(router)[0]);
+    await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    const current = router.subscriber();
+    Object.assign(current.fields, delayedCapture.fields);
+    assert.equal(current.fields.audit_status, "diagnostic demandé");
+    assert.equal(Object.hasOwn(delayedCapture.fields, "audit_status"), false);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("le groupe diagnostic n'est plus requis ni transmis, même si une ancienne configuration est présente", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    for (const payload of [capturePayload(), diagnosticPayload()]) {
+      const context = makeSubscribeContext(db, payload);
+      delete context.env.MAILERLITE_PREVIEW_DIAGNOSTIC_GROUP_ID;
+      const response = await subscribe(context);
+      assert.equal(response.status, 200);
+    }
+    assert.ok(marketingPayloads(router).every(p => !Object.hasOwn(p, "groups")));
+    assert.deepEqual(router.subscriber().groups, []);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("la synchronisation partielle remonte depuis D1 jusqu'au libellé réel du back-office", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, mailerLiteStatuses: [422, 200] });
+  try {
+    await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    const { diagnostics } = await diagnosticsInAdmin(db);
+    assert.equal(diagnostics[0].mailerLiteStatus, "partial");
+    const source = readFileSync(new URL("../js/admin.js", import.meta.url), "utf8");
+    const context = vm.createContext({ diagnosticsBody: { innerHTML: "" },
+      escapeHtml: String, formatDate: String, diagnosticStatusLabels: {}, reportTypeLabels: {} });
+    vm.runInContext(source.slice(source.indexOf("const mailerLiteStatusLabels ="), source.indexOf("const reportTypeLabels ="))
+      + source.slice(source.indexOf("const buildFreeDiagnosticToolUrl ="), source.indexOf("const draftResumeUrl ="))
+      + "\nthis.renderDiagnostics = renderDiagnostics;", context);
+    context.renderDiagnostics(diagnostics);
+    assert.match(context.diagnosticsBody.innerHTML, /Synchronisation partielle/);
+    assert.doesNotMatch(context.diagnosticsBody.innerHTML, />Synchronisé</);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("investigation : finaliser un PDF gratuit n'envoie aucun e-mail et ne synchronise pas MailerLite", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    const created = await (await subscribe(makeSubscribeContext(db, diagnosticPayload()))).json();
+    for (const name of ["0014_audit_drafts.sql", "0015_audit_questionnaire_snapshots.sql"]) {
+      db.sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+    }
+    db.sqlite.prepare(`INSERT INTO audit_drafts (draft_id, analysis_id, status, report_type,
+      answers_version, answers_json, current_step, created_at, updated_at)
+      VALUES (?, ?, 'draft', 'free', 'score-efficia-questionnaire-v2', ?, 'questionnaire', ?, ?)`)
+      .run("draft-investigation", created.analysisId, JSON.stringify({ questionnaireVersion: "score-efficia-questionnaire-v2", reponses: {} }), "2026-09-15T10:00:00.000Z", "2026-09-15T10:00:00.000Z");
+    const callsBefore = router.calls.length;
+    assert.equal((await finalizeQuestionnaireSnapshot(db, created.analysisId, { pdfFilename: "test-local.pdf" })).ok, true);
+    assert.equal(db.first("SELECT status FROM analyses").status, "pdf_generated");
+    assert.equal(db.first("SELECT status FROM diagnostic_requests").status, "awaiting_review");
+    assert.equal(router.calls.length, callsBefore);
+    assert.equal(marketingPayloads(router).at(-1).fields.audit_status, "diagnostic demandé");
+    assert.equal(db.count("order_tasks"), 0);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("investigation : la liste gratuite ignore les filtres Stripe et peut masquer les demandes au-delà de la limite", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db });
+  try {
+    const older = await (await subscribe(makeSubscribeContext(db, diagnosticPayload()))).json();
+    db.sqlite.prepare("UPDATE diagnostic_requests SET created_at = '2026-09-01T10:00:00.000Z'").run();
+    await subscribe(makeSubscribeContext(db, diagnosticPayload(KEY_TWO)));
+    const limited = await diagnosticsInAdmin(db, "?limit=1&search=inconnu&status=completed&environment=live");
+    assert.equal(limited.pendingCount, 2);
+    assert.equal(limited.diagnostics.length, 1);
+    assert.notEqual(limited.diagnostics[0].analysisId, older.analysisId);
+    assert.equal((await diagnosticsInAdmin(db, "?limit=100")).diagnostics.length, 2);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+test("investigation : ouvrir le mailto marque une intention, pas le résultat de livraison d'un e-mail", async () => {
+  const source = readFileSync(new URL("../js/admin.js", import.meta.url), "utf8");
+  const helper = source.slice(source.indexOf("const markEmailSent ="), source.indexOf("const loadOrders ="));
+  assert.match(helper, /^const markEmailSent = async/);
+  // Le résultat d'un logiciel de messagerie externe n'est jamais transmis au site.
+  // On ne simule donc pas un transport SMTP inexistant : seul le clic est observable.
+  for (const delivery of ["success", "failure", "cancelled"]) {
+    const calls = [];
+    const context = vm.createContext({ fetch: async (url, options) => { calls.push({ url, body: JSON.parse(options.body) }); return Response.json({ success: true }); } });
+    vm.runInContext(`${helper}\nthis.markEmailSent = markEmailSent;`, context);
+    await context.markEmailSent({ taskId: "local-task", currentStatus: "pdf_generated", currentNotes: "" });
+    assert.equal(calls.length, 1, delivery);
+    assert.equal(calls[0].url, "/admin/tasks/local-task");
+    assert.equal(calls[0].body.status, "pdf_generated");
+    assert.match(calls[0].body.notes, /\[audit_email_sent\] Audit ouvert pour envoi/);
+    assert.equal(calls[0].body.sent_at, undefined);
   }
 });
 

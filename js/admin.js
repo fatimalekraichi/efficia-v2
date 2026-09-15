@@ -39,6 +39,7 @@ const diagnosticStatusLabels = {
 const mailerLiteStatusLabels = {
   pending: "En attente",
   synced: "Synchronisé",
+  partial: "Synchronisation partielle",
   failed: "Échec",
 };
 
