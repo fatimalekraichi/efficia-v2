@@ -3,6 +3,9 @@ import {
   normalizeDiagnosticCapture,
   persistDiagnosticCapture,
   verifyDiagnosticJourney,
+  loadManualDiagnosticRequest,
+  loadDiagnosticRequestByIdempotency,
+  persistManualDiagnosticRequest,
   updateDiagnosticMailerLiteStatus,
 } from "./lib/diagnosticRequests.js";
 import { resolvePublicSite } from "./lib/environmentIsolation.js";
@@ -121,6 +124,16 @@ async function diagnosticStatusFields(apiKey, email) {
 }
 
 async function createDiagnosticAnalysis(context, submission) {
+  const db = context.env.ORDERS_DB;
+  const manualResult = (saved, idempotent = false) => ({ ok: true, status: "manual_review",
+    requestId: submission.idempotencyKey, reviewReason: saved.review_reason,
+    mailerLiteStatus: saved.mailerlite_status || "pending", idempotent });
+  const existing = await loadDiagnosticRequestByIdempotency(db, submission.idempotencyKey);
+  if (!existing) {
+    const saved = await loadManualDiagnosticRequest(db, submission.idempotencyKey);
+    if (saved) return manualResult(saved, true);
+    if (submission.declaredNoListing) return manualResult(await persistManualDiagnosticRequest(db, submission, "declared_absent"));
+  }
   const connectorToken = cleanText(context.env.CONNECTOR_TOKEN, 500);
   if (!connectorToken || !context.env.ORDERS_DB) {
     return {
@@ -146,6 +159,7 @@ async function createDiagnosticAnalysis(context, submission) {
         ville: submission.googleBusinessUrl ? "" : submission.city,
         activite: "",
         googleBusinessUrl: submission.googleBusinessUrl,
+        ...(submission.countryCode ? { countryCode: submission.countryCode } : {}),
         diagnosticRequest: {
           requestId: crypto.randomUUID(),
           idempotencyKey: submission.idempotencyKey,
@@ -168,6 +182,12 @@ async function createDiagnosticAnalysis(context, submission) {
   }
   const data = await response.json().catch(() => null);
   if (!response.ok) {
+    // Only explicit, classified lookup outcomes qualify for manual intake.
+    // Configuration, storage and unknown endpoint failures remain errors.
+    const reason = data?.lookupOutcome;
+    if (['not_found', 'unavailable', 'ambiguous', 'unresolved'].includes(reason)) {
+      return manualResult(await persistManualDiagnosticRequest(db, submission, reason));
+    }
     return {
       ok: false,
       status: response.status,
@@ -310,22 +330,24 @@ export async function onRequestPost(context) {
     if (diagnostic.idempotent && diagnostic.mailerLiteStatus === "synced") {
       return jsonResponse({
         success: true,
+        ...(diagnostic.requestId ? { requestId: diagnostic.requestId, reviewReason: diagnostic.reviewReason } : {}),
         analysisId: diagnostic.analysisId,
         status: diagnostic.status,
       });
     }
   }
 
+  const diagnosticResponse = (warning) => jsonResponse({ success: true,
+    ...(diagnostic.analysisId ? { analysisId: diagnostic.analysisId } : { requestId: diagnostic.requestId, reviewReason: diagnostic.reviewReason }),
+    status: diagnostic.status, ...(warning ? { warning } : {}) });
+  const updateDiagnosticSync = status => safelyUpdateMailerLiteStatus(context.env.ORDERS_DB,
+    diagnostic.analysisId, status, diagnostic.requestId || null);
+
   const apiKey = context.env.MAILERLITE_API_KEY;
   if (!apiKey) {
     if (diagnostic) {
-      await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "failed");
-      return jsonResponse({
-        success: true,
-        analysisId: diagnostic.analysisId,
-        status: diagnostic.status,
-        warning: "Marketing synchronization unavailable.",
-      });
+      await updateDiagnosticSync("failed");
+      return diagnosticResponse("Marketing synchronization unavailable.");
     }
     return captureSyncResult("failed");
   }
@@ -340,13 +362,8 @@ export async function onRequestPost(context) {
       Object.assign(fields, await diagnosticStatusFields(apiKey, submission.email));
     } catch {
       console.error("Diagnostic request: MailerLite subscriber lookup failed.");
-      await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "failed");
-      return jsonResponse({
-        success: true,
-        analysisId: diagnostic.analysisId,
-        status: diagnostic.status,
-        warning: "Marketing synchronization unavailable.",
-      });
+      await updateDiagnosticSync("failed");
+      return diagnosticResponse("Marketing synchronization unavailable.");
     }
     fields.company = submission.companyName;
     fields.google_business_url = submission.googleBusinessUrl;
@@ -386,13 +403,8 @@ export async function onRequestPost(context) {
     if (!fallbackResponse?.ok) {
       console.error("MailerLite fallback request failed", { status: fallbackResponse?.status || null });
       if (diagnostic) {
-        await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, "failed");
-        return jsonResponse({
-          success: true,
-          analysisId: diagnostic.analysisId,
-          status: diagnostic.status,
-          warning: "Marketing synchronization unavailable.",
-        });
+        await updateDiagnosticSync("failed");
+        return diagnosticResponse("Marketing synchronization unavailable.");
       }
       return captureSyncResult("failed");
     }
@@ -400,13 +412,8 @@ export async function onRequestPost(context) {
   }
 
   if (diagnostic) {
-    await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId, partialSync ? "partial" : "synced");
-    return jsonResponse({
-      success: true,
-      analysisId: diagnostic.analysisId,
-      status: diagnostic.status,
-      ...(partialSync ? { warning: "Marketing synchronization incomplete." } : {}),
-    });
+    await updateDiagnosticSync(partialSync ? "partial" : "synced");
+    return diagnosticResponse(partialSync ? "Marketing synchronization incomplete." : null);
   }
 
   return captureSyncResult(partialSync ? "partial" : "synced");

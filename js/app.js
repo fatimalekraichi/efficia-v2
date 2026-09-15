@@ -204,6 +204,10 @@ const updateDiagnosticFields = () => {
     if (!isUnknown) field.value = "";
     setFieldState(field, true);
   });
+  for (const field of stepTwoForm.querySelectorAll('[name="countryCode"], [name="declaredNoListing"]')) {
+    field.disabled = !isUnknown;
+    if (!isUnknown) { if (field.type === "checkbox") field.checked = false; else field.value = ""; }
+  }
 
   if (stepTwoErrorMessage) stepTwoErrorMessage.textContent = "";
 };
@@ -368,6 +372,30 @@ stepOneForm?.addEventListener("submit", async (event) => {
   }
 });
 
+const defaultConfirmation = confirmationStep ? {
+  title: confirmationStep.querySelector('h2').textContent,
+  paragraphs: [...confirmationStep.querySelectorAll(':scope > p')].map(p => p.textContent),
+} : null;
+const renderDiagnosticConfirmation = result => {
+  if (!confirmationStep || !defaultConfirmation) return;
+  const manual = result.status === "manual_review";
+  const messages = {
+    not_found: "Aucune fiche Google trouvée lors de notre recherche. Nous vérifierons votre demande manuellement.",
+    declared_absent: "Vous avez indiqué ne pas avoir de fiche Google. Nous vérifierons votre demande manuellement.",
+    unavailable: "La recherche est temporairement indisponible. Votre demande est enregistrée pour vérification manuelle.",
+    ambiguous: "Plusieurs résultats nécessitent une vérification. Votre demande est enregistrée pour examen manuel.",
+    unresolved: "La fiche n’a pas pu être identifiée avec certitude. Votre demande est enregistrée pour examen manuel.",
+  };
+  confirmationStep.querySelector('h2').textContent = manual ? "Votre demande est enregistrée" : defaultConfirmation.title;
+  const paragraphs = confirmationStep.querySelectorAll(':scope > p');
+  paragraphs.forEach((p, i) => { p.textContent = defaultConfirmation.paragraphs[i]; });
+  if (manual) {
+    paragraphs[0].textContent = messages[result.reviewReason];
+    paragraphs[1].textContent = "Nous examinerons les informations fournies avant de vous proposer la suite adaptée. Aucun score n’a été calculé.";
+  }
+  confirmationStep.querySelector('.conversion-next').hidden = manual;
+};
+
 stepTwoForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (stepTwoForm.querySelector(".is-loading")) return;
@@ -385,6 +413,8 @@ stepTwoForm?.addEventListener("submit", async (event) => {
       company_name: stepTwoData.company,
       google_business_url: stepTwoData.googleBusiness,
       city: stepTwoData.city,
+      ...(stepTwoData.countryCode ? { country_code: stepTwoData.countryCode } : {}),
+      ...(stepTwoData.declaredNoListing === "1" ? { declared_no_listing: true } : {}),
       idempotency_key: getDiagnosticIdempotencyKey(),
       audit_status: "diagnostic demandé",
       completed_step_2: true,
@@ -398,6 +428,7 @@ stepTwoForm?.addEventListener("submit", async (event) => {
     try { window.efficiaAds?.leadCreated?.(result); } catch { /* Measurement must never block the form. */ }
     setLoading(stepTwoForm, false);
     window.trackAnalyticsEvent?.("diagnostic_submitted");
+    renderDiagnosticConfirmation(result);
     showStep(3);
     window.trackAnalyticsEvent?.("diagnostic_confirmation_view");
     confirmationStep?.querySelector("button")?.focus({ preventScroll: true });

@@ -33,6 +33,7 @@ const migrationNames = [
   "0012_order_cgv_acceptance.sql",
   "0013_diagnostic_requests.sql",
   "0019_diagnostic_lead_captures.sql",
+  "0020_diagnostic_manual_review.sql",
 ];
 
 class LocalD1 {
@@ -132,6 +133,7 @@ function installFetchRouter({
   analyzeEnv = {},
   analyzeError = null,
   analyzeBoundaryResponse = null,
+  providerResponse = null,
 }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
@@ -180,6 +182,7 @@ function installFetchRouter({
       return Response.json({ data: subscriber }, { status });
     }
     if (url.hostname.includes("outscraper")) {
+      if (providerResponse) return providerResponse();
       const isCompetitorRequest = url.searchParams.get("organizationsPerQueryLimit") === "10";
       const business = sparseBusiness
         ? { name: "Entreprise Test" }
@@ -231,6 +234,145 @@ test("la migration crée les contraintes et la relation attendues", () => {
   insertRequest.run("request-one", KEY_ONE, "analysis-one");
   assert.throws(() => insertRequest.run("request-two", KEY_ONE, "analysis-two"), /UNIQUE/);
   assert.throws(() => insertRequest.run("request-three", KEY_TWO, "analysis-one"), /UNIQUE/);
+});
+
+test("une recherche réussie sans résultat conserve la demande complète sans analyse inventée", async () => {
+  const db = new LocalD1();
+  const router = installFetchRouter({ db, providerResponse: () => Response.json({ data: [[]] }) });
+  try {
+    await subscribe(makeSubscribeContext(db, capturePayload()));
+    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.success, true);
+    assert.equal(result.reviewReason, "not_found");
+    assert.equal(result.analysisId, undefined);
+    const listing = await diagnosticsInAdmin(db);
+    assert.equal(listing.diagnostics.length, 1);
+    assert.equal(listing.diagnostics[0].company, "Entreprise Test");
+    assert.equal(listing.diagnostics[0].status, "manual_review");
+    assert.equal(db.count("analyses"), 0);
+    assert.equal(router.calls.some(c => new URL(c.url).pathname === "/api/benchmark"), false);
+  } finally { router.restore(); db.sqlite.close(); }
+});
+
+for (const scenario of [
+  { name: "aucun résultat", reason: "not_found", response: () => Response.json({ data: [[]] }) },
+  { name: "timeout fournisseur", reason: "unavailable", response: () => { throw new DOMException("simulated timeout", "AbortError"); } },
+  { name: "erreur HTTP fournisseur", reason: "unavailable", response: () => new Response("technical failure", {status:503}) },
+  { name: "réponse invalide", reason: "unavailable", response: () => Response.json({}) },
+  { name: "recherche en attente", reason: "unavailable", response: () => Response.json({status:"Pending",data:[]}) },
+  { name: "résultats ambigus", reason: "ambiguous", response: () => Response.json({data:[[
+    {name:"Entreprise Test",city:"Bruxelles",place_id:"candidate-one"},
+    {name:"Entreprise Test",city:"Bruxelles",place_id:"candidate-two"},
+  ]]}) },
+  { name: "absence déclarée", reason: "declared_absent", declared: true, response: () => {throw Error("provider must not be called");} },
+]) {
+  test(`demande manuelle : ${scenario.name}, persistance et reprise sans faux score`, async () => {
+    const db = new LocalD1();
+    const router = installFetchRouter({db, providerResponse:scenario.response,
+      mailerLiteSubscriber:{id:"local-existing",status:"unsubscribed",fields:{audit_status:"audit envoyé"},groups:["existing"]}});
+    const payload = {...diagnosticPayload(),country_code:"BE",declared_no_listing:Boolean(scenario.declared)};
+    try {
+      await subscribe(makeSubscribeContext(db,capturePayload()));
+      const first = await subscribe(makeSubscribeContext(db,payload));
+      assert.equal(first.status,200);
+      const result=await first.json();
+      assert.equal(result.reviewReason,scenario.reason);
+      assert.equal(result.status,"manual_review");
+      assert.equal(result.analysisId,undefined);
+      assert.equal(result.requestId,KEY_ONE);
+      const providerCount=router.calls.filter(c=>c.url.includes('outscraper')).length;
+      for (const response of await Promise.all([subscribe(makeSubscribeContext(db,payload)),subscribe(makeSubscribeContext(db,payload))])) {
+        assert.deepEqual(await response.json(),result);
+      }
+      await subscribe(makeSubscribeContext(db,capturePayload()));
+      assert.equal(router.calls.filter(c=>c.url.includes('outscraper')).length,providerCount);
+      if(scenario.declared) assert.equal(providerCount,0);
+      const listing=await diagnosticsInAdmin(db);
+      assert.equal(listing.pendingCount,1);
+      assert.equal(listing.diagnostics.length,1);
+      assert.equal(listing.diagnostics[0].reviewReason,scenario.reason);
+      assert.equal(listing.diagnostics[0].countryCode,"BE");
+      assert.equal(listing.diagnostics[0].company,"Entreprise Test");
+      assert.equal(listing.diagnostics[0].email,"fatima@example.com");
+      assert.equal(listing.diagnostics[0].analysisId,null);
+      assert.equal(db.count("analyses"),0);
+      assert.equal(db.count("diagnostic_requests"),0);
+      assert.equal(db.count("diagnostic_lead_captures"),1);
+      assert.equal(router.calls.some(c=>new URL(c.url).pathname==='/api/benchmark'),false);
+      assert.equal(router.subscriber().status,"unsubscribed");
+      assert.equal(router.subscriber().fields.audit_status,"audit envoyé");
+      assert.deepEqual(router.subscriber().groups,["existing"]);
+      for(const call of router.calls.filter(c=>c.url.includes('mailerlite') && c.options.method==='POST')){
+        const sent=JSON.parse(call.options.body);
+        for(const key of ['groups','status','resubscribe']) assert.equal(sent[key],undefined);
+      }
+    } finally {router.restore();db.sqlite.close();}
+  });
+}
+
+test("échec du stockage de la demande manuelle : aucune confirmation, capture toujours visible", async () => {
+  const db=new LocalD1(); const router=installFetchRouter({db,providerResponse:()=>Response.json({data:[]})});
+  try {
+    await subscribe(makeSubscribeContext(db,capturePayload()));
+    db.sqlite.exec("CREATE TRIGGER fail_manual BEFORE UPDATE OF request_details_json ON diagnostic_lead_captures BEGIN SELECT RAISE(ABORT, 'simulated storage failure'); END");
+    const response=await subscribe(makeSubscribeContext(db,diagnosticPayload()));
+    assert.equal(response.status,502);
+    assert.equal((await response.json()).success,false);
+    const listing=await diagnosticsInAdmin(db);
+    assert.equal(listing.diagnostics[0].status,"incomplete");
+    assert.equal(db.count('analyses'),0);
+  } finally {router.restore();db.sqlite.close();}
+});
+
+for (const providerCountry of ['BE', 'FR', null]) {
+  test(`pays facultatif : recherche BE, fournisseur ${providerCountry}, sans homonyme accepté à tort`, async () => {
+    const db = new LocalD1();
+    const router = installFetchRouter({db,providerResponse:()=>Response.json({data:[[
+      {name:'Entreprise Test',city:'Bruxelles',country_code:providerCountry,place_id:'local-company',category:'Consultant'},
+    ]]})});
+    try {
+      const response=await subscribe(makeSubscribeContext(db,{...diagnosticPayload(),country_code:'Belgique'}));
+      const result=await response.json();
+      assert.equal(response.status,200);
+      assert.equal(result.status,providerCountry==='BE'?'awaiting_review':'manual_review');
+      assert.equal(db.count('analyses'),providerCountry==='BE'?1:0);
+      if(providerCountry!=='BE') assert.equal(result.reviewReason,'unresolved');
+      const call=router.calls.find(c=>c.url.includes('outscraper'));
+      assert.equal(new URL(call.url).searchParams.get('query'),'Entreprise Test Bruxelles BE');
+    } finally {router.restore();db.sqlite.close();}
+  });
+}
+
+for (const mailerLiteStatuses of [[422,200],[500,500]]) {
+  test(`demande sans fiche conservée avec synchronisation ${mailerLiteStatuses[1]===200?'partielle':'en échec'}`, async () => {
+    const partial=mailerLiteStatuses[1]===200;
+    const db=new LocalD1();const router=installFetchRouter({db,mailerLiteStatuses:[...mailerLiteStatuses]});
+    try {
+      const response=await subscribe(makeSubscribeContext(db,{...diagnosticPayload(),declared_no_listing:true}));
+      const result=await response.json();
+      assert.equal(response.status,200);assert.equal(result.success,true);
+      assert.equal(result.reviewReason,'declared_absent');
+      assert.ok(result.warning);
+      const listing=await diagnosticsInAdmin(db);
+      assert.equal(listing.diagnostics.length,1);
+      assert.equal(listing.diagnostics[0].mailerLiteStatus,partial?'partial':'failed');
+      assert.equal(db.count('analyses'),0);
+    } finally {router.restore();db.sqlite.close();}
+  });
+}
+
+test("deux finalisations simultanées sans fiche conservent une seule demande et aucun score", async () => {
+  const db=new LocalD1();const router=installFetchRouter({db,providerResponse:()=>Response.json({data:[]})});
+  try {
+    await subscribe(makeSubscribeContext(db,capturePayload()));
+    const responses=await Promise.all([subscribe(makeSubscribeContext(db,diagnosticPayload())),subscribe(makeSubscribeContext(db,diagnosticPayload()))]);
+    for(const response of responses){assert.equal(response.status,200);assert.equal((await response.json()).success,true);}
+    assert.equal(db.count('diagnostic_lead_captures'),1);
+    assert.equal((await diagnosticsInAdmin(db)).diagnostics.length,1);
+    assert.equal(db.count('analyses'),0);
+  } finally {router.restore();db.sqlite.close();}
 });
 
 test("la validation borne les champs et refuse une URL Google falsifiée", () => {
@@ -770,7 +912,7 @@ test("l’intégration conserve un statut 500 et un code fermé renvoyés par /a
   }
 });
 
-test("une recherche ambiguë conserve le 409 et affiche le message public dédié", async () => {
+test("une ancienne réponse ambiguë non classifiée reste une erreur explicite sans faux succès", async () => {
   const db = new LocalD1();
   const router = installFetchRouter({
     db,

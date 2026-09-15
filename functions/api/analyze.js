@@ -11,6 +11,7 @@
 // D1      : binding ORDERS_DB, table `analyses` (migration 0003_analyses.sql)
 
 import { collectFiche } from "../lib/collectFiche.js";
+import { canonicalCountryCode } from "../lib/countryCodes.js";
 import { addSearchResultContext, collectCompetitors } from "../lib/collectCompetitors.js";
 import {
   loadDiagnosticRequestByIdempotency,
@@ -148,6 +149,7 @@ export async function onRequestPost(context) {
   let selectedPlaceId = "";
   let selectedCandidate = null;
   let diagnosticRequest = null;
+  let lookupCountryCode = "";
   try {
     const payload = await request.json();
     nom = typeof payload?.nom === "string" ? payload.nom.trim() : "";
@@ -178,6 +180,7 @@ export async function onRequestPost(context) {
         return jsonError("INVALID_DIAGNOSTIC_REQUEST", "Invalid diagnostic request.", 400);
       }
       diagnosticRequest = normalizedDiagnosticRequest.data;
+      lookupCountryCode = typeof payload.countryCode === "string" ? payload.countryCode.trim().toUpperCase() : "";
     }
   } catch {
     return jsonError("INVALID_JSON", "Invalid JSON body.", 400);
@@ -208,7 +211,7 @@ export async function onRequestPost(context) {
   const result = await collectFiche({
     nom,
     ville,
-    queryOverride: observationQuery || googleBusinessUrl,
+    queryOverride: observationQuery || googleBusinessUrl || (lookupCountryCode ? `${nom} ${ville} ${lookupCountryCode}` : ""),
     apiKey: env.OUTSCRAPER_API_KEY,
     selectedPlaceId: selectedPlaceId || undefined,
     selectedCandidate: selectedCandidate || undefined,
@@ -223,6 +226,7 @@ export async function onRequestPost(context) {
       return jsonError("AMBIGUOUS_CANDIDATES", "AMBIGUOUS_CANDIDATES", 409, {
         message: result.message,
         candidates: result.candidates || [],
+        ...(diagnosticRequest ? { lookupOutcome: "ambiguous" } : {}),
       });
     }
     // Le candidat choisi manuellement n'a pas pu être retrouvé (résultats
@@ -238,13 +242,19 @@ export async function onRequestPost(context) {
       // result.message = "Aucune entreprise fiable trouvée.") : on relaie ce
       // message précis plutôt que de l'écraser, sans changer le code HTTP ni
       // la forme de la réponse existante.
-      return jsonError("BUSINESS_NOT_FOUND", result.message || "No business found.", 404);
+      return jsonError("BUSINESS_NOT_FOUND", result.message || "No business found.", 404,
+        diagnosticRequest ? { lookupOutcome: result.lookupOutcome || "unresolved" } : {});
     }
     console.error("analyze: collecte échouée", result.code, result.error);
-    return jsonError("COLLECTION_FAILED", "Collection failed.", 502);
+    return jsonError("COLLECTION_FAILED", "Collection failed.", 502,
+      diagnosticRequest && result.lookupOutcome ? { lookupOutcome: result.lookupOutcome } : {});
   }
 
   // 2) Normalisation.
+  if (diagnosticRequest && lookupCountryCode && canonicalCountryCode({ countryCode: result.fiche?.country_code,
+    countryName: result.fiche?.country }) !== lookupCountryCode) {
+    return jsonError("BUSINESS_NOT_FOUND", "Country requires manual verification.", 404, { lookupOutcome: "unresolved" });
+  }
   console.log("analyze:normalizing");
   const fiche = result.fiche;
   const normalized = normaliserFiche(fiche);

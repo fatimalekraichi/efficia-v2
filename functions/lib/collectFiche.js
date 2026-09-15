@@ -547,14 +547,14 @@ export async function collectFiche({
     bodyText = await res.text();
   } catch (err) {
     console.error("collectFiche: appel amont échoué", err && err.name);
-    return { ok: false, code: 502, error: "Outscraper request failed." };
+    return { ok: false, code: 502, error: "Outscraper request failed.", lookupOutcome: "unavailable" };
   } finally {
     clearTimeout(timeout);
   }
 
   if (!res.ok) {
     console.error("collectFiche: réponse amont non OK", res.status);
-    return { ok: false, code: 502, error: "Outscraper returned an error.", status: res.status };
+    return { ok: false, code: 502, error: "Outscraper returned an error.", status: res.status, lookupOutcome: "unavailable" };
   }
 
   let payload;
@@ -562,16 +562,19 @@ export async function collectFiche({
     payload = JSON.parse(bodyText);
   } catch {
     console.error("collectFiche: réponse amont non JSON");
-    return { ok: false, code: 502, error: "Invalid response from Outscraper." };
+    return { ok: false, code: 502, error: "Invalid response from Outscraper.", lookupOutcome: "unavailable" };
   }
 
-  if (payload && typeof payload.status === "string" && payload.status.toLowerCase() === "pending") {
-    console.error("collectFiche: réponse Pending (mode async non géré ici)");
-    return { ok: false, code: 502, error: "Outscraper is processing asynchronously." };
+  if (payload && typeof payload.status === "string" && !['success', 'ok', 'completed'].includes(payload.status.toLowerCase())) {
+    console.error("collectFiche: recherche fournisseur non terminée ou en échec");
+    return { ok: false, code: 502, error: "Outscraper search is not complete.", lookupOutcome: "unavailable" };
   }
 
   // data est un tableau par requête, de tableaux de lieux.
   const data = payload && payload.data;
+  if (!Array.isArray(data) || payload?.error || payload?.errors) {
+    return { ok: false, code: 502, error: "Invalid response from Outscraper.", lookupOutcome: "unavailable" };
+  }
   let candidates = [];
   if (Array.isArray(data) && data.length) {
     const firstQuery = data[0];
@@ -591,7 +594,8 @@ export async function collectFiche({
   }
 
   if (!candidates.length) {
-    return { ok: false, code: 404, error: "No business found." };
+    const empty = data.length === 0 || (Array.isArray(data[0]) && data[0].length === 0);
+    return { ok: false, code: empty ? 404 : 502, error: "No business found.", lookupOutcome: empty ? "not_found" : "unavailable" };
   }
 
   // Repli historique (voir commentaire sur `selectedCandidate` plus haut) :
@@ -678,6 +682,7 @@ export async function collectFiche({
       ok: false,
       code: 404,
       error: "No reliable business match found.",
+      lookupOutcome: "unresolved",
       message: "Aucune entreprise fiable trouvée.",
       reason,
     };
@@ -694,6 +699,7 @@ export async function collectFiche({
       ok: false,
       code: 409,
       error: "AMBIGUOUS_CANDIDATES",
+      lookupOutcome: "ambiguous",
       message: "Nous avons trouvé plusieurs entreprises pouvant correspondre.",
       reason,
       candidates: outcome.candidates.map((entry) => ({

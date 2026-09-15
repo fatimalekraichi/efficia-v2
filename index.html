@@ -856,6 +856,19 @@
           <input type="text" name="city" autocomplete="address-level2">
           <small class="field-error">Indiquez votre ville.</small>
         </label>
+        <label class="is-hidden" data-business-fallback hidden>
+          <span>Pays (facultatif, pour préciser la recherche)</span>
+          <select name="countryCode" disabled>
+            <option value="">Non précisé</option>
+            <option value="BE">Belgique</option><option value="FR">France</option>
+            <option value="LU">Luxembourg</option><option value="CH">Suisse</option>
+            <option value="NL">Pays-Bas</option><option value="DE">Allemagne</option>
+          </select>
+        </label>
+        <label class="conversion-toggle is-hidden" data-business-fallback hidden>
+          <input type="checkbox" name="declaredNoListing" value="1" disabled>
+          <span>Je déclare ne pas avoir de fiche Google</span>
+        </label>
       </div>
 
       <button class="btn btn-primary conversion-submit" type="submit">
@@ -887,7 +900,7 @@
 
 <script src="js/analytics.js?v=20260914-consent"></script>
 <script src="js/openai-ads.js?v=20260914"></script>
-<script src="js/app.js?v=20260915-journey"></script>
+<script src="js/app.js?v=20260915-manual-review"></script>
 <script src="js/cookies.js?v=20260914-ads-v2"></script>
 </body>
 </html>

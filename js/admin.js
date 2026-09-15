@@ -228,6 +228,19 @@ const buildFreeDiagnosticToolUrl = (analysisId) => (
   `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(analysisId)}`
 );
 
+const manualDiagnosticLabels = {
+  not_found: "À vérifier — fiche non trouvée", declared_absent: "À vérifier — absence déclarée",
+  unavailable: "À vérifier — recherche indisponible", ambiguous: "À vérifier — plusieurs résultats",
+  unresolved: "À vérifier — correspondance incertaine",
+};
+const manualDiagnosticDescriptions = {
+  not_found: "Aucune fiche Google trouvée lors de notre recherche.",
+  declared_absent: "Le demandeur déclare ne pas avoir de fiche Google. Cette déclaration reste à vérifier.",
+  unavailable: "La recherche était temporairement indisponible. Cela ne signifie pas que l’entreprise n’a pas de fiche Google.",
+  ambiguous: "Plusieurs résultats nécessitent une vérification manuelle. Aucune fiche n’a été sélectionnée.",
+  unresolved: "Les résultats n’ont pas permis d’identifier une fiche fiable pour cette entreprise et cette localité.",
+};
+
 const renderDiagnostics = (diagnostics) => {
   if (!diagnosticsBody) return;
   if (!diagnostics.length) {
@@ -242,11 +255,17 @@ const renderDiagnostics = (diagnostics) => {
       <td>${escapeHtml(diagnostic.firstName || "—")}</td>
       <td>${escapeHtml(diagnostic.email || "—")}</td>
       <td>${formatDate(diagnostic.submittedAt)}</td>
-      <td><span class="admin-badge is-${escapeHtml(diagnostic.status || "awaiting_review")}">${escapeHtml(diagnosticStatusLabels[diagnostic.status] || diagnostic.status || "À traiter")}</span></td>
+      <td><span class="admin-badge is-${escapeHtml(diagnostic.status || "awaiting_review")}">${escapeHtml(diagnostic.reviewReason ? manualDiagnosticLabels[diagnostic.reviewReason] : diagnosticStatusLabels[diagnostic.status] || diagnostic.status || "À traiter")}</span></td>
       <td><span class="admin-badge is-mailerlite-${escapeHtml(diagnostic.mailerLiteStatus || "pending")}">${escapeHtml(mailerLiteStatusLabels[diagnostic.mailerLiteStatus] || diagnostic.mailerLiteStatus || "En attente")}</span></td>
       <td>${escapeHtml(reportTypeLabels[diagnostic.reportType] || diagnostic.reportType || "—")}</td>
       <td>
-        ${diagnostic.analysisId ? `<a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>` : "—"}
+        ${diagnostic.analysisId ? `<a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>` : diagnostic.reviewReason ? `<details><summary>Examiner la demande</summary>
+          <p>${escapeHtml(manualDiagnosticDescriptions[diagnostic.reviewReason])}</p>
+          <p>Pays indiqué : ${escapeHtml(diagnostic.countryCode || "Non renseigné")}</p>
+          <p>Lien fourni : ${escapeHtml(diagnostic.googleBusinessUrl || "Non renseigné")}</p>
+          <p>Aucune fiche ni aucun score n’a été créé. Vérifiez l’existence de la fiche avant de préparer un diagnostic. Si l’absence est confirmée, le rapport de score actuel n’est pas adapté.</p>
+          <a href="/admin/new-audit/">Ouvrir l’outil manuel après identification de la fiche</a>
+        </details>` : "—"}
       </td>
     </tr>
   `).join("");

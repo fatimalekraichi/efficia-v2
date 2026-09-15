@@ -11,7 +11,8 @@ const chrome = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Conten
 
 // UI contract: real app.js/admin.js and form markup, local simulated services.
 // Persistence/API/atomicity are exercised with SQLite in publicDiagnosticRequest.
-test("Chrome : capture, rechargement, même parcours, erreur puis enrichissement et audits repliables", { skip: !existsSync(chrome), timeout: 40_000 }, async () => {
+for (const reviewReason of [null, "not_found", "unavailable", "ambiguous", "declared_absent"]) {
+test(`Chrome : capture, rechargement, même parcours et examen ${reviewReason || "fiche trouvée"}`, { skip: !existsSync(chrome), timeout: 40_000 }, async () => {
   const rows = new Map();
   const submissions = [];
   const requests = [];
@@ -51,19 +52,41 @@ test("Chrome : capture, rechargement, même parcours, erreur puis enrichissement
       check(list.querySelector('a').textContent==='Consulter' && list.querySelector('[data-duplicate-audit]') && list.querySelector('[data-transfer-premium]'),'lost completed actions');
       toggle.click();check(list.hidden && list.innerHTML===actions,'collapse altered records');
       doc=await page(pub,'/?resume=1');await start(doc);
-      fill(doc,'googleBusiness','https://www.google.com/maps/place/Test');
+      if (${Boolean(reviewReason)}) {
+        doc.querySelector('[name="unknownGoogleBusiness"]').click();
+        fill(doc,'company','Entreprise fictive');fill(doc,'city','Ville fictive');
+        doc.querySelector('[name="countryCode"]').value='BE';
+        if (${reviewReason === "declared_absent"}) doc.querySelector('[name="declaredNoListing"]').click();
+      } else fill(doc,'googleBusiness','https://www.google.com/maps/place/Test');
       let button=doc.querySelector('[data-step="2"] button');button.click();
       await wait(()=>!button.disabled);check(doc.querySelector('[data-step-two-error]').textContent,'step2 error missing');
       admin=await page(adm,'/admin?retry=1');
       await wait(()=>admin.querySelector('[data-admin-diagnostics]').textContent.includes('Demande à compléter'));
       button.click();button.click();
       await wait(()=>doc.querySelector('[data-step="3"]').classList.contains('is-active'));
+      if (${Boolean(reviewReason)}) {
+        const confirmation=doc.querySelector('[data-step="3"]');
+        check(confirmation.querySelector('h2').textContent==='Votre demande est enregistrée','incorrect confirmation');
+        check(confirmation.textContent.includes('Aucun score n’a été calculé.'),'invented score');
+        check(confirmation.querySelector('.conversion-next').hidden,'automatic score promised');
+        if (${reviewReason === "not_found"}) check(confirmation.textContent.includes('Aucune fiche Google trouvée lors de notre recherche.'),'absence not qualified');
+        if (${reviewReason === "unavailable"}) check(confirmation.textContent.includes('La recherche est temporairement indisponible.') && !confirmation.textContent.includes('Aucune fiche Google trouvée'),'outage presented as absence');
+        if (${reviewReason === "ambiguous"}) check(confirmation.textContent.includes('Plusieurs résultats nécessitent une vérification.'),'ambiguity missing');
+        if (${reviewReason === "declared_absent"}) check(confirmation.textContent.includes('Vous avez indiqué ne pas avoir de fiche Google.'),'declaration presented as a finding');
+      }
       admin=await page(adm,'/admin?complete=1');
       await wait(()=>admin.querySelector('[data-admin-diagnostics] a'));
       check(admin.querySelector('[data-admin-diagnostics]').querySelectorAll('tr').length===1,'completion created a second line');
       check(admin.querySelector('[data-admin-diagnostic-count]').textContent==='1','completion counter');
       check(admin.querySelector('[data-admin-diagnostics]').textContent.includes('Entreprise fictive'),'completion not enriched');
       check(!admin.querySelector('[data-admin-diagnostics]').textContent.includes('Demande à compléter'),'incomplete status retained');
+      if (${Boolean(reviewReason)}) {
+        check(!admin.querySelector('[data-admin-diagnostics] a[href*="analysisId"]'),'fake analysis link');
+        const details=admin.querySelector('[data-admin-diagnostics] details');
+        check(details,'manual review missing');details.querySelector('summary').click();
+        check(details.open && details.textContent.includes('Aucune fiche ni aucun score n’a été créé.'),'cannot examine request');
+        check(details.textContent.includes('BE'),'country lost');
+      }
       check(pub.contentWindow.__errors.length===0 && adm.contentWindow.__errors.length===0,'JavaScript error');
       doc=await page(pub,'/?new=1');await start(doc);
       admin=await page(adm,'/admin?new=1');await wait(()=>admin.querySelector('[data-admin-diagnostic-count]').textContent==='2');
@@ -83,8 +106,11 @@ test("Chrome : capture, rechargement, même parcours, erreur puis enrichissement
         return json({ success: true, status: "incomplete" });
       }
       if (rejectNextRequest) {rejectNextRequest = false;return json({ success: false }, 503);}
-      Object.assign(rows.get(p.idempotency_key), { analysisId: "local-analysis", company: "Entreprise fictive", city: "Ville fictive", status: "awaiting_review", reportType: "free" });
-      return json({ success: true, analysisId: "local-analysis", status: "awaiting_review" });
+      Object.assign(rows.get(p.idempotency_key), reviewReason
+        ? {company:p.company_name,city:p.city,countryCode:p.country_code,status:"manual_review",reviewReason}
+        : { analysisId: "local-analysis", company: "Entreprise fictive", city: "Ville fictive", status: "awaiting_review", reportType: "free" });
+      return json(reviewReason ? {success:true,requestId:p.idempotency_key,status:"manual_review",reviewReason}
+        : { success: true, analysisId: "local-analysis", status: "awaiting_review" });
     }
     if (path === "/api/admin/diagnostic-requests") return json({ success: true, diagnostics: [...rows.values()], pendingCount: rows.size });
     if (path === "/api/admin/audit-snapshots") return json({ success: true, audits: [{ analysisId: "finalized", company: "Rapport conservé", reportType: "free", answersVersion: "score-efficia-questionnaire-v4" }] });
@@ -105,9 +131,15 @@ test("Chrome : capture, rechargement, même parcours, erreur puis enrichissement
     assert.equal(new Set(submissions.slice(0, 4).map(p => p.idempotency_key)).size, 1);
     assert.notEqual(submissions[4].idempotency_key, submissions[0].idempotency_key);
     assert.equal(rows.size, 2);
+    if (reviewReason) {
+      assert.equal(submissions[2].country_code,"BE");
+      assert.equal(Boolean(submissions[2].declared_no_listing),reviewReason === "declared_absent");
+      assert.equal(submissions[2].google_business_url,undefined);
+    }
     assert.equal(requests.filter(r => r.startsWith("POST ") && r !== "POST /subscribe").length, 0);
   } finally {
     server.closeAllConnections();await new Promise(resolve => server.close(resolve));
     rmSync(dir, { recursive: true, force: true });
   }
 });
+}

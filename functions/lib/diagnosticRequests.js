@@ -1,3 +1,5 @@
+import { canonicalCountryCode } from "./countryCodes.js";
+
 const GOOGLE_HOST_PATTERN = /(^|\.)google\.(?:com|[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$/i;
 const GOOGLE_MAPS_HOST_PATTERN = /(^|\.)googleapis\.com$|(^|\.)goo\.gl$|(^|\.)maps\.app\.goo\.gl$/i;
 const GOOGLE_CONTENT_HOST_PATTERN = /(^|\.)googleusercontent\.com$/i;
@@ -69,6 +71,12 @@ export function normalizeDiagnosticSubmission(payload = {}) {
   const companyName = cleanText(payload.company_name || payload.company, 180);
   const city = cleanText(payload.business_location || payload.city, 120);
   const googleBusinessUrl = cleanText(payload.google_business_url || payload.googleBusiness, 2000);
+  const country = cleanText(payload.country_code || payload.countryCode, 80);
+  const countryCode = country ? canonicalCountryCode({ countryCode: country }) || canonicalCountryCode({ countryName: country }) : null;
+  const declaredNoListing = payload.declared_no_listing === true;
+
+  if (country && !countryCode) return { ok: false, error: "INVALID_COUNTRY" };
+  if (declaredNoListing && (googleBusinessUrl || !companyName || !city)) return { ok: false, error: "INVALID_NO_LISTING_DECLARATION" };
 
   if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
     return { ok: false, error: "INVALID_IDEMPOTENCY_KEY" };
@@ -92,8 +100,34 @@ export function normalizeDiagnosticSubmission(payload = {}) {
       companyName,
       city,
       googleBusinessUrl,
+      ...(countryCode ? { countryCode } : {}),
+      ...(declaredNoListing ? { declaredNoListing: true } : {}),
     },
   };
+}
+
+export async function loadManualDiagnosticRequest(db, key) {
+  return db.prepare(`SELECT review_reason, mailerlite_status FROM diagnostic_lead_captures
+    WHERE idempotency_key = ? AND submitted_at IS NOT NULL`).bind(key).first();
+}
+
+export async function persistManualDiagnosticRequest(db, submission, reason) {
+  if (!['not_found', 'declared_absent', 'unavailable', 'ambiguous', 'unresolved'].includes(reason)) throw new Error('INVALID_REVIEW_REASON');
+  const now = new Date().toISOString();
+  const details = JSON.stringify({ company: submission.companyName, city: submission.city,
+    countryCode: submission.countryCode || null, googleBusinessUrl: submission.googleBusinessUrl });
+  await db.prepare(`INSERT INTO diagnostic_lead_captures
+    (idempotency_key, first_name, email, created_at, updated_at, request_details_json, review_reason, submitted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(idempotency_key) DO UPDATE SET
+      request_details_json = excluded.request_details_json, review_reason = excluded.review_reason,
+      submitted_at = excluded.submitted_at, updated_at = excluded.updated_at
+    WHERE diagnostic_lead_captures.email = excluded.email AND diagnostic_lead_captures.submitted_at IS NULL`)
+    .bind(submission.idempotencyKey, submission.firstName, submission.email, now, now, details, reason, now).run();
+  if (!await verifyDiagnosticJourney(db, submission)) throw new Error('JOURNEY_OWNER_MISMATCH');
+  const saved = await loadManualDiagnosticRequest(db, submission.idempotencyKey);
+  if (!saved) throw new Error('MANUAL_REQUEST_NOT_SAVED');
+  return saved;
 }
 
 export function normalizeInternalDiagnosticRequest(value = {}) {

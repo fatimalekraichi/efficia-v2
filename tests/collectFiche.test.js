@@ -167,7 +167,8 @@ test("collectFiche : la sentinelle fournisseur __NO_PLACE_FOUND__ n’est jamais
       suppressSensitiveLogs: true,
     });
     assert.equal(result.ok, false);
-    assert.equal(result.code, 404);
+    assert.equal(result.code, 502);
+    assert.equal(result.lookupOutcome, "unavailable", "la sentinelle accompagnée d’une erreur n’est pas une preuve d’absence");
     assert.equal(result.error, "No business found.");
   } finally {
     restore();
