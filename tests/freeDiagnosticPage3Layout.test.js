@@ -38,7 +38,7 @@ function pageFixture({ business, unknown = false, terminal = false, longLabels =
     <div class="rapport-header"><div class="rapport-logo"><svg role="img" aria-label="Efficia Digital" viewBox="0 0 340 104"><rect width="340" height="104" fill="#fff"></rect><text x="8" y="64" font-size="34" fill="#0f3186">Efficia Digital</text></svg></div><span class="rap-etiquette">Diagnostic Efficia™</span></div>
     <div class="chapitre">Étape 3 · Ce que nous avons vérifié</div><h1 class="rapport-title">Une méthode rigoureuse, sans vous noyer dans la technique</h1>
     <p class="rapport-subtitle">Pour établir ce diagnostic, nous avons passé la fiche de ${escapeHtml(business)} au crible de 20 vérifications applicables à cette fiche.</p>
-    <div class="v3-method-top${terminal ? " v3-method-top--with-neutral" : ""}"><div class="v3-method-number"><b>20</b><span>vérifications applicables</span><small>à cette fiche</small></div><div class="v3-method-number v3-method-number--ok"><b>5</b><span>Conformes</span><small>signaux positifs</small></div><div class="v3-method-number v3-method-number--warn"><b>3</b><span>À améliorer</span><small>à renforcer</small></div><div class="v3-method-number v3-method-number--ko"><b>8</b><span>Prioritaires</span><small>à traiter d'abord</small></div><div class="v3-method-number v3-method-number--unknown"><b>${unknown ? 4 : 0}</b><span>À confirmer</span><small>contrôles encore non résolus</small></div>${terminal ? `<div class="v3-method-number v3-method-number--neutral"><b>1</b><span>Non vérifiables</span><small>publiquement</small></div>` : ""}</div>
+    <div class="v3-method-top${terminal ? " v3-method-top--with-neutral" : ""}"><div class="v3-method-number"><b>20</b><span>vérifications applicables</span><small>à cette fiche</small></div><div class="v3-method-number v3-method-number--ok"><b>5</b><span>Conformes</span><small>signaux positifs</small></div><div class="v3-method-number v3-method-number--warn"><b>3</b><span>À améliorer</span><small>à renforcer</small></div><div class="v3-method-number v3-method-number--ko"><b>8</b><span>Prioritaires</span><small>à traiter d'abord</small></div>${terminal ? `<div class="v3-method-number v3-method-number--neutral"><b>1</b><span>Non vérifiables</span><small>publiquement</small></div>` : ""}</div>
     <p class="v3-method-categories"><b>Domaines analysés :</b> Informations essentielles · Photos &amp; visuels · Avis clients · Contenu de la fiche · Activité &amp; animation · Visibilité locale</p>
     <section class="v3-representative"><h2>Constats représentatifs</h2>${observations.map(([title, status, text]) => `<article class="v3-observation"><b>${escapeHtml(title)}<span class="v3-status v3-status--${status === "prioritaire" ? "ko" : status === "conforme" ? "ok" : status === "à confirmer" ? "unknown" : status === "non vérifiable publiquement" ? "neutral" : "warn"}">${status}</span></b>${escapeHtml(text)}</article>`).join("")}</section>
     <div class="v3-boundary"><h2>Ce qui est réservé à l'Audit Efficia™</h2><p>L'Audit détaille les corrections exactes et les vérifications qui nécessitent l'accès au compte.</p></div>
@@ -60,7 +60,6 @@ function pageFixture({ business, unknown = false, terminal = false, longLabels =
 
 test("page 3 V3.2 conserve un contrôle géométrique sans masquage", () => {
   assert.match(css, /\.report-v3 \.v3-method-top/u);
-  assert.match(css, /\.report-v3 \.v3-method-number--unknown/u);
   assert.match(css, /\.report-v3 \.v3-method-top--with-neutral/u);
   assert.match(css, /\.report-v3 \.v3-method-number--neutral/u);
   assert.doesNotMatch(css, /\.report-v3[^{}]*overflow\s*:\s*hidden/u);
@@ -68,7 +67,7 @@ test("page 3 V3.2 conserve un contrôle géométrique sans masquage", () => {
   assert.match(generator, /contentBottom <= footerRect\.top - securityGap/u);
   assert.match(generator, /appliquerCompactionLocaleRapport\(\)/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
-  assert.match(generator, /contrôles encore non résolus/u);
+  assert.doesNotMatch(generator, /statHtml\(counts\.unknown, "À confirmer"/u);
   assert.match(generator, /Non vérifiables", "publiquement", "neutral"/u);
   assert.match(generator, /descriptionRemplie:"Description visible"/u);
   assert.doesNotMatch(generator, /descriptionRemplie:"Description remplie"/u);

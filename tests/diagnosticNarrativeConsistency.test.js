@@ -62,6 +62,52 @@ const MK_ELEC = {
 const ID_BY_KEY = { recenceAvis: 1, tauxReponseAvis: 2, qualiteReponsesAvis: 3, photoRecente: 4, varietePhotos: 5 };
 const MAX_PAR_ID = 4;
 
+test("photos : la réponse manuelle d'ancienneté devient le texte de référence du PDF", () => {
+  const code = sliceBetween(html, "function texteAnciennetePhotosConfirmee(){", "function texteControleRapportV3(item){");
+  const labels = ["3 mois ou moins", "3 à 12 mois", "Plus de 12 mois"];
+  const attendus = [
+    "Les dernières photos ont été publiées il y a trois mois ou moins.",
+    "Les dernières photos ont été publiées il y a entre trois mois et un an.",
+    "Les dernières photos ont été publiées il y a plus d’un an.",
+  ];
+  for (let optionIndex = 0; optionIndex < labels.length; optionIndex += 1) {
+    const context = {
+      CRITERE_IDS: { photoRecente: 4 },
+      sourcesCriteres: new Map([[4, "manual"]]),
+      trouverCritere: () => ({ opts: labels.map((label) => [label, 0]) }),
+      document: { querySelector: () => ({ dataset: { optionIndex: String(optionIndex) } }) },
+    };
+    vm.runInNewContext(`${code}\nglobalThis.resultat=texteAnciennetePhotosConfirmee();`, context);
+    assert.equal(context.resultat, attendus[optionIndex]);
+  }
+  assert.match(html, /const description = anciennetePhotos \|\| effectiveText/u);
+  assert.match(html, /selectedOptionIndex:Number\(selected\?\.dataset\.optionIndex\)/u);
+  assert.match(html, /input\[name="c\$\{cr\.id\}"\]\[data-option-index="\$\{optionIndex\}"\]/u);
+});
+
+test("page 1 : la qualité des réponses n'est un point fort que si la fréquence est conforme et la qualité vérifiée", () => {
+  const code = sliceBetween(html, "function forceChiffree(cr){", "function rapportSansAvis(){");
+  const execute = ({ frequence, verification }) => {
+    const context = {
+      donneesAnalyse: {},
+      etatCritere: () => frequence,
+      statutVerificationCritere: () => verification,
+      estNombre: () => false,
+      forceRapport: () => "Réponses aux avis soignées et personnalisées.",
+      fmtNote: String,
+      nEntier: String,
+      positionOrganiqueConfirmee: () => false,
+      libelleRechercheRapport: String,
+      libellePositionRapport: String,
+    };
+    vm.runInNewContext(`${code}\nglobalThis.resultat=forceChiffree({key:"qualiteReponsesAvis"});`, context);
+    return context.resultat;
+  };
+  assert.equal(execute({ frequence: "insuffisant", verification: "manually_confirmed" }), null);
+  assert.equal(execute({ frequence: "conforme", verification: "not_verified" }), null);
+  assert.equal(execute({ frequence: "conforme", verification: "manually_confirmed" }), "Réponses aux avis soignées et personnalisées.");
+});
+
 function createPriorityHarness({ etats = {}, donneesAnalyse = {}, manualCriteria = [] } = {}) {
   const photoComparator = sliceBetween(html, "function comparerVolumePhotos(", "/* ============ PAGE 2");
   const code = sliceBetween(html, "function critereConfirmeMax(key){", "function resultatAttenduPriorite(item, ctx){");
@@ -90,6 +136,7 @@ function createPriorityHarness({ etats = {}, donneesAnalyse = {}, manualCriteria
     // (et non un paramètre ctx) : on la fournit ici pour rester fidèle au
     // code réel de l'admin (aucune réécriture de cette fonction existante).
     donneesAnalyse,
+    texteAnciennetePhotosConfirmee: () => "",
   };
   vm.runInNewContext(`${photoComparator}\n${code}`, context);
   return context;
@@ -631,6 +678,7 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
     trouverCritere: (id) => (id !== undefined && id !== null ? { max: MAX_OVERRIDES_TASKC[id] || 4 } : null),
     lirePoints: (id) => (id in points ? points[id] : null),
     donneesAnalyse,
+    texteAnciennetePhotosConfirmee: () => "",
   };
   vm.runInNewContext(`${photoComparator}\n${code}`, context);
   return context;

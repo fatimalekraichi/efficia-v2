@@ -527,7 +527,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   };
   context.globalThis = context;
   vm.runInNewContext(`${helperCode}\n${comparaisonPhotosCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
-    FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite,
+    FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite, actionPrioriteVisibiliteMaitrisable,
     recommandationPriorite, beneficePriorite, constatObservePriorite,
     consequenceBusinessPriorite, resultatAttenduPriorite,
     compterElementsAConfirmerRapport, phraseElementsAConfirmer
@@ -572,18 +572,13 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   assert.match(texts, /premiers avis authentiques/i);
   assert.doesNotMatch(texts, /note moyenne|notes faibles|avis visibles|ne semblent pas recevoir de réponse/i);
 
-  // Correctif ciblé (2026-08-30, PDF admin diagnostic gratuit) : cette
-  // recommandation ne doit plus jamais mentionner "les services et le
-  // contenu local" (défaut corrigé, voir decisionVisibiliteAdmin() dans
-  // admin/free-diagnostic-production/index.html). Dans cet état précis du
-  // harnais (catégorie principale conforme : 4/4 ; zone desservie non
-  // vérifiable publiquement, donc jamais "à corriger"), le cas retenu est
-  // "position" : ni catégorie ni zone ne sont mentionnées, formulation
-  // neutre centrée sur l'écart de classement.
+  // Le classement observé reste un constat : il n'est jamais transformé en
+  // priorité. Seules les catégories insuffisantes peuvent alimenter cette
+  // famille avec une action maîtrisable par l'entreprise.
   const visibilityFamily = context.api.FAMILLES_PRIORITES.find((item) => item.key === "visibilite");
-  const safeVisibilityAction = context.api.actionFamillePriorite(visibilityFamily);
-  assert.doesNotMatch(safeVisibilityAction, /catégorie principale|zone desservie|services et le contenu local/i);
-  assert.match(safeVisibilityAction, /écarts visibles|mieux positionnées/i);
+  const safeVisibilityAction = context.api.actionPrioriteVisibiliteMaitrisable({ critere: { key: "categoriePrincipale" } });
+  assert.match(safeVisibilityAction, /catégorie principale|activité réellement proposée/i);
+  assert.doesNotMatch(safeVisibilityAction, /position|top 3|apparaître/i);
   const offerPriority = selected.find((item) => item.famille === "offre");
   assert.doesNotMatch(context.api.resultatAttenduPriorite(offerPriority, reportContext), /où vous intervenez|zone/i);
 
@@ -593,7 +588,13 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
 
   state.position = 5;
   context.donneesAnalyse.position = 5;
-  assert.equal(context.api.selectionnerPrioritesDynamiques(candidates).some((item) => item.famille === "visibilite"), true);
+  assert.equal(context.api.selectionnerPrioritesDynamiques(candidates).some((item) => item.famille === "visibilite"), false);
+  const withCategoryGap = context.api.selectionnerPrioritesDynamiques([
+    candidate("categoriePrincipale", 4, 4),
+    candidate("noteMoyenne", 6, 6),
+    candidate("descriptionRemplie", 4, 4),
+  ]);
+  assert.equal(withCategoryGap.some((item) => item.famille === "visibilite"), true);
 
   state.reviewsPresence = "present";
   context.donneesAnalyse.nbAvis = 12;

@@ -296,7 +296,7 @@ test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit re
 const RESULTAT_ATTENDU_CODE = sliceBetween(html, "function resultatAttenduInfos(item = null){", "function microLivrablePriorite(item, ctx, rank){");
 const PRIORITE_INFOS_REVENDIQUEE_CODE = sliceBetween(html, "function clePriorite(item){", "function titreInfosPriorite(item = null){");
 
-function callResultatAttenduPrioriteVisibilite(mocks = {}) {
+function callResultatAttenduPrioriteVisibilite(mocks = {}, key = "categoriePrincipale") {
   const context = {
     estNombre,
     conditionAvis: () => "none",
@@ -310,34 +310,33 @@ function callResultatAttenduPrioriteVisibilite(mocks = {}) {
     choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
   };
   vm.runInNewContext(`${CORE_CODE}\n${PRIORITE_INFOS_REVENDIQUEE_CODE}\n${RESULTAT_ATTENDU_CODE}\nglobalThis.run=resultatAttenduPriorite;`, context);
-  return context.run({ famille: "visibilite" }, {});
+  return context.run({ famille: "visibilite", priorityKey:key, critere:{key} }, {});
 }
 
 const FORBIDDEN_RANKING_PROMISE = /mieux positionnée|meilleures chances d'être vue|premier regard|garanti[re]|classement (assuré|garanti)/i;
 
 test("Resultat-attendu-fix 1 : categorie prouvee inadequate -> formulation prudente exacte, sans promesse de classement", () => {
   const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 1, categoryMax: 4 });
-  assert.equal(resultat, "une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.");
+  assert.equal(resultat, "une catégorie principale cohérente avec l'activité réellement proposée.");
   assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
 });
 
-test("Resultat-attendu-fix 2 : position faible + categorie CONFORME -> aucune promesse de classement (cas 'position')", () => {
-  const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "on_site" });
-  assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
-  assert.doesNotMatch(resultat, /fiche (mieux positionnée|plus visible|en meilleure position)/i);
+test("Resultat-attendu-fix 2 : le classement local est exclu des priorités proposées", () => {
+  assert.match(html, /if\(cr\.key === "classementLocal"\) return false;/u);
+  assert.doesNotMatch(sliceBetween(html, "function titrePriorite(item){", "function prioritePhotosPorteSurActualite(item){"), /Apparaître sur|top 3|classement local/iu);
 });
 
-test("Resultat-attendu-fix 3 : zone desservie genuinement incorrecte (categorie conforme) -> resultat distinct, sans promesse de classement", () => {
-  const resultat = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "service_area", zoneReponse: "incoherent" });
+test("Resultat-attendu-fix 3 : catégories secondaires -> résultat concret, sans promesse de classement", () => {
+  const resultat = callResultatAttenduPrioriteVisibilite({}, "categoriesSecondaires");
+  assert.equal(resultat, "des catégories secondaires cohérentes avec les services réellement proposés.");
   assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
 });
 
-test("Resultat-attendu-fix 4 : les 3 cas (categorie/zone/position) produisent des resultats distincts, aucun ne promet de classement", () => {
+test("Resultat-attendu-fix 4 : les priorités de catégories restent distinctes et ne promettent aucun classement", () => {
   const categorie = callResultatAttenduPrioriteVisibilite({ categoryPoints: 1, categoryMax: 4 });
-  const zone = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "service_area", zoneReponse: "incoherent" });
-  const position = callResultatAttenduPrioriteVisibilite({ categoryPoints: 4, categoryMax: 4, zoneMode: "on_site" });
-  const resultats = [categorie, zone, position];
-  assert.equal(new Set(resultats).size, 3, "les 3 cas doivent produire 3 textes distincts");
+  const secondaires = callResultatAttenduPrioriteVisibilite({}, "categoriesSecondaires");
+  const resultats = [categorie, secondaires];
+  assert.equal(new Set(resultats).size, 2, "les deux actions de catégories doivent produire deux textes distincts");
   for (const resultat of resultats) {
     assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE, `promesse de classement detectee dans : ${resultat}`);
   }
@@ -364,8 +363,7 @@ test("Resultat-attendu-fix 6 : les corrections precedentes restent intactes (auc
   // Categorie INCONNUE (points=null) reste distincte de categorie PROUVEE
   // INADEQUATE (points=0) -- decisionVisibiliteAdmin() doit retomber sur
   // "position", pas "categorie", donc pas la formulation categorie.
-  const resultatInconnue = callResultatAttenduPrioriteVisibilite({ categoryPoints: null, categoryMax: 4 });
-  assert.notEqual(resultatInconnue, "une fiche plus cohérente avec l'activité réellement proposée et la recherche locale ciblée.");
+  assert.match(html, /if\(cr\.key === "classementLocal"\) return false;/u);
 });
 
 test("Resultat-attendu-fix 7 : score / prix / nombre de pages du diagnostic gratuit restent inchanges apres cette micro-correction", () => {
@@ -416,7 +414,7 @@ test("Visibilite-fix (integration actionFamillePriorite, page 5 du PDF gratuit) 
    ======================================================================== */
 const CONSTAT_OBSERVE_CODE = sliceBetween(html, "function constatObservePriorite(item, ctx){", "function consequenceReputation(ctx){");
 
-function callConstatObservePrioriteVisibilite(mocks, position) {
+function callConstatObservePrioriteVisibilite(mocks, position, key = "categoriePrincipale") {
   const context = {
     estNombre,
     CRITERE_IDS: { categoriePrincipale: 1 },
@@ -426,12 +424,13 @@ function callConstatObservePrioriteVisibilite(mocks, position) {
     reponseZoneDesserte: () => mocks.zoneReponse ?? "coherent",
   };
   vm.runInNewContext(`${CORE_CODE}\n${CONSTAT_OBSERVE_CODE}\nglobalThis.run=constatObservePriorite;`, context);
-  return context.run({ famille: "visibilite" }, { data: { position, moyennesConcurrents: {} }, recherche: null });
+  return context.run({ famille: "visibilite", priorityKey:key, critere:{key} }, { data: { position, moyennesConcurrents: {} }, recherche: null });
 }
 
-test("Visibilite-fix (integration constatObservePriorite, page 5) : position non mesurable + categorie conforme -> coherent avec l'action (pas de mention de categorie)", () => {
+test("Visibilite-fix (integration constatObservePriorite, page 5) : la priorité retenue reste une action de catégorie maîtrisable", () => {
   const constat = callConstatObservePrioriteVisibilite({ categoryPoints: 4, categoryMax: 4 }, null);
-  assert.doesNotMatch(constat, /catégorie|services/i);
+  assert.match(constat, /catégorie principale|activité réellement proposée/i);
+  assert.doesNotMatch(constat, /position|top 3|apparaître/i);
 });
 
 test("Visibilite-fix (integration constatObservePriorite, page 5) : jamais l'ancienne formulation groupant categories+services+mots-cles", () => {
@@ -444,13 +443,13 @@ test("Visibilite-fix (integration constatObservePriorite, page 5) : jamais l'anc
    jamais en remplacement) : les emplacements identifies utilisent bien tous
    la meme logique centralisee -- pas de copie divergente.
    ======================================================================== */
-test("Structure : les emplacements 'visibilite' identifies passent tous par decisionVisibiliteAdmin() / les tables VISIBILITE_*", () => {
+test("Structure : le renderer gratuit exclut le classement et utilise une action concrète pour les catégories", () => {
   assert.match(html, /if\(famille\.key === "visibilite"\) return VISIBILITE_ACTION_LONGUE\[decisionVisibiliteAdmin\(\)\];/);
   assert.match(html, /actions\.push\(\[VISIBILITE_ACTION_COURTE\[casVisibilite\], VISIBILITE_ACTION_SOUS_TITRE\[casVisibilite\]\]\);/);
   assert.match(html, /constat = VISIBILITE_CONSTAT\[decisionVisibiliteAdmin\(\)\];/);
   assert.match(html, /visibilite:VISIBILITE_ACTION_COURTE\[decisionVisibiliteAdmin\(\)\]/);
-  assert.match(html, /return VISIBILITE_CONSTAT\[decisionVisibiliteAdmin\(\)\];/);
-  assert.match(html, /visibilite: VISIBILITE_RESULTAT_ATTENDU\[decisionVisibiliteAdmin\(\)\],/);
+  assert.match(html, /function actionPrioriteVisibiliteMaitrisable\(item\)/u);
+  assert.match(html, /if\(cr\.key === "classementLocal"\) return false;/u);
 });
 
 test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (hors commentaires documentant le correctif)", () => {

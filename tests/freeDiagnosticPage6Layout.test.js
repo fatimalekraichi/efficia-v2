@@ -111,7 +111,7 @@ function pageOffresFixture({ business, withConcurrents = false, withDeduction = 
         <a class="payment-button payment-button--pack" data-pdf-link="payment" href="https://www.efficiadigital.com/achat?offre=visibilite" target="_blank" rel="noopener noreferrer">Optimiser ma fiche maintenant</a>
       </article>
     </section>
-    <section class="v3-after"><div><b>Après votre commande — Audit</b>Vous recevez votre rapport complet sous 24 heures ouvrées.</div><div><b>Après votre commande — Pack</b>Nous préparons les optimisations puis vous les faisons valider avant toute publication.</div></section>
+    <section class="v3-after v3-after--single"><div><b>Après votre commande — Pack</b>Nous préparons les optimisations puis vous les faisons valider avant toute publication.</div></section>
     <div class="v3-signature"><b>Diagnostic réalisé par l'équipe Efficia Digital</b> · Une question ? Répondez simplement à l'e-mail.</div>
     <p class="v3-legal">Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au 25 août 2026${concurrentsClause}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.</p>
     <div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="6">Page 6/6</span></div>
@@ -211,6 +211,21 @@ async function measureLayouts(directory, profileDir, scenarios, server) {
   assert.ok(result, "page 6 : mesures DOM absentes");
   return JSON.parse(result);
 }
+
+test("page 6 : aucune promesse de délai de 24 heures n'est rendue", () => {
+  assert.doesNotMatch(generator, /Vous recevez votre rapport complet sous 24 heures ouvrées/u);
+  assert.match(generator, /function supprimerPromesseDelaiAudit\(texte\)/u);
+  assert.match(generator, /v3-after--single/u);
+  const source = generator.match(/function supprimerPromesseDelaiAudit\(texte\)\{[\s\S]*?\n\}/u)?.[0];
+  assert.ok(source, "normaliseur de la promesse de délai introuvable");
+  const supprimer = new Function(`${source}; return supprimerPromesseDelaiAudit;`)();
+  assert.equal(supprimer("Vous recevrez votre rapport complet dans 24 heures ouvrées."), "");
+  assert.equal(supprimer("Vous recevez votre rapport complet sous 24 heures ouvrées."), "");
+  assert.equal(supprimer("Texte conservé. Vous recevrez votre rapport complet dans 24 heures ouvrées."), "Texte conservé.");
+  const rendered = pageOffresFixture({ business: "Entreprise de contrôle" });
+  assert.doesNotMatch(rendered, /24 heures ouvrées/u);
+  assert.match(rendered, /Après votre commande — Pack/u);
+});
 
 test("page 6 : scénarios de contenu variables — marge >= 24px, sans alerte, sans coupe ni chevauchement", { skip: !hasChrome, timeout: 25_000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "efficia-page6-layout-"));

@@ -927,10 +927,10 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
   assert.equal(result.pageCount, 6);
   assert.equal(result.pdfPages, 6, "le PDF jsPDF reçoit les six pages réellement composées");
   assert.ok(result.pdfBytes > 0, "le PDF html2canvas/jsPDF ne doit pas être vide");
-  assert.equal(result.page3Prioritaires, "7");
-  assert.equal(result.page5Prioritaires, "7");
+  assert.equal(result.page3Prioritaires, "6");
+  assert.equal(result.page5Prioritaires, "6");
   assert.equal(result.page5Presentees, "3");
-  assert.deepEqual(result.page5Autres, {count: "4", label: "autres points"});
+  assert.deepEqual(result.page5Autres, {count: "3", label: "autres points"});
   assert.equal(result.descriptionVisible, true);
   assert.equal(result.descriptionRemplie, false);
 });
