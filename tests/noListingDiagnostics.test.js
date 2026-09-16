@@ -3,10 +3,106 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {harness,identity,provider} from './noListingTestHelpers.js';
 import {onRequestPost} from '../functions/api/admin/no-listing-diagnostics.js';
-import {reportReady,defaultPriorities,validatePriorities,normalizeIdentity} from '../js/no-listing-model.js';
-import {competitionHtml,categoryLabel} from '../js/no-listing-report.js';
+import {cityWithDe,reportReady,defaultPriorities,validatePriorities,normalizeIdentity} from '../js/no-listing-model.js';
+import {competitionHtml,categoryLabel,panelFacts,panelSummaryHtml,priorityActionsHtml,presenceVerdictHtml,panelReviewSentence} from '../js/no-listing-report.js';
 const collect=(h,d,extra={})=>h.send({action:'collect',id:d.id,revision:d.revision,zoneConfirmed:true,...extra});
 const save=(h,d,data)=>h.send({action:'save',id:d.id,revision:d.revision,data});
+test('élision des villes : voyelles, h muet connu, consonnes et préposition à inchangée',()=>{
+  for(const [city,expected] of [['Auvelais','d’Auvelais'],['Évreux','d’Évreux'],['Huy','d’Huy'],['Hyères','d’Hyères'],['Namur','de Namur'],['Hambourg','de Hambourg']]){
+    assert.equal(cityWithDe(city),expected);
+    const data={...identity,city,searchCity:city};
+    const priorities=defaultPriorities(data,{competitors:[{reviews:3,name:'Exemple'}]});
+    assert.ok(priorities[1].actions.includes(`autour ${expected}.`));
+    assert.ok(priorities[0].finding.includes(`zone ${expected}.`));
+    assert.ok(priorities[0].actions.includes(`à ${city}`));
+  }
+});
+test('ancienne action automatique : élision au rendu, personnalisation et source intactes',()=>{
+  const data={...identity,city:'Auvelais'};
+  data.priorities=defaultPriorities(data);
+  data.priorities[1].actions=data.priorities[1].actions.replace('autour d’Auvelais','autour de Auvelais');
+  data.automaticPriorities=structuredClone(data.priorities);
+  const original=JSON.stringify(data);
+  assert.match(priorityActionsHtml(data,data.priorities[1],1),/autour d’Auvelais/);
+  data.priorityOverrides={1:{actions:data.priorities[1].actions}};
+  assert.match(priorityActionsHtml(data,data.priorities[1],1),/autour de Auvelais/);
+  delete data.priorityOverrides;assert.equal(JSON.stringify(data),original);
+});
+
+test('synthèse : fourchettes issues des seules fiches présentées, sans moyenne ni mutation',()=>{
+  const collection={status:'success',query:'Électricien Auvelais',competitors:[{reviews:23,rating:5},{reviews:22,rating:5},{reviews:39,rating:4.8}]};
+  const original=structuredClone(collection),facts=panelFacts(collection),html=panelSummaryHtml(collection,{indicators:true});
+  assert.deepEqual(facts,{count:3,reviewed:3,reviewTotal:84,reviews:{min:22,max:39,known:3},ratings:{min:4.8,max:5,known:3}});
+  assert.match(html,/Les trois fiches présentées cumulent 84 avis clients\. Ces avis peuvent aider un prospect à comparer les professionnels\./);
+  assert.match(html,/22 à 39/);assert.match(html,/4,8 à 5,0\/5/);assert.match(html,/fiches présentées/);
+  assert.match(panelSummaryHtml(collection),/3 fiches Google sont présentées[\s\S]*Elles disposent d’avis clients/);
+  assert.doesNotMatch(html,/moyenne|top 3|score|potentiel/);assert.deepEqual(collection,original);
+});
+test('verdict : repère seulement sur absence déclarée ou confirmée, identité échappée et aucun score',()=>{
+  const data={company:'Entreprise <test>',activity:'Electrician',city:'Auvelais',collection:{status:'success',query:'Électricien Auvelais',competitors:[{reviews:23},{reviews:22},{reviews:39}]}};
+  for(const absenceContext of ['declared','confirmed',undefined,'not_found','unavailable']){
+    const html=presenceVerdictHtml({...data,absenceContext});
+    assert.equal(html.includes('nl-presence-ring'),absenceContext==='confirmed');
+    assert.equal(html.includes('Absence de fiche déclarée'),absenceContext==='declared');
+    assert.equal(html.includes('>0</span>'),absenceContext==='confirmed');
+    assert.equal(html.includes('fiche Google identifiée'),absenceContext==='confirmed');
+    assert.match(html,/Entreprise &lt;test&gt;/);assert.match(html,/Électricien/);assert.match(html,/Auvelais/);
+    assert.doesNotMatch(html,/84 avis clients/);assert.match(html,/retenir 3 fiches concurrentes, détaillées ci-après/);
+    assert.doesNotMatch(html,/\/100|invisible|n’apparaît pas|perte|captent|<test>/);
+  }
+  assert.doesNotMatch(presenceVerdictHtml({...data,collection:{...data.collection,status:'error'}}),/84 avis|retenir 3/);
+});
+test('priorités 2 et 3 : deux puces automatiques, sans modification des données ou des actions personnalisées',()=>{
+  const data={...identity,priorities:defaultPriorities(identity)};
+  const original=JSON.stringify(data);
+  for(const index of [1,2]){
+    const p=data.priorities[index];
+    assert.equal((priorityActionsHtml(data,p,index).match(/<li>/g)||[]).length,2);
+    const custom={...p,actions:'Premier conseil. Deuxième conseil. Troisième conseil. Quatrième conseil.'};
+    assert.equal(priorityActionsHtml(data,custom,index),`<p>${custom.actions}</p>`);
+    const explicit={...data,priorityOverrides:{[index]:{actions:p.actions}}};
+    assert.equal(priorityActionsHtml(explicit,p,index),`<p>${p.actions}</p>`);
+  }
+  assert.match(priorityActionsHtml(data,data.priorities[2],2),/Ne pas sélectionner uniquement les clients satisfaits/);
+  assert.match(priorityActionsHtml(data,data.priorities[2],2),/Ne proposer aucune contrepartie/);
+  assert.equal(JSON.stringify(data),original);
+});
+test('total des avis : panel partiel, zéro réel, singulier et données absentes',()=>{
+  const sentence=competitors=>panelReviewSentence({status:'success',competitors});
+  assert.equal(sentence([{reviews:1}]),'La fiche présentée compte 1 avis client. Ces avis peuvent aider un prospect à comparer les professionnels.');
+  assert.equal(sentence([{reviews:0}]),'La fiche présentée compte 0 avis clients.');
+  assert.match(sentence([{reviews:7},{reviews:null},{reviews:2}]),/Les 2 fiches dont le nombre d’avis est renseigné cumulent 9/);
+  assert.doesNotMatch(sentence([{reviews:null},{reviews:'5'}]),/0 avis|5 avis|cumulent/);
+  assert.doesNotMatch(sentence([]),/0 avis|cumulent/);
+});
+for(const count of [0,1,2,3])test(`synthèse : ${count} fiches, nombres d’avis et notes manquants non inventés`,()=>{
+  const collection={status:'success',query:'Recherche fictive',competitors:Array.from({length:count},()=>({reviews:null,rating:null}))};
+  const facts=panelFacts(collection),html=panelSummaryHtml(collection,{indicators:true}),intro=panelSummaryHtml(collection);
+  assert.equal(facts.count,count);assert.equal(facts.reviews,null);assert.equal(facts.ratings,null);
+  assert.equal((html.match(/class="nl-metric"/g)||[]).length,1);
+  assert.doesNotMatch(html+intro,/0 avis|0,0\/5|disposent d’avis|dispose d’avis|n’apparaît nulle part|clients perdus/);
+});
+test('synthèse partielle et valeurs nulles, zéro réel, égalité et valeurs invalides',()=>{
+  const c={status:'success',competitors:[{reviews:0,rating:null},{reviews:7,rating:4.5},{reviews:null,rating:4.5}]};
+  const html=panelSummaryHtml(c,{indicators:true});
+  assert.match(html,/0 à 7/);assert.match(html,/sur 2 fiches renseignées/);assert.match(html,/4,5\/5/);assert.doesNotMatch(html,/4,5 à 4,5/);
+  assert.match(panelSummaryHtml(c),/1 fiche dispose d’avis clients/);
+  assert.equal(panelFacts({status:'error',competitors:c.competitors}).count,0);
+  assert.equal(panelFacts({status:'success',competitors:[{reviews:'12',rating:NaN},{reviews:-1,rating:6}]}).reviews,null);
+  assert.equal(panelFacts({status:'success',competitors:[{rating:0}]}).ratings,null);
+});
+test('les actions automatiques deviennent des puces sans perte et les personnalisations restent intactes',()=>{
+  const data={...identity,priorities:defaultPriorities(identity)};
+  data.automaticPriorities=structuredClone(data.priorities);
+  const original=JSON.stringify(data),p=data.priorities[0],html=priorityActionsHtml(data,p,0);
+  assert.match(html,/<ul class="nl-action-list">/);
+  const text=[...html.matchAll(/<li>(.*?)<\/li>/g)].map(m=>m[1]).join(' ');
+  assert.equal(text,p.actions);assert.equal(JSON.stringify(data),original);
+  const custom={...p,actions:'Mon conseil personnalisé.\n\nGarder ce paragraphe.'};
+  assert.equal(priorityActionsHtml(data,custom,0),'<p>Mon conseil personnalisé.\n\nGarder ce paragraphe.</p>');
+  data.priorityOverrides=[{actions:p.actions}];
+  assert.match(priorityActionsHtml(data,p,0),/^<p>/);
+});
 
 test('copie sans fiche : français à l’affichage, sources intactes et réserves non répétées',()=>{
   const observation={status:'success',query:identity.query,city:identity.city,countryCode:'BE',observedAt:'2026-09-16T10:00:00Z',

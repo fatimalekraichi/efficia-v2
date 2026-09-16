@@ -30,10 +30,16 @@ export function normalizeIdentity(input) {
 export function searchIdentity(data) {
   return JSON.stringify(['company','activity','searchCity','searchCountryCode','query'].map(key=>data[key]));
 }
+export function cityWithDe(city) {
+  const value=String(city).trim();
+  // H is not always mute: only elide known mute-H place names, not every H.
+  const muteH=/^(huy|hyères|hélécine)$/iu.test(value);
+  return /^[aeiouyàâäéèêëîïôöùûüÿœæ]/iu.test(value)||muteH?`d’${value}`:`de ${value}`;
+}
 export function defaultPriorities(data, observation = null) {
   const competitors = observation?.competitors || [];
   const evidence = competitors.length
-    ? `Lors de la recherche « ${data.query} », ${competitors.length} ${competitors.length === 1 ? 'fiche pertinente a été observée' : 'fiches pertinentes ont été observées'} dans la zone de ${data.searchCity}.`
+    ? `Lors de la recherche « ${data.query} », ${competitors.length} ${competitors.length === 1 ? 'fiche pertinente a été observée' : 'fiches pertinentes ont été observées'} dans la zone ${cityWithDe(data.searchCity)}.`
     : 'La recherche n’a pas fourni de fiche concurrente qualifiée et vérifiable.';
   const reviewed = competitors.filter(c=>Number.isInteger(c.reviews) && c.reviews > 0);
   const reviewEvidence = reviewed.length
@@ -44,7 +50,7 @@ export function defaultPriorities(data, observation = null) {
       actions:`Vérifier d’abord dans Google Maps si une fiche de votre entreprise doit être récupérée. Si une fiche existe, demander sa gestion plutôt qu’en créer une seconde. Sinon, créer la fiche avec votre activité, les informations réelles de votre entreprise à ${data.city} et suivre la procédure de validation proposée par Google. Respecter les conditions d’éligibilité de Google.`,
       benefit:'Permettre aux personnes qui recherchent votre activité de trouver des informations officielles sur votre entreprise.'},
     {title:'Présenter clairement vos services et vos coordonnées',finding:'Une fiche complète permettra de présenter vos services et les informations utiles pour contacter votre entreprise.',
-      actions:`Choisir la catégorie principale correspondant à votre activité${/^(électricien|electricien|electrician)$/i.test(data.activity.trim()) ? ' d’électricien' : ` (${data.activity})`}. Renseigner les services, les coordonnées, les horaires et la zone réellement desservie autour de ${data.city}. N’afficher une adresse que si les clients y sont reçus. Ajouter des photos représentatives de votre travail.${data.website ? ' Relier le site officiel indiqué dans ce dossier.' : ''}`,
+      actions:`Choisir la catégorie principale correspondant à votre activité${/^(électricien|electricien|electrician)$/i.test(data.activity.trim()) ? ' d’électricien' : ` (${data.activity})`}. Renseigner les services, les coordonnées, les horaires et la zone réellement desservie autour ${cityWithDe(data.city)}. N’afficher une adresse que si les clients y sont reçus. Ajouter des photos représentatives de votre travail.${data.website ? ' Relier le site officiel indiqué dans ce dossier.' : ''}`,
       benefit:'Aider un prospect à comprendre ce que vous proposez et comment vous contacter.'},
     {title:'Demander régulièrement des avis authentiques',finding:reviewEvidence,
       actions:'Après une prestation, proposer au client de partager librement son expérience avec le lien d’avis Google. Ne pas sélectionner uniquement les clients satisfaits. Ne proposer aucune contrepartie et ne publier aucun faux avis. Répondre avec courtoisie aux avis reçus.',
