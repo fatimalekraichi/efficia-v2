@@ -21,13 +21,13 @@ export function panelReviewSentence(collection) {
 export function presenceVerdictHtml(data) {
   const facts=panelFacts(data.collection);
   const marker=data.absenceContext==='confirmed'
-    ? '<div class="nl-presence"><div class="nl-presence-count"><span class="nl-presence-ring">0</span><span>fiche Google identifiée</span></div><h2>Votre présence Google à construire</h2></div>'
+    ? '<div class="nl-presence"><h2>Votre priorité : créer et optimiser votre fiche Google</h2></div>'
     : data.absenceContext==='declared'?'<div class="nl-presence"><h2>Absence de fiche déclarée</h2></div>':'';
   const query=data.collection?.query;
   const observation=data.collection?.status==='success'
-    ? `La recherche${query?` « ${escapeHtml(query)} »`:''} a permis de retenir ${facts.count} ${facts.count===1?'fiche concurrente, détaillée':'fiches concurrentes, détaillées'} ci-après.`
+    ? `${query?`Sur la recherche « ${escapeHtml(query)} », `:''}${panelReviewSentence(data.collection).replace(/^Les /,'les ').replace(/^La /,'la ').replace('Ces avis peuvent aider un prospect à comparer les professionnels.','Ces avis donnent aux internautes des repères pour choisir qui contacter.')}`
     : 'Les résultats de la recherche locale restent à vérifier.';
-  return `<div class="nl-box nl-verdict">${marker}<p>Bonjour, ce diagnostic concerne ${escapeHtml(data.company)}, pour l’activité « ${escapeHtml(categoryLabel(data.activity))} » à ${escapeHtml(data.city)}.</p><p>${observation}</p></div>`;
+  return `<div class="nl-box nl-verdict">${marker}<p>${observation} Votre prochaine étape : une fiche complète qui présente vos services et facilite la prise de contact.</p></div>`;
 }
 export function panelSummaryHtml(collection, {indicators=false}={}) {
   const facts=panelFacts(collection),n=facts.count;
@@ -50,7 +50,7 @@ export function priorityActionsHtml(data, priority, index, text=priority.actions
   text=text.replaceAll(`autour de ${data.city}`,`autour ${cityWithDe(data.city)}`);
   const sentences=text.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/gu);
   if(!sentences || sentences.join('')!==text || sentences.length<2)return `<p>${escapeHtml(text)}</p>`;
-  const selected=index===1?sentences.slice(0,2):index===2?[sentences[0],sentences.slice(1,3).map(s=>s.trim()).join(' ')]:sentences;
+  const selected=index===1?sentences.slice(0,2):index===2?['Une fois votre fiche en ligne, proposer au client de partager librement son expérience avec le lien d’avis Google.',sentences.slice(1,3).map(s=>s.trim()).join(' '),'Répondre aux avis avec courtoisie.']:sentences;
   return `<ul class="nl-action-list">${selected.map(s=>`<li>${escapeHtml(s.trim())}</li>`).join('')}</ul>`;
 }
 export function competitionHtml(collection, {translateCategories=false}={}) {
@@ -89,7 +89,6 @@ export function renderNoListingReport(data, container) {
   };
   newPage();
   add(`<div class="nl-kicker">Votre présence locale</div><h1>Diagnostic de visibilité locale<br>Sans fiche Google</h1><p class="nl-company">${escapeHtml(data.company)}</p><p>${escapeHtml(data.activity)} · ${escapeHtml(data.city)} / ${escapeHtml(data.countryCode)}</p>${data.website?`<p class="nl-muted">Site indiqué : ${escapeHtml(data.website)}</p>`:''}`);
-  add('<div class="nl-box"><h3>Votre visibilité locale : par où commencer ?</h3><p>Ce diagnostic présente des entreprises visibles sur Google dans votre secteur et trois priorités pour développer votre présence locale, présenter vos services et faciliter la prise de contact.</p></div>');
   add(presenceVerdictHtml(data));
   // Keep the introduction and the observed panel on their existing separate pages.
   newPage();
@@ -98,7 +97,7 @@ export function renderNoListingReport(data, container) {
     // Keep priority 3 and the service description on their dedicated diagnostic page.
     if(index===2 && content.querySelector('.nl-priority-title'))newPage();
     const badge=['Étape essentielle','Pour faciliter le contact','Pour développer la confiance'][index];
-    const reminder=['Pour disposer d’une présence sur Google Maps','Pour faciliter le contact','Pour donner des repères aux futurs clients'][index];
+    const reminder=['Pour disposer d’une présence sur Google Maps','','Pour donner des repères aux futurs clients'][index];
     const heading=suite=>`<div class="nl-priority-title" data-priority="${index+1}" data-continuation="${suite}"><span class="nl-kicker">Priorité ${index+1} / 3</span><span class="nl-priority-badge">${badge}</span><h2>${escapeHtml(p.title)}${suite?' — suite':''}</h2>${!suite && reminder?`<p class="nl-muted">${reminder}</p>`:''}</div>`;
     const fields=[['Constat et recommandation',p.finding],['Les actions à mettre en œuvre',p.actions],['Bénéfice attendu',p.benefit]];
     const fieldHtml=(label,text)=>`<p class="nl-field-label">${label}</p>${label==='Les actions à mettre en œuvre'?priorityActionsHtml(data,p,index,text):`<p>${escapeHtml(text)}</p>`}`;
@@ -132,8 +131,8 @@ export function renderNoListingReport(data, container) {
       }
     }
   });
-  add('<div class="nl-box nl-service"><h3>Ce que nous prenons en charge avec le Pack Visibilité</h3><p>Vérification d’une éventuelle fiche existante, création ou aide à la récupération de sa gestion, configuration des informations et services, ajout de vos photos fournies, optimisation initiale et accompagnement à la validation Google.</p></div>');
-  add('<p class="nl-muted">Ces recommandations ne garantissent ni une position sur Google ni un nombre de clients. L’accompagnement à la validation ne garantit pas la validation par Google. La collecte d’avis commence une fois la fiche en ligne.</p>');
+  add('<div class="nl-box nl-service"><p>Vous préférez nous confier ces étapes ? Découvrez les deux formules à la page suivante.</p></div>');
+  add('<p class="nl-muted">Ces recommandations ne garantissent ni une position sur Google ni un nombre de clients. L’accompagnement à la validation ne garantit pas la validation par Google.</p>');
   // One final commercial page; preceding diagnostic pages remain unchanged.
   newPage().classList.add('nl-commercial');
   add(`<h1>Vous préférez nous confier la mise en place ?</h1>
@@ -161,8 +160,7 @@ export function renderNoListingReport(data, container) {
         <li>Vérifications régulières</li>
         <li>Ajustements et optimisations</li>
         <li>Assistance sur les difficultés courantes</li>
-        <li>Bilan personnalisé du premier mois</li>
-        <li>Actions réalisées, données disponibles et conseils</li>
+        <li>Bilan personnalisé du premier mois : actions réalisées, données disponibles et conseils</li>
       </ul>
       <a class="nl-offer-cta" href="https://efficiadigital.com/achat?offre=performance">Choisir le Pack Performance</a>
     </article></div>

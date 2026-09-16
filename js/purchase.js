@@ -10,12 +10,14 @@ const OFFERS = {
     price: "349 € TTC",
     amount: "349 €",
     tax: "TTC",
+    description: "Mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante selon votre situation. Nous vérifions d’abord si une fiche existe pour éviter les doublons. Si nécessaire, nous vous accompagnons pour en récupérer la gestion. Le Pack Visibilité comprend la configuration des informations, l’intégration des photos fournies et l’accompagnement à la validation Google. La validation et ses délais dépendent de Google.",
   },
   performance: {
     name: "Pack Performance",
     price: "499 € TTC",
     amount: "499 €",
     tax: "TTC",
+    description: "Tout le Pack Visibilité : mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante, avec vérification préalable pour éviter les doublons. Le Pack Performance ajoute un mois de suivi, les ajustements nécessaires et un bilan des actions réalisées, des données disponibles et des recommandations. Pour une nouvelle fiche, ce mois commence lorsqu’elle est validée et visible sur Google ; la validation et ses délais dépendent de Google. Les données du premier mois peuvent être limitées. Le suivi n’est pas une assistance illimitée ; la résolution des suspensions et des litiges de propriété n’est pas garantie.",
   },
 };
 
@@ -38,6 +40,10 @@ const product = new URLSearchParams(window.location.search).get("offre") || "vis
 const selectedOffer = OFFERS[product] ? product : "visibility";
 
 if (offerName) offerName.textContent = OFFERS[selectedOffer].name;
+const offerDescription = document.querySelector(".purchase-intro");
+if (offerDescription && OFFERS[selectedOffer].description) {
+  offerDescription.textContent = OFFERS[selectedOffer].description;
+}
 if (offerPrice) {
   const amount = document.createElement("span");
   amount.className = "purchase-price__amount";

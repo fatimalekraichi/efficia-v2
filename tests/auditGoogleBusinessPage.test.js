@@ -106,6 +106,20 @@ test("le sitemap contient uniquement l’URL propre de la page Audit", async () 
   assert.doesNotMatch(sitemap, /audit-google-business(?:\.html|\/)\s*<\/loc>/);
 });
 
+test("les offres Performance et les CGV distinguent création, optimisation et suivi sans changer les identifiants", async () => {
+  const home=await read('index.html'),terms=await read('cgv.html'),purchase=await read('js/purchase.js');
+  assert.match(home,/href="\/achat\?offre=performance"[^>]*>Choisir le Pack Performance<\/a>/);
+  assert.doesNotMatch(home,/Pack Premium/);
+  assert.match(purchase,/performance:\s*{\s*name: "Pack Performance"/);
+  assert.match(terms,/création et de configuration d’une nouvelle fiche Google Business Profile, ou d’optimisation d’une fiche existante selon la situation/);
+  assert.match(terms,/Pack Visibilité Google à 349&nbsp;€ TTC/);
+  assert.match(terms,/Pack Performance à 499&nbsp;€ TTC[\s\S]*?un mois de suivi[\s\S]*?un bilan/);
+  assert.match(terms,/Pour une nouvelle fiche, le suivi commence lorsque celle-ci est validée et visible sur Google\./);
+  assert.match(terms,/Le client conserve la propriété de sa fiche ; les accès nécessaires sont accordés via les fonctionnalités de gestion de Google, sans partage de mot de passe\./);
+  assert.match(terms,/L’accompagnement à la validation ne constitue pas une garantie de validation\./);
+  assert.doesNotMatch(terms,/Aucun accès administrateur n’est normalement nécessaire/);
+});
+
 test("le tunnel affiche 99 € TTC pour l’offre audit avant Stripe", async () => {
   const purchaseHtml = await read("achat.html");
   const purchaseScript = await read("js/purchase.js");

@@ -42,22 +42,22 @@ test('verdict : repère seulement sur absence déclarée ou confirmée, identit�
   const data={company:'Entreprise <test>',activity:'Electrician',city:'Auvelais',collection:{status:'success',query:'Électricien Auvelais',competitors:[{reviews:23},{reviews:22},{reviews:39}]}};
   for(const absenceContext of ['declared','confirmed',undefined,'not_found','unavailable']){
     const html=presenceVerdictHtml({...data,absenceContext});
-    assert.equal(html.includes('nl-presence-ring'),absenceContext==='confirmed');
+    assert.equal(html.includes('nl-presence-ring'),false);
     assert.equal(html.includes('Absence de fiche déclarée'),absenceContext==='declared');
-    assert.equal(html.includes('>0</span>'),absenceContext==='confirmed');
-    assert.equal(html.includes('fiche Google identifiée'),absenceContext==='confirmed');
-    assert.match(html,/Entreprise &lt;test&gt;/);assert.match(html,/Électricien/);assert.match(html,/Auvelais/);
-    assert.doesNotMatch(html,/84 avis clients/);assert.match(html,/retenir 3 fiches concurrentes, détaillées ci-après/);
+    assert.equal(html.includes('Votre priorité : créer et optimiser votre fiche Google'),absenceContext==='confirmed');
+    assert.doesNotMatch(html,/fiche Google identifiée/);
+    assert.match(html,/Électricien Auvelais/);
+    assert.match(html,/les trois fiches présentées cumulent 84 avis clients/);
     assert.doesNotMatch(html,/\/100|invisible|n’apparaît pas|perte|captent|<test>/);
   }
   assert.doesNotMatch(presenceVerdictHtml({...data,collection:{...data.collection,status:'error'}}),/84 avis|retenir 3/);
 });
-test('priorités 2 et 3 : deux puces automatiques, sans modification des données ou des actions personnalisées',()=>{
+test('priorités 2 et 3 : deux et trois puces automatiques, sans modification des données ou des actions personnalisées',()=>{
   const data={...identity,priorities:defaultPriorities(identity)};
   const original=JSON.stringify(data);
   for(const index of [1,2]){
     const p=data.priorities[index];
-    assert.equal((priorityActionsHtml(data,p,index).match(/<li>/g)||[]).length,2);
+    assert.equal((priorityActionsHtml(data,p,index).match(/<li>/g)||[]).length,index===2?3:2);
     const custom={...p,actions:'Premier conseil. Deuxième conseil. Troisième conseil. Quatrième conseil.'};
     assert.equal(priorityActionsHtml(data,custom,index),`<p>${custom.actions}</p>`);
     const explicit={...data,priorityOverrides:{[index]:{actions:p.actions}}};
@@ -65,6 +65,8 @@ test('priorités 2 et 3 : deux puces automatiques, sans modification des donnée
   }
   assert.match(priorityActionsHtml(data,data.priorities[2],2),/Ne pas sélectionner uniquement les clients satisfaits/);
   assert.match(priorityActionsHtml(data,data.priorities[2],2),/Ne proposer aucune contrepartie/);
+  assert.match(priorityActionsHtml(data,data.priorities[2],2),/<li>Une fois votre fiche en ligne, proposer/);
+  assert.match(priorityActionsHtml(data,data.priorities[2],2),/<li>Répondre aux avis avec courtoisie\.<\/li>/);
   assert.equal(JSON.stringify(data),original);
 });
 test('total des avis : panel partiel, zéro réel, singulier et données absentes',()=>{

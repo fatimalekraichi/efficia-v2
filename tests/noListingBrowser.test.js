@@ -38,6 +38,10 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       await wait(()=>doc.querySelectorAll('#priorities fieldset').length===3 && !doc.querySelector('#save').disabled,'collection');
       check(doc.querySelectorAll('#observations .nl-competitor').length===3,'competitors');
       check(doc.querySelector('#observations').textContent.includes('Nombre d’avis non disponible'),'missing value invented');
+      doc.querySelector('#preview').click();await wait(()=>!doc.querySelector('#report').hidden,'automatic preview');
+      const automaticReport=doc.querySelector('#report').innerText;
+      check(automaticReport.includes('Une fois votre fiche en ligne, proposer au client de partager'),'automatic reviews after listing goes live');
+      check(automaticReport.includes('Répondre aux avis avec courtoisie.'),'automatic courteous replies');
       const title=doc.querySelector('[data-field="title"]');title.value='Créer la présence locale de votre entreprise — EXEMPLE FICTIF';title.dispatchEvent(new Event('input',{bubbles:true}));
       doc.querySelectorAll('[data-field="actions"]')[2].value='Demander un avis authentique après la prestation, sans aucune contrepartie.';
       if(${longCopy})for(const fieldset of [...doc.querySelectorAll('#priorities fieldset')].slice(0,2)){
@@ -55,17 +59,17 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       await wait(()=>!doc.querySelector('#export').disabled,'recollect');check(doc.querySelector('[data-field="title"]').value.includes('votre entreprise'),'override lost');
       doc.querySelector('#preview').click();await wait(()=>!doc.querySelector('#report').hidden,'preview');
       const preview=doc.querySelector('#report').innerText;check(preview.includes('votre entreprise'),'preview title');
-      check(preview.includes('Votre visibilité locale : par où commencer ?'),'new introduction');
-      check(preview.includes('Ce diagnostic présente des entreprises visibles sur Google dans votre secteur et trois priorités pour développer votre présence locale, présenter vos services et faciliter la prise de contact.'),'exact introduction');
+      check(preview.includes('Votre prochaine étape : une fiche complète qui présente vos services et facilite la prise de contact.'),'new introduction');
       check(!/Le demandeur déclare|vérification indépendante|Aucune fiche de votre entreprise n’est notée|Le contexte de ce diagnostic|Pack Premium/.test(preview),'obsolete copy');
       check(preview.includes('Absence de fiche déclarée'),'declared visual marker');
       check(doc.querySelectorAll('.nl-presence-ring').length===0,'no numeric marker for declared absence');
-      check(preview.includes('Ce que nous prenons en charge avec le Pack Visibilité'),'service description');
+      check(preview.includes('Vous préférez nous confier ces étapes ? Découvrez les deux formules à la page suivante.'),'service transition');
       const subtitles=[...doc.querySelectorAll('.nl-priority-title .nl-muted')].map(p=>p.textContent);
-      check(subtitles.length===3 && subtitles.every(t=>t.startsWith('Pour ')),'benefit subtitles');
+      check(subtitles.length===2 && subtitles.every(t=>t.startsWith('Pour ')),'benefit subtitles');
+      check(!doc.querySelector('[data-priority="2"] .nl-muted'),'no duplicate badge/subtitle');
       check(!subtitles.some(t=>/garantit|commence/.test(t)),'disclaimers not subtitles');
       check(preview.includes('Étape essentielle') && preview.includes('Pour faciliter le contact') && preview.includes('Pour développer la confiance'),'priority badges');
-      check(preview.includes('La collecte d’avis commence une fois la fiche en ligne.'),'reviews only after listing goes live');
+      check(preview.includes('Demander un avis authentique après la prestation, sans aucune contrepartie.'),'manual action preserved');
       check(preview.includes('L’accompagnement à la validation ne garantit pas la validation par Google.'),'validation disclaimer');
       check(preview.includes('Vous préférez nous confier la mise en place ?'),'commercial title');
       check(preview.includes('Diagnostic offert, sans engagement. Vous restez propriétaire de votre fiche.'),'trust block');
@@ -95,7 +99,8 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
         const r=offers.map(o=>o.querySelector(selector).getBoundingClientRect());
         check(Math.abs(r[0].top-r[1].top)<1,'alignment '+selector);
       }
-      check(offers.every(o=>o.querySelectorAll('li').length===7 && o.querySelectorAll('p').length===0),'seven short bullets');
+      check(offers.every((o,i)=>o.querySelectorAll('li').length===(i===0?7:6) && o.querySelectorAll('p').length===0),'offer bullets with merged performance summary');
+      check(offers[1].textContent.includes('Bilan personnalisé du premier mois : actions réalisées, données disponibles et conseils'),'merged performance summary');
       check(doc.querySelectorAll('[data-priority][data-continuation="false"]').length===3,'three priorities');
       const competition=doc.querySelector('.nl-competition');check(competition.querySelectorAll('.nl-competitor').length===3,'competition group');
       check(competition.closest('.nl-page').querySelectorAll('.nl-competitor').length===3,'isolated competitor');
@@ -128,6 +133,17 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       await wait(()=>doc.querySelector('[data-admin-completed-toggle]').textContent.endsWith('(1)'),'completed list');
       doc.querySelector('[data-admin-completed-toggle]').click();check(doc.querySelector('#completed-audits-list').textContent.includes('Sans fiche')||doc.querySelector('#completed-audits-list').textContent.includes('sans fiche'),'completed type');
       check(doc.querySelector('#completed-audits-list a').href.includes('free-diagnostic-no-listing'),'wrong consultation route');
+      for(const [key,name,price] of [['visibility','Pack Visibilité Google','349 €'],['performance','Pack Performance','499 €']]){
+        await new Promise(r=>{frame.onload=r;frame.src='/achat?offre='+key;});doc=frame.contentDocument;
+        check(doc.querySelector('[data-offer-name]').textContent===name,'checkout name');
+        check(doc.querySelector('[data-offer-price]').textContent.includes(price),'checkout price');
+        const copy=doc.querySelector('.purchase-intro').textContent;
+        check(copy.includes('nouvelle fiche Google') && copy.includes('fiche existante') && copy.includes('éviter les doublons'),'two situations');
+        if(key==='performance')check(copy.includes('validée et visible sur Google') && copy.includes('bilan'),'new listing followup');
+        else check(!/mois|suivi/.test(copy),'visibility followup invented');
+        check(!doc.body.textContent.includes('TVA comprise — aucun supplément'),'tax note restored');
+        check(frame.contentWindow.__errors.length===0,'checkout JS errors');
+      }
       result.textContent=JSON.stringify({success:true,pages:pages.length,preview,minimumGap});
     }catch(e){result.textContent=JSON.stringify({error:e.stack,ui:frame.contentDocument.body.innerText.slice(0,7000)});}})();</script>`;
   const server=createServer(async(req,res)=>{
@@ -147,10 +163,10 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       if(path==='/admin/orders')return json({success:true,orders:[],stats:{}});
       if(path==='/runner'){res.setHeader('Content-Type','text/html');res.end(runner);return;}
       if(path.startsWith('/test-lib/')){res.setHeader('Content-Type','text/javascript');res.end(readFileSync(join(libs,path.split('/').at(-1))));return;}
-      if(path==='/admin' || path==='/admin/free-diagnostic-no-listing/'){
-        let html=readFileSync(new URL(path==='/admin'?'admin.html':'admin/free-diagnostic-no-listing/index.html',root),'utf8');
+      if(path==='/admin' || path==='/admin/free-diagnostic-no-listing/' || path==='/achat'){
+        let html=readFileSync(new URL(path==='/admin'?'admin.html':path==='/achat'?'achat.html':'admin/free-diagnostic-no-listing/index.html',root),'utf8');
         html=html.replace(/<link[^>]*https:[^>]*>/g,'').replace('</head>',`<script>window.__errors=[];addEventListener('error',e=>__errors.push(e.message));</script></head>`);
-        if(path!=='/admin')html=html.replace('<script type="module"',`<script src="/test-lib/jspdf.umd.min.js"></script><script src="/test-lib/html2canvas.min.js"></script><script>
+        if(path==='/admin/free-diagnostic-no-listing/')html=html.replace('<script type="module"',`<script src="/test-lib/jspdf.umd.min.js"></script><script src="/test-lib/html2canvas.min.js"></script><script>
           const Real=window.jspdf.jsPDF;window.jspdf.jsPDF=function(...args){const pdf=new Real(...args);pdf.save=async()=>{await fetch('/test-pdf',{method:'POST',headers:{'X-Pages':String(pdf.getNumberOfPages())},body:pdf.output('arraybuffer')});window.__pdfSaved=true;};return pdf;};
           const canvas=window.html2canvas;window.html2canvas=(page,options)=>{window.__captured=document.querySelector('#report').innerText;return canvas(page,options);};window.__ready=true;
         </script><script type="module"`);
