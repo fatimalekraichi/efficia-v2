@@ -121,6 +121,18 @@ const LONGEST_AUTOMATIC_NARRATIVE_TEXTS = Object.freeze({
   "conclusion.commercial": `Vous pouvez appliquer ces trois priorités vous-même, ou confier à Efficia l'ensemble des optimisations de la fiche de ${"E".repeat(180)}.`,
 });
 
+test("la page 4 du diagnostic gratuit ne rend plus d’estimation de durée", () => {
+  const html = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8");
+  const legacyStart = html.indexOf("function rendrePriorite(item, index, variante){");
+  const legacyEnd = html.indexOf("function contenuPrioriteSiteV3(", legacyStart);
+  const v3Start = html.indexOf("function rendrePrioriteV3Principale(item){");
+  const v3End = html.indexOf("function rendrePrioriteV3Resume(", v3Start);
+  assert.ok(legacyStart >= 0 && legacyEnd > legacyStart, "le renderer de priorité historique doit rester repérable");
+  assert.ok(v3Start >= 0 && v3End > v3Start, "le renderer V3.2 de la priorité n°1 doit rester repérable");
+  assert.doesNotMatch(html.slice(legacyStart, legacyEnd), /Temps estimé|priority-time/u);
+  assert.doesNotMatch(html.slice(v3Start, v3End), /Temps estimé|v3-time/u);
+});
+
 function longestAutomaticText(fieldId) {
   if (fieldId.startsWith("priority.")) {
     return LONGEST_AUTOMATIC_NARRATIVE_TEXTS[`priority.${fieldId.split(".").at(-1)}`]
@@ -695,6 +707,7 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
           pageTop: pageRect?.top || null,
           v3PageOrder: reportPages.map((page) => page.dataset.reportPage),
           page4JourneyLabels: [...(page4?.querySelectorAll(".v3-step-label") || [])].map((element) => element.textContent),
+          page4HasEstimatedTime: /Temps estimé/u.test(page4?.textContent || "") || Boolean(page4?.querySelector(".v3-time")),
           page5HasActionStep: Boolean(page5?.querySelector(".v3-step--action, [data-priority-action]")),
           page5ForbiddenDetailNodes: page5?.querySelectorAll(".v3-step--action, .v3-step--result, .v3-example, .v3-time, [data-priority-action], [data-priority-result]").length || 0,
           page5ForbiddenDetailText: [...(page5?.querySelectorAll(".v3-mini-priority") || [])].some((element) => /Premier pas|Résultat attendu|Temps estimé|Structure de réponse|Exemple concret/u.test(element.textContent)),
@@ -771,6 +784,7 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
   assert.deepEqual(result.v3PageOrder, ["1", "2", "3", "4", "5", "6"], "le renderer gratuit V3.2 conserve exactement six pages ordonnées");
   assert.deepEqual(result.page4JourneyLabels, ["Constat", "Conséquence", "Premier pas", "Résultat attendu"], "la page 4 conserve le parcours complet de la seule priorité n°1");
+  assert.equal(result.page4HasEstimatedTime, false, "la page 4 ne doit plus contenir d’estimation de durée");
   assert.equal(result.page5HasActionStep, false, "les priorités 2 et 3 ne doivent pas répéter le premier pas de la page 4");
   assert.equal(result.page5ForbiddenDetailNodes, 0, "les éléments détaillés réservés à l’Audit ne doivent pas exister dans le DOM capturé de la page 5");
   assert.equal(result.page5ForbiddenDetailText, false, "aucun libellé d’action, résultat, délai ou exemple ne doit subsister dans les priorités 2 et 3");
