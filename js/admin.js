@@ -259,23 +259,24 @@ const renderDiagnostics = (diagnostics) => {
       <td><span class="admin-badge is-mailerlite-${escapeHtml(diagnostic.mailerLiteStatus || "pending")}">${escapeHtml(mailerLiteStatusLabels[diagnostic.mailerLiteStatus] || diagnostic.mailerLiteStatus || "En attente")}</span></td>
       <td>${escapeHtml(reportTypeLabels[diagnostic.reportType] || diagnostic.reportType || "—")}</td>
       <td>
-        ${diagnostic.analysisId ? `<a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>` : diagnostic.reviewReason ? `<details><summary>Examiner la demande</summary>
+        ${diagnostic.noListingId ? `<a class="admin-button" href="/admin/free-diagnostic-no-listing/?id=${encodeURIComponent(diagnostic.noListingId)}">${diagnostic.noListingFinalized ? 'Consulter le rapport sans fiche' : 'Reprendre le diagnostic sans fiche'}</a>` : diagnostic.analysisId ? `<a class="admin-button admin-diagnostic-action" href="${buildFreeDiagnosticToolUrl(diagnostic.analysisId)}">Ouvrir Score Efficia</a>` : diagnostic.reviewReason ? `<details><summary>Examiner la demande</summary>
           <p>${escapeHtml(manualDiagnosticDescriptions[diagnostic.reviewReason])}</p>
           <p>Pays indiqué : ${escapeHtml(diagnostic.countryCode || "Non renseigné")}</p>
           <p>Lien fourni : ${escapeHtml(diagnostic.googleBusinessUrl || "Non renseigné")}</p>
           <p>Aucune fiche ni aucun score n’a été créé. Vérifiez l’existence de la fiche avant de préparer un diagnostic. Si l’absence est confirmée, le rapport de score actuel n’est pas adapté.</p>
           <a href="/admin/new-audit/">Ouvrir l’outil manuel après identification de la fiche</a>
+          ${diagnostic.requestId ? `<p><a class="admin-button is-secondary" href="/admin/free-diagnostic-no-listing/?captureId=${encodeURIComponent(diagnostic.requestId)}">Réaliser un diagnostic sans fiche Google</a></p>` : ''}
         </details>` : "—"}
       </td>
     </tr>
   `).join("");
 };
 
-const draftResumeUrl = (draft) => draft.reportType === "free"
+const draftResumeUrl = (draft) => draft.noListingId ? `/admin/free-diagnostic-no-listing/?id=${encodeURIComponent(draft.noListingId)}` : draft.reportType === "free"
   ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(draft.analysisId)}`
   : `/admin/audit-review/${encodeURIComponent(draft.analysisId)}`;
 
-const completedAuditUrl = (audit) => audit.reportType === "free"
+const completedAuditUrl = (audit) => audit.noListingId ? `/admin/free-diagnostic-no-listing/?id=${encodeURIComponent(audit.noListingId)}` : audit.reportType === "free"
   ? `/admin/free-diagnostic-production?analysisId=${encodeURIComponent(audit.analysisId)}&readonly=1`
   : `/admin/audit-review/${encodeURIComponent(audit.analysisId)}?readonly=1`;
 
@@ -294,7 +295,7 @@ const renderDrafts = (drafts) => {
       <td>${formatDate(draft.updatedAt)}</td>
       <td><div class="admin-row-actions">
         <a class="admin-button" href="${draftResumeUrl(draft)}">Reprendre</a>
-        <button class="admin-button is-danger" type="button" data-delete-draft="${escapeHtml(draft.draftId)}">Supprimer</button>
+        ${draft.noListingId ? '' : `<button class="admin-button is-danger" type="button" data-delete-draft="${escapeHtml(draft.draftId)}">Supprimer</button>`}
       </div></td>
     </tr>
   `).join("");
@@ -313,7 +314,8 @@ const loadDrafts = async () => {
     draftsBody.innerHTML = `<tr><td colspan="6" class="admin-empty">Impossible de charger les brouillons.</td></tr>`;
     return;
   }
-  renderDrafts(data.drafts || []);
+  const localVisibility = await loadNoListingDossiers();
+  renderDrafts([...(data.drafts || []), ...localVisibility.filter(d=>d.status==='draft').map(noListingListItem)]);
 };
 
 const renderCompletedAudits = (audits) => {
@@ -332,7 +334,7 @@ const renderCompletedAudits = (audits) => {
       <td>${formatDate(audit.finalizedAt)}</td>
       <td><div class="admin-row-actions">
         <a class="admin-button" href="${completedAuditUrl(audit)}">Consulter</a>
-        <button class="admin-button is-secondary" type="button" data-duplicate-audit="${escapeHtml(audit.analysisId)}">Dupliquer pour nouvelle version</button>
+        ${audit.noListingId ? '' : `<button class="admin-button is-secondary" type="button" data-duplicate-audit="${escapeHtml(audit.analysisId)}">Dupliquer pour nouvelle version</button>`}
         ${audit.reportType === "free" && audit.answersVersion === "score-efficia-questionnaire-v4" ? `
           <button class="admin-button is-secondary" type="button"
             data-transfer-premium="${escapeHtml(audit.analysisId)}"
@@ -358,7 +360,8 @@ const loadCompletedAudits = async () => {
     completedAuditsBody.innerHTML = `<tr><td colspan="5" class="admin-empty">Impossible de charger les audits terminés.</td></tr>`;
     return;
   }
-  renderCompletedAudits(data.audits || []);
+  const localVisibility = await loadNoListingDossiers();
+  renderCompletedAudits([...(data.audits || []), ...localVisibility.filter(d=>d.status==='finalized').map(noListingListItem)]);
 };
 
 completedAuditsBody?.addEventListener("click", async (event) => {
@@ -508,6 +511,17 @@ const loadOrders = async () => {
   renderOrders(data.orders || []);
 };
 
+let noListingLoad, completedNoListingCaptureCount=0;
+const noListingListItem = dossier => ({noListingId:dossier.id,company:dossier.data.company,city:dossier.data.city,
+  reportType:'no_listing',auditLabel:'Diagnostic sans fiche Google',currentStep:'Visibilité locale',updatedAt:dossier.updatedAt,finalizedAt:dossier.finalizedAt});
+const loadNoListingDossiers = () => noListingLoad ||= fetch('/api/admin/no-listing-diagnostics',{credentials:'same-origin',cache:'no-store'})
+  .then(async response=>{const data=await response.json();if(!response.ok || !data.success)throw Error();completedNoListingCaptureCount=Number(data.completedCaptureCount || 0);return data.dossiers || [];})
+  .catch(()=>{
+    const message=document.createElement('p');message.className='admin-error';message.setAttribute('role','alert');
+    message.textContent='Les dossiers sans fiche Google n’ont pas pu être chargés. Rechargez la page.';
+    completedAuditsBody?.closest('section')?.append(message);return [];
+  });
+
 const loadDiagnostics = async () => {
   if (!diagnosticsBody) return;
   diagnosticsBody.innerHTML = `<tr><td colspan="9" class="admin-empty">Chargement...</td></tr>`;
@@ -529,8 +543,14 @@ const loadDiagnostics = async () => {
     return;
   }
 
-  if (diagnosticCount) diagnosticCount.textContent = String(data.pendingCount || 0);
-  renderDiagnostics(data.diagnostics || []);
+  const dossiers=await loadNoListingDossiers();
+  const mapped=(data.diagnostics || []).map(d=>{
+    const dossier=dossiers.find(n=>n.captureId===d.requestId);
+    return dossier ? {...d,noListingId:dossier.id,noListingFinalized:dossier.status==='finalized',reviewReason:null,
+      status:dossier.status==='finalized'?'PDF généré — non envoyé':'En préparation — sans fiche Google'} : d;
+  });
+  if (diagnosticCount) diagnosticCount.textContent = String(Math.max(0,(data.pendingCount || 0)-completedNoListingCaptureCount));
+  renderDiagnostics(mapped);
 };
 
 const logout = async () => {

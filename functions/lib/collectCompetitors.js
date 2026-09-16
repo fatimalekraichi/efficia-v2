@@ -380,6 +380,7 @@ export async function collectCompetitors({
   // à avant cette mission (aucune régression sur les appels existants).
   coordinates = "", region = "",
   timeoutMs = DEFAULT_TIMEOUT_MS, suppressSensitiveLogs = false,
+  observationOnly = false,
 } = {}) {
   const activiteTrim = (activite || "").trim();
   const villeTrim = (ville || "").trim();
@@ -452,6 +453,17 @@ export async function collectCompetitors({
     return { ok: false, code: 502, error: "Outscraper is processing asynchronously." };
   }
 
+  // The no-listing report describes observed businesses, never a benchmark.
+  // Do not confuse malformed/failed provider responses with a successful empty search.
+  if (observationOnly && (!Array.isArray(payload?.data)
+    || payload.data.length > 1
+    || (payload.status && !['success', 'ok', 'completed'].includes(String(payload.status).toLowerCase()))
+    || payload.error || payload.errors || payload.success === false
+    || payload.data.flat().some(item=>item?.error || item?.errors || item?.success === false)
+    || payload.data.some(group => !Array.isArray(group) && (!group || typeof group !== 'object')))) {
+    return { ok:false, code:502, error:'Invalid competition observation response.' };
+  }
+
   const places = extractPlaces(payload);
   const sponsoredResults = places.filter(isSponsoredResult);
   const sponsorshipClassificationAvailable = places.some(hasSponsorshipClassification);
@@ -490,7 +502,9 @@ export async function collectCompetitors({
 
   const qualificationContext = { activite: activiteTrim, requete };
   const qualifiedCandidates = afterExclusion.filter((place) => qualifyCompetitorByCategory(place, qualificationContext).qualified);
-  const concurrents = selectValidReviewCompetitors(qualifiedCandidates, 3).map(mapCompetitor);
+  const concurrents = observationOnly
+    ? selectObservedCompetitors(qualifiedCandidates)
+    : selectValidReviewCompetitors(qualifiedCandidates, 3).map(mapCompetitor);
 
   if (!suppressSensitiveLogs) {
     console.log("collectCompetitors:retained", {
@@ -517,6 +531,28 @@ export async function collectCompetitors({
     // affichée à l'administrateur.
     anchorUsed: { coordinates: anchorCoordinatesUsed, region: anchorRegionUsed },
   };
+}
+
+function selectObservedCompetitors(candidates) {
+  const seen = new Set();
+  return candidates.flatMap(place => {
+    const mapped = mapCompetitor(place);
+    const id = String(place.place_id || '').trim();
+    let link = '';
+    try {
+      const url = new URL(place.location_link || '');
+      if (url.protocol === 'https:' && (/^(?:(?:www|maps)\.)?google\.(?:com|be|fr|lu|ch|nl|de|co\.uk)$/.test(url.hostname) || url.hostname === 'maps.app.goo.gl')
+        && !url.username && !url.password) link = url.href;
+    } catch { /* Only a verified provider URL or its actual place ID may be used. */ }
+    if (!link && /^[A-Za-z0-9_-]{5,200}$/.test(id)) link = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapped.name)}&query_place_id=${encodeURIComponent(id)}`;
+    const key = id || link;
+    if (!mapped.name || !key || !link || seen.has(key)) return [];
+    seen.add(key);
+    return [{ name:mapped.name, place_id:id, primary_category:mapped.primary_category,
+      secondary_categories:mapped.secondary_categories, location_link:link,
+      reviews:Number.isInteger(mapped.reviews) && mapped.reviews >= 0 ? mapped.reviews : null,
+      rating:mapped.reviews === 0 ? null : mapped.rating >= 1 && mapped.rating <= 5 ? mapped.rating : null }];
+  }).slice(0,3);
 }
 
 export const __test__ = { mapTargetObservation, isMapMarkerOnly };

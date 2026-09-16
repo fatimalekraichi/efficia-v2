@@ -24,7 +24,7 @@ const mapDiagnosticRequest = (row) => ({
   status: row.status,
   mailerLiteStatus: row.mailerlite_status,
   reportType: row.report_type,
-  ...(row.review_reason ? { reviewReason: row.review_reason, countryCode: row.country_code,
+  ...(row.review_reason ? { requestId: row.request_id, reviewReason: row.review_reason, countryCode: row.country_code,
     googleBusinessUrl: row.google_business_url } : {}),
 });
 
@@ -46,7 +46,7 @@ export async function onRequestGet(context) {
       d.created_at AS submitted_at,
       d.status,
       d.mailerlite_status,
-      a.report_type, NULL AS review_reason, NULL AS country_code, d.google_business_url
+      a.report_type, NULL AS review_reason, NULL AS country_code, d.google_business_url, d.idempotency_key AS request_id
     FROM diagnostic_requests d
     INNER JOIN analyses a ON a.analysis_id = d.analysis_id
     WHERE a.report_type = 'free'
@@ -55,7 +55,7 @@ export async function onRequestGet(context) {
       c.first_name, c.email, COALESCE(c.submitted_at, c.created_at),
       CASE WHEN c.submitted_at IS NULL THEN 'incomplete' ELSE 'manual_review' END,
       c.mailerlite_status, NULL, c.review_reason,
-      json_extract(c.request_details_json, '$.countryCode'), json_extract(c.request_details_json, '$.googleBusinessUrl')
+      json_extract(c.request_details_json, '$.countryCode'), json_extract(c.request_details_json, '$.googleBusinessUrl'), c.idempotency_key
     FROM diagnostic_lead_captures c
     WHERE NOT EXISTS (
       SELECT 1 FROM diagnostic_requests d WHERE d.idempotency_key = c.idempotency_key

@@ -206,7 +206,7 @@ test("l’interface admin ouvre Score Efficia avec le seul analysisId et conserv
   assert.match(html, /Diagnostics gratuits à traiter/);
   assert.match(html, /data-admin-diagnostics/);
   assert.match(html, /Commandes Stripe/);
-  assert.match(html, /<script src="\/js\/admin\.js\?v=20260915-manual-review"><\/script>/);
+  assert.match(html, /<script src="\/js\/admin\.js\?v=20260916-no-listing"><\/script>/);
   assert.equal(existsSync(obsoleteAdminFile), false, "admin/index.html ne doit plus concurrencer admin.html");
   assert.match(redirects, /^\/admin\/ \/admin 301$/m);
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Diagnostic sans fiche Google | Efficia</title>
+<link rel="stylesheet" href="/css/reset.css"><link rel="stylesheet" href="/css/variables.css"><link rel="stylesheet" href="/css/admin.css">
+<link rel="stylesheet" href="/css/no-listing-diagnostic.css"></head>
+<body class="admin-page">
+<header class="admin-header"><div class="admin-header__inner"><a href="/admin" class="admin-brand"><img src="/assets/logo/logo-efficia-web.png" alt="Efficia Digital"></a><a class="admin-button is-secondary" href="/admin">Retour au back-office</a></div></header>
+<main class="admin-main">
+  <h1>Diagnostic de visibilité locale — Sans fiche Google</h1>
+  <p>Ce dossier ne calcule aucun score. Il décrit la concurrence observée et trois priorités recommandées.</p>
+  <p id="source-context"></p><p id="error" class="admin-error" role="alert"></p><p id="status" role="status"></p>
+  <form id="identity" class="admin-card admin-form">
+    <div class="admin-form-grid">
+      <label class="admin-field">Entreprise<input name="company" required maxlength="180"></label>
+      <label class="admin-field">Activité principale<input name="activity" required maxlength="140"></label>
+      <label class="admin-field">Ville de l’entreprise<input name="city" required maxlength="160"></label>
+      <label class="admin-field">Pays de l’entreprise<select name="countryCode" required><option value="">À choisir</option><option value="BE">Belgique</option><option value="FR">France</option><option value="LU">Luxembourg</option><option value="CH">Suisse</option><option value="NL">Pays-Bas</option><option value="DE">Allemagne</option></select></label>
+      <label class="admin-field">Site web (facultatif)<input name="website" type="url" maxlength="500"></label>
+      <label class="admin-field">Contexte d’absence<select name="absenceContext" required><option value="">Choisir explicitement</option><option value="declared">Absence déclarée par le demandeur</option><option value="confirmed">Absence confirmée manuellement</option></select></label>
+    </div>
+    <p>Une recherche infructueuse ou indisponible ne prouve pas l’absence de fiche. Vérifiez ce point avant de choisir ce mode.</p>
+    <label><input type="checkbox" id="mode-confirmed" required> Je choisis explicitement de réaliser un diagnostic sans fiche Google sur la base du contexte indiqué.</label>
+    <h2>Recherche locale</h2>
+    <div class="admin-form-grid">
+      <label class="admin-field">Zone de recherche<input name="searchCity" required maxlength="160"></label>
+      <label class="admin-field">Pays de recherche<select name="searchCountryCode" required><option value="">À choisir</option><option value="BE">Belgique</option><option value="FR">France</option><option value="LU">Luxembourg</option><option value="CH">Suisse</option><option value="NL">Pays-Bas</option><option value="DE">Allemagne</option></select></label>
+      <label class="admin-field">Requête testée<input name="query" required maxlength="300"></label>
+    </div>
+    <button type="button" class="admin-button is-secondary" id="suggest-query">Proposer activité + localité</button>
+    <label><input type="checkbox" id="zone-confirmed"> Je confirme que la requête vise cette zone et ce pays.</label>
+    <div class="admin-task-actions"><button class="admin-button" type="submit" id="save">Enregistrer le dossier</button><button class="admin-button is-secondary" type="button" id="collect">Rechercher / relancer la concurrence</button></div>
+  </form>
+  <section class="admin-card"><h2>Concurrence observée</h2><div id="observations">Recherche non effectuée.</div></section>
+  <section id="priorities" class="admin-card"><h2>Les trois priorités</h2><p>Effectuez d’abord la recherche. Vous pourrez ensuite modifier et enregistrer les trois priorités.</p></section>
+  <div class="admin-task-actions"><button id="preview" class="admin-button is-secondary" disabled>Aperçu du rapport</button><button id="export" class="admin-button" disabled>Générer le PDF et finaliser</button></div>
+  <p>La finalisation conserve le rapport en lecture seule dans « Audits terminés ». Elle ne l’envoie pas.</p>
+  <section id="report" aria-label="Aperçu du rapport" hidden></section>
+</main><script type="module" src="/js/admin-no-listing.js"></script></body></html>
