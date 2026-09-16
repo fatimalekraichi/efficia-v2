@@ -109,9 +109,9 @@ test("le sitemap contient uniquement l’URL propre de la page Audit", async () 
 test("le tunnel affiche 99 € TTC pour l’offre audit avant Stripe", async () => {
   const purchaseHtml = await read("achat.html");
   const purchaseScript = await read("js/purchase.js");
-  assert.match(purchaseHtml, /data-offer-tax-note/);
+  assert.doesNotMatch(purchaseHtml, /data-offer-tax-note/);
   assert.match(purchaseScript, /audit:\s*{[\s\S]*?price: "99 € TTC"/);
-  assert.match(purchaseScript, /TVA comprise — aucun supplément de TVA au paiement/);
+  assert.doesNotMatch(purchaseScript, /TVA comprise — aucun supplément de TVA au paiement/);
 });
 
 test("les trois cartes et le tunnel affichent des prix TTC cohérents", async () => {

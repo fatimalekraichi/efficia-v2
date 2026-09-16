@@ -4,21 +4,18 @@ const OFFERS = {
     price: "99 € TTC",
     amount: "99 €",
     tax: "TTC",
-    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   visibility: {
     name: "Pack Visibilité Google",
     price: "349 € TTC",
     amount: "349 €",
     tax: "TTC",
-    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
   performance: {
     name: "Pack Performance",
     price: "499 € TTC",
     amount: "499 €",
     tax: "TTC",
-    taxNote: "TVA comprise — aucun supplément de TVA au paiement.",
   },
 };
 
@@ -27,7 +24,6 @@ const submitButton = document.querySelector("[data-purchase-submit]");
 const errorMessage = document.querySelector("[data-purchase-error]");
 const offerName = document.querySelector("[data-offer-name]");
 const offerPrice = document.querySelector("[data-offer-price]");
-const offerTaxNote = document.querySelector("[data-offer-tax-note]");
 const unknownGoogleBusiness = document.querySelector("[data-unknown-google-business]");
 const googleBusinessWrapper = document.querySelector("[data-google-business-field]");
 const googleBusinessField = googleBusinessWrapper?.querySelector("input");
@@ -50,10 +46,6 @@ if (offerPrice) {
   tax.className = "purchase-price__tax";
   tax.textContent = OFFERS[selectedOffer].tax;
   offerPrice.replaceChildren(amount, " ", tax);
-}
-if (offerTaxNote) {
-  offerTaxNote.textContent = OFFERS[selectedOffer].taxNote || "";
-  offerTaxNote.hidden = !OFFERS[selectedOffer].taxNote;
 }
 
 const setError = (message) => {
