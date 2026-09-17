@@ -6667,11 +6667,12 @@ function checklistV3Html(){
   return {
     total:nbApplicables,
     counts,
-    html:`<div class="v3-method-top${counts.not_verifiable ? " v3-method-top--with-neutral" : ""}">
+    html:`<div class="v3-method-top${counts.not_verifiable ? " v3-method-top--with-neutral" : ""}"${counts.unknown > 0 ? ` style="grid-template-columns:1.35fr repeat(${4 + (counts.not_verifiable > 0 ? 1 : 0)},1fr)"` : ""}>
       <div class="v3-method-number"><b>${nbApplicables}</b><span>vérifications applicables</span><small>à cette fiche</small></div>
       ${statHtml(counts.ok, "Conformes", "signaux positifs", "ok")}
       ${statHtml(counts.warn, "À améliorer", "à renforcer", "warn")}
       ${statHtml(counts.ko, "Prioritaires", "à traiter d'abord", "ko")}
+      ${counts.unknown > 0 ? statHtml(counts.unknown, "À confirmer", "contrôles non résolus", "unknown") : ""}
       ${counts.not_verifiable ? statHtml(counts.not_verifiable, "Non vérifiables", "publiquement", "neutral") : ""}
     </div>
     <p class="v3-method-categories"><b>Domaines analysés :</b> ${categories.join(" · ")}</p>
@@ -7031,7 +7032,7 @@ function contexteRapport(){
 function titrePriorite(item){
   if(item.famille === "visibilite"){
     return item.priorityKey === "categoriesSecondaires" || item.critere?.key === "categoriesSecondaires"
-      ? "Compléter les catégories de votre fiche"
+      ? "Renseigner les catégories secondaires utiles"
       : "Vérifier votre catégorie principale";
   }
   if(item.famille === "infos") return titreInfosPriorite(item);
@@ -7800,7 +7801,7 @@ function genererRapport(options = {}){
   const compteursPriorites = compteursPrioritesPage5(checklistV3.counts.ko, top3p.length);
   const indicesV3 = indicesProspect();
   const domainesV3 = [
-    ["Visibilité", indicesV3.visibilite, libelleIndiceVisibilite(dIdent)],
+    ["PRÉSENCE GOOGLE", indicesV3.visibilite, "sur la recherche testée à améliorer"],
     ["Confiance", indicesV3.confiance, estNombre(dIdent?.nbAvis) ? `${nEntier(dIdent.nbAvis)} avis observé${Number(dIdent.nbAvis) > 1 ? "s" : ""}` : "preuves clients à confirmer"],
     ["Conversion", indicesV3.conversion, conversionSousScoreEstIncomplet(dIdent) ? "offre ou passage à l'action incomplet" : "offre et contact visibles"]
   ];

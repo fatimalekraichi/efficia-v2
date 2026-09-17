@@ -323,6 +323,7 @@ test("la page 3 réconcilie les contrôles terminaux non vérifiables sans les c
   const criteres = [
     { id: "revendiquee", key: "revendiquee", max: 4, q: "Fiche revendiquée", force: "Fiche revendiquée et vérifiée", constat: "La fiche ne semble pas entièrement revendiquée ou vérifiée." },
     { id: "adresse", key: "adresse", max: 3, q: "Adresse / zone", force: "Localisation confirmée", constat: "La zone mérite d’être corrigée." },
+    { id: "exclu", key: "exclu", max: 4, q: "Critère non applicable" },
   ];
   const source = [
     extractFunction(html, "statutControleRapportV3", "listeControlesRapportV3"),
@@ -339,7 +340,7 @@ test("la page 3 réconcilie les contrôles terminaux non vérifiables sans les c
       result: null,
       critereEstNote: () => true,
       critereEstMasque: () => false,
-      critereEstNonApplicable: () => false,
+      critereEstNonApplicable: (criterion) => criterion.key === "exclu",
       critereEstNonVerifiablePubliquement: () => false,
       rapportSansAvis: () => false,
       etatSiteOfficielCourant: () => ({ etat: "accessible" }),
@@ -363,6 +364,7 @@ test("la page 3 réconcilie les contrôles terminaux non vérifiables sans les c
   const terminal = render({ locationMode: "storefront", addressVerification: "not_verifiable", serviceAreaVerification: "unknown" });
   assert.deepEqual({ ...terminal.counts }, { ok: 1, warn: 0, ko: 0, unknown: 0, not_verifiable: 1 });
   assert.equal(terminal.total, 2);
+  assert.doesNotMatch(terminal.html, /Critère non applicable/u);
   assert.equal(terminal.total, Object.values(terminal.counts).reduce((sum, count) => sum + count, 0));
   assert.match(terminal.html, /Non vérifiables<\/span><small>publiquement/u);
   assert.match(terminal.html, /v3-method-top--with-neutral/u);
@@ -373,7 +375,24 @@ test("la page 3 réconcilie les contrôles terminaux non vérifiables sans les c
   const hybridMissingArea = render({ locationMode: "hybrid", addressVerification: "not_verifiable", serviceAreaVerification: "unknown" });
   assert.deepEqual({ ...hybridMissingArea.counts }, { ok: 1, warn: 0, ko: 0, unknown: 1, not_verifiable: 0 });
   assert.equal(hybridMissingArea.total, 2, "la zone desservie manquante reste un contrôle distinct");
-  assert.match(hybridMissingArea.html, /contrôles encore non résolus/u);
+  assert.match(hybridMissingArea.html, /contrôles non résolus/u);
+  for(const result of [terminal, hybridMissingArea]){
+    const displayed = [...result.html.matchAll(/v3-method-number--[^" ]+"><b>(\d+)<\/b>/gu)].map(m=>Number(m[1]));
+    assert.equal(result.total, displayed.reduce((sum,n)=>sum+n,0));
+  }
+});
+
+test("page 3 : 24 contrôles réconcilient 5 conformes, 6 à améliorer, 11 prioritaires et deux états distincts", () => {
+  const statuses = [...Array(5).fill('ok'), ...Array(6).fill('warn'), ...Array(11).fill('ko'), 'unknown', 'not_verifiable'];
+  const context = {
+    listeControlesRapportV3:()=>statuses.map((statut,i)=>({statut,cat:{cat:'Test'},cr:{key:String(i),q:'Contrôle'}})),
+    LIBELLES_COURTS:{},libelleStatutRapportV3:s=>s,texteControleRapportV3:()=>'',
+  };
+  vm.runInNewContext(`${extractFunction(html, 'checklistV3Html', 'critereConfirmeMax')}\nresult = checklistV3Html();`,context);
+  const displayed=[...context.result.html.matchAll(/v3-method-number--[^" ]+"><b>(\d+)<\/b>/gu)].map(m=>Number(m[1]));
+  assert.deepEqual(displayed,[5,6,11,1,1]);
+  assert.equal(context.result.total,24);
+  assert.equal(context.result.total,displayed.reduce((sum,n)=>sum+n,0));
 });
 
 test("le reliquat des priorités est dédupliqué par identité métier, y compris pour le site technique", () => {

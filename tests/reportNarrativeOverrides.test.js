@@ -269,6 +269,54 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, opti
   }
 }
 
+test("Chrome : compteurs réconciliés, présence Google et catégories secondaires dans le PDF six pages", {skip:!existsSync(CHROME),timeout:120000}, async()=>{
+  const result=await runAdminBrowserHarness(`(async()=>{try{
+    for(let i=0;i<100&&!document.getElementById('p-entreprise')?.value;i++)await new Promise(r=>setTimeout(r,20));
+    for(const cr of GRILLE.flatMap(c=>c.criteres)){
+      const inputs=[...document.querySelectorAll('input[name="c'+cr.id+'"]')].filter(e=>!e.dataset.special && Number.isFinite(Number(e.value)));
+      inputs.sort((a,b)=>Number(b.value)-Number(a.value));
+      if(inputs[0]){inputs[0].checked=true;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));}
+    }
+    for(const key of ['revendiquee','categoriesSecondaires']){
+      const e=[...document.querySelectorAll('input[name="c'+CRITERE_IDS[key]+'"]')].find(e=>Number(e.value)===0&&!e.dataset.special);
+      e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    const mode=document.querySelector('input[name="condition-location-mode"][value="service_area"]');mode.checked=true;mode.dispatchEvent(new Event('change',{bubbles:true}));
+    const zone=document.querySelector('input[name="location-service-area"][value="not_verifiable"]');zone.checked=true;zone.dispatchEvent(new Event('change',{bubbles:true}));
+    document.querySelectorAll('input[name="c'+CRITERE_IDS.horaires+'"]').forEach(e=>e.checked=false);
+    sourcesCriteres.delete(CRITERE_IDS.horaires);
+    const before=checklistV3Html();
+    await enregistrerBrouillonD1(true);await restaurerBrouillonD1();
+    const restored=checklistV3Html();
+    const scoreBefore=document.getElementById('score-live').textContent;
+    if(!genererRapport({exigerVersion:false}))throw Error('rendu refusé');
+    const pages=[...document.querySelectorAll('#rapport-contenu .page')];
+    const preview=pages.map(p=>p.innerText);
+    const nums=[...pages[2].querySelectorAll('.v3-method-number b')].map(e=>Number(e.textContent));
+    const layout=pages.map(p=>mesuresPageRapport(p));
+    const {jsPDFCtor,html2canvasFn}=await assurerLibrairiesPDF();
+    const pdf=new jsPDFCtor({unit:'mm',format:'a4',orientation:'portrait'});
+    for(const [i,page]of pages.entries()){
+      const canvas=await html2canvasFn(page,optionsCapturePdfDiagnostic());
+      if(i)pdf.addPage('a4','portrait');pdf.addImage(canvas.toDataURL('image/jpeg',.98),'JPEG',0,0,210,297);
+    }
+    document.getElementById('workflow-browser-result').textContent=JSON.stringify({before:{total:before.total,counts:before.counts},restored:{total:restored.total,counts:restored.counts},nums,preview,layout,pages:pdf.getNumberOfPages(),sameScore:scoreBefore===document.getElementById('score-live').textContent,pdf:pdf.output('datauristring').split(',')[1]});
+  }catch(e){document.getElementById('workflow-browser-result').textContent=JSON.stringify({error:String(e.stack||e)});}})();`,{overrides:[]},{timeout:110000,resultWait:100000});
+  assert.equal(result.error,undefined,result.error);
+  assert.deepEqual(result.restored,result.before);
+  assert.equal(result.nums[0],result.nums.slice(1).reduce((s,n)=>s+n,0));
+  assert.ok(result.before.counts.unknown>0);
+  assert.ok(result.before.counts.not_verifiable>0);
+  assert.equal(result.pages,6);
+  assert.ok(result.sameScore);
+  assert.ok(result.layout.every(p=>p.ok),JSON.stringify(result.layout));
+  assert.match(result.preview[0],/PRÉSENCE GOOGLE/u);
+  assert.match(result.preview[0],/sur la recherche testée à améliorer/u);
+  assert.match(result.preview[1],/Visibilité locale/u);
+  assert.match(result.preview.slice(3,5).join(' '),/Renseigner les catégories secondaires utiles/u);
+  if(process.env.EFFICIA_CONTROL_PDF)writeFileSync(process.env.EFFICIA_CONTROL_PDF,Buffer.from(result.pdf,'base64'));
+});
+
 async function setup() {
   const db = new LocalD1();
   const now = "2026-08-30T10:00:00.000Z";

@@ -34,7 +34,7 @@ test("le sous-libellé Visibilité ne préfixe pas deux fois une position déjà
   assert.equal(context.libelle({ position: 5, requeteTestee: "" }), "5e position");
   assert.equal(context.libelle({ position: 0, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
   assert.equal(context.libelle({ position: null, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
-  assert.match(html, /\["Visibilité", indicesV3\.visibilite, libelleIndiceVisibilite\(dIdent\)\]/u);
+  assert.match(html, /\["PRÉSENCE GOOGLE", indicesV3\.visibilite, "sur la recherche testée à améliorer"\]/u);
   assert.doesNotMatch(html, /position \$\{libellePositionRapport\(dIdent\)\}/u);
 });
 

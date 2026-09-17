@@ -67,7 +67,7 @@ test("page 3 V3.2 conserve un contrôle géométrique sans masquage", () => {
   assert.match(generator, /contentBottom <= footerRect\.top - securityGap/u);
   assert.match(generator, /appliquerCompactionLocaleRapport\(\)/u);
   assert.match(generator, /Erreur de mise en page : le contenu de la page \$\{layout\.page\}/u);
-  assert.doesNotMatch(generator, /statHtml\(counts\.unknown, "À confirmer"/u);
+  assert.match(generator, /counts\.unknown > 0 \? statHtml\(counts\.unknown, "À confirmer"/u);
   assert.match(generator, /Non vérifiables", "publiquement", "neutral"/u);
   assert.match(generator, /descriptionRemplie:"Description visible"/u);
   assert.doesNotMatch(generator, /descriptionRemplie:"Description remplie"/u);
