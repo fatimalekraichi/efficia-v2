@@ -6,6 +6,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { collectPageResultWithIsolatedChrome } from "./chromeHeadlessHarness.js";
+import { COMPETITOR_QUALIFICATION_VERSION } from "../functions/lib/collectCompetitors.js";
 
 import { createSessionCookie } from "../functions/admin/_shared.js";
 import { onRequestPut as putDraft } from "../functions/api/admin/audit-drafts/[draftId].js";
@@ -237,6 +238,7 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, opti
       }
       if (url.includes("/api/admin/audit-snapshots/")) return json({ success: true });
       if (url.includes("/admin/tasks/")) return json({ success: true });
+      if (url.includes("/api/admin/free-diagnostic-collect/") && window.__workflowFixture.refreshResponse) return json(window.__workflowFixture.refreshResponse);
       if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
         success: false,
         error: "SEARCH_REFRESH_FAILED",
@@ -1233,6 +1235,19 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   assert.deepEqual(result.finalPrices, result.initial.prices);
 });
 
+// Ces parcours supposent une collecte qualifiée : un brouillon historique sans
+// marqueur doit au contraire neutraliser les réponses concurrentielles.
+function qualifiedWorkflowAnswers() {
+  const competitors = Array.from({length:3}, (_, i) => ({label:`Électricien test ${i+1}`,category:"Electrician",avis:5,note:4.2,photos:3}));
+  return {
+    questionnaireVersion:"score-efficia-questionnaire-v4", profileKey:"default",
+    fields:{"p-entreprise":"Entreprise Test","p-ville":"Arlon","p-activite":"Électricien","p-contact":"Test interne","d-requete":"Électricien Arlon","d-zone-recherche":"Arlon","d-zone-pays":"BE",
+      ...Object.fromEntries(competitors.flatMap((c,i)=>[[`dc-nom-${i+1}`,c.label],[`dc-avis-${i+1}`,String(c.avis)],[`dc-note-${i+1}`,String(c.note)]]))},
+    observedData:{nbAvis:5,nbPhotos:3,note:4.2,concurrents:competitors,competitorQualificationVersion:COMPETITOR_QUALIFICATION_VERSION,competitorQualificationStatus:"qualified"},
+    responses:{}
+  };
+}
+
 test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le brouillon puis rendent six pages", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
   const catalog = ["page1.verdict_title"].map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
   const result = await runAdminBrowserHarness(`
@@ -1287,7 +1302,8 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
         window.print = () => { previews += 1; };
         previewButton.click();
         for(let attempt = 0; attempt < 400 && !previews; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
-        if(!previews) throw new Error("aperçu non ouvert");
+        if(!previews) throw new Error("aperçu non ouvert : " + document.getElementById("statut")?.textContent);
+        if(document.querySelectorAll('#rapport-contenu .page').length !== 6 || !validerMiseEnPageRapport().ok) throw new Error('aperçu six pages invalide');
 
         await assurerLibrairiesPDF();
         const captures = [];
@@ -1328,7 +1344,7 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
       }
     })();
-  `, { catalog, overrides: [] }, { timeout: 45_000, resultWait: 40_000 });
+  `, { catalog, overrides: [], answers:qualifiedWorkflowAnswers() }, { timeout: 45_000, resultWait: 40_000 });
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.previews, 1);
   assert.equal(result.captures.length, 6, JSON.stringify(result));
@@ -1381,6 +1397,7 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
         document.getElementById("d-requete").value = "Électricien Arlon";
         const confidence = value => {
           choose("attractiviteConcurrents", value);
+          (window.scoreTrace ||= []).push({value, detail:calculScoreDetail(), responses:collecterReponses()});
           return Number(document.getElementById("score-live").textContent);
         };
         const ahead = confidence(4);
@@ -1406,7 +1423,7 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
           pdf.addImage(canvas.toDataURL("image/jpeg", .98), "JPEG", 0, 0, 210, 297);
         }
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({
-          ahead, comparable, behind, restored, restoredValue, stored,
+          ahead, comparable, behind, restored, restoredValue, stored, scoreTrace:window.scoreTrace, finalDetail:calculScoreDetail(),
           reportScore, pdfPages:pdf.internal.getNumberOfPages(), pdfBytes:pdf.output("arraybuffer").byteLength,
           captured:captured.join("\\n")
         });
@@ -1414,18 +1431,26 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
       }
     })();
-  `, {}, { timeout: 55_000, resultWait: 50_000 });
+  `, {answers:qualifiedWorkflowAnswers()}, { timeout: 55_000, resultWait: 50_000 });
   assert.equal(result.error, undefined, result.error);
-  assert.deepEqual([result.ahead, result.comparable, result.behind], [46, 44, 42]);
-  assert.equal(result.restored, 44);
+  // Les sous-scores applicables du rapport, et non leur ancienne somme brute,
+  // sont la source canonique (50/98, 48/98, 46/98).
+  assert.deepEqual(result.scoreTrace.map(({detail})=>[detail.pointsObtenusApplicables,detail.pointsApplicables]), [[50,98],[48,98],[46,98]]);
+  for(const {detail} of result.scoreTrace){
+    assert.equal(detail.pointsObtenusApplicables,detail.categories.reduce((sum,c)=>sum+Math.round(c.pointsPonderes),0));
+    assert.equal(detail.pointsApplicables,detail.categories.reduce((sum,c)=>sum+Math.round(c.maximumEffectifNormalise),0));
+  }
+  assert.deepEqual([result.ahead, result.comparable, result.behind], [51, 49, 47]);
+  assert.equal(result.restored, 49);
   assert.equal(result.restoredValue, "2");
   assert.deepEqual(result.stored, {
     points:2, value:"partial", statut:"manuelle", source:"manual", selectedOptionIndex:1, checklist:[]
   });
-  assert.equal(result.reportScore, "42");
+  assert.equal(result.reportScore, String(result.behind));
+  assert.equal(Math.round(result.finalDetail.total),result.behind);
   assert.equal(result.pdfPages, 6);
   assert.ok(result.pdfBytes > 0);
-  assert.match(result.captured, /42\s*\/100/u);
+  assert.match(result.captured, /47\s*\/100/u);
 });
 
 test("Chrome réel : aucune photo exclut les sous-questions dépendantes du brouillon, de l’aperçu et du PDF", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
@@ -1612,9 +1637,17 @@ test("un clic réel sur la relance concurrentielle appelle exactement une fois l
         for (let attempt = 0; attempt < 50 && !document.getElementById("d-requete")?.value; attempt += 1) {
           await new Promise(resolve => setTimeout(resolve, 20));
         }
-        document.getElementById("btn-relancer-recherche").click();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await initialisationContexteAdminPromise;
+        const button=document.getElementById("btn-relancer-recherche");
+        const beforeDisabled=button.disabled;
+        button.click();
+        const callsBeforeConfirmation=window.__workflowFetchCalls.filter(item=>item.url.includes('/free-diagnostic-collect/')).length;
+        document.getElementById('d-zone-confirmee').click();
+        if(button.disabled) throw new Error('relance toujours désactivée après confirmation');
+        button.click();
+        for(let i=0;i<100&&relanceRechercheEnCours;i++)await new Promise(resolve=>setTimeout(resolve,20));
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          beforeDisabled,callsBeforeConfirmation,position:document.getElementById('d-position').value,competitors:donneesAnalyse.concurrents,means:donneesAnalyse.moyennesConcurrents,stale:mettreAJourEtatRecherche(),status:document.getElementById('statut').textContent,
           calls: window.__workflowFetchCalls.filter(item => item.url.includes("/api/admin/free-diagnostic-collect/")),
           buttonText: document.getElementById("btn-relancer-recherche").textContent
         });
@@ -1622,11 +1655,20 @@ test("un clic réel sur la relance concurrentielle appelle exactement une fois l
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
       }
     })();
-  `);
+  `,{refreshResponse:{success:true,operation:"refresh_search",analysisId:ANALYSIS_ID,reportType:"free",searchAnalyzedAt:"2026-09-18T10:00:00.000Z",business:{searchQuery:"Électricien Arlon",localPosition:2,competitorQualificationVersion:COMPETITOR_QUALIFICATION_VERSION,competitorQualificationStatus:"qualified",competitors:Array.from({length:3},(_,i)=>({name:`Électricien simulé ${i+1}`,category:"Electrician",rating:4.5,reviews:10,photos_count:15}))},scorePrefill:{criteria:[]}}});
   assert.equal(result.error, undefined, result.error);
+  assert.equal(result.beforeDisabled,true);
+  assert.equal(result.callsBeforeConfirmation,0);
   assert.equal(result.calls.length, 1);
   assert.equal(result.calls[0].method, "POST");
   assert.match(result.calls[0].url, new RegExp(`/api/admin/free-diagnostic-collect/${ANALYSIS_ID}$`));
+  assert.deepEqual(JSON.parse(result.calls[0].body).searchZone,{city:"Arlon",countryCode:"BE",countryName:"Belgique"});
+  assert.equal(result.position,"2");
+  assert.equal(result.competitors.length,3);
+  assert.equal(result.means.avis,10);
+  assert.equal(result.means.photos,15);
+  assert.equal(result.stale,false);
+  assert.match(result.status,/Analyse mise à jour/u);
   assert.equal(result.buttonText, "Relancer l’analyse sur cette recherche");
 });
 

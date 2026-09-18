@@ -46,7 +46,23 @@ test("la zone confirmée est conservée dans le brouillon et reste la source de 
 
 test("la position et les trois concurrents proviennent exclusivement de la réponse serveur", () => {
   assert.match(html, /position:estNombre\(business\.localPosition\)/);
-  assert.match(html, /business\.competitors\.slice\(0, 3\)\.map/);
+  // Le garde-fou historique doit précéder le plafonnement : ne jamais
+  // réinjecter trois anciennes lignes non qualifiées sous le nouveau libellé.
+  assert.match(html, /const qualificationStatus = business\.competitorQualificationStatus \|\| "refresh_required"/);
+  assert.match(html, /\(qualificationStatus === "refresh_required" \? \[\] : business\.competitors\.slice\(0, 3\)\)\.map/);
+  const start=html.indexOf('  const qualificationStatus = business.competitorQualificationStatus',html.indexOf('function appliquerResultatsRecherche'));
+  const end=html.indexOf('  const comparisons =',start);
+  assert.ok(start>0 && end>start);
+  const readPanel=new Function('business','estNombre',`${html.slice(start,end)}\nreturn competitors;`);
+  const competitors=Array.from({length:4},(_,i)=>({name:`Électricien ${i+1}`,rating:4.5,reviews:10,photos_count:15}));
+  const numeric=value=>value!==null&&value!==undefined&&Number.isFinite(Number(value));
+  for(const status of [undefined,'refresh_required'])assert.deepEqual(readPanel({competitors,competitorQualificationStatus:status},numeric),[]);
+  for(const count of [0,1,2,3,4]){
+    const panel=readPanel({competitors:competitors.slice(0,count),competitorQualificationStatus:count>=3?'qualified':'insufficient',competitorQualificationVersion:1},numeric);
+    assert.equal(panel.length,Math.min(count,3));
+    assert.deepEqual(panel.map(c=>c.label),competitors.slice(0,Math.min(count,3)).map(c=>c.name));
+    assert.ok(panel.every(c=>c.avis===10&&c.note===4.5&&c.photos===15));
+  }
   assert.doesNotMatch(html, /function relancerAnalyseRecherche[\s\S]*Math\.random/);
 });
 

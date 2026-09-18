@@ -395,22 +395,20 @@ test("page 3 : 24 contrôles réconcilient 5 conformes, 6 à améliorer, 11 prio
   assert.equal(context.result.total,displayed.reduce((sum,n)=>sum+n,0));
 });
 
-test("le reliquat des priorités est dédupliqué par identité métier, y compris pour le site technique", () => {
-  const context = { result: null };
-  vm.runInNewContext(`${extractFunction(html, "clePriorite", "prioriteInfosRevendiquee")}\nresult = {
-    all: prioritesDistinctesRapport([
-      { priorityKey:"revendiquee" }, { priorityKey:"adresse" }, { priorityKey:"horaires" }, { priorityKey:"contact" }, { priorityKey:"contact" }
-    ], [
-      { famille:"site_officiel" }, { priorityKey:"revendiquee" }, { priorityKey:"adresse" }
-    ]).map(identitePrioriteRapport),
-    remaining: compterPrioritesRestantesRapport([
-      { priorityKey:"revendiquee" }, { priorityKey:"adresse" }, { priorityKey:"horaires" }, { priorityKey:"contact" }, { priorityKey:"contact" }
-    ], [
-      { famille:"site_officiel" }, { priorityKey:"revendiquee" }, { priorityKey:"adresse" }
-    ])
-  };`, context);
-  assert.deepEqual([...context.result.all], ["revendiquee", "adresse", "horaires", "contact", "site_officiel"]);
-  assert.equal(context.result.remaining, 2);
+test("le reliquat utilise les contrôles canoniques dédupliqués sans ajouter une priorité technique au total", () => {
+  // Depuis 805a4cb, les anciens helpers d'union des priorités ont été remplacés
+  // par le compteur page 3 : ajouter site_officiel au total serait une régression.
+  const context = {
+    GRILLE:[{criteres:['revendiquee','adresse','horaires','contact','contact','nap','warn','neutral','na'].map(key=>({key}))}],
+    statutControleRapportV3:cr=>({warn:'warn',neutral:'not_verifiable',na:null}[cr.key] ?? (cr.key==='na'?null:'ko')),
+  };
+  vm.runInNewContext(`${extractFunction(html,'listeControlesRapportV3','libelleStatutRapportV3')}\n${extractFunction(html,'compteursPrioritesPage5','prioriteInfosRevendiquee')}\ncontrols=listeControlesRapportV3();result=compteursPrioritesPage5(controls.filter(c=>c.statut==='ko').length,3);`,context);
+  assert.deepEqual(Array.from(context.controls,c=>c.cr.key),['revendiquee','adresse','horaires','contact','nap','warn','neutral']);
+  assert.deepEqual({...context.result},{total:5,presentees:3,restants:2});
+  assert.match(html,/compteursPrioritesPage5\(checklistV3\.counts\.ko, top3p\.length\)/u);
+  for(const [total,presented,remaining] of [[0,0,0],[1,1,0],[2,2,0],[3,3,0],[7,3,4],[0,1,0]]){
+    assert.deepEqual({...context.compteursPrioritesPage5(total,presented)},{total,presentees:presented,restants:remaining});
+  }
   assert.match(html, /projete:Math\.max\(Math\.round\(score\), projectionBrute\.projete\)/u, "le potentiel affiché ne peut pas être inférieur au score actuel");
 });
 
