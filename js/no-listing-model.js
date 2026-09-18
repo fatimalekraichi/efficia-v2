@@ -36,21 +36,36 @@ export function cityWithDe(city) {
   const muteH=/^(huy|hyères|hélécine)$/iu.test(value);
   return /^[aeiouyàâäéèêëîïôöùûüÿœæ]/iu.test(value)||muteH?`d’${value}`:`de ${value}`;
 }
+export function panelFacts(collection) {
+  const panel=collection?.status==='success' && Array.isArray(collection.competitors)?collection.competitors:[];
+  const reviews=panel.map(c=>c.reviews).filter(v=>Number.isInteger(v)&&v>=0);
+  const ratings=panel.map(c=>c.rating).filter(v=>typeof v==='number'&&Number.isFinite(v)&&v>=1&&v<=5);
+  const range=values=>values.length?{min:Math.min(...values),max:Math.max(...values),known:values.length}:null;
+  return {count:panel.length,reviewed:reviews.filter(v=>v>0).length,reviewTotal:reviews.length?reviews.reduce((sum,n)=>sum+n,0):null,reviews:range(reviews),ratings:range(ratings)};
+}
+export function reviewEvidenceSentence(collection) {
+  const {reviews,reviewTotal}=panelFacts(collection);
+  if (!reviews) return 'Le nombre d’avis des fiches observées n’est pas disponible.';
+  if (reviews.known===1) return `La seule fiche observée dont le nombre d’avis est disponible affiche ${reviewTotal} avis.`;
+  const subject=`Les ${reviews.known} fiches observées dont le nombre d’avis est disponible`;
+  return reviews.min===reviews.max
+    ? `${subject} affichent chacune ${reviews.min} avis.`
+    : `${subject} cumulent ${reviewTotal} avis.`;
+}
 export function defaultPriorities(data, observation = null) {
   const competitors = observation?.competitors || [];
-  const evidence = competitors.length
-    ? `Lors de la recherche « ${data.query} », ${competitors.length} ${competitors.length === 1 ? 'fiche pertinente a été observée' : 'fiches pertinentes ont été observées'} dans la zone ${cityWithDe(data.searchCity)}.`
-    : 'La recherche n’a pas fourni de fiche concurrente qualifiée et vérifiable.';
-  const reviewed = competitors.filter(c=>Number.isInteger(c.reviews) && c.reviews > 0);
-  const reviewEvidence = reviewed.length
-    ? `Parmi les fiches observées, ${reviewed[0].name} affiche ${reviewed[0].reviews} avis.`
-    : 'Le nombre d’avis des concurrents ne permet pas ici de définir une référence fiable.';
+  const evidence = `Nous n’avons pas identifié de fiche Google correspondant clairement à ${data.company} pour « ${data.query} » dans les résultats analysés.` + (competitors.length
+    ? ` Pour votre activité (${data.activity}), ${competitors.length} ${competitors.length===1?'fiche pertinente a été observée':'fiches pertinentes ont été observées'} dans la zone ${cityWithDe(data.searchCity)}.`
+    : ' Aucune fiche concurrente qualifiée et vérifiable n’a été retenue.');
+  const reviewEvidence = reviewEvidenceSentence(observation) + ' Une nouvelle fiche partira sans historique d’avis. Solliciter dès le départ des retours authentiques permettra de construire progressivement ces repères.';
   return [
     {title:'Créer et faire valider votre fiche Google',finding:evidence,
       actions:`Vérifier d’abord dans Google Maps si une fiche de votre entreprise doit être récupérée. Si une fiche existe, demander sa gestion plutôt qu’en créer une seconde. Sinon, créer la fiche avec votre activité, les informations réelles de votre entreprise à ${data.city} et suivre la procédure de validation proposée par Google. Respecter les conditions d’éligibilité de Google.`,
       benefit:'Permettre aux personnes qui recherchent votre activité de trouver des informations officielles sur votre entreprise.'},
-    {title:'Présenter clairement vos services et vos coordonnées',finding:'Une fiche complète permettra de présenter vos services et les informations utiles pour contacter votre entreprise.',
-      actions:`Choisir la catégorie principale correspondant à votre activité${/^(électricien|electricien|electrician)$/i.test(data.activity.trim()) ? ' d’électricien' : ` (${data.activity})`}. Renseigner les services, les coordonnées, les horaires et la zone réellement desservie autour ${cityWithDe(data.city)}. N’afficher une adresse que si les clients y sont reçus. Ajouter des photos représentatives de votre travail.${data.website ? ' Relier le site officiel indiqué dans ce dossier.' : ''}`,
+    {title:'Présenter clairement vos services et vos coordonnées',finding:data.website
+      ? `Le site ${data.website} est déjà indiqué comme point de contact pour ${data.company}. Une fiche Google permettrait d’y associer téléphone, horaires, services et zone desservie.`
+      : `Aucun site web n’est renseigné pour ${data.company} dans ce dossier. Une fiche Google permettrait de présenter votre activité (${data.activity}) à ${data.city}, vos services et vos coordonnées.`,
+      actions:`Choisir la catégorie principale correspondant à votre activité${/^(électricien|electricien|electrician)$/i.test(data.activity.trim()) ? ' d’électricien' : ` (${data.activity})`}. Renseigner les services, les coordonnées, les horaires et la zone réellement desservie autour ${cityWithDe(data.city)}${data.website ? ', ainsi que le site web indiqué' : ''}. N’afficher une adresse que si les clients y sont reçus. Ajouter des photos représentatives de votre travail.`,
       benefit:'Aider un prospect à comprendre ce que vous proposez et comment vous contacter.'},
     {title:'Demander régulièrement des avis authentiques',finding:reviewEvidence,
       actions:'Après une prestation, proposer au client de partager librement son expérience avec le lien d’avis Google. Ne pas sélectionner uniquement les clients satisfaits. Ne proposer aucune contrepartie et ne publier aucun faux avis. Répondre avec courtoisie aux avis reçus.',

@@ -17,6 +17,7 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
   const realFetch=globalThis.fetch,p=provider(),mockFetch=globalThis.fetch;
   globalThis.fetch=(input,options)=>new URL(String(input)).hostname==='127.0.0.1'?realFetch(input,options):mockFetch(input,options);
   let savedPdf=null, savedPages=0;
+  const pdfPath=join(libs,`Diagnostic-sans-fiche-EXEMPLE-FICTIF${longCopy?'-LONG':fromCapture?'':'-MANUAL'}.pdf`);
   const runner=`<!doctype html><meta charset="utf-8"><output id="result"></output><iframe id="frame" style="width:1200px;height:1000px"></iframe><script>
     (async()=>{const result=document.querySelector('#result'),frame=document.querySelector('#frame');
     const wait=async(f,label)=>{for(let i=0;i<1600;i++){if(f())return;await new Promise(r=>setTimeout(r,25));}throw Error(label+' '+frame.contentDocument.querySelector('#error')?.textContent);};
@@ -42,6 +43,38 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       const automaticReport=doc.querySelector('#report').innerText;
       check(automaticReport.includes('Une fois votre fiche en ligne, proposer au client de partager'),'automatic reviews after listing goes live');
       check(automaticReport.includes('Répondre aux avis avec courtoisie.'),'automatic courteous replies');
+      const {defaultPriorities,searchIdentity}=await import('/js/no-listing-model.js');
+      const {renderNoListingReport}=await import('/js/no-listing-report.js');
+      const sample={...${JSON.stringify(identity)},company:'Vinelec srl',activity:'Électricien',city:'Bassenge',searchCity:'Bassenge',query:'Electricien Bassenge'};
+      const samplePanel=[{name:'Belka - Solutions Electriques',reviews:29,rating:4.8},{name:'acdc elec',reviews:null,rating:null},{name:'Guintens Électricité',reviews:29,rating:5}].map(c=>({...c,primary_category:'Electrician',secondary_categories:[],location_link:'https://www.google.com/maps'}));
+      const sampleContainer=doc.createElement('div');doc.body.append(sampleContainer);
+      for(const website of ['https://www.electricitevinelec.be/','']){
+        const data={...sample,website};
+        data.collection={status:'success',query:data.query,city:data.city,countryCode:'BE',observedAt:'2026-09-18T10:00:00Z',searchIdentity:searchIdentity(data),competitors:samplePanel};
+        data.priorities=defaultPriorities(data,data.collection);
+        const samplePages=renderNoListingReport(data,sampleContainer);
+        check(samplePages.length===5,'Vinelec five pages with/without website: '+samplePages.length);
+        const copy=sampleContainer.textContent,competition=sampleContainer.querySelector('.nl-competition');
+        check(competition.querySelectorAll('.nl-competitor').length===3,'Vinelec three profiles');
+        check(copy.includes('58 avis') && copy.includes('sur 2 fiches renseignées') && copy.includes('affichent chacune 29 avis') && copy.includes('cumulent 58 avis'),'Vinelec aggregate and finding');
+        check(copy.includes('4,8 à 5,0/5') && !copy.includes('29 avis sur 2 fiches'),'Vinelec ratings and no obsolete total');
+        check(data.priorities[0].finding.includes('Nous n’avons pas identifié'),'Vinelec cautious absence');
+        check(website?data.priorities[1].finding.includes(website):data.priorities[1].finding.includes('Aucun site web n’est renseigné'),'Vinelec website variant');
+        check(!/garanti.*classement|classés grâce.*avis/.test(data.priorities[2].finding),'Vinelec no ranking promise');
+        check(copy.includes('349 €') && copy.includes('499 €') && copy.includes('Contrôle des informations publiées') && copy.includes('Analyse des premières données disponibles'),'Vinelec unchanged prices and concrete service');
+        for(const page of samplePages){
+          const content=page.querySelector('.nl-content'),bounds=content.getBoundingClientRect();
+          check(content.textContent.trim().length>0,'Vinelec no blank page');
+          const blocks=[...content.children].map(el=>el.getBoundingClientRect());
+          check(blocks.every((r,i)=>!i || r.top>=blocks[i-1].bottom-0.1),'Vinelec no overlapping blocks');
+          check([...content.querySelectorAll('*')].every(el=>{const r=el.getBoundingClientRect();return r.left>=bounds.left-0.1 && r.right<=bounds.right+0.1;}),'Vinelec horizontal overflow');
+          const bottom=Math.max(...[...page.querySelectorAll('.nl-content *')].map(el=>el.getBoundingClientRect().bottom));
+          check(bottom<=page.querySelector('.nl-content').getBoundingClientRect().bottom+0.1,'Vinelec overflow');
+          check(page.querySelector('.nl-footer').getBoundingClientRect().top-bottom>=6*96/25.4,'Vinelec footer reserve');
+        }
+        for(const disclaimer of ['Ces recommandations ne garantissent ni une position sur Google ni un nombre de clients.','L’accompagnement à la validation ne garantit pas la validation par Google.','Validation et délais dépendants de Google.','Les données du premier mois peuvent être limitées pour une nouvelle fiche.','Le suivi de 30 jours commence lorsque la fiche est validée et visible.'])check(sampleContainer.textContent.includes(disclaimer),'preserved disclaimer');
+      }
+      sampleContainer.remove();
       const title=doc.querySelector('[data-field="title"]');title.value='Créer la présence locale de votre entreprise — EXEMPLE FICTIF';title.dispatchEvent(new Event('input',{bubbles:true}));
       doc.querySelectorAll('[data-field="actions"]')[2].value='Demander un avis authentique après la prestation, sans aucune contrepartie.';
       if(${longCopy})for(const fieldset of [...doc.querySelectorAll('#priorities fieldset')].slice(0,2)){
@@ -85,7 +118,7 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
       check(offers.every(o=>o.querySelector('.nl-offer-price small').textContent==='TTC'),'tax');
       check(!/Audit complet|(?:^|[^0-9])99 €|offre=audit/.test(doc.querySelector('#report').innerHTML),'audit offered');
       check(!/30 jours|bilan|suivi/i.test(offers[0].textContent),'349 includes premium followup');
-      check(offers[1].textContent.includes('30 jours') && offers[1].textContent.includes('Bilan personnalisé du premier mois'),'499 followup');
+      check(offers[1].textContent.includes('30 jours') && offers[1].textContent.includes('Bilan personnalisé à 30 jours'),'499 followup');
       check(offers[1].querySelector('.nl-offer-tag').textContent==='Pack Performance','performance name');
       check(offers[1].querySelector('a').textContent==='Choisir le Pack Performance','performance CTA');
       for(const [i,key]of ['visibility','performance'].entries())check(offers[i].querySelector('a').href==='https://efficiadigital.com/achat?offre='+key,'checkout URL');
@@ -100,12 +133,12 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
         check(Math.abs(r[0].top-r[1].top)<1,'alignment '+selector);
       }
       check(offers.every((o,i)=>o.querySelectorAll('li').length===(i===0?7:6) && o.querySelectorAll('p').length===0),'offer bullets with merged performance summary');
-      check(offers[1].textContent.includes('Bilan personnalisé du premier mois : actions réalisées, données disponibles et conseils'),'merged performance summary');
+      check(offers[1].textContent.includes('Bilan personnalisé à 30 jours et recommandations'),'merged performance summary');
       check(doc.querySelectorAll('[data-priority][data-continuation="false"]').length===3,'three priorities');
       const competition=doc.querySelector('.nl-competition');check(competition.querySelectorAll('.nl-competitor').length===3,'competition group');
       check(competition.closest('.nl-page').querySelectorAll('.nl-competitor').length===3,'isolated competitor');
       check(competition.querySelector('h2') && competition.textContent.includes('Artisan électricien Namur'),'competition context');
-      check(competition.textContent.includes('13 à 14') && competition.textContent.includes('4,5/5') && competition.textContent.includes('sur 2 fiches renseignées'),'partial panel ranges');
+      check(competition.textContent.includes('27 avis') && competition.textContent.includes('4,5/5') && competition.textContent.includes('sur 2 fiches renseignées'),'partial panel ranges');
       for(const index of [1,2,3]){
         const headings=[...doc.querySelectorAll('[data-priority="'+index+'"]')];
         if(!${longCopy} || index===3)check(headings.length===1,'unnecessary priority split');
@@ -155,7 +188,7 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
         const ctx=h.context(payload,new URL(req.url,'http://localhost').search),r=await(payload?onRequestPost(ctx):onRequestGet(ctx));return json(await r.json(),r.status);
       }
       if(path==='/test-pdf'){
-        const chunks=[];for await(const chunk of req)chunks.push(chunk);savedPdf=Buffer.concat(chunks);savedPages=Number(req.headers['x-pages']);return json({success:true});
+        const chunks=[];for await(const chunk of req)chunks.push(chunk);savedPdf=Buffer.concat(chunks);savedPages=Number(req.headers['x-pages']);writeFileSync(pdfPath,savedPdf);console.log('PDF écrit avant teardown :',savedPages,'pages,',savedPdf.length,'octets,',pdfPath);return json({success:true});
       }
       if(path==='/api/admin/audit-snapshots')return json({success:true,audits:[]});
       if(path==='/api/admin/audit-drafts')return json({success:true,drafts:[]});
@@ -181,7 +214,7 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
   const dir=mkdtempSync(join(tmpdir(),'efficia-no-listing-chrome-'));
   try{
     await new Promise(r=>server.listen(0,'127.0.0.1',r));
-    const result=JSON.parse(await collectPageResultWithIsolatedChrome({chrome,url:`http://127.0.0.1:${server.address().port}/runner`,profileDir:dir,phase:'no-listing',selector:'#result',resultWait:65000}));
+    const result=JSON.parse(await collectPageResultWithIsolatedChrome({chrome,url:`http://127.0.0.1:${server.address().port}/runner`,profileDir:dir,phase:'no-listing',selector:'#result',resultWait:65000,onLifecycle:event=>console.log('Chrome lifecycle:',JSON.stringify(event))}));
     assert.equal(result.error,undefined,result.error+'\n'+result.ui);assert.equal(result.success,true);assert.ok(savedPdf?.length>10000);assert.equal(savedPages,result.pages);
     const pdfSource=savedPdf.toString('latin1');
     for(const key of ['visibility','performance'])assert.ok(pdfSource.includes('/URI (https://efficiadigital.com/achat?offre='+key+')'),'clickable PDF offer '+key);

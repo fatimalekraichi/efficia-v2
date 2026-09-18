@@ -12,7 +12,7 @@ test('élision des villes : voyelles, h muet connu, consonnes et préposition à
     assert.equal(cityWithDe(city),expected);
     const data={...identity,city,searchCity:city};
     const priorities=defaultPriorities(data,{competitors:[{reviews:3,name:'Exemple'}]});
-    assert.ok(priorities[1].actions.includes(`autour ${expected}.`));
+    assert.ok(priorities[1].actions.includes(`autour ${expected}`));
     assert.ok(priorities[0].finding.includes(`zone ${expected}.`));
     assert.ok(priorities[0].actions.includes(`à ${city}`));
   }
@@ -33,8 +33,8 @@ test('synthèse : fourchettes issues des seules fiches présentées, sans moyenn
   const collection={status:'success',query:'Électricien Auvelais',competitors:[{reviews:23,rating:5},{reviews:22,rating:5},{reviews:39,rating:4.8}]};
   const original=structuredClone(collection),facts=panelFacts(collection),html=panelSummaryHtml(collection,{indicators:true});
   assert.deepEqual(facts,{count:3,reviewed:3,reviewTotal:84,reviews:{min:22,max:39,known:3},ratings:{min:4.8,max:5,known:3}});
-  assert.match(html,/Les trois fiches présentées cumulent 84 avis clients\. Ces avis peuvent aider un prospect à comparer les professionnels\./);
-  assert.match(html,/22 à 39/);assert.match(html,/4,8 à 5,0\/5/);assert.match(html,/fiches présentées/);
+  assert.match(html,/Les 3 fiches observées dont le nombre d’avis est disponible cumulent 84 avis\./);
+  assert.match(html,/84 avis<\/strong><span>sur 3 fiches renseignées/);assert.match(html,/4,8 à 5,0\/5/);assert.match(html,/fiches présentées/);
   assert.match(panelSummaryHtml(collection),/3 fiches Google sont présentées[\s\S]*Elles disposent d’avis clients/);
   assert.doesNotMatch(html,/moyenne|top 3|score|potentiel/);assert.deepEqual(collection,original);
 });
@@ -87,7 +87,7 @@ for(const count of [0,1,2,3])test(`synthèse : ${count} fiches, nombres d’avis
 test('synthèse partielle et valeurs nulles, zéro réel, égalité et valeurs invalides',()=>{
   const c={status:'success',competitors:[{reviews:0,rating:null},{reviews:7,rating:4.5},{reviews:null,rating:4.5}]};
   const html=panelSummaryHtml(c,{indicators:true});
-  assert.match(html,/0 à 7/);assert.match(html,/sur 2 fiches renseignées/);assert.match(html,/4,5\/5/);assert.doesNotMatch(html,/4,5 à 4,5/);
+  assert.match(html,/7 avis<\/strong>/);assert.match(html,/sur 2 fiches renseignées/);assert.match(html,/4,5\/5/);assert.doesNotMatch(html,/4,5 à 4,5/);
   assert.match(panelSummaryHtml(c),/1 fiche dispose d’avis clients/);
   assert.equal(panelFacts({status:'error',competitors:c.competitors}).count,0);
   assert.equal(panelFacts({status:'success',competitors:[{reviews:'12',rating:NaN},{reviews:-1,rating:6}]}).reviews,null);
@@ -264,4 +264,42 @@ test('accès des listes et création : variante séparée, PDF classique et Ads 
   assert.doesNotMatch(page,/openai-ads|score-efficia-core|free-diagnostic-production/);
   assert.equal(defaultPriorities(identity).length,3);
   assert.throws(()=>normalizeIdentity({...identity,countryCode:''}),/REQUIRED/);
+});
+
+const vinelec={...identity,company:'Vinelec srl',activity:'Électricien',city:'Bassenge',searchCity:'Bassenge',query:'Electricien Bassenge',website:'https://www.electricitevinelec.be/'};
+const vinelecPanel={status:'success',query:vinelec.query,competitors:[{name:'Belka - Solutions Electriques',reviews:29,rating:4.8},{name:'acdc elec',reviews:null,rating:null},{name:'Guintens Électricité',reviews:29,rating:5}]};
+for(const count of [0,1,2,3])test(`agrégats : ${count} nombres d’avis connus, avec donnée manquante`,()=>{
+  const collection={status:'success',competitors:[{reviews:null},...Array.from({length:count},()=>({reviews:29}))]};
+  const facts=panelFacts(collection);
+  assert.equal(facts.reviewTotal,count?29*count:null);
+  assert.equal(facts.reviews?.known??0,count);
+});
+test('Vinelec : total 58, identité, site, activité, requête et deux fiches à 29 avis',()=>{
+  const priorities=defaultPriorities(vinelec,vinelecPanel);
+  validatePriorities(priorities);
+  assert.equal(panelFacts(vinelecPanel).reviewTotal,58);
+  assert.match(panelSummaryHtml(vinelecPanel,{indicators:true,company:vinelec.company}),/58 avis<\/strong><span>sur 2 fiches renseignées/);
+  assert.match(presenceVerdictHtml({...vinelec,collection:vinelecPanel}),/cumulent 58 avis/);
+  for(const text of ['Vinelec srl','Électricien','Electricien Bassenge','zone de Bassenge','3 fiches'])assert.ok(priorities[0].finding.includes(text));
+  assert.match(priorities[0].finding,/Nous n’avons pas identifié/);
+  assert.match(priorities[0].actions,/Google Maps.*demander sa gestion.*conditions d’éligibilité/);
+  assert.ok(priorities[1].finding.includes(vinelec.website));
+  assert.match(priorityActionsHtml(vinelec,priorities[1],1),/site web indiqué/);
+  assert.match(priorities[2].finding,/Les 2 fiches.*affichent chacune 29 avis/);
+  const summary=panelSummaryHtml(vinelecPanel,{indicators:true,company:vinelec.company});
+  assert.match(summary,/4,8 à 5,0\/5/);assert.match(summary,/Vinelec srl/);
+  assert.match(summary,/pas l’ensemble du marché local/);
+  assert.doesNotMatch(JSON.stringify(priorities)+summary,/n’a pas de fiche|fiche n’existe|grâce à leurs avis|garantit.*clients|meilleur classement/);
+});
+test('constats : sans site, avis uniques, différents, nuls ou indisponibles',()=>{
+  const finding=reviews=>defaultPriorities({...vinelec,website:''},{status:'success',competitors:reviews.map(reviews=>({reviews}))});
+  assert.match(finding([29])[1].finding,/Aucun site web n’est renseigné pour Vinelec srl/);
+  assert.doesNotMatch(finding([29])[1].finding,/https:|site.*déjà/);
+  assert.match(finding([29])[2].finding,/La seule fiche.*affiche 29 avis/);
+  assert.match(finding([12,null,29])[2].finding,/Les 2 fiches.*cumulent 41 avis/);
+  assert.match(finding([0,null])[2].finding,/affiche 0 avis/);
+  for(const reviews of [[],[null],[null,null,null]]){
+    assert.match(finding(reviews)[2].finding,/n’est pas disponible/);
+    assert.doesNotMatch(finding(reviews)[2].finding,/affiche.*0 avis|cumulent/);
+  }
 });
