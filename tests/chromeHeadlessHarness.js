@@ -8,9 +8,11 @@ function chromeError(phase, message, stderr = "") {
   return new Error(`${phase}: Chrome headless ${message}${detail ? `\n${detail}` : ""}`);
 }
 
-async function waitForFile(path, timeout, phase, stderr) {
+async function waitForFile(path, timeout, phase, stderr, processOutcome) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
+    const outcome = processOutcome();
+    if (outcome) throw chromeError(phase, outcome.error ? `démarrage impossible: ${outcome.error.message}` : `arrêt prématuré (code ${outcome.code}, signal ${outcome.signal || "aucun"})`, stderr());
     if (existsSync(path)) {
       const content=readFileSync(path,"utf8");
       // Chrome crée le fichier avant d'y écrire le port et le chemin WebSocket.
@@ -19,7 +21,7 @@ async function waitForFile(path, timeout, phase, stderr) {
     }
     await wait(25);
   }
-  throw chromeError(phase, `n'a pas ouvert DevTools dans les ${timeout} ms`, stderr());
+  throw chromeError(phase, `${existsSync(path) ? "DevToolsActivePort incomplet" : "DevToolsActivePort absent"} après ${timeout} ms`, stderr());
 }
 
 async function openCdpClient(wsUrl, timeout, phase, stderr) {
@@ -52,7 +54,13 @@ async function openCdpClient(wsUrl, timeout, phase, stderr) {
     events.delete(key);
     listeners.forEach((item) => item.resolve(message));
   });
-  await opened;
+  try { await opened; }
+  catch (error) {
+    rejectPending();
+    // A failed opening must not leave a socket that can connect later.
+    socket.close();
+    throw error;
+  }
   return {
     command(method, params = {}, sessionId, commandTimeout = timeout) {
       const id = nextId++;
@@ -94,7 +102,7 @@ async function openCdpClient(wsUrl, timeout, phase, stderr) {
  */
 export async function collectPageResultWithIsolatedChrome({ chrome, url, profileDir, phase, timeout = 20_000, resultWait = 8_000, selector, onLifecycle = () => {} }) {
   let stderr = "";
-  const child = spawn(chrome, [
+  const args = [
     "--headless=new",
     "--disable-gpu",
     "--disable-software-rasterizer",
@@ -109,13 +117,17 @@ export async function collectPageResultWithIsolatedChrome({ chrome, url, profile
     "--remote-debugging-address=127.0.0.1",
     "--remote-debugging-port=0",
     `--user-data-dir=${profileDir}`,
-  ], { stdio: ["ignore", "ignore", "pipe"], detached:process.platform !== "win32" });
+  ];
+  const child = spawn(chrome, args, { stdio: ["ignore", "ignore", "pipe"], detached:process.platform !== "win32" });
   onLifecycle({event:"spawn",pid:child.pid});
   child.stderr.on("data", (chunk) => { stderr += String(chunk); });
   const stderrText = () => stderr;
+  let processOutcome;
   const exit = new Promise((resolve) => {
-    child.once("close", (code, signal) => resolve({ code, signal }));
-    child.once("error", error => resolve({error}));
+    // `close` also waits for inherited stdio (for example Chrome's updater).
+    // Only `exit` proves whether the browser process itself terminated cleanly.
+    child.once("exit", (code, signal) => { processOutcome={code,signal}; resolve(processOutcome); });
+    child.once("error", error => { processOutcome={error}; resolve(processOutcome); });
   });
   const waitExit = (ms) => new Promise(resolve => {
     const timer=setTimeout(()=>resolve(null),ms);
@@ -126,11 +138,21 @@ export async function collectPageResultWithIsolatedChrome({ chrome, url, profile
   let sessionId;
   let primaryError;
   let closeRequested = false;
+  let startupStage = "process-start";
+  let port;
+  let processAtFailure;
+  let portFileAtFailure;
+  const cleanupSteps=[];
   try {
-    const devtools = await waitForFile(join(profileDir, "DevToolsActivePort"), 8_000, phase, stderrText);
-    const [port] = devtools.trim().split(/\s+/u);
-    const metadata = await fetch(`http://127.0.0.1:${port}/json/version`).then((response) => response.json());
+    const devtools = await waitForFile(join(profileDir, "DevToolsActivePort"), 8_000, phase, stderrText, () => processOutcome);
+    [port] = devtools.trim().split(/\s+/u);
+    startupStage = "cdp-endpoint";
+    const response = await fetch(`http://127.0.0.1:${port}/json/version`, {signal:AbortSignal.timeout(8_000)});
+    if (!response.ok) throw chromeError(phase, `endpoint CDP indisponible (HTTP ${response.status})`, stderrText());
+    const metadata = await response.json();
+    startupStage = "websocket-open";
     client = await openCdpClient(metadata.webSocketDebuggerUrl, 8_000, phase, stderrText);
+    startupStage = "ready";
     ({browserContextId} = await client.command("Target.createBrowserContext"));
     const { targetId } = await client.command("Target.createTarget", { url: "about:blank", browserContextId });
     ({ sessionId } = await client.command("Target.attachToTarget", { targetId, flatten: true }));
@@ -154,39 +176,63 @@ export async function collectPageResultWithIsolatedChrome({ chrome, url, profile
     return String(evaluated.result?.value || "");
   } catch (error) {
     primaryError = error;
+    processAtFailure=processOutcome||{running:child.pid!==undefined,exitCode:child.exitCode,signalCode:child.signalCode};
+    if(startupStage !== "ready"){
+      const path=join(profileDir,"DevToolsActivePort");
+      let content=null;
+      try{content=readFileSync(path,"utf8");}catch{}
+      portFileAtFailure={exists:existsSync(path),content};
+    }
     if (error instanceof Error) throw error;
     throw chromeError(phase, String(error), stderrText());
   } finally {
-    let cleanupError;
-    try {
+    const cleanupErrors=[];
+    const cleanup = async (step, action) => {
+      cleanupSteps.push(step);
+      try { await action(); } catch(error) { cleanupErrors.push(error); }
+    };
       if (client) {
-        if(sessionId) await client.command("Target.detachFromTarget", {sessionId});
-        if(browserContextId) await client.command("Target.disposeBrowserContext", {browserContextId});
+        if(sessionId) await cleanup("detach-session",()=>client.command("Target.detachFromTarget", {sessionId}));
+        if(browserContextId) await cleanup("dispose-context",()=>client.command("Target.disposeBrowserContext", {browserContextId}));
+        await cleanup("inspect-targets",async()=>{
         const {targetInfos} = await client.command("Target.getTargets");
         if(targetInfos.some(target=>target.browserContextId===browserContextId)) throw chromeError(phase,"cible du test toujours active après nettoyage");
         onLifecycle({event:"context-disposed",pid:child.pid,targets:targetInfos.map(({type,attached})=>({type,attached}))});
+        });
         closeRequested = true;
+        await cleanup("Browser.close",async()=>{
         try { await client.command("Browser.close", {}, undefined, 3_000); }
         catch(error) { if(!await waitExit(5_000)) throw error; }
+        });
       }
-    } catch(error) { cleanupError = error; }
     client?.close();
     let outcome = await waitExit(5_000);
     if (!outcome) {
-      cleanupError ||= chromeError(phase, "n'a pas fermé après Browser.close", stderrText());
+      if(closeRequested) cleanupErrors.push(chromeError(phase, "n'a pas fermé après Browser.close", stderrText()));
       const kill = signal => {
         try { if(process.platform === "win32")child.kill(signal);else process.kill(-child.pid,signal); }
         catch(error) { if(error.code !== "ESRCH")throw error; }
       };
+      cleanupSteps.push("SIGTERM-owned-group");
       kill("SIGTERM");
       outcome = await waitExit(1_000);
-      if(!outcome){kill("SIGKILL");outcome=await waitExit(1_000);}
-      if(!outcome) cleanupError = chromeError(phase,"processus non réabsorbé après arrêt forcé",stderrText());
+      if(!outcome){cleanupSteps.push("SIGKILL-owned-group");kill("SIGKILL");outcome=await waitExit(1_000);}
+      if(!outcome) cleanupErrors.push(chromeError(phase,"processus non réabsorbé après arrêt forcé",stderrText()));
     }
+    // The process outcome is known (or cleanup has failed explicitly). Release
+    // our pipe without waiting for unrelated descendants to close their copy.
+    child.stderr.destroy();
     onLifecycle({event:"closed",pid:child.pid,outcome});
     if (closeRequested && outcome && (outcome.code !== 0 || outcome.signal)) {
-      cleanupError ||= chromeError(phase, `s'est arrêté anormalement (code ${outcome.code}, signal ${outcome.signal || "aucun"})`, stderrText());
+      cleanupErrors.push(chromeError(phase, `s'est arrêté anormalement (code ${outcome.code}, signal ${outcome.signal || "aucun"})`, stderrText()));
     }
-    if(cleanupError) throw primaryError ? new AggregateError([primaryError,cleanupError],`${phase}: erreur de rendu et de nettoyage`) : cleanupError;
+    if(primaryError && startupStage !== "ready") {
+      const path=join(profileDir,"DevToolsActivePort");
+      let portFile=null;
+      try { portFile=readFileSync(path,"utf8"); } catch {}
+      primaryError.chromeStartupDiagnostic={stage:startupStage,pid:child.pid,command:chrome,args,profileDir,requestedPort:0,discoveredPort:port||null,portFileAtFailure,portFileExists:existsSync(path),portFile,processAtFailure,finalOutcome:outcome,stderr,sessionId:sessionId||null,browserContextId:browserContextId||null,cleanupSteps};
+      console.error(`${phase}: diagnostic démarrage Chrome ${JSON.stringify(primaryError.chromeStartupDiagnostic)}`);
+    }
+    if(cleanupErrors.length) throw new AggregateError(primaryError ? [primaryError,...cleanupErrors] : cleanupErrors,`${phase}: erreur ${primaryError ? "de rendu et " : ""}de nettoyage: ${cleanupErrors.map(error=>error.message).join("; ")}`,{cause:primaryError||cleanupErrors[0]});
   }
 }
