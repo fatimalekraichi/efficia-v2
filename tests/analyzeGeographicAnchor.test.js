@@ -166,9 +166,9 @@ function installRealPipelineRouter({
 
 function competitorsPanel() {
   return [
-    { name: "Concurrent BE 1", place_id: "place-be-1", rating: 4.1, reviews: 12, city: "Neufchâteau" },
-    { name: "Concurrent BE 2", place_id: "place-be-2", rating: 4.0, reviews: 10, city: "Neufchâteau" },
-    { name: "Concurrent BE 3", place_id: "place-be-3", rating: 3.9, reviews: 8, city: "Neufchâteau" },
+    { name: "Concurrent BE 1", place_id: "place-be-1", category: "Électricien", rating: 4.1, reviews: 12, city: "Neufchâteau" },
+    { name: "Concurrent BE 2", place_id: "place-be-2", category: "Électricien", rating: 4.0, reviews: 10, city: "Neufchâteau" },
+    { name: "Concurrent BE 3", place_id: "place-be-3", category: "Électricien", rating: 3.9, reviews: 8, city: "Neufchâteau" },
     // Pas de champ "rank" fournisseur ici : la position observée doit donc
     // provenir de l'index brut renvoyé par Outscraper (aucune classification
     // sponsorisée dans ce panel), position 1-based = index + 1 = 4.
@@ -215,13 +215,15 @@ test("succès (contrat officiel, réponse plate sans country_code) — ancrage n
     assert.equal(normalized.geographic_anchor.locality.countryCode, "BE");
 
     // La recherche a bien eu lieu (position et concurrents réellement écrits).
-    assert.ok(row.local_position !== null);
-    assert.ok(JSON.parse(row.competitors_json).length > 0);
+    assert.equal(row.local_position, 4);
+    assert.equal(JSON.parse(row.competitors_json).length, 3);
+    assert.deepEqual(JSON.parse(row.competitors_json).map((competitor) => competitor.place_id), ["place-be-1", "place-be-2", "place-be-3"]);
     // La fiche analysée ne doit jamais apparaître dans ses propres concurrents.
     assert.ok(!JSON.parse(row.competitors_json).some((c) => c.place_id === "place-computelec"));
 
     assert.equal(router.calls.geocoding, 1);
     assert.equal(router.calls.competitorSearch, 1);
+    assert.equal(router.calls.businessLookup, 1);
   } finally {
     router.restore();
   }

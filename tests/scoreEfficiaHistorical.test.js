@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateScoreDetail, runScoreEfficia, scoreProjetePack } from "../functions/lib/score-efficia/scoreEngine.js";
+import { LEGACY_SCORING_VERSION } from "../functions/lib/score-efficia/scoreConfig.js";
 
 test("un critère non vérifié compte au dénominateur (grille de 100) comme dans l'ancien outil", () => {
   const { reviewedScore } = runScoreEfficia({
@@ -34,11 +35,11 @@ test("calculateScoreDetail conserve la pondération historique et les profils se
   const detailDefault = calculateScoreDetail({
     revendiquee: 3,
     nombrePhotos: 3,
-  });
+  }, "default", LEGACY_SCORING_VERSION);
   const detailSante = calculateScoreDetail({
     revendiquee: 3,
     nombrePhotos: 3,
-  }, "sante");
+  }, "sante", LEGACY_SCORING_VERSION);
 
   assert.equal(Math.round(detailDefault.total), 6);
   assert.equal(Math.round(detailSante.total), 5);
