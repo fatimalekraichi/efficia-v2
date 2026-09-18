@@ -1,9 +1,11 @@
-import {PRIORITY_FIELDS, normalizeIdentity, validatePriorities, reportReady} from './no-listing-model.js';
+import {reportNarrativeTextMaxLength} from './report-narrative-fields.js';
+import {PRIORITY_FIELDS, normalizeIdentity, validatePriorities, reportReady, defaultPriorities, NO_LISTING_TEXT_FIELDS, automaticReportTexts, noListingPdfFilename} from './no-listing-model.js';
 import {escapeHtml, competitionHtml, renderNoListingReport, createNoListingPdf} from './no-listing-report.js';
 
 const form=document.querySelector('#identity'), editor=document.querySelector('#priorities'), error=document.querySelector('#error'), status=document.querySelector('#status');
 const report=document.querySelector('#report'), query=new URLSearchParams(location.search), captureId=query.get('captureId') || null;
-let dossier=null, busy=false, dirty=false;
+let dossier=null, busy=false, dirty=false, textDirty=false;
+const textEditor=document.querySelector('#report-text-editor');
 const creationKey=crypto.randomUUID();
 const errors={
   UNAUTHORIZED:'Votre session a expiré. Reconnectez-vous.', REVISION_CONFLICT:'Ce dossier a changé dans un autre onglet. Rechargez-le avant de continuer.',
@@ -27,26 +29,37 @@ function currentData() {
   const identity=normalizeIdentity(Object.fromEntries(new FormData(form)));
   const fields=[...editor.querySelectorAll('fieldset')];
   const priorities=fields.length ? validatePriorities(fields.map(field=>Object.fromEntries(Object.keys(PRIORITY_FIELDS).map(key=>[key,field.querySelector(`[data-field="${key}"]`).value])))) : null;
-  return {...identity,priorities};
+  const reportTextValues=Object.fromEntries([...textEditor.querySelectorAll('[data-report-text]')].map(el=>[el.dataset.reportText,el.value]));
+  return {...identity,priorities,...(textDirty?{reportTextValues}:{})};
 }
 function buttons() {
   const finalized=dossier?.status==='finalized';
   form.querySelectorAll('input,select,button').forEach(el=>el.disabled=busy || finalized);
-  editor.querySelectorAll('textarea').forEach(el=>el.disabled=busy || finalized);
+  editor.querySelectorAll('textarea,button').forEach(el=>el.disabled=busy || finalized);
+  textEditor.querySelectorAll('textarea,button').forEach(el=>el.disabled=busy || finalized);
+  document.querySelector('#edit-texts').disabled=busy || finalized || !dossier?.data.priorities;
   const ready=reportReady(dossier?.data) && !dirty;
   document.querySelector('#preview').disabled=busy || !ready;
   document.querySelector('#export').disabled=busy || !ready;
-  document.querySelector('#export').textContent=finalized?'Télécharger le PDF conservé':'Générer le PDF et finaliser';
+  document.querySelector('#export').textContent=finalized?'Régénérer le PDF':'Générer le PDF et finaliser';
 }
 function fill() {
   for(const [key,value] of Object.entries(dossier.data)) if(form.elements[key]) form.elements[key].value=value;
   document.querySelector('#mode-confirmed').checked=true;
   if(dossier.data.priorities) {
-    editor.innerHTML='<h2>Les trois priorités</h2>'+dossier.data.priorities.map((p,i)=>`<fieldset><legend>Priorité ${i+1}</legend>${Object.entries(PRIORITY_FIELDS).map(([key,max])=>`<label>${escapeHtml({title:'Titre',finding:'Constat et recommandation',actions:'Actions précises',benefit:'Bénéfice attendu'}[key])}<textarea data-field="${key}" maxlength="${max}" rows="${key==='title'?2:4}">${escapeHtml(p[key])}</textarea><small data-counter>${p[key].length} / ${max}</small></label>`).join('')}</fieldset>`).join('');
+    editor.innerHTML='<h2>Les trois priorités</h2>'+dossier.data.priorities.map((p,i)=>`<fieldset><legend>Priorité ${i+1}</legend>${Object.entries(PRIORITY_FIELDS).map(([key,max])=>`<label>${escapeHtml({title:'Titre',finding:'Constat et recommandation',actions:'Actions précises',benefit:'Bénéfice attendu'}[key])}<textarea data-field="${key}" maxlength="${max}" rows="${key==='title'?2:4}">${escapeHtml(p[key])}</textarea><small data-counter>${p[key].length} / ${max}</small><button class="admin-button is-secondary" type="button" data-restore-priority="${i}" data-restore-field="${key}">Rétablir le texte automatique</button></label>`).join('')}</fieldset>`).join('');
   }
   const collection=dossier.data.collection;
   document.querySelector('#observations').innerHTML=collection.status==='success'?competitionHtml(collection):`<p>${escapeHtml(errors[collection.error] || ({uncollected:'Recherche non effectuée.',collecting:'Recherche interrompue ou en cours. Relancez-la si nécessaire.',stale:'La requête ou la zone a changé. Relancez la recherche.',failed:'La collecte a échoué. Relancez la recherche.'}[collection.status]))}</p>`;
-  dirty=false;buttons();
+  const automatic=automaticReportTexts(dossier.data);
+  document.querySelector('#report-text-fields').innerHTML=Object.entries(NO_LISTING_TEXT_FIELDS).map(([id,label])=>{
+    const override=dossier.data.reportTextOverrides?.[id];
+    return `<fieldset><legend>${escapeHtml(label)}</legend>${override?`<span class="admin-badge">Texte personnalisé</span>${override.needsReview?'<span class="admin-badge">À revérifier</span>':''}`:''}
+      <p><strong>Texte automatique</strong><br>${escapeHtml(automatic[id])}</p>
+      <label>Texte personnalisé<textarea data-report-text="${id}" maxlength="${Math.max(reportNarrativeTextMaxLength(id,automatic[id]),(override?.customText || '').length)}" rows="4" placeholder="Laisser vide pour utiliser le texte automatique">${escapeHtml(override?.customText || '')}</textarea></label>
+      <button type="button" class="admin-button is-secondary" data-restore-text="${id}">Supprimer la personnalisation</button></fieldset>`;
+  }).join('');
+  dirty=false;textDirty=false;buttons();
   status.textContent=dossier.status==='finalized'?'Rapport finalisé — consultation en lecture seule. Aucun envoi d’e-mail.':'Dossier enregistré. La génération du PDF n’envoie aucun e-mail.';
 }
 async function save() {
@@ -78,10 +91,28 @@ document.querySelector('#suggest-query').addEventListener('click',()=>{
 const onInput=event=>{
   dirty=true;report.hidden=true;
   if(['company','activity','query','searchCity','searchCountryCode'].includes(event.target.name))document.querySelector('#zone-confirmed').checked=false;
-  if(event.target.matches('textarea'))event.target.parentElement.querySelector('[data-counter]').textContent=`${event.target.value.length} / ${event.target.maxLength}`;
+  if(event.target.matches('textarea[data-field]'))event.target.parentElement.querySelector('[data-counter]').textContent=`${event.target.value.length} / ${event.target.maxLength}`;
   buttons();
 };
 form.addEventListener('input',onInput);editor.addEventListener('input',onInput);
+document.querySelector('#edit-texts').addEventListener('click',()=>{textEditor.hidden=!textEditor.hidden;});
+textEditor.addEventListener('input',()=>{textDirty=true;dirty=true;report.hidden=true;buttons();});
+textEditor.addEventListener('click',event=>{
+  const id=event.target.closest('[data-restore-text]')?.dataset.restoreText;
+  if(!id)return;
+  const field=[...textEditor.querySelectorAll('[data-report-text]')].find(el=>el.dataset.reportText===id);
+  field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));
+});
+textEditor.addEventListener('submit',event=>{event.preventDefault();run(async()=>{
+  await save();renderNoListingReport(dossier.data,report);status.textContent='Textes enregistrés. Aperçu mis à jour.';
+});});
+editor.addEventListener('click',event=>{
+  const button=event.target.closest('[data-restore-priority]');if(!button)return;
+  const index=Number(button.dataset.restorePriority),key=button.dataset.restoreField;
+  const field=editor.querySelectorAll('fieldset')[index].querySelector(`[data-field="${key}"]`);
+  field.value=defaultPriorities(dossier.data,dossier.data.collection)[index][key];
+  field.dispatchEvent(new Event('input',{bubbles:true}));
+});
 document.querySelector('#collect').addEventListener('click',()=>run(async()=>{
   if(!document.querySelector('#zone-confirmed').checked)throw Error(errors.ZONE_CONFIRMATION_REQUIRED);
   await save();
@@ -98,7 +129,7 @@ document.querySelector('#export').addEventListener('click',()=>run(async()=>{
   status.textContent='Génération du PDF en cours…';
   const pdf=await createNoListingPdf(dossier.data,report);
   if(dossier.status!=='finalized')await api({action:'finalize',id:dossier.id,revision:dossier.revision});
-  await pdf.save(dossier.pdfFilename,{returnPromise:true});
+  await pdf.save(noListingPdfFilename(dossier.data),{returnPromise:true});
   fill();status.textContent='PDF généré et dossier finalisé. Aucun e-mail envoyé.';
 }));
 async function initialize() {

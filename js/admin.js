@@ -334,7 +334,7 @@ const renderCompletedAudits = (audits) => {
       <td>${formatDate(audit.finalizedAt)}</td>
       <td><div class="admin-row-actions">
         <a class="admin-button" href="${completedAuditUrl(audit)}">Consulter</a>
-        ${audit.noListingId ? '' : `<button class="admin-button is-secondary" type="button" data-duplicate-audit="${escapeHtml(audit.analysisId)}">Dupliquer pour nouvelle version</button>`}
+        <button class="admin-button is-secondary" type="button" ${audit.noListingId ? `data-duplicate-no-listing="${escapeHtml(audit.noListingId)}"` : `data-duplicate-audit="${escapeHtml(audit.analysisId)}"`}>Dupliquer pour nouvelle version</button>
         ${audit.reportType === "free" && audit.answersVersion === "score-efficia-questionnaire-v4" ? `
           <button class="admin-button is-secondary" type="button"
             data-transfer-premium="${escapeHtml(audit.analysisId)}"
@@ -384,23 +384,26 @@ completedAuditsBody?.addEventListener("click", async (event) => {
     transferDialog?.showModal();
     return;
   }
-  const button = event.target.closest("[data-duplicate-audit]");
+  const button = event.target.closest("[data-duplicate-audit], [data-duplicate-no-listing]");
   if (!button || button.disabled) return;
   button.disabled = true;
   button.dataset.idempotencyKey ||= crypto.randomUUID();
-  const response = await fetch(`/api/admin/audit-snapshots/${encodeURIComponent(button.dataset.duplicateAudit)}`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ action: "duplicate", idempotencyKey: button.dataset.idempotencyKey }),
-  });
-  if (response.status === 401) return redirectToLogin();
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.success) {
-    button.disabled = false;
-    return;
-  }
-  window.location.href = draftResumeUrl(data.duplicate);
+  const noListingId = button.dataset.duplicateNoListing;
+  try {
+    const response = await fetch(noListingId ? "/api/admin/no-listing-diagnostics" : `/api/admin/audit-snapshots/${encodeURIComponent(button.dataset.duplicateAudit)}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ action: "duplicate", idempotencyKey: button.dataset.idempotencyKey, ...(noListingId ? {id:noListingId} : {}) }),
+    });
+    if (response.status === 401) return redirectToLogin();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      button.disabled = false;
+      return;
+    }
+    window.location.href = draftResumeUrl(noListingId ? {noListingId:data.dossier.id} : data.duplicate);
+  } catch { button.disabled = false; }
 });
 
 transferConfirm?.addEventListener("click", async () => {

@@ -1,3 +1,5 @@
+import {validateReportNarrativeText} from './report-narrative-fields.js';
+import './diagnostic-pdf-filename.js';
 // Shared by the authenticated API, editor and PDF. Never invokes the score engine.
 export const PRIORITY_FIELDS = Object.freeze({title:120, finding:900, actions:1400, benefit:700});
 export const ABSENCE_CONTEXTS = Object.freeze({
@@ -79,4 +81,62 @@ export function validatePriorities(priorities) {
 export function reportReady(data) {
   return data?.collection?.status === 'success' && data.collection.searchIdentity === searchIdentity(data)
     && Array.isArray(data.collection.competitors) && Boolean(data.collection.observedAt);
+}
+
+export function panelReviewSentence(collection) {
+  const {count,reviewTotal,reviews}=panelFacts(collection);
+  if(!count)return 'Aucune fiche concurrente qualifiée et vérifiable n’a été retenue pour cette recherche.';
+  if(!reviews)return 'Le nombre d’avis des fiches présentées n’est pas disponible.';
+  const subject=reviews.known===count
+    ? count===1?'La fiche présentée':`Les ${count===3?'trois':count} fiches présentées`
+    : reviews.known===1?'La fiche dont le nombre d’avis est renseigné':`Les ${reviews.known} fiches dont le nombre d’avis est renseigné`;
+  return `${subject} ${reviews.known===1?'compte':'cumulent'} ${reviewTotal} avis ${reviewTotal===1?'client':'clients'}.${reviewTotal>0?' Ces avis peuvent aider un prospect à comparer les professionnels.':''}`;
+}
+
+export const NO_LISTING_TEXT_FIELDS = Object.freeze({
+  'page1.verdict_title':'Page 1 · Titre du bloc Votre priorité',
+  'summary.general':'Page 1 · Texte du bloc Votre priorité',
+  'page2.comparison_intro':'Page 2 · Résumé sous les concurrents',
+});
+export function automaticReportTexts(data) {
+  const {collection,company=''}=data, facts=panelFacts(collection);
+  const query=collection?.query;
+  const observation=collection?.status==='success'
+    ? `${query?`Sur la recherche « ${query} », `:''}${panelReviewSentence(collection).replace(/^Les /,'les ').replace(/^La /,'la ').replace('Ces avis peuvent aider un prospect à comparer les professionnels.','Ces avis donnent aux internautes des repères pour choisir qui contacter.')}`
+    : 'Les résultats de la recherche locale restent à vérifier.';
+  const ratings=facts.ratings;
+  const note=v=>v.toFixed(1).replace('.',',');
+  const ratingRange=ratings?(ratings.min===ratings.max?note(ratings.min):`${note(ratings.min)} à ${note(ratings.max)}`):'';
+  return {
+    'page1.verdict_title':data.absenceContext==='confirmed'?'Votre priorité : créer et optimiser votre fiche Google':data.absenceContext==='declared'?'Absence de fiche déclarée':'',
+    'summary.general':`${company} : nous n’avons pas identifié de fiche Google lui correspondant clairement dans les résultats analysés. ${observation} Votre prochaine étape : une fiche complète qui présente vos services et facilite la prise de contact.`,
+    'page2.comparison_intro':reviewEvidenceSentence(collection)+(company && facts.reviewTotal>0?` Ces avis${ratings?` et les notes disponibles (${ratingRange}/5)`:''} constituent des repères visibles que ${company} ne peut pas encore présenter via une fiche identifiée dans notre analyse.`:''),
+  };
+}
+export function effectiveReportText(data,fieldId,automaticText) {
+  return data.reportTextOverrides?.[fieldId]?.customText ?? automaticText;
+}
+// As in the standard editor: blank removes the override, the automatic text is retained separately.
+export function saveReportTextOverrides(data,values) {
+  if(!values || typeof values!=='object' || Array.isArray(values))throw Error('INVALID_TEXT');
+  const automatic=automaticReportTexts(data), result={};
+  for(const [fieldId,value] of Object.entries(values)) {
+    if(!Object.hasOwn(NO_LISTING_TEXT_FIELDS,fieldId))throw Error('INVALID_TEXT');
+    if(typeof value!=='string')throw Error('INVALID_TEXT');
+    if(!value.trim())continue;
+    const validated=validateReportNarrativeText(fieldId,value,automatic[fieldId]);
+    if(!validated.ok)throw Error('INVALID_TEXT');
+    result[fieldId]={customText:validated.text,automaticText:automatic[fieldId],needsReview:false};
+  }
+  return result;
+}
+export function markNoListingTextsForReview(data) {
+  const automatic=automaticReportTexts(data);
+  return Object.fromEntries(Object.entries(data.reportTextOverrides || {}).map(([id,item])=>[id,{
+    ...item,needsReview:item.needsReview || item.automaticText!==automatic[id],
+  }]));
+}
+export function noListingPdfFilename(data,date=new Date()) {
+  return globalThis.EfficiaPdfFilename.buildEfficiaPdfFilename({businessName:data.company,city:data.city,
+    analysisDate:date,analysisVersion:data.version || 1,prefix:'Fiche-Diagnostic'});
 }

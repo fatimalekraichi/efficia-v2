@@ -303,3 +303,88 @@ test('constats : sans site, avis uniques, différents, nuls ou indisponibles',()
     assert.doesNotMatch(finding(reviews)[2].finding,/affiche.*0 avis|cumulent/);
   }
 });
+
+test('duplication sans fiche : nouvel ID, faits copiés, textes réinitialisés, source immuable et retry idempotent',async()=>{
+  const h=await harness(),p=provider();try{
+    let a=(await collect(h,(await h.create()).dossier)).dossier;
+    a.data.priorities[0].finding='Texte réservé au dossier source.';
+    a=(await save(h,a,{...a.data,reportTextValues:{'summary.general':'Introduction réservée à la source.'}})).dossier;
+    a=(await h.send({action:'finalize',id:a.id,revision:a.revision})).dossier;
+    const before=structuredClone(a), calls=p.calls.length, key=crypto.randomUUID();
+    const request={action:'duplicate',id:a.id,idempotencyKey:key};
+    const b=(await h.send(request)).dossier;
+    assert.notEqual(a.id,b.id);assert.equal(b.status,'draft');assert.equal(b.revision,1);
+    assert.equal(b.captureId,null);assert.equal(b.finalizedAt,null);assert.equal(b.pdfFilename,null);
+    assert.equal(b.data.sourceDossierId,a.id);assert.equal(b.data.version,2);
+    for(const field of Object.keys(identity))assert.equal(b.data[field],a.data[field]);
+    assert.deepEqual(b.data.collection,a.data.collection);
+    assert.deepEqual(b.data.reportTextOverrides,{});assert.deepEqual(b.data.priorityOverrides,[]);
+    assert.deepEqual(b.data.priorities,defaultPriorities(b.data,b.data.collection));
+    assert.equal((await h.send(request)).dossier.id,b.id);
+    assert.equal((await h.send({action:'duplicate',id:b.id,idempotencyKey:crypto.randomUUID()})).status,409);
+    b.data.priorities[1].finding='Texte réservé à la copie.';
+    await save(h,b,{...b.data,reportTextValues:{'summary.general':'Introduction de la copie.'}});
+    assert.deepEqual((await h.get('?id='+a.id)).dossier,before);
+    assert.equal(p.calls.length,calls,'duplication et édition sans collecte');
+    const list=(await h.get('')).dossiers;
+    assert.equal(list.length,2);assert.ok(list.some(d=>d.id===a.id && d.status==='finalized'));
+    assert.ok(list.some(d=>d.id===b.id && d.status==='draft'));
+  }finally{p.restore();h.db.sqlite.close();}
+});
+test('overrides : introduction, titre, résumé et trois priorités persistent et restent isolés',async()=>{
+  const h=await harness(),p=provider();try{
+    let a=(await collect(h,(await h.create()).dossier)).dossier;
+    const b=(await collect(h,(await h.create()).dossier)).dossier;
+    const values={'summary.general':'Introduction personnelle\nDeuxième ligne.', 'page1.verdict_title':'Votre prochaine étape', 'page2.comparison_intro':'Résumé du panel observé.'};
+    const priorities=a.data.priorities.map((item,i)=>({...item,finding:`Constat spécifique ${i+1}`,actions:`Action spécifique ${i+1}.\nAutre action.`,benefit:`Bénéfice spécifique ${i+1}`}));
+    a=(await save(h,a,{...a.data,priorities,reportTextValues:values})).dossier;
+    const reloaded=(await h.get('?id='+a.id)).dossier;
+    assert.deepEqual(reloaded.data.priorities,priorities);
+    for(const [id,value]of Object.entries(values))assert.equal(reloaded.data.reportTextOverrides[id].customText,value);
+    assert.match(presenceVerdictHtml(reloaded.data),/Introduction personnelle<br>Deuxième ligne/);
+    assert.match(presenceVerdictHtml(reloaded.data),/Votre prochaine étape/);
+    assert.match(panelSummaryHtml(a.data.collection,{indicators:true,reportTextOverrides:a.data.reportTextOverrides}),/Résumé du panel observé/);
+    assert.deepEqual((await h.get('?id='+b.id)).dossier,b);
+    assert.equal(a.data.collection.observedAt,reloaded.data.collection.observedAt);
+    const final=await h.send({action:'finalize',id:a.id,revision:a.revision});
+    assert.deepEqual(final.dossier.data.reportTextOverrides,a.data.reportTextOverrides);
+    assert.equal((await save(h,final.dossier,{...a.data,reportTextValues:{}})).status,409);
+  }finally{p.restore();h.db.sqlite.close();}
+});
+test('overrides : suppression restaure le texte automatique, contexte changé marque À revérifier',async()=>{
+  const h=await harness(),p=provider();try{
+    let d=(await collect(h,(await h.create()).dossier)).dossier;
+    d=(await save(h,d,{...d.data,reportTextValues:{'summary.general':'Personnalisation à conserver.'}})).dossier;
+    d=(await save(h,d,{...d.data,company:'Nouvelle raison sociale'})).dossier;
+    assert.equal(d.data.reportTextOverrides['summary.general'].needsReview,true);
+    assert.equal(d.data.reportTextOverrides['summary.general'].customText,'Personnalisation à conserver.');
+    d=(await h.get('?id='+d.id)).dossier;
+    assert.equal(d.data.reportTextOverrides['summary.general'].needsReview,true);
+    d=(await save(h,d,{...d.data,reportTextValues:{'summary.general':''}})).dossier;
+    assert.deepEqual(d.data.reportTextOverrides,{});
+    assert.match(presenceVerdictHtml(d.data),/Nouvelle raison sociale : nous n’avons pas identifié/);
+    assert.doesNotMatch(presenceVerdictHtml(d.data),/Personnalisation à conserver/);
+  }finally{p.restore();h.db.sqlite.close();}
+});
+test('overrides : champs structurels refusés, HTML échappé, limites validées sans mutation',async()=>{
+  const h=await harness(),p=provider();try{
+    let d=(await collect(h,(await h.create()).dossier)).dossier;
+    for(const reportTextValues of [{'price':'1 €'},{'summary.general':'x'.repeat(9000)},{'summary.general':null}]){
+      assert.equal((await save(h,d,{...d.data,reportTextValues})).status,400);
+      assert.deepEqual((await h.get('?id='+d.id)).dossier,d);
+    }
+    d=(await save(h,d,{...d.data,reportTextValues:{'summary.general':'<script>alert(1)</script>'}})).dossier;
+    const html=presenceVerdictHtml(d.data);
+    assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
+  }finally{p.restore();h.db.sqlite.close();}
+});
+test('nom PDF : convention classique partagée, préfixe choisi, date ISO, ville, version et normalisation',async()=>{
+  const {noListingPdfFilename}=await import('../js/no-listing-model.js');
+  const options={businessName:'Vinelec srl',city:'Bassenge',analysisDate:'2026-09-18',analysisVersion:1};
+  const classic=globalThis.EfficiaPdfFilename.buildEfficiaPdfFilename(options);
+  assert.equal(classic,'Score-Efficia_Vinelec-srl_Bassenge_2026-09-18_V1.pdf');
+  assert.equal(noListingPdfFilename({...vinelec,version:1},'2026-09-18'),'Fiche-Diagnostic_Vinelec-srl_Bassenge_2026-09-18_V1.pdf');
+  assert.equal(noListingPdfFilename({...vinelec,version:2},'2026-09-18'),classic.replace('Score-Efficia','Fiche-Diagnostic').replace('_V1','_V2'));
+  assert.equal(noListingPdfFilename({company:'Étoile & Fils / SRL',city:'Liège',version:3},'2026-09-18T23:00:00-02:00'),'Fiche-Diagnostic_Etoile-Fils-SRL_Liege_2026-09-19_V3.pdf');
+  assert.throws(()=>noListingPdfFilename(vinelec,'invalid'));
+});

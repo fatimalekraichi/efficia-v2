@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
 <script src="/js/score-efficia-core.js?v=1"></script>
+<script src="/js/diagnostic-pdf-filename.js?v=1"></script>
 <!-- ============================================================
      SCORE EFFICIA™ — VERSION AUTOMATISÉE (API Google Places)
 
@@ -8124,36 +8125,9 @@ function slugPDF(valeur){
     .slice(0,60) || "Entreprise";
 }
 
-function sanitizeFilenamePart(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-}
-
-function formatDateForFilename(dateValue) {
-  if(typeof dateValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)){
-    return dateValue;
-  }
-  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Date d'analyse invalide.");
-  }
-  return date.toISOString().slice(0, 10);
-}
-
-function buildEfficiaPdfFilename({ businessName, city, analysisDate, analysisVersion }) {
-  const version = Number(analysisVersion);
-  if (!Number.isInteger(version) || version < 1) {
-    throw new Error("Version d'analyse invalide.");
-  }
-  const entreprise = sanitizeFilenamePart(businessName) || "Entreprise";
-  const ville = sanitizeFilenamePart(city) || "Ville";
-  const date = formatDateForFilename(analysisDate);
-  return `Score-Efficia_${entreprise}_${ville}_${date}_V${version}.pdf`;
-}
+function sanitizeFilenamePart(value) { return EfficiaPdfFilename.sanitizeFilenamePart(value); }
+function formatDateForFilename(value) { return EfficiaPdfFilename.formatDateForFilename(value); }
+function buildEfficiaPdfFilename(options) { return EfficiaPdfFilename.buildEfficiaPdfFilename(options); }
 
 function nomFichierDiagnosticPDF(){
   const entreprise = document.getElementById("p-entreprise").value || "Entreprise";

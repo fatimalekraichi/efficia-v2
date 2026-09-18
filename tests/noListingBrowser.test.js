@@ -226,3 +226,79 @@ for(const [fromCapture,longCopy] of [[false,false],[true,false],[true,true]])tes
     console.log('PDF réel :',savedPages,'pages ; marge footer minimale',result.minimumGap.toFixed(1),'mm ; aperçu/capture identiques ; snapshot rouvert ; aucun appel MailerLite/Ads.');
   }finally{p.restore();server.closeAllConnections();await new Promise(r=>server.close(r));h.db.sqlite.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('Chrome Vinelec : admin → duplication → textes → rechargement → vrai PDF nommé, source intacte',
+  {skip:!existsSync(chrome)||!existsSync(join(libs,'jspdf.umd.min.js')),timeout:90000},async()=>{
+  const {startNoListingWorkflowFixture}=await import('./noListingWorkflowFixture.js');
+  const fixture=await startNoListingWorkflowFixture();
+  fixture.setRunner(`<!doctype html><output id="result"></output><iframe id="frame" style="width:1200px;height:1000px"></iframe><script>
+  (async()=>{
+    const frame=document.querySelector('#frame'),result=document.querySelector('#result');
+    const check=(v,m)=>{if(!v)throw Error(m);};
+    const wait=async(f,m)=>{for(let i=0;i<300;i++){if(f())return;await new Promise(r=>setTimeout(r,25));}throw Error(m);};
+    const page=async(url)=>{await new Promise(r=>{frame.onload=r;frame.src=url;});return frame.contentDocument;};
+    try{
+      let doc=await page('/admin');
+      await wait(()=>doc.querySelector('[data-duplicate-no-listing]'),'duplicate action absent');
+      const row=doc.querySelector('[data-duplicate-no-listing]').closest('tr');
+      check(row.textContent.includes('Vinelec srl') && row.querySelector('a').textContent==='Consulter','source row');
+      check(!doc.querySelector('[data-admin-drafts] [data-duplicate-no-listing]'),'duplicate on draft');
+      doc.querySelector('[data-admin-completed-toggle]').click();
+      const button=row.querySelector('button');
+      check(button.className==='admin-button is-secondary','shared button style');
+      button.click();button.click();
+      await wait(()=>frame.contentWindow.location.pathname.includes('/free-diagnostic-no-listing/'),'duplicate redirect');
+      await wait(()=>frame.contentDocument.querySelector('#edit-texts') && !frame.contentDocument.querySelector('#edit-texts').disabled,'draft loaded');doc=frame.contentDocument;
+      const copiedUrl=frame.contentWindow.location.href;
+      check(!copiedUrl.includes('${fixture.id}'),'source reused');
+      check(!doc.querySelector('[data-field="finding"]').value.includes('Personnalisation du dossier source'),'priority override copied');
+      check(doc.querySelector('#observations').textContent.includes('Dubuisson'),'panel lost');
+      doc.querySelector('#edit-texts').click();
+      check(doc.querySelector('[data-report-text="summary.general"]').value==='','narrative override copied');
+      const set=(el,value)=>{el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));};
+      set(doc.querySelector('[data-report-text="summary.general"]'),'Vinelec : introduction personnalisée enregistrée.');
+      set(doc.querySelector('[data-report-text="page2.comparison_intro"]'),'Vinelec : résumé concurrentiel personnalisé.');
+      for(const [i,fieldset]of [...doc.querySelectorAll('#priorities fieldset')].entries()){
+        set(fieldset.querySelector('[data-field="finding"]'),'Constat personnalisé Vinelec '+(i+1));
+        set(fieldset.querySelector('[data-field="actions"]'),'Action personnalisée Vinelec '+(i+1));
+        set(fieldset.querySelector('[data-field="benefit"]'),'Bénéfice personnalisé Vinelec '+(i+1));
+      }
+      check(doc.querySelector('#export').disabled,'unsaved export allowed');
+      doc.querySelector('#report-text-editor button[type="submit"]').click();
+      await wait(()=>doc.querySelector('#status').textContent.includes('Textes enregistrés'),'save');
+      check(doc.querySelector('#report').textContent.includes('introduction personnalisée enregistrée'),'instant preview');
+      doc=await page(copiedUrl);
+      await wait(()=>doc.querySelector('#edit-texts') && !doc.querySelector('#edit-texts').disabled,'reload');
+      doc.querySelector('#edit-texts').click();
+      check(doc.querySelector('[data-report-text="summary.general"]').value.includes('personnalisée enregistrée'),'reload persistence');
+      doc.querySelector('[data-restore-text="page2.comparison_intro"]').click();
+      doc.querySelector('#report-text-editor button[type="submit"]').click();
+      await wait(()=>doc.querySelector('#status').textContent.includes('Textes enregistrés'),'restore save');
+      check(!doc.querySelector('#report').textContent.includes('résumé concurrentiel personnalisé'),'restore failed');
+      check(doc.querySelector('.nl-panel-summary').textContent.includes('31 avis'),'automatic total lost');
+      set(doc.querySelector('[data-report-text="page2.comparison_intro"]'),'Vinelec : résumé concurrentiel personnalisé.');
+      doc.querySelector('#report-text-editor button[type="submit"]').click();
+      await wait(()=>doc.querySelector('#status').textContent.includes('Textes enregistrés'),'second save');
+      doc.querySelector('#export').click();
+      await wait(()=>frame.contentWindow.__savedFilename,'PDF');
+      const copy=frame.contentWindow.__captured;
+      for(const text of ['introduction personnalisée enregistrée','résumé concurrentiel personnalisé',...['Constat','Action','Bénéfice'].flatMap(label=>[1,2,3].map(i=>label+' personnalisé'+(label==='Action'?'e':'')+' Vinelec '+i))])check(copy.includes(text),'PDF missing '+text);
+      const filename=frame.contentWindow.__savedFilename;
+      check(filename==='Fiche-Diagnostic_Vinelec-srl_Bassenge_'+new Date().toISOString().slice(0,10)+'_V2.pdf','filename '+filename);
+      check(doc.querySelectorAll('.nl-page').length===5,'PDF page count');
+      doc=await page('/admin');await wait(()=>doc.querySelectorAll('[data-duplicate-no-listing]').length===2,'two completed versions');
+      check(doc.querySelector('a[href*="${fixture.id}"]'),'source inaccessible');
+      result.textContent=JSON.stringify({success:true,filename});
+    }catch(e){result.textContent=JSON.stringify({error:e.stack,ui:frame.contentDocument.body.innerText.slice(0,5000)});}
+  })();</script>`);
+  const dir=mkdtempSync(join(tmpdir(),'efficia-workflow-chrome-'));
+  try{
+    const result=JSON.parse(await collectPageResultWithIsolatedChrome({chrome,url:fixture.url+'/runner',profileDir:dir,phase:'no-listing-workflow',selector:'#result',resultWait:65000}));
+    assert.equal(result.error,undefined,result.error+'\n'+result.ui);assert.equal(result.success,true);
+    assert.equal(fixture.exports.length,1);assert.ok(fixture.exports[0].bytes.length>10000);
+    assert.equal(fixture.exports[0].filename,result.filename);
+    assert.equal(JSON.stringify((await fixture.h.get('?id='+fixture.id)).dossier),fixture.source);
+    assert.equal(fixture.apiCalls.some(c=>c.action==='collect'),false);
+    assert.equal((await fixture.h.get('')).dossiers.length,2);
+  }finally{await fixture.close();rmSync(dir,{recursive:true,force:true});}
+});

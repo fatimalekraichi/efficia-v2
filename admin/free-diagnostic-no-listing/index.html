@@ -32,6 +32,15 @@
   </form>
   <section class="admin-card"><h2>Concurrence observée</h2><div id="observations">Recherche non effectuée.</div></section>
   <section id="priorities" class="admin-card"><h2>Les trois priorités</h2><p>Effectuez d’abord la recherche. Vous pourrez ensuite modifier et enregistrer les trois priorités.</p></section>
+  <section class="admin-card">
+    <button id="edit-texts" class="admin-button is-secondary" type="button" disabled>Modifier les textes du rapport</button>
+    <form id="report-text-editor" hidden>
+      <h2>Modifier les textes du rapport</h2>
+      <p>Les priorités se modifient dans les champs ci-dessus. Une personnalisation vide rétablit le texte automatique.</p>
+      <div id="report-text-fields"></div>
+      <button class="admin-button" type="submit">Enregistrer les textes</button>
+    </form>
+  </section>
   <div class="admin-task-actions"><button id="preview" class="admin-button is-secondary" disabled>Aperçu du rapport</button><button id="export" class="admin-button" disabled>Générer le PDF et finaliser</button></div>
   <p>La finalisation conserve le rapport en lecture seule dans « Audits terminés ». Elle ne l’envoie pas.</p>
   <section id="report" aria-label="Aperçu du rapport" hidden></section>

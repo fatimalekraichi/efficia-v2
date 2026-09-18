@@ -468,6 +468,7 @@ test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (ho
 test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 6 pages, puis pdf.save()", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
+  const preparationCode = html.slice(html.indexOf("function boutonsGenerationDiagnosticGratuit()"), html.indexOf("/* ================= AUDIT EFFICIA PREMIUM"));
   let composed = 0;
   let canvasCalls = 0;
   let savedFilename = "";
@@ -483,7 +484,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
       if (canvasCalls !== 6) orderOk = false;
     }
   }
-  const buttons = [{ disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
+  const buttons = [{ id: "btn-pdf", disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
   const context = {
     document: {
       getElementById(id) {
@@ -494,6 +495,9 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
       },
       querySelectorAll(selector) { return selector === "#rapport-contenu .page" ? pages : []; },
     },
+    sauvegardeBrouillonD1EnCours: false,
+    statut: () => {},
+    window: { setTimeout },
     questionnairePretPourFinalisation: () => true,
     assurerVersionAnalyseRapport: async () => true,
     enregistrerBrouillonD1: async () => true,
@@ -520,7 +524,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     alert: () => assert.fail("aucune alerte attendue"),
     console,
   };
-  vm.runInNewContext(`${captureOptionsCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
   assert.equal(canvasCalls, 6);

@@ -1,7 +1,7 @@
 import {jsonResponse, requireAdminSession, requireOrdersDb, requireSameOriginMutation} from '../../admin/_shared.js';
 import {collectCompetitors, COMPETITOR_QUALIFICATION_VERSION} from '../../lib/collectCompetitors.js';
 import {resolveGeographicAnchor, buildGeographicAnchorRecord} from '../../lib/geographicAnchor.js';
-import {normalizeIdentity, searchIdentity, defaultPriorities, validatePriorities, reportReady, PRIORITY_FIELDS} from '../../../js/no-listing-model.js';
+import {normalizeIdentity, searchIdentity, defaultPriorities, validatePriorities, reportReady, PRIORITY_FIELDS, saveReportTextOverrides, markNoListingTextsForReview, noListingPdfFilename} from '../../../js/no-listing-model.js';
 
 const uuid = value => typeof value === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(value);
 const reply = (body,status=200) => jsonResponse(body,status,{'Cache-Control':'no-store'});
@@ -58,7 +58,7 @@ export async function onRequestPost(context) {
         .bind(body.idempotencyKey,body.captureId || null).first();
       if(existing) return reply({success:true,dossier:rowData(existing)});
       if(body.captureId && !await capture(db,body.captureId)) return reply({success:false,error:'REQUEST_NOT_FOUND'},404);
-      const data={...identity,priorities:null,collection:{status:'uncollected'}};
+      const data={...identity,version:1,priorities:null,collection:{status:'uncollected'}};
       const now=new Date().toISOString();
       await db.prepare(`INSERT INTO no_listing_diagnostics (dossier_id,idempotency_key,capture_id,data_json,created_at,updated_at)
         VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING`).bind(crypto.randomUUID(),body.idempotencyKey,body.captureId || null,JSON.stringify(data),now,now).run();
@@ -68,6 +68,25 @@ export async function onRequestPost(context) {
     if(!uuid(body.id)) throw Error('INVALID_ID');
     const row=await db.prepare('SELECT * FROM no_listing_diagnostics WHERE dossier_id=?').bind(body.id).first();
     if(!row) return reply({success:false,error:'NOT_FOUND'},404);
+    if(body.action==='duplicate') {
+      if(row.status!=='finalized')return reply({success:false,error:'SOURCE_NOT_FINALIZED'},409);
+      if(!uuid(body.idempotencyKey))throw Error('INVALID_ID');
+      // Same principle as duplicateQuestionnaireSnapshot: facts survive, narrative overrides do not.
+      const key=`duplicate:${row.dossier_id}:${body.idempotencyKey}`;
+      const existing=await db.prepare('SELECT * FROM no_listing_diagnostics WHERE idempotency_key=?').bind(key).first();
+      if(existing)return reply({success:true,dossier:rowData(existing)});
+      const source=JSON.parse(row.snapshot_json), identity=normalizeIdentity(source);
+      const automaticPriorities=defaultPriorities(identity,source.collection);
+      const data={...identity,collection:source.collection,sourceDossierId:row.dossier_id,
+        version:(Number.isSafeInteger(source.version)?source.version:1)+1,
+        automaticPriorities,priorities:automaticPriorities,priorityOverrides:[],reportTextOverrides:{}};
+      const now=new Date().toISOString();
+      await db.prepare(`INSERT INTO no_listing_diagnostics (dossier_id,idempotency_key,data_json,created_at,updated_at)
+        VALUES (?,?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`)
+        .bind(crypto.randomUUID(),key,JSON.stringify(data),now,now).run();
+      const duplicate=await db.prepare('SELECT * FROM no_listing_diagnostics WHERE idempotency_key=?').bind(key).first();
+      return reply({success:true,dossier:rowData(duplicate)},201);
+    }
     if(row.status==='finalized') return reply({success:false,error:'FINALIZED_READ_ONLY'},409);
     if(body.revision!==row.revision) return reply({success:false,error:'REVISION_CONFLICT'},409);
     const data=JSON.parse(row.data_json);
@@ -85,6 +104,9 @@ export async function onRequestPost(context) {
         next.automaticPriorities=defaultPriorities(next,next.collection);
         next.priorities=next.automaticPriorities.map((p,i)=>({...p,...next.priorityOverrides[i]}));
       }
+      next.reportTextOverrides=Object.hasOwn(body.data,'reportTextValues')
+        ? saveReportTextOverrides(next,body.data.reportTextValues)
+        : markNoListingTextsForReview(next);
       changed=await update(db,row,next);
     } else if(body.action==='collect') {
       if(body.zoneConfirmed!==true) throw Error('ZONE_CONFIRMATION_REQUIRED');
@@ -113,13 +135,14 @@ export async function onRequestPost(context) {
         next.automaticPriorities=defaultPriorities(data,observation);
         next.priorities=next.automaticPriorities.map((p,i)=>({...p,...data.priorityOverrides?.[i]}));
       }
+      next.reportTextOverrides=markNoListingTextsForReview(next);
       changed=await update(db,reserved,next);
       if(!changed) return reply({success:false,error:'REVISION_CONFLICT'},409);
       return reply({success:!failure,...(failure?{error:failure}:{}),dossier:rowData(changed)},failure?502:200);
     } else if(body.action==='finalize') {
       if(!reportReady(data)) throw Error('COLLECTION_REQUIRED');
       validatePriorities(data.priorities);
-      changed=await update(db,row,data,'finalized',`Diagnostic-sans-fiche-${row.dossier_id}.pdf`);
+      changed=await update(db,row,data,'finalized',noListingPdfFilename(data));
     } else throw Error('INVALID_ACTION');
     return changed ? reply({success:true,dossier:rowData(changed)}) : reply({success:false,error:'REVISION_CONFLICT'},409);
   } catch(error) {

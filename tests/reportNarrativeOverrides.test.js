@@ -173,6 +173,7 @@ async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, opti
     ...fixtureOverrides,
   };
   const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
+    .replace('<script src="/js/diagnostic-pdf-filename.js?v=1"></script>', `<script>${readFileSync(new URL("../js/diagnostic-pdf-filename.js", import.meta.url), "utf8")}</script>`)
     .replace(
       '<script src="/js/score-efficia-core.js?v=1"></script>',
       `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,

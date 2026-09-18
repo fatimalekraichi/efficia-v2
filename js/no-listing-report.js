@@ -1,28 +1,15 @@
-import {cityWithDe, panelFacts, reviewEvidenceSentence, defaultPriorities, reportReady, validatePriorities} from './no-listing-model.js';
-export {panelFacts} from './no-listing-model.js';
+import {cityWithDe, panelFacts, reviewEvidenceSentence, defaultPriorities, reportReady, validatePriorities, panelReviewSentence, automaticReportTexts, effectiveReportText} from './no-listing-model.js';
+export {panelFacts, panelReviewSentence} from './no-listing-model.js';
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CATEGORY_FR = Object.freeze({electrician:'Électricien', 'electrical installation service':'Service d’installation électrique', 'electrical contractor':'Entreprise d’électricité'});
 export const categoryLabel = value => CATEGORY_FR[String(value).trim().toLowerCase()] || String(value);
-export function panelReviewSentence(collection) {
-  const {count,reviewTotal,reviews}=panelFacts(collection);
-  if(!count)return 'Aucune fiche concurrente qualifiée et vérifiable n’a été retenue pour cette recherche.';
-  if(!reviews)return 'Le nombre d’avis des fiches présentées n’est pas disponible.';
-  const subject=reviews.known===count
-    ? count===1?'La fiche présentée':`Les ${count===3?'trois':count} fiches présentées`
-    : reviews.known===1?'La fiche dont le nombre d’avis est renseigné':`Les ${reviews.known} fiches dont le nombre d’avis est renseigné`;
-  return `${subject} ${reviews.known===1?'compte':'cumulent'} ${reviewTotal} avis ${reviewTotal===1?'client':'clients'}.${reviewTotal>0?' Ces avis peuvent aider un prospect à comparer les professionnels.':''}`;
-}
 export function presenceVerdictHtml(data) {
-  const marker=data.absenceContext==='confirmed'
-    ? '<div class="nl-presence"><h2>Votre priorité : créer et optimiser votre fiche Google</h2></div>'
-    : data.absenceContext==='declared'?'<div class="nl-presence"><h2>Absence de fiche déclarée</h2></div>':'';
-  const query=data.collection?.query;
-  const observation=data.collection?.status==='success'
-    ? `${query?`Sur la recherche « ${escapeHtml(query)} », `:''}${panelReviewSentence(data.collection).replace(/^Les /,'les ').replace(/^La /,'la ').replace('Ces avis peuvent aider un prospect à comparer les professionnels.','Ces avis donnent aux internautes des repères pour choisir qui contacter.')}`
-    : 'Les résultats de la recherche locale restent à vérifier.';
-  return `<div class="nl-box nl-verdict">${marker}<p>${escapeHtml(data.company)} : nous n’avons pas identifié de fiche Google lui correspondant clairement dans les résultats analysés. ${observation} Votre prochaine étape : une fiche complète qui présente vos services et facilite la prise de contact.</p></div>`;
+  const texts=automaticReportTexts(data);
+  const title=effectiveReportText(data,'page1.verdict_title',texts['page1.verdict_title']);
+  const intro=effectiveReportText(data,'summary.general',texts['summary.general']);
+  return `<div class="nl-box nl-verdict">${title?`<div class="nl-presence"><h2>${escapeHtml(title)}</h2></div>`:''}<p>${escapeHtml(intro).replace(/\r?\n/g,'<br>')}</p></div>`;
 }
-export function panelSummaryHtml(collection, {indicators=false,company=''}={}) {
+export function panelSummaryHtml(collection, {indicators=false,company='',reportTextOverrides={}}={}) {
   const facts=panelFacts(collection),n=facts.count;
   const observed=n?`${n} ${n===1?'fiche Google est présentée':'fiches Google sont présentées'} dans ce diagnostic.`:'Aucune fiche concurrente qualifiée et vérifiable n’a été retenue pour cette recherche.';
   const reviews=facts.reviewed===n && n>0
@@ -34,7 +21,7 @@ export function panelSummaryHtml(collection, {indicators=false,company=''}={}) {
   const metric=(value,label)=>`<div class="nl-metric"><strong>${value}</strong><span>${label}</span></div>`;
   const format=(r,decimals=false)=>{const f=v=>decimals?v.toFixed(1).replace('.',','):String(v);return r.min===r.max?f(r.min):`${f(r.min)} à ${f(r.max)}`;};
   const scope=r=>r.known===n?'par fiche':`sur ${r.known} ${r.known===1?'fiche renseignée':'fiches renseignées'}`;
-  return `<div class="nl-panel-summary"><div class="nl-metrics">${metric(n,`fiche${n===1?'':'s'} présentée${n===1?'':'s'}`)}${facts.reviews?metric(`${facts.reviewTotal} avis`,`sur ${facts.reviews.known} ${facts.reviews.known===1?'fiche renseignée':'fiches renseignées'}`):''}${facts.ratings?metric(format(facts.ratings,true)+'/5',`notes ${scope(facts.ratings)}`):''}</div><p>${escapeHtml(reviewEvidenceSentence(collection))}${company && facts.reviewTotal>0?` Ces avis${facts.ratings?` et les notes disponibles (${format(facts.ratings,true)}/5)`:""} constituent des repères visibles que ${escapeHtml(company)} ne peut pas encore présenter via une fiche identifiée dans notre analyse.`:""}</p><p class="nl-muted">Ces repères concernent uniquement les fiches présentées, pas l’ensemble du marché local.</p></div>`;
+  return `<div class="nl-panel-summary"><div class="nl-metrics">${metric(n,`fiche${n===1?'':'s'} présentée${n===1?'':'s'}`)}${facts.reviews?metric(`${facts.reviewTotal} avis`,`sur ${facts.reviews.known} ${facts.reviews.known===1?'fiche renseignée':'fiches renseignées'}`):''}${facts.ratings?metric(format(facts.ratings,true)+'/5',`notes ${scope(facts.ratings)}`):''}</div><p>${escapeHtml(effectiveReportText({reportTextOverrides},'page2.comparison_intro',automaticReportTexts({collection,company})['page2.comparison_intro'])).replace(/\r?\n/g,'<br>')}</p><p class="nl-muted">Ces repères concernent uniquement les fiches présentées, pas l’ensemble du marché local.</p></div>`;
 }
 export function priorityActionsHtml(data, priority, index, text=priority.actions) {
   // Only automatic copy is reformatted. Manual wording and paragraph breaks stay intact.
@@ -85,7 +72,7 @@ export function renderNoListingReport(data, container) {
   add(presenceVerdictHtml(data));
   // Keep the introduction and the observed panel on their existing separate pages.
   newPage();
-  add(`<section class="nl-competition"><h2>La concurrence locale observée</h2>${competitionHtml(data.collection,{translateCategories:true})}${panelSummaryHtml(data.collection,{indicators:true,company:data.company})}</section>`);
+  add(`<section class="nl-competition"><h2>La concurrence locale observée</h2>${competitionHtml(data.collection,{translateCategories:true})}${panelSummaryHtml(data.collection,{indicators:true,company:data.company,reportTextOverrides:data.reportTextOverrides})}</section>`);
   data.priorities.forEach((p,index)=>{
     // Keep priority 3 and the service description on their dedicated diagnostic page.
     if(index===2 && content.querySelector('.nl-priority-title'))newPage();
