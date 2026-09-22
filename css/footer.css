@@ -126,55 +126,57 @@
   }
 }
 
-/* Shared professional WhatsApp contact on public pages. */
+/* Secondary WhatsApp contact, aligned with the Efficia palette. */
 .whatsapp-contact {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
-  margin-block: 20px;
+  margin-block: 12px 0;
 }
 
-.whatsapp-contact p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.whatsapp-contact p span {
-  white-space: nowrap;
-  font-weight: 700;
-}
-
-.whatsapp-button {
+.whatsapp-link {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   min-height: 44px;
   max-width: 100%;
-  padding: 12px 18px;
-  border: 2px solid #075e54;
-  border-radius: 12px;
-  background: #075e54;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 750;
-  line-height: 1.4;
-  text-align: center;
+  padding-block: 8px;
+  color: var(--blue-dark);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
   text-decoration: none;
 }
 
-.whatsapp-button:hover {
-  background: #064c44;
-  color: #fff;
+.whatsapp-link svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
 }
 
-.whatsapp-button:focus-visible {
-  outline: 3px solid #fff;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 7px #075e54;
+.whatsapp-link:hover {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.final-cta .whatsapp-contact {
-  justify-content: center;
+.whatsapp-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.whatsapp-contact--footer {
+  margin-block: 0 20px;
+}
+
+.whatsapp-contact--footer .whatsapp-link {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.whatsapp-contact--footer .whatsapp-link:hover {
+  color: var(--blue-dark);
+}
+
+.whatsapp-number {
+  margin-inline-start: 4px;
+  white-space: nowrap;
 }
