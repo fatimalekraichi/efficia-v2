@@ -125,3 +125,56 @@
     flex-direction: column;
   }
 }
+
+/* Shared professional WhatsApp contact on public pages. */
+.whatsapp-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-block: 20px;
+}
+
+.whatsapp-contact p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.whatsapp-contact p span {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.whatsapp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 12px 18px;
+  border: 2px solid #075e54;
+  border-radius: 12px;
+  background: #075e54;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+}
+
+.whatsapp-button:hover {
+  background: #064c44;
+  color: #fff;
+}
+
+.whatsapp-button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 7px #075e54;
+}
+
+.final-cta .whatsapp-contact {
+  justify-content: center;
+}
