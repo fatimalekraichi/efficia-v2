@@ -330,3 +330,16 @@
   line-height: 1.35;
   font-weight: 700;
 }
+
+.pricing-whatsapp {
+  margin-block: 28px 8px;
+  text-align: center;
+}
+
+.pricing-whatsapp .whatsapp-link {
+  justify-content: center;
+}
+
+.pricing-whatsapp .whatsapp-link span {
+  text-wrap: balance;
+}
