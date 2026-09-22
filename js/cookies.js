@@ -31,17 +31,18 @@
     const banner = document.createElement("div");
     banner.className = "cookie-consent";
     banner.setAttribute("role", "region");
-    banner.setAttribute("aria-label", "Préférences de confidentialité");
+    banner.setAttribute("aria-label", "Vos préférences de confidentialité");
     banner.innerHTML = `
       <div class="cookie-consent__inner">
         <div>
-          <strong>Votre confidentialité</strong>
-          <p>Avec votre accord, Clarity nous aide à améliorer le site. OpenAI mesure les conversions publicitaires et peut recevoir vos coordonnées sous forme d’empreintes hachées. Vous pouvez choisir séparément ou retirer votre accord à tout moment. <a href="/politique-cookies">En savoir plus</a></p>
+          <strong>Vos préférences de confidentialité</strong>
+          <p>Ce site utilise des cookies afin de vous offrir une meilleure expérience de navigation et de recueillir des informations sur son utilisation.</p>
+          <p>En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="/politique-cookies">Politique relative aux cookies</a>.</p>
         </div>
         <div class="cookie-consent__actions">
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Tout accepter</button>
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-refuse>Tout refuser</button>
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-customize>Personnaliser</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Accepter les cookies</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-refuse>Refuser les cookies</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-customize>Personnaliser<br>mes choix</button>
         </div>
       </div>
     `;
@@ -53,8 +54,8 @@
     preferences.innerHTML = `
       <div class="cookie-preferences__backdrop" data-cookie-close></div>
       <div class="cookie-preferences__panel" role="dialog" aria-modal="true" aria-labelledby="cookie-preferences-title">
-        <h2 id="cookie-preferences-title">Gérer mes préférences</h2>
-        <p>Clarity et OpenAI restent désactivés sans votre accord pour chaque finalité. Fermer cette fenêtre ne vaut pas acceptation.</p>
+        <h2 id="cookie-preferences-title">Vos préférences de confidentialité</h2>
+        <p>Les cookies non essentiels restent désactivés sans votre accord pour chaque finalité. Fermer cette fenêtre ne vaut pas acceptation.</p>
         <div class="cookie-options">
           <div class="cookie-option">
             <div>

@@ -116,9 +116,9 @@ const publicPages = [
   "404.html",
 ];
 
-test("le bandeau, la personnalisation et les politiques expliquent les empreintes hachées après accord publicitaire", async () => {
+test("la personnalisation et les politiques expliquent les empreintes hachées après accord publicitaire", async () => {
   const cookies = await readProjectFile("js/cookies.js");
-  assert.match(cookies, /OpenAI mesure les conversions publicitaires et peut recevoir vos coordonnées sous forme d’empreintes hachées/);
+  assert.match(cookies, /href="\/politique-cookies">Politique relative aux cookies/);
   assert.match(cookies, /Vos coordonnées, comme votre e-mail, peuvent être transformées dans votre navigateur en empreintes hachées, puis transmises à OpenAI/);
   assert.match(cookies, /data-cookie-advertising>/);
   assert.doesNotMatch(cookies, /<input[^>]*checked[^>]*data-cookie-advertising|<input[^>]*data-cookie-advertising[^>]*checked/);
@@ -171,10 +171,14 @@ test("les textes simplifiés conservent les actions explicites de consentement",
     readProjectFile("css/cookies.css"),
   ]);
 
-  assert.match(cookies, /<strong>Votre confidentialité<\/strong>/);
-  assert.match(cookies, /Avec votre accord, Clarity nous aide à améliorer le site\. OpenAI mesure les conversions publicitaires et peut recevoir vos coordonnées sous forme d’empreintes hachées\. Vous pouvez choisir séparément ou retirer votre accord à tout moment\. <a href="\/politique-cookies">En savoir plus<\/a>/);
-  assert.match(cookies, /<h2 id="cookie-preferences-title">Gérer mes préférences<\/h2>/);
-  assert.match(cookies, /Clarity et OpenAI restent désactivés sans votre accord pour chaque finalité\./);
+  assert.match(cookies, /<strong>Vos préférences de confidentialité<\/strong>/);
+  assert.match(cookies, /Ce site utilise des cookies afin de vous offrir une meilleure expérience de navigation et de recueillir des informations sur son utilisation\./);
+  assert.match(cookies, /En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="\/politique-cookies">Politique relative aux cookies<\/a>\./);
+  assert.match(cookies, /data-cookie-accept>Accepter les cookies<\/button>/);
+  assert.match(cookies, /data-cookie-refuse>Refuser les cookies<\/button>/);
+  assert.match(cookies, /data-cookie-customize>Personnaliser<br>mes choix<\/button>/);
+  assert.match(cookies, /<h2 id="cookie-preferences-title">Vos préférences de confidentialité<\/h2>/);
+  assert.match(cookies, /Les cookies non essentiels restent désactivés sans votre accord pour chaque finalité\./);
   assert.match(cookies, /<strong>Fonctions nécessaires<\/strong>\s*<span>Indispensables au fonctionnement et à la sécurité du site\.<\/span>/);
   assert.match(cookies, /<strong>Mesure d’audience<\/strong>\s*<span>Nous aide à comprendre l’utilisation du site et à l’améliorer\.<\/span>/);
   assert.match(cookies, /data-cookie-close>Retour<\/button>/);
