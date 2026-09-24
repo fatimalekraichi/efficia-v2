@@ -534,3 +534,28 @@ test("Point 1d. des moyennes concurrentielles seules suffisent à qualifier des 
   const state = buildFreeDiagnosticCollectionState(analysis);
   assert.equal(state.business.geographicAnchorStale, true);
 });
+
+test("alias de Bruxelles — aucun faux état périmé dans le modèle ou la zone affichée", async () => {
+  const { evaluateGeographicAnchorReadiness } = await import("../functions/lib/geographicAnchor.js");
+  const { buildFreeDiagnosticCollectionState } = await import("../functions/lib/freeDiagnosticProductionLink.js");
+  const normalized = {
+    city: "Bruxelles", country_code: "BE",
+    geographic_anchor: {
+      tier: 1, source: "outscraper_geocoding", region: "BE", label: "Brussels, Belgique",
+      coordinates: "50.85,4.35", locality: { city: "Brussels", countryCode: "BE", postalCode: "" },
+    },
+  };
+  for (const city of ["Bruxelles", "Brussel", "Bruxelles-Ville", "Ville de Bruxelles", "City of Brussels", " BRÜXÈLLES "]) {
+    const current = { ...normalized, city };
+    const readiness = evaluateGeographicAnchorReadiness({ normalized: current, displayedSearchZone: { city, countryCode: "BE" } });
+    assert.equal(readiness.ok, true, city);
+    const state = buildFreeDiagnosticCollectionState({ business: { name: "Entreprise Bruxelles", placeId: "place-bruxelles", searchQuery: "Électricien Bruxelles", normalized: current, fiche: {} } });
+    assert.equal(state.business.geographicAnchorStale, false, city);
+    assert.equal(state.business.geographicAnchorIssue, null, city);
+  }
+  for (const city of ["Antwerpen", "Uccle", "Schaerbeek"]) {
+    assert.equal(evaluateGeographicAnchorReadiness({ normalized: { ...normalized, city } }).code, "GEOGRAPHIC_ANCHOR_STALE");
+    assert.equal(evaluateGeographicAnchorReadiness({ normalized, displayedSearchZone: { city, countryCode: "BE" } }).code, "SEARCH_ZONE_STALE");
+  }
+  assert.equal(evaluateGeographicAnchorReadiness({ normalized: { ...normalized, country_code: "US" } }).code, "GEOGRAPHIC_ANCHOR_STALE");
+});

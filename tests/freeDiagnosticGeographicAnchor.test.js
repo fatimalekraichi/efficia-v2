@@ -1292,3 +1292,41 @@ test("Point 4 — le libellé « Zone automatiquement détectée » (état 4) et
   const staleBranchSection = source.slice(staleBranchStart);
   assert.doesNotMatch(staleBranchSection, /Zone automatiquement détectée/);
 });
+
+test("Bruxelles / BE — relance réussie avec Brussels, sans diagnostic rouge ni résultats périmés", async () => {
+  const db = new LocalD1();
+  const analysisId = "geo-brussels-alias";
+  seedAnalysis(db, { analysisId, companyName: "Entreprise Bruxelles", city: "Bruxelles" });
+  seedManualMetadata(db, analysisId);
+  marksInitialCollection(db, analysisId, {
+    companyName: "Entreprise Bruxelles", city: "Bruxelles",
+    geo: { country: "Belgium", countryCode: "BE" },
+  });
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    if (isGeocodingRequest(new URL(String(input)))) {
+      calls.push("geocoding");
+      return Response.json({ data: [{ latitude: 50.85, longitude: 4.35, city: "Brussels", country_code: "BE" }] });
+    }
+    calls.push("competitors");
+    return Response.json({ data: [[]] });
+  };
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await collectDiagnostic(await context(db, analysisId, {
+        body: refreshBody({ analysisId, company: "Entreprise Bruxelles", city: "Bruxelles", searchQuery: "Électricien Bruxelles", searchZone: { city: "Bruxelles", countryCode: "BE" } }),
+      }));
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.success, true);
+      assert.equal(body.operation, "refresh_search");
+      assert.equal(body.diagnosticCode, undefined);
+      assert.equal(body.localityDetail, undefined);
+      assert.equal(body.business.geographicAnchorStale, false);
+      assert.equal(body.business.geographicAnchorIssue, null);
+      assert.equal(body.business.geographicAnchor.locality.city, "Bruxelles");
+    }
+    assert.deepEqual(calls, ["geocoding", "competitors", "geocoding", "competitors"]);
+  } finally { globalThis.fetch = originalFetch; }
+});

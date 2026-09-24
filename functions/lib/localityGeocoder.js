@@ -62,6 +62,7 @@ const DEFAULT_PENDING_POLL_DELAYS_MS = Object.freeze([750, 1500, 3000, 5000, 750
 const OUTSCRAPER_REQUEST_RESULTS_ORIGIN = "https://api.outscraper.com";
 
 import { canonicalCountryCode } from "./countryCodes.js";
+import { canonicalLocalityName, normalizeLocalityComponent } from "./localityNames.js";
 
 // Codes techniques précis (mission "corriger le geocodeur de localité") —
 // un code par cause distincte, jamais un code générique unique pour
@@ -268,13 +269,6 @@ const STRUCTURED_LOCALITY_COMPONENT_FIELDS = Object.freeze([
   "city", "town", "village", "municipality", "commune", "locality", "borough", "hamlet", "suburb", "neighbourhood",
 ]);
 
-function normalizeLocalityComponent(value) {
-  return normalizeKey(value)
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function structuredLocalityComponents(result) {
   const seen = new Set();
   return STRUCTURED_LOCALITY_COMPONENT_FIELDS.flatMap((field) => {
@@ -307,15 +301,6 @@ function localityMismatchDiagnostic(result, expected) {
   return { requestedLocality, countryCode, components };
 }
 
-function localityComponentMatches(component, expectedCity) {
-  return component === expectedCity
-    // Compatibilité explicite avec des libellés structurés comme
-    // "Luxembourg City" pour la localité demandée "Luxembourg". Le mot
-    // suivant doit être un séparateur : jamais de sous-chaîne arbitraire.
-    || component.startsWith(`${expectedCity} `)
-    || expectedCity.startsWith(`${component} `);
-}
-
 function validateLocalityMatch(result, expected) {
   const responseCountryCode = canonicalCountryCode({
     countryCode: result?.country_code,
@@ -332,7 +317,8 @@ function validateLocalityMatch(result, expected) {
   const expectedCity = normalizeLocalityComponent(expected?.city);
   const localityComponents = structuredLocalityComponents(result);
   if (!localityComponents.length || !expectedCity) return { ok: false, reason: "city_missing" };
-  const cityMatches = localityComponents.some((component) => localityComponentMatches(component, expectedCity));
+  const cityMatches = localityComponents.some((component) =>
+    canonicalLocalityName(component, responseCountryCode) === canonicalLocalityName(expectedCity, expectedCountryCode));
   if (!cityMatches) return { ok: false, reason: "city_mismatch" };
 
   const responsePostal = normalizePostal(result?.postal_code);
