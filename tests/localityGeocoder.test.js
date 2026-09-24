@@ -728,3 +728,37 @@ test("Pending sans identifiant exploitable — refus contrôlé et aucune URL re
     globalThis.fetch = originalFetch;
   }
 });
+
+const brusselsAliases = ["Bruxelles", "Brussels", "Brussel", "Bruxelles-Ville", "Ville de Bruxelles", "City of Brussels"];
+for (const requested of brusselsAliases) {
+  test(`alias belges exacts — ${requested} accepte toutes les variantes de Bruxelles`, async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const returned of [...brusselsAliases, "  BRÜSSÉLS  ", "  VILLE...de   BRUXELLES ", "Bruxelles – Ville"]) {
+        globalThis.fetch = async () => Response.json({ data: [{
+          latitude: 50.85, longitude: 4.35, city: returned, country_code: "BE",
+        }] });
+        const result = await resolveLocalityCenter({ city: requested, countryCode: "be", countryName: "Belgique", apiKey: "k" });
+        assert.equal(result.ok, true, returned);
+        assert.equal(result.code, undefined);
+        assert.equal(result.localityMismatchDiagnostic, undefined);
+      }
+    } finally { globalThis.fetch = originalFetch; }
+  });
+}
+
+test("alias de Bruxelles — incompatibilités strictement conservées", async () => {
+  const { validateLocalityMatch } = (await import("../functions/lib/localityGeocoder.js")).__test__;
+  for (const city of ["Antwerpen", "Uccle", "Schaerbeek", "Bruxelles-Capitale", "Brussels Capital Region", "Bruxelles Village"]) {
+    assert.deepEqual(validateLocalityMatch({ city, country_code: "BE" }, { city: "Bruxelles", countryCode: "BE" }), { ok: false, reason: "city_mismatch" }, city);
+    assert.deepEqual(validateLocalityMatch({ city: "Bruxelles-Ville", country_code: "BE" }, { city, countryCode: "BE" }), { ok: false, reason: "city_mismatch" }, city);
+  }
+  for (const city of ["Bruxelles", "Brussels"]) {
+    assert.deepEqual(validateLocalityMatch({ city, country_code: "FR", country: "Belgium" }, { city: "Bruxelles", countryCode: "BE" }), { ok: false, reason: "country_mismatch" });
+  }
+  assert.deepEqual(validateLocalityMatch({ city: "Brussels", country_code: "FR" }, { city: "Bruxelles", countryCode: "FR" }), { ok: false, reason: "city_mismatch" });
+  assert.deepEqual(validateLocalityMatch({ city: "Brussels", country: "Belgium" }, { city: "  BRÜXÈLLES  ", countryCode: "BE" }), { ok: true });
+  assert.deepEqual(validateLocalityMatch({ city: "Brussels", postal_code: "1180", country_code: "BE" }, { city: "Bruxelles", postalCode: "1000", countryCode: "BE" }), { ok: false, reason: "postal_code_mismatch" });
+  assert.deepEqual(validateLocalityMatch({ city: "Uccle", state: "Brussels", country_code: "BE" }, { city: "Bruxelles", countryCode: "BE" }), { ok: false, reason: "city_mismatch" });
+  assert.deepEqual(validateLocalityMatch({ city: "Brussels", suburb: "Uccle", country_code: "BE" }, { city: "Uccle", countryCode: "BE" }), { ok: true });
+});

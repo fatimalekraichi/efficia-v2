@@ -37,11 +37,10 @@
 //     jamais une recherche lancée à l'aveugle.
 
 import { resolveLocalityCenter } from "./localityGeocoder.js";
+import { canonicalLocalityName } from "./localityNames.js";
 import {
-  canonicalCountryCode, COUNTRY_CODE_TO_NAME, COUNTRY_NAME_TO_CODE, normalizeCountryKey,
+  canonicalCountryCode, COUNTRY_CODE_TO_NAME, COUNTRY_NAME_TO_CODE,
 } from "./countryCodes.js";
-
-const normalizeKey = normalizeCountryKey;
 
 function resolveRegionCode(record) {
   return canonicalCountryCode({ countryCode: record?.country_code, countryName: record?.country });
@@ -133,7 +132,7 @@ export function resolveGeographicAnchorLocality({ normalized = {}, fiche = {}, c
 function isSameLocality(a, b) {
   if (!a?.ok || !b?.ok) return a?.ok === b?.ok;
   return a.region === b.region
-    && normalizeKey(a.city) === normalizeKey(b.city)
+    && canonicalLocalityName(a.city, a.region) === canonicalLocalityName(b.city, b.region)
     && String(a.postalCode || "").trim() === String(b.postalCode || "").trim();
 }
 
@@ -346,7 +345,7 @@ export function evaluateGeographicAnchorReadiness({
     if (!displayed
       || !persisted
       || displayed.countryCode !== persisted.region
-      || normalizeKey(displayed.city) !== normalizeKey(analyzedCity)) {
+      || canonicalLocalityName(displayed.city, displayed.countryCode) !== canonicalLocalityName(analyzedCity, persisted.region)) {
       return { ok: false, code: "SEARCH_ZONE_STALE", persisted, live: liveDisplay };
     }
   }
