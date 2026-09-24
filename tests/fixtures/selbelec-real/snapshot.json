@@ -1,0 +1,577 @@
+{
+  "snapshotId": "338a92e2-b751-43b8-84dc-d8402c447aaa",
+  "analysisId": "d542d1b3-a541-419e-a84f-8fb49987a34b",
+  "finalizedAt": "2026-09-24T13:34:45.187Z",
+  "answers": {
+    "questionnaireVersion": "score-efficia-questionnaire-v4",
+    "photoPresence": "present",
+    "reviewsPresence": "present",
+    "locationMode": "service_area",
+    "addressVerification": "unknown",
+    "serviceAreaVerification": "not_verifiable",
+    "fields": {
+      "p-entreprise": "Selbelec",
+      "p-ville": "Bruxelles",
+      "p-activite": "Électricien",
+      "p-contact": "",
+      "p-profil": "artisan",
+      "d-note": "5",
+      "d-avis": "6",
+      "d-photos": "1",
+      "d-services": "",
+      "d-pubs": "",
+      "d-desclen": "",
+      "d-position": "0",
+      "d-requete": "Electricien Bruxelles",
+      "d-zone-recherche": "Bruxelles",
+      "d-zone-pays": "BE",
+      "d-zone-confirmee": true,
+      "d-site-url": "https://www.selbelec.be/",
+      "d-site-etat": "accessible",
+      "d-site-code": ""
+    },
+    "profileKey": "artisan",
+    "responses": {
+      "revendiquee": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "categoriePrincipale": {
+        "points": 4,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "categoriesSecondaires": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "horaires": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "pre-remplie",
+        "source": "unknown",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "contact": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "adresse": {
+        "points": 0,
+        "statut": "manuelle",
+        "checklist": []
+      },
+      "attributs": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "nap": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "nomConforme": {
+        "points": 2,
+        "value": "compliant",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "logoCouverture": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "nombrePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "photoRecente": {
+        "points": 2,
+        "value": "partial",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "varietePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "qualitePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "noteMoyenne": {
+        "points": 6,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "volumeAvis": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "recenceAvis": {
+        "points": 2,
+        "value": "partial",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "tauxReponseAvis": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "descriptionRemplie": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "pre-remplie",
+        "source": "unknown",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "servicesPresents": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "questionsReponses": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "liensAction": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "publicationRecente": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "classementLocal": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "attractiviteConcurrents": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      }
+    },
+    "observedData": {
+      "nbAvis": 6,
+      "nbPhotos": 1,
+      "note": 5,
+      "position": 0,
+      "positionKind": "observed",
+      "sponsoredResultsExcluded": 0,
+      "requeteTestee": "Electricien Bruxelles",
+      "derniereRequeteAnalysee": "Electricien Bruxelles",
+      "derniereAnalyseRechercheAt": "2026-09-24T10:46:14.159Z",
+      "derniereActiviteAnalysee": "Électricien",
+      "requeteAffichee": "Electricien Bruxelles",
+      "concurrence": {
+        "vol": 6,
+        "volC": 287.6666666666667,
+        "note": 5,
+        "noteC": 4.8999999999999995,
+        "ecartConcurrentFaible": false
+      },
+      "concurrents": [
+        {
+          "label": "CD ENGINEERING",
+          "note": 4.8,
+          "avis": 726,
+          "photos": 229,
+          "services": null,
+          "pubs": null
+        },
+        {
+          "label": "Emrelec - votre électricien de confiance",
+          "note": 4.9,
+          "avis": 94,
+          "photos": 46,
+          "services": null,
+          "pubs": null
+        },
+        {
+          "label": "HOUSELEC Srl - Électricien & Dépannage d'Urgence 24/7",
+          "note": 5,
+          "avis": 43,
+          "photos": 16,
+          "services": null,
+          "pubs": null
+        }
+      ],
+      "moyennesConcurrents": {
+        "note": 4.8999999999999995,
+        "avis": 287.6666666666667,
+        "photos": 97,
+        "services": null,
+        "pubs": null
+      },
+      "competitorQualificationVersion": 1,
+      "competitorQualificationStatus": "qualified",
+      "descriptionLongueur": 0,
+      "dernierAvis": null,
+      "dernierePublication": null,
+      "nbServices": null,
+      "nbPublications": null,
+      "avisAnalyses": null,
+      "reponsesProprietaire": null,
+      "activiteConfirmee": "Électricien",
+      "categoriePrincipaleObservee": "Électricien",
+      "categoriesSecondairesObservees": [
+        "Électricien",
+        "Service establishment"
+      ],
+      "statutCategoriesSecondaires": "available",
+      "verificationMaps": {
+        "url": "https://www.google.com/maps/place/Selbelec/@50.501038,4.4661,14z/data=!4m8!1m2!2m1!1sSelbelec!3m4!1s0x6ccb771702483731:0x25151e096d58e2bf!8m2!3d50.501038!4d4.4661",
+        "mode": "exact",
+        "source": "location_link"
+      },
+      "liensAction": [],
+      "statutLiensAction": "available",
+      "preuveRang": {
+        "rawRank": null,
+        "normalizedOneBasedRank": 0,
+        "source": "target_not_found"
+      },
+      "syntheseConcurrence": {
+        "rating": 5,
+        "reviews": 6,
+        "averageRating": 4.9,
+        "averageReviews": 287.67,
+        "label": "Confiance visible contrastée : volume d'avis inférieur, note comparable à la moyenne concurrentielle."
+      },
+      "zoneGeographique": {
+        "tier": 1,
+        "source": "outscraper_geocoding",
+        "region": "BE",
+        "label": "Bruxelles, Belgique",
+        "coordinates": "50.847702899999994,4.3572001",
+        "localitySource": "admin_confirmed_search_zone",
+        "locality": {
+          "city": "Bruxelles",
+          "postalCode": "",
+          "country": "Belgique",
+          "countryCode": "BE"
+        }
+      },
+      "zoneGeographiqueLive": {
+        "region": "BE",
+        "label": "Bruxelles, Belgique",
+        "localitySource": "admin_confirmed_search_zone",
+        "locality": {
+          "city": "Bruxelles",
+          "postalCode": "",
+          "country": "Belgique",
+          "countryCode": "BE"
+        }
+      },
+      "zoneGeographiqueStale": false,
+      "zoneGeographiqueIssue": null
+    },
+    "scoreSnapshot": {
+      "score": 29,
+      "scoringVersion": "score-efficia-v5",
+      "provisional": false,
+      "answeredCriteria": 25,
+      "scoredCriteria": 25
+    },
+    "reponses": {
+      "revendiquee": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "categoriePrincipale": {
+        "points": 4,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "categoriesSecondaires": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "horaires": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "pre-remplie",
+        "source": "unknown",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "contact": {
+        "points": 3,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "adresse": {
+        "points": 0,
+        "statut": "manuelle",
+        "checklist": []
+      },
+      "attributs": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "nap": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "nomConforme": {
+        "points": 2,
+        "value": "compliant",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "logoCouverture": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "nombrePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "photoRecente": {
+        "points": 2,
+        "value": "partial",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "varietePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "qualitePhotos": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "noteMoyenne": {
+        "points": 6,
+        "value": "compliant",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 0,
+        "checklist": []
+      },
+      "volumeAvis": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "recenceAvis": {
+        "points": 2,
+        "value": "partial",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 1,
+        "checklist": []
+      },
+      "tauxReponseAvis": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "descriptionRemplie": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "pre-remplie",
+        "source": "unknown",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "servicesPresents": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "questionsReponses": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "liensAction": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "publicationRecente": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "classementLocal": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "automatique",
+        "source": "auto",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      },
+      "attractiviteConcurrents": {
+        "points": 0,
+        "value": "deficient",
+        "statut": "manuelle",
+        "source": "manual",
+        "selectedOptionIndex": 2,
+        "checklist": []
+      }
+    }
+  },
+  "overrides": [
+    {
+      "fieldId": "summary.general",
+      "customText": "Votre fiche inspire confiance aux personnes qui la trouvent, mais elle manque encore de signaux de pertinence, d’activité et de preuve sociale pour ressortir clairement face aux concurrents.\n\nLors de notre test sur « électricien Bruxelles », elle n’a pas été détectée parmi les premiers résultats observés. Sa note de 5/5 constitue une bonne base, mais le faible volume d’avis, l’absence de description visible et certaines informations incomplètes limitent encore sa capacité à être comprise et choisie.",
+      "needsReview": true
+    },
+    {
+      "fieldId": "priority.1.first_action",
+      "customText": "Mettre en place un parcours simple et conforme pour solliciter régulièrement de nouveaux avis auprès des clients satisfaits, puis répondre personnellement aux avis déjà publiés.",
+      "needsReview": true
+    },
+    {
+      "fieldId": "priority.1.expected_result",
+      "customText": "Davantage d’avis récents, des réponses visibles et une fiche plus rassurante face aux concurrents.",
+      "needsReview": true
+    },
+    {
+      "fieldId": "page1.weakness.1",
+      "customText": "Les avis semblent ne pas recevoir de réponse.",
+      "needsReview": true
+    }
+  ]
+}

@@ -402,7 +402,7 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
   assert.equal(result.historical.hasComparableBenchmark, false);
   assert.match(result.historical.reportText, /Panel concurrentiel à actualiser — relance nécessaire\./u);
   assert.doesNotMatch(result.historical.reportText, /Boulange \/ François|Camperplaats Houffalize|Recyparc d’Houffalize/u);
-  assert.equal(result.pdfPages, 6);
-  assert.equal(result.canvasCount, 6);
+  assert.equal(result.pdfPages, 4);
+  assert.equal(result.canvasCount, 4);
   assert.ok(result.pdfBytes > 0);
 });

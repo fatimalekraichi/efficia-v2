@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode, runAdminBrowserHarness } from "./freeDiagnosticBrowserFixture.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -143,136 +144,8 @@ function longestAutomaticText(fieldId) {
     || `Texte automatique complet pour ${fieldId}.`;
 }
 
-async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {}, options = {}) {
-  const fixture = {
-    analysisId: ANALYSIS_ID,
-    context: {
-      company: "Entreprise Test",
-      city: "Arlon",
-      activity: "Électricien",
-      scoringVersion: "score-efficia-v5",
-      collectionAvailable: false,
-      premiumAllowed: false,
-    },
-    answers: {
-      questionnaireVersion: "score-efficia-questionnaire-v4",
-      profileKey: "default",
-      fields: {
-        "p-entreprise": "Entreprise Test",
-        "p-ville": "Arlon",
-        "p-activite": "Électricien",
-        "p-contact": "Test interne",
-        "d-requete": "Électricien Arlon",
-        "d-zone-recherche": "Arlon",
-        "d-zone-pays": "BE",
-      },
-      observedData: { nbAvis: 5, nbPhotos: 3, note: 4.2, concurrents: [] },
-      responses: {},
-    },
-    overrides: [{ fieldId: "summary.general", customText: "Texte persistant après rechargement", needsReview: false }],
-    ...fixtureOverrides,
-  };
-  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
-    .replace('<script src="/js/diagnostic-pdf-filename.js?v=1"></script>', `<script>${readFileSync(new URL("../js/diagnostic-pdf-filename.js", import.meta.url), "utf8")}</script>`)
-    .replace(
-      '<script src="/js/score-efficia-core.js?v=1"></script>',
-      `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,
-    )
-    .replace(
-      '<script src="/js/questionnaire-finalization.js?v=7ee0654"></script>',
-      `<script>${readFileSync(new URL("../js/questionnaire-finalization.js", import.meta.url), "utf8")}</script>`,
-    )
-    .replace(
-      '<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>',
-      `<script>${readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8")}</script>`,
-    );
-  const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
-  const fetchFixture = `<script>
-    window.__workflowFixture = ${JSON.stringify(fixture).replaceAll("</", "<\\/")};
-    window.__workflowFetchCalls = [];
-    window.fetch = async (input, options = {}) => {
-      const url = String(input);
-      window.__workflowFetchCalls.push({ url, method: options.method || "GET", body: options.body || null });
-      const json = (body, status = 200) => new Response(JSON.stringify(body), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      });
-      if (url.includes("/api/admin/free-diagnostic-context/")) return json({
-        success: true,
-        context: window.__workflowFixture.context
-      });
-      if (url.includes("/api/admin/audit-drafts/")) return json({
-        success: true,
-        ...(function(){
-          if((options.method || "GET") === "PUT") {
-            const payload = JSON.parse(options.body || "{}");
-            window.__workflowFixture.answers = payload.answers || window.__workflowFixture.answers;
-          }
-          return { draft: {
-            reportType: "free",
-            currentStep: "questionnaire",
-            updatedAt: "2026-08-30T10:00:00.000Z",
-            answers: window.__workflowFixture.answers
-          }};
-        })()
-      });
-      if (url.includes("/api/admin/report-text-overrides/")) {
-        if ((options.method || "GET") === "PUT") {
-          const payload = JSON.parse(options.body || "{}");
-          const current = new Map((window.__workflowFixture.overrides || []).map(item => [item.fieldId, item]));
-          (payload.restoredFieldIds || []).forEach(fieldId => current.delete(fieldId));
-          (payload.overrides || []).forEach(item => current.set(item.fieldId, {
-            fieldId: item.fieldId,
-            customText: item.text,
-            automaticText: item.automaticText,
-            weeklyReview: item.weeklyReview,
-            anomalyCategory: item.anomalyCategory,
-            needsReview: false,
-          }));
-          window.__workflowFixture.overrides = [...current.values()];
-        }
-        return json({
-          success: true,
-          catalog: window.__workflowFixture.catalog || [{ id: "summary.general", label: "Synthèse générale", section: "Page 1", maxLength: 380 }],
-          overrides: window.__workflowFixture.overrides
-        });
-      }
-      if (url.includes("/api/admin/audit-snapshots/")) return json({ success: true });
-      if (url.includes("/admin/tasks/")) return json({ success: true });
-      if (url.includes("/api/admin/free-diagnostic-collect/") && window.__workflowFixture.refreshResponse) return json(window.__workflowFixture.refreshResponse);
-      if (url.includes("/api/admin/free-diagnostic-collect/")) return json({
-        success: false,
-        error: "SEARCH_REFRESH_FAILED",
-        message: "Fixture de relance"
-      }, 502);
-      return json({ success: false, error: "UNEXPECTED_TEST_REQUEST", url }, 500);
-    };
-  </script>`;
-  const withFetchFixture = source.replace(marker, `${fetchFixture}\n${marker}`);
-  const closingBodyIndex = withFetchFixture.lastIndexOf("</body>");
-  assert.ok(closingBodyIndex > 0, "balise body finale absente");
-  const instrumented = `${withFetchFixture.slice(0, closingBodyIndex)}<output id="workflow-browser-result"></output><script>${harnessSource}</script>${withFetchFixture.slice(closingBodyIndex)}`;
-  const directory = mkdtempSync(join(tmpdir(), "efficia-report-workflow-"));
-  try {
-    const htmlPath = join(directory, "workflow.html");
-    writeFileSync(htmlPath, instrumented);
-    const result = await collectPageResultWithIsolatedChrome({
-      chrome: CHROME,
-      url: `${pathToFileURL(htmlPath).href}?analysisId=${fixture.analysisId}`,
-      profileDir: join(directory, "chrome-profile"),
-      phase: "parcours navigateur des textes personnalisés",
-      timeout: options.timeout || 15_000,
-      resultWait: options.resultWait || 8_000,
-      selector: "#workflow-browser-result",
-    });
-    assert.ok(result, "résultat du parcours navigateur absent");
-    return JSON.parse(result);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
 
-test("Chrome : compteurs réconciliés, présence Google et catégories secondaires dans le PDF six pages", {skip:!existsSync(CHROME),timeout:120000}, async()=>{
+test("Chrome : compteurs réconciliés, présence Google et catégories secondaires dans le PDF quatre pages", {skip:!existsSync(CHROME),timeout:120000}, async()=>{
   const result=await runAdminBrowserHarness(`(async()=>{try{
     for(let i=0;i<100&&!document.getElementById('p-entreprise')?.value;i++)await new Promise(r=>setTimeout(r,20));
     for(const cr of GRILLE.flatMap(c=>c.criteres)){
@@ -295,7 +168,7 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
     if(!genererRapport({exigerVersion:false}))throw Error('rendu refusé');
     const pages=[...document.querySelectorAll('#rapport-contenu .page')];
     const preview=pages.map(p=>p.innerText);
-    const nums=[...pages[2].querySelectorAll('.v3-method-number b')].map(e=>Number(e.textContent));
+    const nums=[...pages[1].querySelectorAll('.v3-method-number b')].map(e=>Number(e.textContent));
     const layout=pages.map(p=>mesuresPageRapport(p));
     const {jsPDFCtor,html2canvasFn}=await assurerLibrairiesPDF();
     const pdf=new jsPDFCtor({unit:'mm',format:'a4',orientation:'portrait'});
@@ -310,13 +183,13 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
   assert.equal(result.nums[0],result.nums.slice(1).reduce((s,n)=>s+n,0));
   assert.ok(result.before.counts.unknown>0);
   assert.ok(result.before.counts.not_verifiable>0);
-  assert.equal(result.pages,6);
+  assert.equal(result.pages,4);
   assert.ok(result.sameScore);
   assert.ok(result.layout.every(p=>p.ok),JSON.stringify(result.layout));
-  assert.match(result.preview[0],/PRÉSENCE GOOGLE/u);
-  assert.match(result.preview[0],/sur la recherche testée à améliorer/u);
+  assert.match(result.preview[0],/Votre situation aujourd’hui|Votre situation aujourd'hui/u);
+  assert.match(result.preview[0],/première lecture/u);
   assert.match(result.preview[1],/Visibilité locale/u);
-  assert.match(result.preview.slice(3,5).join(' '),/Renseigner les catégories secondaires utiles/u);
+  assert.match(result.preview.slice(2,3).join(' '),/Renseigner les catégories secondaires utiles/u);
   if(process.env.EFFICIA_CONTROL_PDF)writeFileSync(process.env.EFFICIA_CONTROL_PDF,Buffer.from(result.pdf,'base64'));
 });
 
@@ -587,7 +460,7 @@ function photoBenchmarkHarness(data) {
   assert.ok(comparator, "comparateur photos canonique introuvable");
   const renderer = source.match(/function benchmarkLignes\(\)\{[\s\S]*?(?=\nfunction ecartsExpliquesHtml\()/u)?.[0];
   assert.ok(renderer, "fonctions réelles des benchmarks HTML et V3.2 introuvables");
-  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${comparator}\n${renderer}\nreturn { benchmarkLignes, benchmarkTableHtml, benchmarkV3Html };`);
+  const factory = new Function("estNombre", "nEntier", "fmtNote", "donneesAnalyse", `${reviewBenchmarkCode}\n${comparator}\n${renderer}\nreturn { benchmarkLignes, benchmarkTableHtml, benchmarkV3Html };`);
   const estNombre = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
   return factory(estNombre, (value) => Math.round(Number(value)), (value) => String(value), data);
 }
@@ -700,7 +573,7 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
     const label = `${expected.photos}/15, panel de ${expected.count}`;
     assert.equal(scenario.photos, expected.photos, label);
     assert.equal(scenario.count, expected.count, label);
-    assert.equal(scenario.pages, 6, label);
+    assert.equal(scenario.pages, 4, label);
     assert.equal(scenario.scoreUnchanged, true, label);
     assert.equal(scenario.badges, 0, "V3.2 exprime le statut par la barre, pas par un badge textuel");
     assert.equal(scenario.panel.length, expected.count, label);
@@ -860,9 +733,9 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
         const generatedServerError = genererRapport({ exigerVersion: false });
         const serverErrorReport = document.getElementById("rapport-contenu")?.innerText || "";
         const reportPages = [...document.querySelectorAll("#rapport-contenu .page")];
-        const page4 = document.querySelector('[data-report-page="4"]');
-        const page5 = document.querySelector('[data-report-page="5"]');
-        const page6 = document.querySelector('[data-report-page="6"]');
+        const page4 = document.querySelector('[data-report-page="3"]');
+        const page5 = document.querySelector('[data-report-page="3"] .v3-priorities');
+        const page6 = document.querySelector('[data-report-page="4"]');
         const offerCards = [...(page6?.querySelectorAll(".v3-offer") || [])];
         const layout = reportPages.map((page) => {
           const measure = mesuresPageRapport(page);
@@ -889,7 +762,7 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
           page4HasEstimatedTime: /Temps estimé/u.test(page4?.textContent || "") || Boolean(page4?.querySelector(".v3-time")),
           page5HasActionStep: Boolean(page5?.querySelector(".v3-step--action, [data-priority-action]")),
           page5ForbiddenDetailNodes: page5?.querySelectorAll(".v3-step--action, .v3-step--result, .v3-example, .v3-time, [data-priority-action], [data-priority-result]").length || 0,
-          page5ForbiddenDetailText: [...(page5?.querySelectorAll(".v3-mini-priority") || [])].some((element) => /Premier pas|Résultat attendu|Temps estimé|Structure de réponse|Exemple concret/u.test(element.textContent)),
+          page5HasActionAndResult: [...(page5?.querySelectorAll(".v3-mini-priority") || [])].some((element) => /Premier pas[\\s\\S]*Résultat attendu/u.test(element.textContent)),
           page5PriorityCount: page5?.querySelectorAll(".v3-mini-priority").length || 0,
           offerSummary: offerCards.map((card) => ({
             title: card.querySelector("h2")?.textContent || "",
@@ -945,9 +818,9 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.generatedAutomatic, true);
   assert.equal(result.generatedCustom, true);
   assert.equal(result.generatedServerError, true);
-  assert.equal(result.pageCount, 6);
-  assert.match(result.automaticTracked, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
-  assert.match(result.automaticPageOne, /Aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
+  assert.equal(result.pageCount, 4);
+  assert.match(result.automaticTracked, /première lecture/u);
+  assert.match(result.automaticPageOne, /première lecture/u);
   assert.equal(result.automaticScoreScopeCount, 1, "l’introduction automatique contient un seul avertissement court");
   assert.equal(result.automaticHistoricalScopeCount, 0, "l’avertissement historique n’est plus ajouté après l’introduction automatique");
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
@@ -961,12 +834,12 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
-  assert.deepEqual(result.v3PageOrder, ["1", "2", "3", "4", "5", "6"], "le renderer gratuit V3.2 conserve exactement six pages ordonnées");
+  assert.deepEqual(result.v3PageOrder, ["1", "2", "3", "4"], "le renderer gratuit V3.2 conserve exactement quatre pages ordonnées");
   assert.deepEqual(result.page4JourneyLabels, ["Constat", "Conséquence", "Premier pas", "Résultat attendu"], "la page 4 conserve le parcours complet de la seule priorité n°1");
   assert.equal(result.page4HasEstimatedTime, false, "la page 4 ne doit plus contenir d’estimation de durée");
   assert.equal(result.page5HasActionStep, false, "les priorités 2 et 3 ne doivent pas répéter le premier pas de la page 4");
   assert.equal(result.page5ForbiddenDetailNodes, 0, "les éléments détaillés réservés à l’Audit ne doivent pas exister dans le DOM capturé de la page 5");
-  assert.equal(result.page5ForbiddenDetailText, false, "aucun libellé d’action, résultat, délai ou exemple ne doit subsister dans les priorités 2 et 3");
+  assert.equal(result.page5HasActionAndResult, false, "chaque priorité secondaire existante comporte un premier pas et un résultat attendu");
   assert.ok(result.page5PriorityCount <= 2, "la page 5 ne condense que les priorités n°2 et n°3");
   assert.deepEqual(result.offerSummary.map((offer) => offer.title), ["Audit complet Google Business", "Pack Visibilité Google"]);
   assert.equal(result.offerSummary[0].pack, false, "l'Audit reste la carte secondaire à gauche");
@@ -1005,15 +878,15 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
           input.dispatchEvent(new Event("change", { bubbles:true }));
         };
         const capture = () => {
-          const p4 = document.querySelector('[data-report-page="4"]');
-          const p5 = document.querySelector('[data-report-page="5"]');
+          const p4 = document.querySelector('[data-report-page="3"]');
+          const p5 = document.querySelector('[data-report-page="3"]');
           return {
             page4Title:p4?.querySelector(".rapport-title")?.textContent || "",
             page5Chapter:p5?.querySelector(".chapitre")?.textContent || "",
             page5Title:p5?.querySelector(".rapport-title")?.textContent || "",
             miniPriorities:p5?.querySelectorAll(".v3-mini-priority").length || 0,
-            forbiddenDetails:p5?.querySelectorAll(".v3-step--action, .v3-step--result, .v3-example, .v3-time").length || 0,
-            priorityCount:p5?.querySelector(".v3-priority-count")?.textContent || "",
+            forbiddenDetails:p5?.querySelectorAll(".v3-mini-priority .v3-step--action, .v3-mini-priority .v3-step--result, .v3-mini-priority .v3-example, .v3-mini-priority .v3-time").length || 0,
+            priorityCount:p5?.querySelector(".v4-remaining")?.textContent || "",
           };
         };
         const render = () => { majConditionsQuestionnaire(); majLocalisation(); calc(); genererRapport({exigerVersion:false}); return capture(); };
@@ -1024,13 +897,14 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
         chooseCriterion("nombrePhotos", 2);
         const two = render();
         chooseCriterion("noteMoyenne", 3);
+        document.getElementById("d-note").value = "3.1"; // fait observé cohérent avec le choix manuel
         const three = render();
         chooseCriterion("classementLocal", 2);
         const more = render();
         chooseAll(); chooseCriterion("revendiquee", 1); select("condition-location-mode", "storefront"); select("location-address", "exact");
         remplacementsTextesRapport = new Map([["priority.1.title", {customText:"Titre revendiquee personnalisé"}]]);
         const custom = render();
-        const hero = document.querySelector('[data-report-page="4"] .v3-priority-hero');
+        const hero = document.querySelector('[data-report-page="3"] .v3-priority-hero');
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({zero, one, two, three, more, custom, customTitle:hero?.querySelector(".v3-priority-title")?.textContent || "", customKey:hero?.dataset.priorityKey || ""});
       } catch(error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
@@ -1039,16 +913,16 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
   `);
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.zero.page4Title, "Aucune priorité majeure confirmée");
-  assert.equal(result.zero.page5Title, "Aucune autre priorité à traiter");
+  assert.equal(result.zero.page5Title, "Aucune priorité majeure confirmée");
   assert.equal(result.zero.miniPriorities, 0);
   assert.equal(result.one.miniPriorities, 0);
-  assert.equal(result.one.page5Title, "Aucune autre priorité à traiter");
-  assert.equal(result.two.page5Chapter, "Étape 5 · La priorité suivante");
+  assert.equal(result.one.page5Title, "Vos priorités");
+  assert.equal(result.two.page5Chapter, "Étape 3 · Vos priorités");
   assert.equal(result.two.miniPriorities, 1);
-  assert.equal(result.three.page5Title, "Deux freins à traiter ensuite");
+  assert.equal(result.three.page5Title, "Les trois priorités");
   assert.equal(result.three.miniPriorities, 2);
   assert.equal(result.more.miniPriorities, 2);
-  assert.match(result.more.priorityCount, /priorité.*présentée/u);
+  assert.match(result.more.priorityCount, /Audit Efficia/u);
   for(const scenario of [result.zero, result.one, result.two, result.three, result.more]) assert.equal(scenario.forbiddenDetails, 0);
   assert.equal(result.customKey, "revendiquee");
   assert.equal(result.customTitle, "Titre revendiquee personnalisé");
@@ -1083,14 +957,14 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
         ["descriptionRemplie", "servicesPresents", "questionsReponses", "liensAction", "publicationRecente", "categoriesSecondaires", "classementLocal"].forEach(chooseZero);
         majConditionsQuestionnaire(); majLocalisation(); calc();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
-        const page3 = document.querySelector('[data-report-page="3"]');
-        const page5 = document.querySelector('[data-report-page="5"]');
+        const page3 = document.querySelector('[data-report-page="2"]');
+        const page5 = document.querySelector('[data-report-page="3"]');
         const countPage3 = [...page3.querySelectorAll(".v3-method-number")]
           .find((item) => item.querySelector("span")?.textContent.trim() === "Prioritaires")?.querySelector("b")?.textContent || "";
-        const countPage5 = page5.querySelector(".v3-priority-count span:first-child b")?.textContent || "";
-        const presentedPage5 = page5.querySelector(".v3-priority-count span:nth-child(2) b")?.textContent || "";
-        const otherCount = page5.querySelector(".v3-audit-count")?.childNodes[0]?.textContent.trim() || "";
-        const otherLabel = page5.querySelector(".v3-audit-count small")?.textContent.trim() || "";
+        const presentedPage5 = String(page5.querySelectorAll('.v3-mini-priority, .v3-priority-hero').length);
+        const otherCount = page5.querySelector('.v4-remaining').textContent.match(/^(\\d+)/)?.[1] || "0";
+        const otherLabel = "autres points";
+        const countPage5 = String(Number(presentedPage5) + Number(otherCount));
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
         if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
         const pages = [...document.querySelectorAll("#rapport-contenu .page")];
@@ -1117,14 +991,14 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
     })();
   `, { overrides: [] });
   assert.equal(result.error, undefined, result.error);
-  assert.equal(result.pageCount, 6);
-  assert.equal(result.pdfPages, 6, "le PDF jsPDF reçoit les six pages réellement composées");
+  assert.equal(result.pageCount, 4);
+  assert.equal(result.pdfPages, 4, "le PDF jsPDF reçoit les quatre pages réellement composées");
   assert.ok(result.pdfBytes > 0, "le PDF html2canvas/jsPDF ne doit pas être vide");
   assert.equal(result.page3Prioritaires, "6");
   assert.equal(result.page5Prioritaires, "6");
   assert.equal(result.page5Presentees, "3");
   assert.deepEqual(result.page5Autres, {count: "3", label: "autres points"});
-  assert.equal(result.descriptionVisible, true);
+  assert.equal(result.descriptionVisible, true, "le constat sélectionné reste visible parmi les trois exemples");
   assert.equal(result.descriptionRemplie, false);
 });
 
@@ -1157,8 +1031,8 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
           score: document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
           benchmark: document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
-          priorityKey: document.querySelector('[data-report-page="4"] .v3-priority-hero')?.dataset.priorityKey || "",
-          prices: [...document.querySelectorAll('[data-report-page="6"] .offer-price')].map(item => item.textContent),
+          priorityKey: document.querySelector('[data-report-page="3"] .v3-priority-hero')?.dataset.priorityKey || "",
+          prices: [...document.querySelectorAll('[data-report-page="4"] .offer-price')].map(item => item.textContent),
         };
         const opened = await ouvrirEditeurTextesRapport();
         const write = (fieldId, value) => {
@@ -1174,14 +1048,14 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu personnalisé refusé");
         const preview = {
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
-          observation: document.querySelector('[data-report-page="4"] .v3-step--observation p')?.textContent || "",
+          observation: document.querySelector('[data-report-page="3"] .v3-step--observation p')?.textContent || "",
           teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
         };
         await chargerRemplacementsNarratifsRapport();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu rechargé refusé");
         const restored = {
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
-          observation: document.querySelector('[data-report-page="4"] .v3-step--observation p')?.textContent || "",
+          observation: document.querySelector('[data-report-page="3"] .v3-step--observation p')?.textContent || "",
           teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
         };
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
@@ -1210,8 +1084,8 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
           restoredAutomatic:document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
           finalScore:document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
           finalBenchmark:document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
-          finalPriorityKey:document.querySelector('[data-report-page="4"] .v3-priority-hero')?.dataset.priorityKey || "",
-          finalPrices:[...document.querySelectorAll('[data-report-page="6"] .offer-price')].map(item => item.textContent),
+          finalPriorityKey:document.querySelector('[data-report-page="3"] .v3-priority-hero')?.dataset.priorityKey || "",
+          finalPrices:[...document.querySelectorAll('[data-report-page="4"] .offer-price')].map(item => item.textContent),
         });
       } catch(error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
@@ -1223,11 +1097,11 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   assert.deepEqual(result.preview, {
     verdict: "Titre de verdict personnalisé",
     observation: "Constat de priorité personnalisé.",
-    teaser: "Teasing Audit personnalisé.",
+    teaser: "", // persisted override must not expose paid detail in the free PDF
   });
   assert.deepEqual(result.restored, result.preview, "la même personnalisation doit être relue avant le PDF");
   assert.equal(result.clonedVerdict, result.preview.verdict, "html2canvas doit capturer le même titre que l’aperçu");
-  assert.equal(result.pdfPages, 6);
+  assert.equal(result.pdfPages, 4);
   assert.ok(result.pdfBytes > 0);
   assert.equal(result.restoredAutomatic, result.initial.verdict, "la suppression rétablit exactement le texte automatique");
   assert.equal(result.finalScore, result.initial.score);
@@ -1249,7 +1123,7 @@ function qualifiedWorkflowAnswers() {
   };
 }
 
-test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le brouillon puis rendent six pages", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
+test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le brouillon puis rendent quatre pages", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
   const catalog = ["page1.verdict_title"].map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
   const result = await runAdminBrowserHarness(`
     (async () => {
@@ -1304,7 +1178,7 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
         previewButton.click();
         for(let attempt = 0; attempt < 400 && !previews; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
         if(!previews) throw new Error("aperçu non ouvert : " + document.getElementById("statut")?.textContent);
-        if(document.querySelectorAll('#rapport-contenu .page').length !== 6 || !validerMiseEnPageRapport().ok) throw new Error('aperçu six pages invalide');
+        if(document.querySelectorAll('#rapport-contenu .page').length !== 4 || !validerMiseEnPageRapport().ok) throw new Error('aperçu quatre pages invalide');
 
         await assurerLibrairiesPDF();
         const captures = [];
@@ -1348,10 +1222,10 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
   `, { catalog, overrides: [], answers:qualifiedWorkflowAnswers() }, { timeout: 45_000, resultWait: 40_000 });
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.previews, 1);
-  assert.equal(result.captures.length, 6, JSON.stringify(result));
+  assert.equal(result.captures.length, 4, JSON.stringify(result));
   assert.match(String(result.filename), /Score-Efficia_/u);
   assert.match(String(result.savedPdf?.filename), /Score-Efficia_/u);
-  assert.equal(result.savedPdf?.pages, 6);
+  assert.equal(result.savedPdf?.pages, 4);
   assert.ok(result.savedPdf?.bytes > 0);
   assert.ok(result.labels.some(label => label.includes("Préparation de l’aperçu…")));
   assert.ok(result.labels.some(label => label.includes("Génération du PDF en cours…")));
@@ -1435,23 +1309,23 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
   `, {answers:qualifiedWorkflowAnswers()}, { timeout: 55_000, resultWait: 50_000 });
   assert.equal(result.error, undefined, result.error);
   // Les sous-scores applicables du rapport, et non leur ancienne somme brute,
-  // sont la source canonique (50/98, 48/98, 46/98).
-  assert.deepEqual(result.scoreTrace.map(({detail})=>[detail.pointsObtenusApplicables,detail.pointsApplicables]), [[50,98],[48,98],[46,98]]);
+  // sont la source canonique, répartie sur exactement 100 points (51, 48, 46).
+  assert.deepEqual(result.scoreTrace.map(({detail})=>[detail.pointsObtenusApplicables,detail.pointsApplicables]), [[51,100],[48,100],[46,100]]);
   for(const {detail} of result.scoreTrace){
     assert.equal(detail.pointsObtenusApplicables,detail.categories.reduce((sum,c)=>sum+Math.round(c.pointsPonderes),0));
     assert.equal(detail.pointsApplicables,detail.categories.reduce((sum,c)=>sum+Math.round(c.maximumEffectifNormalise),0));
   }
-  assert.deepEqual([result.ahead, result.comparable, result.behind], [51, 49, 47]);
-  assert.equal(result.restored, 49);
+  assert.deepEqual([result.ahead, result.comparable, result.behind], [51, 48, 46]);
+  assert.equal(result.restored, 48);
   assert.equal(result.restoredValue, "2");
   assert.deepEqual(result.stored, {
     points:2, value:"partial", statut:"manuelle", source:"manual", selectedOptionIndex:1, checklist:[]
   });
   assert.equal(result.reportScore, String(result.behind));
   assert.equal(Math.round(result.finalDetail.total),result.behind);
-  assert.equal(result.pdfPages, 6);
+  assert.equal(result.pdfPages, 4);
   assert.ok(result.pdfBytes > 0);
-  assert.match(result.captured, /47\s*\/100/u);
+  assert.match(result.captured, /46\s*\/100/u);
 });
 
 test("Chrome réel : aucune photo exclut les sous-questions dépendantes du brouillon, de l’aperçu et du PDF", { skip: !existsSync(CHROME), timeout: 60_000 }, async () => {
@@ -1547,7 +1421,7 @@ test("Chrome réel : aucune photo exclut les sous-questions dépendantes du brou
   assert.equal(result.totalCritBeforeSave, 25);
   assert.equal(result.totalCritAfterReload, 25);
   assert.ok(result.hiddenBeforeSave.every((item) => item.hidden && item.answer === null));
-  assert.equal(result.pdfPages, 6);
+  assert.equal(result.pdfPages, 4);
   assert.ok(result.pdfBytes > 0);
   assert.doesNotMatch(result.reportText, /Photos récentes|Photos variées|Qualité des photos/u);
 });

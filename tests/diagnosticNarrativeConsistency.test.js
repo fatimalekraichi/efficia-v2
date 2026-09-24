@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode, reviewProblemCode } from "./freeDiagnosticBrowserFixture.js";
 // Tests permanents — corrige quatre incohérences narratives supplémentaires
 // révélées par le cas réel MK Elec (Électricien, Saint-Léger, 2026-08-27) :
 //   2. "Il peut hésiter... trop peu d'éléments récents" affiché alors que
@@ -77,7 +78,7 @@ test("photos : la réponse manuelle d'ancienneté devient le texte de référenc
       trouverCritere: () => ({ opts: labels.map((label) => [label, 0]) }),
       document: { querySelector: () => ({ dataset: { optionIndex: String(optionIndex) } }) },
     };
-    vm.runInNewContext(`${code}\nglobalThis.resultat=texteAnciennetePhotosConfirmee();`, context);
+    vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${code}\nglobalThis.resultat=texteAnciennetePhotosConfirmee();`, context);
     assert.equal(context.resultat, attendus[optionIndex]);
   }
   assert.match(html, /const description = anciennetePhotos \|\| effectiveText/u);
@@ -100,7 +101,7 @@ test("page 1 : la qualité des réponses n'est un point fort que si la fréquenc
       libelleRechercheRapport: String,
       libellePositionRapport: String,
     };
-    vm.runInNewContext(`${code}\nglobalThis.resultat=forceChiffree({key:"qualiteReponsesAvis"});`, context);
+    vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${code}\nglobalThis.resultat=forceChiffree({key:"qualiteReponsesAvis"});`, context);
     return context.resultat;
   };
   assert.equal(execute({ frequence: "insuffisant", verification: "manually_confirmed" }), null);
@@ -138,7 +139,7 @@ function createPriorityHarness({ etats = {}, donneesAnalyse = {}, manualCriteria
     donneesAnalyse,
     texteAnciennetePhotosConfirmee: () => "",
   };
-  vm.runInNewContext(`${photoComparator}\n${code}`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${photoComparator}\n${code}`, context);
   return context;
 }
 
@@ -158,7 +159,7 @@ test("cas MK Elec : avis récents conformes, note faible, réponses insuffisante
   const texte = context.consequenceBusinessPriorite({ famille: "reputation" }, ctx);
   assert.equal(
     texte,
-    "Malgré un volume d'avis supérieur à la moyenne, la note de 3,1/5 et l'absence de réponses visibles peuvent créer un doute au moment de choisir l'entreprise.",
+    "Sans réponses personnelles visibles, le prospect dispose de moins de signes de votre écoute client.",
   );
   assert.doesNotMatch(texte, /trop peu d'éléments récents/);
 });
@@ -680,7 +681,7 @@ function createFullPriorityHarness({ etats = {}, donneesAnalyse = {}, sansAvis =
     donneesAnalyse,
     texteAnciennetePhotosConfirmee: () => "",
   };
-  vm.runInNewContext(`${photoComparator}\n${code}`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${photoComparator}\n${code}`, context);
   return context;
 }
 
@@ -698,9 +699,9 @@ test("Avis 1 : note insuffisante + volume conforme + récence conforme + répons
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
   assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
   assert.doesNotMatch(resultat, FORBIDDEN_RECENCY);
-  assert.match(premierPas, /avis authentiques/i);
-  assert.match(premierPas, /répondre aux avis visibles/i);
-  assert.match(resultat, /note progressivement plus représentative/i);
+  assert.doesNotMatch(premierPas, /collecte|solliciter/i);
+  assert.match(premierPas, /répondre personnellement aux avis/i);
+  assert.doesNotMatch(resultat, /remonter.*note|note progressivement/i);
   assert.match(resultat, /réponses visibles/i);
 });
 
@@ -708,8 +709,8 @@ test("Avis 2 : note insuffisante + volume conforme + récence insuffisante + ré
   const context = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "insuffisant" } });
   const ctx = { data: { note: 3.4, nbAvis: 15, moyennesConcurrents: { avis: 10 } } };
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
-  assert.match(resultat, /avis plus récents/i);
-  assert.match(resultat, /note progressivement plus représentative/i);
+  assert.match(resultat, /avis récents/i);
+  assert.doesNotMatch(resultat, /remonter.*note|note progressivement/i);
 });
 
 test("Avis 3 : note insuffisante + volume insuffisant + récence conforme + réponses conformes -> seule la note est visée", () => {
@@ -718,9 +719,9 @@ test("Avis 3 : note insuffisante + volume insuffisant + récence conforme + rép
   const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
   assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
-  assert.doesNotMatch(premierPas, /répondre aux avis visibles/i);
+  assert.doesNotMatch(premierPas, /collecte|solliciter/i);
   assert.doesNotMatch(resultat, /réponses visibles|avis plus récents/i);
-  assert.match(resultat, /note progressivement plus représentative/i);
+  assert.doesNotMatch(resultat, /remonter.*note|note progressivement/i);
 });
 
 test("Avis 4 : note conforme + volume conforme + récence conforme + réponses conformes -> aucune critique, formulation positive", () => {
@@ -730,7 +731,7 @@ test("Avis 4 : note conforme + volume conforme + récence conforme + réponses c
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
   assert.doesNotMatch(premierPas, FORBIDDEN_RECENCY);
   assert.doesNotMatch(resultat, /note progressivement plus représentative|réponses visibles|avis plus récents/i);
-  assert.match(resultat, /continue de rassurer/i);
+  assert.match(resultat, /écoute client visible/i);
 });
 
 test("Avis 5 : aucun avis -> branche dédiée rapportSansAvis, jamais la logique evidence-driven", () => {
@@ -753,7 +754,7 @@ test("priorité avis sans historique : résultat attendu et message type respect
     texteEffectifRapport: (_field, text) => text,
     result: null,
   };
-  vm.runInNewContext(`${micro}\nresult = microLivrablePriorite({famille:"reputation"}, {data:{}}, 0);`, microContext);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${micro}\nresult = microLivrablePriorite({famille:"reputation"}, {data:{}}, 0);`, microContext);
   assert.equal(microContext.result, '<div class="priority-sample"><b>Message type pour demander un avis :</b> « Merci pour votre confiance ! Un avis Google de votre part nous aiderait beaucoup. »</div>');
 });
 
@@ -799,7 +800,7 @@ test("Avis 12 : contraste permanent — 'aucun avis' (récence hors-sujet) reste
   const avisAnciens = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "insuffisant" } });
   const ctxAnciens = { data: { note: 3.4, nbAvis: 15, moyennesConcurrents: { avis: 10 } } };
   const resultatAnciens = avisAnciens.resultatAttenduPriorite(REPUTATION_ITEM, ctxAnciens);
-  assert.match(resultatAnciens, /avis plus récents/i);
+  assert.match(resultatAnciens, /avis récents/i);
   assert.notEqual(consequenceSansAvis, avisAnciens.consequenceBusinessPriorite(REPUTATION_ITEM, ctxAnciens));
 });
 
@@ -821,7 +822,7 @@ test("Avis 7 : avis récents insuffisants -> une recommandation liée à la réc
   const context = createFullPriorityHarness({ etats: { recenceAvis: "insuffisant", tauxReponseAvis: "conforme" } });
   const ctx = { data: { note: 4.5, nbAvis: 20 } };
   const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
-  assert.match(premierPas, /récence/i);
+  assert.match(premierPas, /solliciter régulièrement/i);
 });
 
 test("Avis 8 : réponses conformes -> jamais de critique des réponses", () => {
@@ -829,7 +830,7 @@ test("Avis 8 : réponses conformes -> jamais de critique des réponses", () => {
   const ctx = { data: { note: 3.9, nbAvis: 10 } };
   const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
-  assert.doesNotMatch(premierPas, /répondre aux avis visibles/i);
+  assert.doesNotMatch(premierPas, /collecte|solliciter/i);
   assert.doesNotMatch(resultat, /réponses visibles/i);
 });
 
@@ -837,7 +838,7 @@ test("Avis 9 : réponses absentes -> une recommandation de réponse personnalis�
   const context = createFullPriorityHarness({ etats: { tauxReponseAvis: "insuffisant", recenceAvis: "conforme" } });
   const ctx = { data: { note: 4.4, nbAvis: 18 } };
   const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
-  assert.match(premierPas, /message personnalisé/i);
+  assert.match(premierPas, /personnellement/i);
 });
 
 test("Avis 10 : cas exact MK Elec -> textes exacts requis sur les 4 champs, jamais de formulation de récence manquante", () => {
@@ -847,10 +848,10 @@ test("Avis 10 : cas exact MK Elec -> textes exacts requis sur les 4 champs, jama
   const prospect = context.consequenceBusinessPriorite(REPUTATION_ITEM, ctx);
   const premierPas = context.recommandationPriorite(REPUTATION_ITEM, ctx);
   const resultat = context.resultatAttenduPriorite(REPUTATION_ITEM, ctx);
-  assert.equal(constat, "Votre fiche dispose de 17 avis. En revanche, votre note de 3,1/5 reste nettement inférieure à la moyenne concurrentielle observée de 5,0/5.");
-  assert.equal(prospect, "Malgré un volume d'avis supérieur à la moyenne, la note de 3,1/5 et l'absence de réponses visibles peuvent créer un doute au moment de choisir l'entreprise.");
-  assert.equal(premierPas, "Mettre en place un parcours éthique de collecte de nouveaux avis authentiques auprès de clients réellement servis et répondre aux avis visibles avec un message personnalisé.");
-  assert.equal(resultat, "une note progressivement plus représentative de la qualité réelle de votre travail, des réponses visibles et une fiche plus rassurante au premier regard.");
+  assert.equal(constat, "Les réponses aux avis observés sont absentes, incomplètes ou insuffisamment personnalisées.");
+  assert.equal(prospect, "Sans réponses personnelles visibles, le prospect dispose de moins de signes de votre écoute client.");
+  assert.equal(premierPas, "Répondre personnellement aux avis déjà publiés, en tenant compte de chaque retour client.");
+  assert.equal(resultat, "Des réponses visibles et personnalisées qui montrent que les retours clients sont pris en compte.");
   for (const texte of [constat, prospect, premierPas, resultat]) {
     assert.doesNotMatch(texte, FORBIDDEN_RECENCY, texte);
   }

@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode, reviewProblemCode } from "./freeDiagnosticBrowserFixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -28,7 +29,7 @@ test("le sous-libellé Visibilité ne préfixe pas deux fois une position déjà
     globalThis: null,
   };
   context.globalThis = context;
-  vm.runInNewContext(`${positionCode}\nglobalThis.libelle = libelleIndiceVisibilite;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${positionCode}\nglobalThis.libelle = libelleIndiceVisibilite;`, context);
 
   assert.equal(context.libelle({ position: 5, requeteTestee: "Électricien Dudelange" }), "5e position sur « Électricien Dudelange »");
   assert.equal(context.libelle({ position: 5, requeteTestee: "" }), "5e position");
@@ -42,7 +43,7 @@ test("la page 5 reprend exclusivement le compteur prioritaire canonique de la pa
   const helperCode = sliceBetween(html, "function compteursPrioritesPage5", "function prioriteInfosRevendiquee");
   const context = { Math, Number, globalThis: null };
   context.globalThis = context;
-  vm.runInNewContext(`${helperCode}\nglobalThis.compteursPrioritesPage5 = compteursPrioritesPage5;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${helperCode}\nglobalThis.compteursPrioritesPage5 = compteursPrioritesPage5;`, context);
 
   assert.deepEqual(JSON.parse(JSON.stringify(context.compteursPrioritesPage5(7, 3))), {
     total: 7,
@@ -137,7 +138,7 @@ function createLegacyHarness({ criteria, hidden = [], nonApplicable = [], select
   const calcCode = sliceBetween(html, "function calc()", "function statsScore()");
   const validationCode = sliceBetween(html, "function questionnairePretPourFinalisation()", "function slugPDF(");
   const provisionalNarrativeCode = sliceBetween(html, "function mentionScoreProvisoireHtml", "function potentielScoreHtml");
-  vm.runInNewContext(`${provisionalCode}\n${listCode}\n${calcCode}\n${validationCode}\n${provisionalNarrativeCode}\nglobalThis.api={listerElementsRestantsPourFinalisation,calc,questionnairePretPourFinalisation,scoreEstProvisoire,mentionScoreProvisoireHtml};`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${provisionalCode}\n${listCode}\n${calcCode}\n${validationCode}\n${provisionalNarrativeCode}\nglobalThis.api={listerElementsRestantsPourFinalisation,calc,questionnairePretPourFinalisation,scoreEstProvisoire,mentionScoreProvisoireHtml};`, context);
   return { context, state, counter, status, provisional };
 }
 
@@ -277,7 +278,7 @@ test("le calcul client attribue zéro, jamais null, à une adresse non vérifiab
     reponseAdresse: () => "not_verifiable",
     reponseZoneDesserte: () => "unknown",
   };
-  vm.runInNewContext(`${scoreCode}\nglobalThis.score = scoreLocalisation();`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${scoreCode}\nglobalThis.score = scoreLocalisation();`, context);
   assert.equal(context.score, 0);
   assert.notEqual(context.score, null);
 });
@@ -312,7 +313,7 @@ test("le module de finalisation chargé comme un script navigateur expose la vé
   assert.ok(html.indexOf('/js/questionnaire-finalization.js?v=7ee0654') < html.indexOf('isAddressVerificationComplete(reponseAdresse())'));
 });
 
-test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
+test("un clic PDF complet compose quatre pages et atteint pdf.save", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const preparationCode = sliceBetween(html, "function boutonsGenerationDiagnosticGratuit()", "/* ================= AUDIT EFFICIA PREMIUM");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
@@ -321,7 +322,7 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
   let savedFilename = "";
   let savedDraft = 0;
   let finalizedSnapshot = 0;
-  const pages = Array.from({ length: 6 }, () => ({}));
+  const pages = Array.from({ length: 4 }, () => ({}));
   class FakePdf {
     constructor() {
       this.pageCount = 1;
@@ -365,10 +366,10 @@ test("un clic PDF complet compose six pages et atteint pdf.save", async () => {
     window: { setTimeout },
     console,
   };
-  vm.runInNewContext(`${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 6);
+  assert.equal(canvasCalls, 4);
   assert.equal(savedFilename, "diagnostic-six-pages.pdf");
   assert.equal(savedDraft, 1);
   assert.equal(finalizedSnapshot, 1);
@@ -395,7 +396,7 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
     statut: () => {},
     console,
   };
-  vm.runInNewContext(`${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   assert.equal(await context.run(), false);
   assert.equal(composed, 0);
   assert.equal(message.hidden, false);
@@ -435,7 +436,7 @@ test("les échecs de préparation, d’aperçu et de PDF sont visibles et réact
   };
 
   const previewHarness = createContext({ preview: true });
-  vm.runInNewContext(`${preparationCode}\n${previewCode}\nglobalThis.run=apercuImpression;`, previewHarness.context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${preparationCode}\n${previewCode}\nglobalThis.run=apercuImpression;`, previewHarness.context);
   assert.equal(await previewHarness.context.run(), false);
   assert.equal(previewHarness.alert.hidden, false);
   assert.match(previewHarness.alert.textContent, /rapport n’a pas pu être préparé/u);
@@ -445,7 +446,7 @@ test("les échecs de préparation, d’aperçu et de PDF sont visibles et réact
   pdfHarness.context.genererRapport = () => true;
   pdfHarness.context.nomFichierDiagnosticPDF = () => "diagnostic.pdf";
   pdfHarness.context.assurerLibrairiesPDF = async () => ({ jsPDFCtor: null, html2canvasFn: null });
-  vm.runInNewContext(`${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, pdfHarness.context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, pdfHarness.context);
   assert.equal(await pdfHarness.context.run(), false);
   assert.equal(pdfHarness.alert.hidden, false);
   assert.match(pdfHarness.alert.textContent, /génération du PDF est indisponible/u);
@@ -506,7 +507,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     critereEstMasque: () => false,
     critereEstNonApplicable: () => false,
     GRILLE: [{ criteres: criteriaForCount }],
-    CONFIG: { tempsTaches: {} },
+    CONFIG: { tempsTaches: {}, seuils: { toleranceConcurrents: 0.1 } },
     detailsPriorite: (item) => ({ constat: item.critere.key, pourquoi: "Pourquoi", action: "Action", reassurance: "" }),
     actionPhotosPriorite: () => "Ajouter des photos récentes.",
     localisationNonVerifiablePubliquement: () => state.publiclyUnverifiable,
@@ -526,7 +527,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
     globalThis: null,
   };
   context.globalThis = context;
-  vm.runInNewContext(`${helperCode}\n${comparaisonPhotosCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${helperCode}\n${comparaisonPhotosCode}\n${etatCritereCode}\n${selectionCode}\n${narrativeCode}\nglobalThis.api={
     FAMILLES_PRIORITES, selectionnerPrioritesDynamiques, actionFamillePriorite, actionPrioriteVisibiliteMaitrisable,
     recommandationPriorite, beneficePriorite, constatObservePriorite,
     consequenceBusinessPriorite, resultatAttenduPriorite,
@@ -603,14 +604,14 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   // doit couvrir les deux volets, jamais un seul deviné sans preuve.
   state.reponsesPoints = 0;
   const withReviews = context.api.recommandationPriorite(reputation, reportContext);
-  assert.match(withReviews, /répondre aux avis visibles/i);
-  assert.match(withReviews, /avis authentiques/i);
+  assert.match(withReviews, /Répondre personnellement aux avis/i);
+  assert.doesNotMatch(withReviews, /collecte|solliciter/i);
 
   // Réponses non étayées (état "inconnu") : ne jamais deviner une
   // insuffisance de réponses qui n'est pas établie par les données.
   state.reponsesPoints = null;
   const withoutResponseEvidence = context.api.recommandationPriorite(reputation, reportContext);
-  assert.doesNotMatch(withoutResponseEvidence, /répondre aux avis visibles/i);
+  assert.doesNotMatch(withoutResponseEvidence, /Répondre personnellement aux avis/i);
 
   // recenceAvis conforme (2/2) : jamais une promesse "avis plus récents".
   state.recencePoints = 2;
@@ -621,7 +622,7 @@ test("le modèle narratif exclut les contradictions avis, top 3, catégorie et z
   // légitimement apparaître, car cette fois elle est étayée par les données.
   state.recencePoints = 0;
   const resultatRecenceInsuffisante = context.api.resultatAttenduPriorite(reputation, reportContext);
-  assert.match(resultatRecenceInsuffisante, /avis plus récents/i);
+  assert.match(resultatRecenceInsuffisante, /avis récents/i);
 
   assert.match(html, /actionFamillePriorite\(r\.fam, r\)/);
   assert.match(html, /rapportSansAvis\(\).*noteMoyenne.*recenceAvis.*tauxReponseAvis.*qualiteReponsesAvis/s);

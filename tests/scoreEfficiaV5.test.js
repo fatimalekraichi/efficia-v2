@@ -188,7 +188,7 @@ test("choix manuel de confiance visible : administration, brouillon et moteur pa
 
   const dependentNotApplicable = ["descriptionQualite", "servicesDecrits", "rythmePublication"];
   const savedByPoints = new Map();
-  for(const [points, expected] of [[4, 51], [2, 49], [0, 47]]) {
+  for(const [points, expected] of [[4, 51], [2, 48], [0, 46]]) {
     const admin = calculateAdminScore(
       { ...jorgeAnswers, attractiviteConcurrents: points },
       "default",
@@ -220,7 +220,7 @@ test("choix manuel de confiance visible : administration, brouillon et moteur pa
       ],
     },
   });
-  assert.equal(automatic.reviewedScore.roundedScore, 49);
+  assert.equal(automatic.reviewedScore.roundedScore, 48);
   assert.deepEqual(automatic.scoreInputs.manualScoredCriteria, []);
 });
 
@@ -250,7 +250,7 @@ test("les barres des six familles suivent le maximum effectif affiché, jamais l
     { score:3, maximum:6, ratio:50 },
     { score:0, maximum:6, ratio:0 },
   ]);
-  assert.match(html, /pourcentageBarreFamille\(pointsPonderes, maximumEffectifNormalise \|\| poidsProfil\)/u);
+  assert.match(html, /pourcentageBarreFamille\(pointsPonderes, maximumEffectifNormalise \?\? poidsProfil\)/u);
   assert.match(html, /<strong>\$\{pointsAffiches\}<\/strong>/u);
 });
 

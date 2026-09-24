@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode, reviewProblemCode } from "./freeDiagnosticBrowserFixture.js";
 // Tests permanents — corrige les deux contradictions factuelles révélées par
 // le premier diagnostic réel Morgan-Entreprise (2026-08-27) :
 //   1. "3,3/5 reste nettement inférieure à 3,0/5" alors que 3,3 > 3,0 ;
@@ -29,14 +30,14 @@ function sliceBetween(source, start, end) {
 
 function createRatingHarness() {
   const code = sliceBetween(html, "function positionNoteFaceConcurrence(", "function consequenceBusinessPriorite(");
-  const context = {
+  const context = { etatCritere: () => "inconnu",
     CONFIG: { seuils: { toleranceConcurrents: 0.10 } },
     estNombre: (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)),
     fmtNote: (n) => Number(n).toFixed(1).replace(".", ","),
     nEntier: (v) => Math.round(Number(v)),
     rapportSansAvis: () => false,
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   return context;
 }
 
@@ -120,7 +121,7 @@ function createSiteStateHarness({ url = "", etat = "", codeHttp = "", napRadioSp
       querySelector: () => napRadio,
     },
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   context.__fields = fields;
   return context;
 }
@@ -128,7 +129,7 @@ function createSiteStateHarness({ url = "", etat = "", codeHttp = "", napRadioSp
 function normalizeProspectText(value) {
   const code = sliceBetween(html, "function normaliserTexteProspectRapport(value){", "function texteEffectifRapport(");
   const context = {};
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   return context.normaliserTexteProspectRapport(value);
 }
 
@@ -253,7 +254,7 @@ test("cas Morgan exact : URL connue + état inaccessible + code 500 => jamais 'a
 function createPriorityHarness() {
   const code = sliceBetween(html, "function appliquerPrioriteSiteInaccessible(", "function selectionnerPrioritesDynamiques(");
   const context = {};
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   return context;
 }
 
@@ -395,7 +396,7 @@ function createPage1SignauxHarness({ url = "", etat = "", codeHttp = "", sansAvi
     fmtNote: (n) => Number(n).toFixed(1).replace(".", ","),
     nEntier: (v) => Math.round(Number(v)),
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   return context;
 }
 
@@ -444,7 +445,7 @@ function createChecklistSiteRendererHarness(siteState) {
     compterElementsAConfirmerRapport: () => 0,
     phraseElementsAConfirmer: () => "",
   };
-  vm.runInNewContext(`${messageCode}\n${checklistCode}`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${messageCode}\n${checklistCode}`, context);
   return context;
 }
 
@@ -497,7 +498,7 @@ test("cas Appel'FRED exact : ordre final 'Finaliser le site officiel' puis répu
 function createPrioriteSiteOfficielRenderHarness() {
   const code = sliceBetween(html, "function rendrePrioriteSiteOfficiel(", "function rendrePriorite(");
   const context = {};
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(reviewBenchmarkCode + "\n" + reviewProblemCode + "\n" + code, context);
   return context;
 }
 
@@ -566,7 +567,7 @@ function createDraftPersistenceHarness() {
       },
     },
   };
-  vm.runInNewContext(`${normalizerCode}\n${code}`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${normalizerCode}\n${code}`, context);
   context.__fields = fields;
   return context;
 }

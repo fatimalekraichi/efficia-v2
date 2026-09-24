@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode } from "./freeDiagnosticBrowserFixture.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -66,7 +67,7 @@ function benchmarkPdfFixture() {
     const estNombre = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
     const nEntier = value => Math.round(Number(value));
     const fmtNote = value => Number(value).toFixed(1).replace(".", ",");
-    ${photoComparator}
+    ${reviewBenchmarkCode}\n${photoComparator}
     ${benchmarkRenderer}
 
     addEventListener("load", async () => {

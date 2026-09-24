@@ -1,3 +1,4 @@
+import { reviewBenchmarkCode, reviewProblemCode } from "./freeDiagnosticBrowserFixture.js";
 // Tests permanents -- correctif cible (2026-08-30) du vrai parcours PDF de
 // admin/free-diagnostic-production/index.html : btn-pdf -> telechargerPDF()
 // -> genererRapport(). Ces tests executent le CODE REEL de ce fichier (via
@@ -168,7 +169,7 @@ function renderConfianceConcurrents({ syntheseConcurrence, sansAvis = false }) {
     donneesAnalyse: { syntheseConcurrence, nbAvis: sansAvis ? 0 : null },
     conditionAvis: () => (sansAvis ? "none" : "present"),
   };
-  vm.runInNewContext(`${CORE_CODE}\n${CHECKLIST_CONFIANCE_CODE}\nglobalThis.result={texteVotreFiche,texteConcurrents};`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${CORE_CODE}\n${CHECKLIST_CONFIANCE_CODE}\nglobalThis.result={texteVotreFiche,texteConcurrents};`, context);
   return context.result;
 }
 
@@ -281,7 +282,7 @@ test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit re
   assert.match(html, /99\s*€/);
   assert.match(html, /349\s*€/);
   const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 6);
+  assert.equal(pagesCommentees.length, 4);
 });
 
 /* ========================================================================
@@ -309,7 +310,7 @@ function callResultatAttenduPrioriteVisibilite(mocks = {}, key = "categoriePrinc
     localisationNonVerifiablePubliquement: () => false,
     choisirVarianteNarrative: (_blockId, _branch, variants) => variants[0],
   };
-  vm.runInNewContext(`${CORE_CODE}\n${PRIORITE_INFOS_REVENDIQUEE_CODE}\n${RESULTAT_ATTENDU_CODE}\nglobalThis.run=resultatAttenduPriorite;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${CORE_CODE}\n${PRIORITE_INFOS_REVENDIQUEE_CODE}\n${RESULTAT_ATTENDU_CODE}\nglobalThis.run=resultatAttenduPriorite;`, context);
   return context.run({ famille: "visibilite", priorityKey:key, critere:{key} }, {});
 }
 
@@ -328,7 +329,7 @@ test("Resultat-attendu-fix 2 : le classement local est exclu des priorités prop
 
 test("Resultat-attendu-fix 3 : catégories secondaires -> résultat concret, sans promesse de classement", () => {
   const resultat = callResultatAttenduPrioriteVisibilite({}, "categoriesSecondaires");
-  assert.equal(resultat, "des catégories secondaires cohérentes avec les services réellement proposés.");
+  assert.equal(resultat, "Des catégories secondaires cohérentes avec les services réellement proposés.");
   assert.doesNotMatch(resultat, FORBIDDEN_RANKING_PROMISE);
 });
 
@@ -370,7 +371,7 @@ test("Resultat-attendu-fix 7 : score / prix / nombre de pages du diagnostic grat
   assert.match(html, /99\s*€/);
   assert.match(html, /349\s*€/);
   const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 6);
+  assert.equal(pagesCommentees.length, 4);
 });
 
 /* ========================================================================
@@ -391,7 +392,7 @@ function callActionFamillePrioriteVisibilite(mocks) {
     modeLocalisation: () => mocks.zoneMode ?? "on_site",
     reponseZoneDesserte: () => mocks.zoneReponse ?? "coherent",
   };
-  vm.runInNewContext(`${ACTION_FAMILLE_CODE}\nglobalThis.run=actionFamillePriorite;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${ACTION_FAMILLE_CODE}\nglobalThis.run=actionFamillePriorite;`, context);
   return context.run({ key: "visibilite" });
 }
 
@@ -423,7 +424,7 @@ function callConstatObservePrioriteVisibilite(mocks, position, key = "categorieP
     modeLocalisation: () => mocks.zoneMode ?? "on_site",
     reponseZoneDesserte: () => mocks.zoneReponse ?? "coherent",
   };
-  vm.runInNewContext(`${CORE_CODE}\n${CONSTAT_OBSERVE_CODE}\nglobalThis.run=constatObservePriorite;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${CORE_CODE}\n${CONSTAT_OBSERVE_CODE}\nglobalThis.run=constatObservePriorite;`, context);
   return context.run({ famille: "visibilite", priorityKey:key, critere:{key} }, { data: { position, moyennesConcurrents: {} }, recherche: null });
 }
 
@@ -465,7 +466,7 @@ test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (ho
    verifie que le flux appelle bien le VRAI genererRapport() (non stub) et
    que les 6 pages sont composees avant tout appel a pdf.save().
    ======================================================================== */
-test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 6 pages, puis pdf.save()", async () => {
+test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 4 pages, puis pdf.save()", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
   const preparationCode = html.slice(html.indexOf("function boutonsGenerationDiagnosticGratuit()"), html.indexOf("/* ================= AUDIT EFFICIA PREMIUM"));
@@ -473,7 +474,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
   let canvasCalls = 0;
   let savedFilename = "";
   let orderOk = true;
-  const pages = Array.from({ length: 6 }, (_, i) => ({ id: `page-${i}` }));
+  const pages = Array.from({ length: 4 }, (_, i) => ({ id: `page-${i}` }));
   class FakePdf {
     constructor() { this.pageCount = 1; this.internal = { getNumberOfPages: () => this.pageCount }; }
     addPage() { this.pageCount += 1; }
@@ -481,7 +482,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     link() {}
     save(filename) {
       savedFilename = filename;
-      if (canvasCalls !== 6) orderOk = false;
+      if (canvasCalls !== 4) orderOk = false;
     }
   }
   const buttons = [{ id: "btn-pdf", disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
@@ -503,8 +504,8 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     enregistrerBrouillonD1: async () => true,
     chargerLogoRapportDataUrl: async () => {},
     // genererRapport() est stub ici (comme dans le test existant "un clic
-    // PDF complet compose six pages" de tests/freeDiagnosticFinalization.test.js) :
-    // ce test verifie le FLUX du bouton (appel reel, ordre, 6 pages, pdf.save
+    // PDF complet compose quatre pages" de tests/freeDiagnosticFinalization.test.js) :
+    // ce test verifie le FLUX du bouton (appel reel, ordre, 4 pages, pdf.save
     // uniquement apres composition). Le CONTENU reel produit par genererRapport()
     // -- page 3 / page 5 -- est verifie separement par les tests d'integration
     // actionFamillePriorite / constatObservePriorite / checklistHtml
@@ -524,10 +525,10 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     alert: () => assert.fail("aucune alerte attendue"),
     console,
   };
-  vm.runInNewContext(`${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
+  vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 6);
+  assert.equal(canvasCalls, 4);
   assert.equal(savedFilename, "diagnostic-regression.pdf");
-  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 6 pages soient composees");
+  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 4 pages soient composees");
 });

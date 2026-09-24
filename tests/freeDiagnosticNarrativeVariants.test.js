@@ -102,7 +102,7 @@ test("introduction réelle : salutation fiable, stabilité et absence de placeho
   const withoutContact = build("", 44);
   const withContact = build("Léa", 65);
   assert.equal(withoutContact, build("", 44), "un diagnostic régénéré conserve son introduction");
-  assert.match(withoutContact, /^Bonjour,/u);
+  assert.doesNotMatch(withoutContact, /^Bonjour/u);
   assert.match(withContact, /^Bonjour Léa,/u);
   for (const text of [withoutContact, withContact, build("", 86)]) {
     assert.doesNotMatch(text, /\{(?:Prénom|Entreprise|Ville|Métier)\}|undefined|null/iu);
@@ -137,123 +137,39 @@ test("toutes les variantes d’introduction restent simples et laissent l’aver
   assert.equal(source.split(historicalScopeNote).length - 1, 0, "l’avertissement historique n’est plus rendu");
 });
 
-test("introduction EGS : première position, manques établis et trois priorités utilisent une formulation simple", () => {
-  const context = createNarrativeHarness({
-    enterprise: "EGS",
-    data: { position: 1, requeteTestee: "Électricien Steinfort", nbAvis: 0, nbPhotos: 0, descriptionLongueur: 0 },
-  });
-  context.choisirVarianteNarrative = (_blockId, _branch, variants) => variants[0];
-  const text = context.texteConsultantPage1({
-    contact: "",
-    entreprise: "EGS",
-    activite: "Électricien",
-    ville: "Steinfort",
-    score: 44,
-    scoreProjete: 44,
-    priorites: [{}, {}, {}],
-  });
-  assert.equal(text, "Bonjour,<br>Votre fiche Google apparaît en première position quand un client recherche « Électricien Steinfort ». C’est un très bon point. En revanche, elle ne présente pas encore clairement vos services. Pour une personne qui ne vous connaît pas, il devient alors difficile de comprendre en quelques secondes ce que vous proposez — et pourquoi vous contacter plutôt qu’une autre entreprise. La bonne nouvelle : quelques ajustements ciblés peuvent rendre votre présence Google plus claire et plus rassurante. Ce diagnostic vous présente les trois priorités à traiter en premier.");
-  assert.equal(context.phraseDirecteScoreDiagnosticGratuit(44, context.donneesAnalyse).texte, "Votre fiche est bien placée, mais elle ne rassure pas encore assez.");
-});
-
-test("introduction : la position observée et les manques sont décrits sans rien inventer", () => {
-  const second = createNarrativeHarness({
-    data: { position: 2, requeteTestee: "Électricien Arlon", nbAvis: 7, nbPhotos: 3, descriptionLongueur: 120 },
-  });
-  const secondText = second.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 70, scoreProjete: 70, priorites: [{}, {}] });
-  assert.match(secondText, /2e position/u);
-  assert.match(secondText, /Électricien Arlon/u);
-  assert.doesNotMatch(secondText, /première position|aucun avis|aucune photo|aucune description/u);
-
-  const unknown = createNarrativeHarness({ data: { position: null, requeteTestee: "Électricien Arlon", nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 } });
-  const unknownText = unknown.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 70, scoreProjete: 70, priorites: [{}] });
-  assert.match(unknownText, /pas pu être confirmée|reste à confirmer|n’est pas encore connue/u);
-  assert.doesNotMatch(unknownText, /1re position|2e position|3e position|4e position|premier résultat/u);
-  assert.doesNotMatch(unknownText, /aucun avis|aucune photo|aucune description/u);
-});
-
-test("introduction : une fiche non détectée après une recherche réelle décrit l'absence sans l'inventer", () => {
-  const context = createNarrativeHarness({
-    enterprise: "Atelier Neufchâteau",
-    data: {
-      position: 0,
-      requeteTestee: "Électricien Neufchâteau",
-      derniereRequeteAnalysee: "Électricien Neufchâteau",
-      nbAvis: 0,
-      nbPhotos: 4,
-      descriptionLongueur: 0,
-    },
-  });
-  context.critereConfirmeMax = (key) => key === "revendiquee";
-  context.categoriePrincipaleValideePourRapport = () => true;
-  const text = context.texteConsultantPage1({
-    contact: "",
-    entreprise: "Atelier Neufchâteau",
-    activite: "Électricien",
-    ville: "Neufchâteau",
-    score: 42,
-    scoreProjete: 42,
-    priorites: [{}, {}, {}],
-  });
-  assert.equal(context.phraseDirecteScoreDiagnosticGratuit(42, context.donneesAnalyse).texte, "Votre fiche reste difficile à trouver sur Google.");
-  assert.match(text, /Lors de notre test sur « Électricien Neufchâteau », votre fiche n’est pas apparue parmi les premiers résultats affichés\./u);
-  assert.match(text, /En revanche, elle ne présente pas encore clairement vos services\./u);
-  assert.match(text, /difficile de comprendre en quelques secondes ce que vous proposez/u);
-  assert.match(text, /La bonne nouvelle : votre fiche est revendiquée et votre catégorie principale est bien choisie\./u);
-  assert.doesNotMatch(text, /La place de votre fiche dans cette recherche n’est pas encore connue|pas pu être confirmée|reste à confirmer/u);
-});
-
-test("introduction : une recherche existante sans position mesurée utilise la formulation exacte", () => {
-  const context = createNarrativeHarness({
-    data: { position: 0, requeteTestee: "Électricien Neufchâteau", nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 },
-  });
-  const text = context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Neufchâteau", score: 70, scoreProjete: 70, priorites: [{}] });
-  assert.doesNotMatch(text, /n’est pas apparue parmi les premiers résultats affichés|difficile à trouver sur Google/u);
-  assert.match(text, /La position de votre fiche reste à confirmer pour la recherche « Électricien Neufchâteau »\./u);
-});
-
-test("introduction : sans recherche, aucune position n’est inventée", () => {
-  const context = createNarrativeHarness({ data: { nbAvis: 2, nbPhotos: 1, descriptionLongueur: 80 } });
-  const text = context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Neufchâteau", score: 70, scoreProjete: 70, priorites: [{}] });
-  assert.match(text, /La position de votre fiche n’a pas encore été mesurée\./u);
-  assert.doesNotMatch(text, /pour cette recherche|pour la recherche «/u);
-});
-
-test("introduction : les ouvertures sont déterministes, variées et sans classement inventé", () => {
-  const context = createNarrativeHarness({ data: { position: 1, requeteTestee: "Électricien Steinfort", nbAvis: 0, nbPhotos: 0, descriptionLongueur: 0 } });
-  const build = () => context.texteConsultantPage1({ contact: "", entreprise: "EGS", activite: "Électricien", ville: "Steinfort", score: 50, scoreProjete: 50, priorites: [{}] });
-  const variants = [];
-  for (let index = 0; index < 3; index += 1) {
-    context.choisirVarianteNarrative = (_blockId, _branch, pool) => pool[index];
-    variants.push(build().split(". ")[0]);
+test("introduction : positions mesurées contextualisées, sans promesse de classement permanent", () => {
+  for(const position of [0,1,2,4,null]){
+    const context = createNarrativeHarness({data:{position, derniereRequeteAnalysee:"Électricien Bruxelles", requeteTestee:"Requête modifiée", zoneGeographique:{locality:{city:"Bruxelles"}}, note:5, nbAvis:6, descriptionLongueur:0, concurrents:[{avis:96},{avis:217},{avis:551}]}});
+    const text=context.texteConsultantPage1({contact:""});
+    assert.equal(text,context.texteConsultantPage1({contact:""}));
+    assert.doesNotMatch(text,/Bonjour|Requête modifiée|quand un client recherche|améliorer.*classement/u);
+    assert.match(text,/5\/5 sur 6 avis|6 avis/u);
+    assert.match(text,/médiane|description/u);
+    if(position===null)assert.match(text,/reste à confirmer/u);
+    else {
+      assert.match(text,/Lors de notre test sur « Électricien Bruxelles »/u);
+      assert.match(text,/depuis le centre de Bruxelles/u);
+      if(position===0)assert.match(text,/n’a pas été détectée/u);
+      else assert.match(text,new RegExp(position===1?"première position":position+"e position"));
+    }
   }
-  assert.equal(new Set(variants).size, 3);
-  assert.ok(variants.every((value) => /première position/u.test(value)));
 });
 
-test("introduction : le nombre réel de priorités est annoncé, y compris zéro", () => {
-  const context = createNarrativeHarness({ data: { nbAvis: 3, nbPhotos: 2, descriptionLongueur: 100 } });
-  const build = (priorites) => context.texteConsultantPage1({ contact: "", entreprise: "Atelier", activite: "Électricien", ville: "Arlon", score: 60, scoreProjete: 60, priorites });
-  assert.match(build([]), /Aucune action prioritaire n’est proposée/u);
-  assert.doesNotMatch(build([]), /\b(?:trois|deux|une) actions?\b/u);
-  assert.match(build([{}]), /cette priorité en premier/u);
-  assert.match(build([{}, {}]), /deux priorités à traiter en premier/u);
-  assert.match(build([{}, {}, {}]), /trois priorités à traiter en premier/u);
+test("introduction : requête saisie seule et position inconnue ne prouvent jamais une recherche", () => {
+  for(const data of [{position:0,requeteTestee:"Électricien Bruxelles"},{position:1},{}]){
+    const context=createNarrativeHarness({data});
+    const text=context.texteConsultantPage1({contact:""});
+    assert.match(text,/reste à confirmer/u);
+    assert.doesNotMatch(text,/n’a pas été détectée|première position|note de|aucun avis/i);
+  }
 });
 
-test("introduction : textes longs, données partielles et variantes restent stables et lisibles", () => {
-  const longQuery = "Électricien pour installations résidentielles et professionnelles dans les communes autour de Luxembourg";
-  const context = createNarrativeHarness({
-    analysisId: "intro-longue",
-    enterprise: "Entreprise d’électricité et de rénovation énergétique avec un nom volontairement très long",
-    data: { position: 4, requeteTestee: longQuery, nbAvis: 0, nbPhotos: 8, descriptionLongueur: 0 },
-  });
-  const build = () => context.texteConsultantPage1({ contact: "", entreprise: "Entreprise", activite: "Électricien", ville: "Luxembourg", score: 45, scoreProjete: 45, priorites: [{}, {}, {}] });
-  assert.equal(build(), build());
-  assert.match(build(), /en 4e position/u);
-  assert.match(build(), /elle ne présente pas encore clairement vos services/u);
-  assert.doesNotMatch(build(), /aucune photo|undefined|null|\{[^}]+\}/iu);
-  assert.doesNotMatch(build(), /aucune photo|undefined|null|\{[^}]+\}/iu);
+test("introduction : ne répète plus le décompte des priorités des pages suivantes", () => {
+  const context=createNarrativeHarness({data:{nbAvis:0,descriptionLongueur:0}});
+  const build=priorites=>context.texteConsultantPage1({contact:"",priorites});
+  assert.equal(build([]),build([{}, {}, {}]));
+  assert.match(build([]),/Aucun avis client|Aucune description/u);
+  assert.doesNotMatch(build([]),/trois priorités|bonne nouvelle/u);
 });
 
 test("Conversion : les contacts présents ne sont jamais décrits comme absents lorsque l’offre ou les liens d’action manquent", () => {

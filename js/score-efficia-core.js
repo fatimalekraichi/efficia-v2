@@ -9,6 +9,23 @@ function scoreFromApplicablePoints(pointsObtenus, pointsApplicables) {
   return bounded((numerator / denominator) * 100, 0, 100);
 }
 
+// Méthode des plus grands restes : préserver les poids réels, mais répartir
+// exactement le total entier affiché. Les ex aequo suivent l'ordre du barème.
+function allocateDisplayedPoints(values, target, caps = values.map(() => Infinity)) {
+  const result = values.map((value, i) => Math.min(caps[i], Math.floor(value)));
+  const order = values.map((value, i) => ({ i, remainder: value - Math.floor(value) }))
+    .sort((a, b) => b.remainder - a.remainder || a.i - b.i);
+  let remaining = target - result.reduce((sum, value) => sum + value, 0);
+  while (remaining > 0) {
+    let allocated = false;
+    for (const { i } of order) {
+      if (remaining && result[i] < caps[i]) { result[i]++; remaining--; allocated = true; }
+    }
+    if (!allocated) break;
+  }
+  return result;
+}
+
 /**
  * Source de vérité unique du calcul Score Efficia, utilisable dans le
  * navigateur comme par les fonctions Cloudflare.
@@ -90,9 +107,15 @@ function calculateEfficiaScoreDetail({
     ? 100 / effectiveProfileMaximum
     : 0;
   if (!legacy) {
-    categories.forEach((category) => {
-      category.pointsPonderes = category.pointsPonderesBruts * normalizationFactor;
-      category.maximumEffectifNormalise = category.maximumEffectifCategorie * normalizationFactor;
+    const maxima = categories.map(category => category.maximumEffectifCategorie * normalizationFactor);
+    const points = categories.map((category, i) => bounded(category.pointsPonderesBruts * normalizationFactor, 0, maxima[i]));
+    const displayedMaxima = allocateDisplayedPoints(maxima, normalizationFactor ? 100 : 0);
+    const displayedPoints = allocateDisplayedPoints(points, Math.round(points.reduce((sum, value) => sum + value, 0)), displayedMaxima);
+    categories.forEach((category, i) => {
+      category.pointsPonderesPrecis = points[i];
+      category.maximumEffectifNormalisePrecis = maxima[i];
+      category.pointsPonderes = displayedPoints[i];
+      category.maximumEffectifNormalise = displayedMaxima[i];
     });
   }
 
@@ -106,7 +129,7 @@ function calculateEfficiaScoreDetail({
   const pointsApplicables = legacy
     ? effectiveProfileMaximum
     : categories.reduce((sum, category) => sum + Math.round(category.maximumEffectifNormalise), 0);
-  const finalScore = scoreFromApplicablePoints(pointsObtenusApplicables, pointsApplicables);
+  const finalScore = legacy ? scoreFromApplicablePoints(pointsObtenusApplicables, pointsApplicables) : pointsObtenusApplicables;
 
   return {
     total: finalScore,
