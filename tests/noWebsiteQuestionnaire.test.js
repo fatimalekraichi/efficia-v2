@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import vm from "node:vm";
 
 import { buildPremiumDraftFromFreeSnapshot } from "../functions/lib/auditPremiumTransfers.js";
 import { normalizeQuestionnaireAnswers } from "../functions/lib/auditQuestionnaireSnapshots.js";
@@ -125,7 +126,18 @@ test("les scripts conservent no_website dans brouillon, snapshot, lecture seule 
   const snapshots = readFileSync(new URL("../functions/lib/auditQuestionnaireSnapshots.js", import.meta.url), "utf8");
   assert.match(free, /value:selected\?\.dataset\.special/);
   assert.match(free, /selectedOptionIndex:Number\(selected\?\.dataset\.optionIndex\)/);
-  assert.match(free, /appliquerReponses\(answers\.responses \|\| answers\.reponses\)/);
+  const normalizer = free.slice(free.indexOf("function objetBrouillon("), free.indexOf("function valeurChampConcurrent("));
+  const restoreResponses = free.match(/  const responses = Object\.fromEntries[\s\S]*?  appliquerReponses\(responses\);/)?.[0];
+  assert.ok(restoreResponses, "la restauration transmet les réponses normalisées");
+  for (const key of ["responses", "reponses"]) {
+    const response = { points: 0, value: "no_website", selectedOptionIndex: 2 };
+    let restored;
+    vm.runInNewContext(`${normalizer}\n${restoreResponses}`, {
+      answers: { [key]: { nap: response } },
+      appliquerReponses: (responses) => { restored = responses; },
+    });
+    assert.equal(restored.nap, response, `${key} conserve la réponse no_website complète`);
+  }
   assert.match(snapshots, /prepareDuplicatedDraftAnswers\(snapshot\.answers/);
   assert.match(snapshots, /JSON\.stringify\(duplicatedAnswers\)/);
   assert.doesNotMatch(snapshots, /delete duplicated\.(responses|reponses)/);

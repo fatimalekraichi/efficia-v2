@@ -557,7 +557,7 @@ test("rendu priorité 'incomplet' générique : ne mentionne jamais une technolo
 
 function createDraftPersistenceHarness() {
   const normalizerCode = sliceBetween(html, "function normaliserErreurTechniqueSite(", "function siteOfficielAbsent()");
-  const code = sliceBetween(html, "function champsBrouillonD1(){", "function restaurerLocalisation(");
+  const code = sliceBetween(html, "const CHAMPS_CONCURRENT", "function restaurerLocalisation(");
   const fields = {};
   const context = {
     document: {

@@ -4249,8 +4249,39 @@ function majEtatBrouillonD1(etat, updatedAt = null){
   else status.textContent = "Modifications non enregistrées";
 }
 
+const CHAMPS_CONCURRENT = {nom:"label", note:"note", avis:"avis", photos:"photos", services:"services", pubs:"pubs"};
+
+// Les réponses viennent de JSON historique : normaliser les conteneurs à la
+// lecture uniquement, sans réécrire le brouillon ni déclencher de sauvegarde.
+function objetBrouillon(value){
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.prototype.toString.call(value) === "[object Object]" ? value : {};
+}
+
+function valeurChampConcurrent(value){
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function restaurerChampsConcurrents(champs = {}){
+  const historique = donneesAnalyse.competitorQualificationStatus === "refresh_required";
+  for(let rank = 1; rank <= 3; rank++){
+    const concurrent = donneesAnalyse.concurrents?.[rank - 1] || {};
+    for(const [suffix, key] of Object.entries(CHAMPS_CONCURRENT)){
+      const id = `dc-${suffix}-${rank}`;
+      const field = document.getElementById(id);
+      // Une chaîne vide enregistrée est intentionnelle. Seule une clé absente
+      // dans un ancien brouillon est restaurée depuis les données observées.
+      if(field) field.value = historique ? "" : valeurChampConcurrent(
+        Object.prototype.hasOwnProperty.call(champs, id) ? champs[id] : concurrent[key]
+      );
+    }
+  }
+  actualiserPanneauConcurrentsQualifies(donneesAnalyse.concurrents?.length || 0, donneesAnalyse.competitorQualificationStatus);
+}
+
 function champsBrouillonD1(){
   const ids = ["p-entreprise","p-ville","p-activite","p-contact","p-profil","d-note","d-avis","d-photos","d-services","d-pubs","d-desclen","d-position","d-requete","d-zone-recherche","d-zone-pays","d-zone-confirmee","d-site-url","d-site-etat","d-site-code"];
+  for(let rank = 1; rank <= 3; rank++) ids.push(...Object.keys(CHAMPS_CONCURRENT).map(key => `dc-${key}-${rank}`));
   return Object.fromEntries(ids.map(id => {
     const field = document.getElementById(id);
     return [id, field?.type === "checkbox" ? Boolean(field.checked) : field?.value || ""];
@@ -4284,6 +4315,9 @@ function restaurerLocalisation(source = {}){
 }
 
 function payloadBrouillonD1(){
+  // Sauvegarder ne doit pas déclencher la neutralisation des réponses :
+  // le garde-fou des panels historiques reste au chargement et au rendu.
+  if(donneesAnalyse.competitorQualificationStatus !== "refresh_required") synchroniserConcurrentsManuels();
   const detail = calculScoreDetail();
   return {
     questionnaireVersion:QUESTIONNAIRE_VERSION,
@@ -4376,11 +4410,17 @@ async function restaurerBrouillonD1(){
   const data = await response.json().catch(() => ({}));
   const draft = readonly ? data.snapshot : data.draft;
   if(!response.ok || !data.success || draft?.reportType !== "free" || draft?.currentStep !== "questionnaire") return;
-  const answers = draft.answers || {};
-  appliquerChampsBrouillonD1(answers.fields);
+  const answers = objetBrouillon(draft.answers);
+  const fields = objetBrouillon(answers.fields);
+  const observedData = objetBrouillon(answers.observedData);
+  appliquerChampsBrouillonD1(fields);
   proposerZoneRechercheDepuisRequete();
   profilActif = answers.profileKey || profilActif;
-  donneesAnalyse = answers.observedData && typeof answers.observedData === "object" ? {...donneesAnalyse, ...answers.observedData} : donneesAnalyse;
+  donneesAnalyse = {...donneesAnalyse, ...observedData};
+  // Conserver l'ordre des emplacements : une entrée invalide reste un emplacement
+  // vide, sans décaler les champs enregistrés des concurrents suivants.
+  donneesAnalyse.concurrents = Array.isArray(donneesAnalyse.concurrents)
+    ? donneesAnalyse.concurrents.map(objetBrouillon) : [];
   // Le contexte serveur est la source de vérité du statut de qualification.
   // Un brouillon historique ne peut jamais réinjecter son ancien panel dans
   // le rapport après que le serveur l'a déclaré à actualiser.
@@ -4389,6 +4429,7 @@ async function restaurerBrouillonD1(){
     donneesAnalyse.competitorQualificationStatus = "refresh_required";
     neutraliserPanelConcurrentielHistorique();
   }
+  restaurerChampsConcurrents(fields);
   if(answers.photoPresence && answers.photoPresence !== "unknown"){
     const radio = answers.photoPresence === "none"
       ? document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`)
@@ -4400,7 +4441,9 @@ async function restaurerBrouillonD1(){
     if(noReviews) noReviews.checked = true;
   }
   restaurerLocalisation(answers);
-  appliquerReponses(answers.responses || answers.reponses);
+  const responses = Object.fromEntries(Object.entries(objetBrouillon(answers.responses || answers.reponses))
+    .filter(([, value]) => value !== null && !Array.isArray(value)));
+  appliquerReponses(responses);
   majAffichageSiteOfficiel();
   if(answers.photoPresence === "none"){
     const noPhotos = document.querySelector(`input[name="c${CRITERE_IDS.nombrePhotos}"][data-special="no_photos"]`);
@@ -6000,15 +6043,33 @@ function synchroniserDonneesManuelles(){
   const req = document.getElementById("d-requete")?.value.trim();
   d.requeteAffichee = estTexte(req) ? req : null;
   if(estTexte(req) && !rechercheEstPerimee()) d.requeteTestee = req;
+  synchroniserConcurrentsManuels();
+}
+
+function synchroniserConcurrentsManuels(){
+  const d = donneesAnalyse;
   if(neutraliserPanelConcurrentielHistorique()) return;
   // Concurrents saisis manuellement (prioritaires sur l'API : plus complets)
   const saisis = [];
+  let modifies = false;
   for(let i = 1; i <= 3; i++){
-    const nom = document.getElementById("dc-nom-" + i)?.value.trim();
-    const ligne = {label:estTexte(nom) ? nom : null, note:lireChampNum("dc-note-" + i), avis:lireChampNum("dc-avis-" + i),
-                   photos:lireChampNum("dc-photos-" + i), services:lireChampNum("dc-services-" + i), pubs:lireChampNum("dc-pubs-" + i)};
-    if(ligne.label || ligne.avis !== null || ligne.note !== null) saisis.push(ligne);
+    const precedent = d.concurrents?.[i - 1];
+    const ligne = {...precedent};
+    for(const [suffix, key] of Object.entries(CHAMPS_CONCURRENT)){
+      const value = document.getElementById(`dc-${suffix}-${i}`)?.value ?? "";
+      const ancienne = valeurChampConcurrent(precedent?.[key]);
+      const equivalent = value === ancienne || (suffix !== "nom" && value.trim() !== "" && ancienne.trim() !== ""
+        && estNombre(value.replace(",", ".")) && Number(value.replace(",", ".")) === Number(ancienne));
+      // Garder les métadonnées et la distinction absent/null/unknown lorsque
+      // l'opérateur n'a pas modifié le champ (notamment à l'export du rapport).
+      if(!equivalent){
+        ligne[key] = suffix === "nom" ? (value.trim() || null) : lireChampNum(`dc-${suffix}-${i}`);
+        modifies = true;
+      }
+    }
+    if(ligne.label || ligne.avis !== null && ligne.avis !== undefined || ligne.note !== null && ligne.note !== undefined) saisis.push(ligne);
   }
+  if(!modifies) return;
   if(saisis.length){
     d.concurrents = saisis;
     actualiserPanneauConcurrentsQualifies(saisis.length, d.competitorQualificationStatus);
