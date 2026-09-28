@@ -5446,6 +5446,36 @@ function repereAvisConcurrents(d = donneesAnalyse){
   if(stats.count === 1) return `La seule fiche comparée dont le volume est connu compte ${format(stats.median)} avis.`;
   return `Les ${stats.count} fiches comparées dont le volume est connu comptent entre ${format(stats.min)} et ${format(stats.max)} avis, avec une médiane de ${format(stats.median)} avis.`;
 }
+// Règle éditoriale uniquement : une donnée absente ne confirme jamais zéro avis.
+function zeroAvisConfirme(d = donneesAnalyse){
+  const value = d?.nbAvis;
+  return (typeof value === "number" || (typeof value === "string" && value.trim() !== ""))
+    && estNombre(value) && Number(value) === 0;
+}
+function avisPrioritairesPourConfiance(d = donneesAnalyse){
+  return zeroAvisConfirme(d) && (statistiquesAvisConcurrents(d)?.max ?? 0) > 0;
+}
+function verdictConfianceDiagnostic(d = donneesAnalyse){
+  if(!zeroAvisConfirme(d)) return null;
+  const stats = statistiquesAvisConcurrents(d);
+  const recherche = d.derniereRequeteAnalysee || d.requeteTestee;
+  const position = estNombre(d.position) ? Number(d.position) : null;
+  const ouverture = position !== null && position > 0
+    ? `${estTexte(recherche) ? `Lors de notre test sur « ${libelleRechercheRapport(recherche)} », votre` : "Votre"} fiche apparaît en ${position === 1 ? "1re" : position + "e"} position.`
+    : position === 0
+      ? `${estTexte(recherche) ? `Lors de notre test sur « ${libelleRechercheRapport(recherche)} », votre` : "Votre"} fiche n’a pas été détectée parmi les résultats observés.`
+      : "La position de votre fiche dans les résultats de recherche reste à confirmer.";
+  const photos = etatCritere("photoRecente") === "conforme"
+    ? "Ses photos récentes constituent une bonne base, mais elle ne présente encore aucun avis client"
+    : "Votre fiche ne présente encore aucun avis client";
+  const comparaison = stats
+    ? `, alors que les fiches comparées en comptent ${String(stats.median).replace(".", ",")} en médiane.`
+    : ". Le nombre d’avis des fiches comparées n’a pas pu être établi.";
+  return {
+    titre:"Votre fiche est présente, mais l’absence d’avis peut freiner la confiance.",
+    texte:`${ouverture} ${photos}${comparaison} Pour un prospect qui ne connaît pas encore votre entreprise, ce manque de retours peut peser au moment de choisir qui contacter.`
+  };
+}
 function texteConsultantPage1({contact}){
   const d = donneesAnalyse || {};
   const recherche = estTexte(d.derniereRequeteAnalysee) ? libelleRechercheRapport(d.derniereRequeteAnalysee) : "";
@@ -7044,8 +7074,10 @@ function selectionnerPrioritesDynamiques(candidats){
       parFamille.set(famille.key, {...item, famille, score});
     }
   });
+  const avisEnPremier = avisPrioritairesPourConfiance();
   return [...parFamille.values()]
-    .sort((a,b) => b.score - a.score)
+    // Le tri narratif précède la sélection ; les points et critères restent intacts.
+    .sort((a,b) => (avisEnPremier ? Number(b.famille.key === "reputation") - Number(a.famille.key === "reputation") : 0) || b.score - a.score)
     .slice(0,3)
     .map(item => {
       const base = detailsPriorite({...item, famille:null});
@@ -7639,16 +7671,28 @@ function narrationPrioriteV3(item, index){
   }
   const impact = niveauImpactPriorite(item, index);
   const details = detailsPriorite(item);
-  const observation = constatObservePriorite(item, contexteRapport());
-  const client = consequenceBusinessPriorite(item, contexteRapport());
-  const result = resultatAttenduPriorite(item, contexteRapport());
-  const automaticExample = index === 0 ? microLivrablePriorite(item, contexteRapport(), rank) : "";
+  const premierAvis = item.famille === "reputation" && zeroAvisConfirme();
+  const statsAvis = premierAvis ? statistiquesAvisConcurrents() : null;
+  const observation = premierAvis
+    ? `Votre fiche ne présente encore aucun avis client${statsAvis ? `, alors que les entreprises comparées en comptent ${String(statsAvis.median).replace(".", ",")} en médiane` : ""}.`
+    : constatObservePriorite(item, contexteRapport());
+  const client = premierAvis
+    ? "Un prospect qui ne connaît pas encore votre entreprise dispose de moins de preuves pour se rassurer et vous choisir."
+    : consequenceBusinessPriorite(item, contexteRapport());
+  const result = premierAvis
+    ? "Faire apparaître progressivement des retours authentiques qui aident les futurs clients à évaluer votre entreprise."
+    : resultatAttenduPriorite(item, contexteRapport());
+  const action = premierAvis
+    ? "Mettre en place une demande d’avis simple et conforme auprès de chaque client réellement servi."
+    : details.action;
+  // Pour les premiers avis, conserver une première étape sans modèle détaillé.
+  const automaticExample = index === 0 && !premierAvis ? microLivrablePriorite(item, contexteRapport(), rank) : "";
   return {
     impact,
     title:effectiveText(`priority.${rank}.title`, titrePriorite(item)),
     observation:effectiveText(`priority.${rank}.observation`, observation),
     client:effectiveText(`priority.${rank}.impact`, client),
-    action:effectiveText(`priority.${rank}.first_action`, details.action),
+    action:effectiveText(`priority.${rank}.first_action`, action),
     result:result ? effectiveText(`priority.${rank}.expected_result`, result) : "",
     example:automaticExample ? effectiveText(`priority.${rank}.action_example`, automaticExample) : ""
   };
@@ -7657,6 +7701,7 @@ function narrationPrioriteV3(item, index){
 function rendrePrioriteV3Principale(item){
   if(!item) return "";
   const n = narrationPrioriteV3(item, 0);
+  const premierAvis = item.famille === "reputation" && zeroAvisConfirme();
   const effectiveText = typeof textePublicationDiagnostic === "function" ? textePublicationDiagnostic : typeof texteEffectifRapport === "function" ? texteEffectifRapport : (_fieldId, text) => text;
   const impactLabel = effectiveText("priority.1.impact_label", n.impact.label);
   const resultat = n.result || effectiveText("priority.1.expected_result", "Une fiche plus claire et plus rassurante avant le premier contact.");
@@ -7667,8 +7712,8 @@ function rendrePrioriteV3Principale(item){
     <div class="v3-journey">
       <article class="v3-step v3-step--observation"><span class="v3-step-label">Constat</span><p>${n.observation}</p></article><span class="v3-arrow">→</span>
       <article class="v3-step v3-step--impact"><span class="v3-step-label">Conséquence</span><p>${n.client}</p></article><span class="v3-arrow">↙</span>
-      <article class="v3-step v3-step--action"><span class="v3-step-label">Premier pas</span><p>${n.action}</p></article><span class="v3-arrow">→</span>
-      <article class="v3-step v3-step--result"><span class="v3-step-label">Résultat attendu</span><p>${resultat}</p></article>
+      <article class="v3-step v3-step--action"><span class="v3-step-label">${premierAvis ? "Première étape" : "Premier pas"}</span><p>${n.action}</p></article><span class="v3-arrow">→</span>
+      <article class="v3-step v3-step--result"><span class="v3-step-label">${premierAvis ? "Résultat recherché" : "Résultat attendu"}</span><p>${resultat}</p></article>
     </div>
   </section>`;
 }
@@ -7842,11 +7887,12 @@ function genererRapport(options = {}){
   const resumePerso = resumePersonnalise(score, axeInfo);
   const significationBloc = significationV2(forces, priorites) || signification;
   const texteIntroConsultant = texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete:proj.projete, priorites:top3p});
+  const verdictConfiance = verdictConfianceDiagnostic();
   const texteIntroEffectif = textePublicationDiagnostic("summary.general",
-    `${contact ? `Bonjour ${escapeHtml(contact)},<br>` : ""}Sur la recherche « ${escapeHtml(libelleRechercheRapport(donneesAnalyse.derniereRequeteAnalysee || document.getElementById("d-requete").value) || "votre activité locale")} », ${score < 50 ? "votre fiche présente encore plusieurs freins au choix d’un nouveau client" : "votre fiche dispose de points d’appui, avec des signaux à consolider"}. Cette première lecture distingue vos atouts des obstacles visibles avant le premier contact.`);
+    verdictConfiance ? escapeHtml(verdictConfiance.texte) : `${contact ? `Bonjour ${escapeHtml(contact)},<br>` : ""}Sur la recherche « ${escapeHtml(libelleRechercheRapport(donneesAnalyse.derniereRequeteAnalysee || document.getElementById("d-requete").value) || "votre activité locale")} », ${score < 50 ? "votre fiche présente encore plusieurs freins au choix d’un nouveau client" : "votre fiche dispose de points d’appui, avec des signaux à consolider"}. Cette première lecture distingue vos atouts des obstacles visibles avant le premier contact.`);
   const titrePage1Effectif = texteEffectifRapport("page1.title", "Votre situation aujourd'hui");
   const surtitreVerdictEffectif = texteEffectifRapport("page1.verdict_eyebrow", "Verdict personnalisé");
-  const titreVerdictEffectif = textePublicationDiagnostic("page1.verdict_title", phraseScore.texte);
+  const titreVerdictEffectif = textePublicationDiagnostic("page1.verdict_title", verdictConfiance?.titre || phraseScore.texte);
   const precisionScoreEffectif = texteEffectifRapport("page1.score_disclaimer", "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.");
   const syntheseFaiblessesEffectif = texteEffectifRapport("weaknesses.summary", phraseTransitionPage2(categoriesTriees));
   const conclusionCommercialeEffectif = textePublicationDiagnostic(
