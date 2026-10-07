@@ -70,7 +70,7 @@ test("un checkout Preview conserve exclusivement l’origine Preview", async () 
     stripeBody.get("success_url"),
     `${PREVIEW_ORIGIN}/paiement-reussi?session_id={CHECKOUT_SESSION_ID}`,
   );
-  assert.equal(stripeBody.get("cancel_url"), `${PREVIEW_ORIGIN}/#offres`);
+  assert.equal(stripeBody.get("cancel_url"), `${PREVIEW_ORIGIN}/optimisation-google-business#offres`);
   assert.equal(stripeBody.get("metadata[source]"), PREVIEW_ORIGIN);
   assert.doesNotMatch(stripeBody.toString(), /efficiadigital\.com/);
 });
@@ -92,7 +92,7 @@ test("un checkout Production conserve exclusivement l’origine canonique", asyn
     stripeBody.get("success_url"),
     `${PRODUCTION_ORIGIN}/paiement-reussi?session_id={CHECKOUT_SESSION_ID}`,
   );
-  assert.equal(stripeBody.get("cancel_url"), `${PRODUCTION_ORIGIN}/#offres`);
+  assert.equal(stripeBody.get("cancel_url"), `${PRODUCTION_ORIGIN}/optimisation-google-business#offres`);
   assert.equal(stripeBody.get("metadata[source]"), PRODUCTION_ORIGIN);
 });
 

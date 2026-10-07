@@ -106,6 +106,10 @@ test("Clarity : commandes en attente purgées au retrait et ancien stop non rejo
 
 const publicPages = [
   "index.html",
+  "optimisation-google-business.html",
+  "services.html",
+  "a-propos.html",
+  "contact.html",
   "audit-google-business.html",
   "achat.html",
   "paiement-reussi.html",
@@ -260,7 +264,7 @@ test("les événements Clarity sont limités à la liste autorisée et aux offre
 
 test("les formulaires et résultats personnels portent un masque Clarity explicite", async () => {
   const [home, purchase, success] = await Promise.all([
-    readProjectFile("index.html"),
+    readProjectFile("optimisation-google-business.html"),
     readProjectFile("achat.html"),
     readProjectFile("paiement-reussi.html"),
   ]);

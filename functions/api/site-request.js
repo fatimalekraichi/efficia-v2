@@ -1,4 +1,4 @@
-import { validateSiteRequest } from '../../js/site-request-validation.js';
+import { validateSiteRequest, CONTACT_TOPICS } from '../../js/site-request-validation.js';
 const RECIPIENT = 'contact@efficiadigital.com';
 const ERROR = 'L’envoi n’a pas pu être confirmé. Vos champs sont conservés. Contactez-nous par e-mail ou WhatsApp.';
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
@@ -60,7 +60,9 @@ export async function onRequestPost({ request, env }) {
     response = await fetch(`https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(env.HOSTINGER_MAILBOX_ID)}/send`, {
       method: 'POST', redirect: 'manual',
       headers: { Authorization: `Bearer ${env.HOSTINGER_MAIL_API_TOKEN}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ to: [RECIPIENT], displayName: 'Efficia Digital — Formulaire site', subject: `Demande création / refonte de site — ${id}`, text: `Demande depuis la page Création / refonte de site\nRéférence : ${id}\n\nNom : ${data.name}\nEntreprise et métier : ${data.company}\nSite actuel : ${data.website || 'Création de site'}\nContact : ${data.contact}\n\nCe qui vous gêne le plus :\n${data.message}` }),
+      body: JSON.stringify(data.source === 'contact'
+        ? { to: [RECIPIENT], displayName: 'Efficia Digital — Formulaire contact', subject: `Demande de contact — ${id}`, text: `Demande depuis la page Contact\nRéférence : ${id}\n\nPrénom : ${data.name}\nEntreprise et métier : ${data.company || 'Non précisé'}\nDemande concernant : ${CONTACT_TOPICS[data.topic] || 'Non précisé'}\nContact : ${data.contact}\n\nMessage :\n${data.message || 'Aucun message'}` }
+        : { to: [RECIPIENT], displayName: 'Efficia Digital — Formulaire site', subject: `Demande création / refonte de site — ${id}`, text: `Demande depuis la page Création / refonte de site\nRéférence : ${id}\n\nNom : ${data.name}\nEntreprise et métier : ${data.company}\nSite actuel : ${data.website || 'Création de site'}\nContact : ${data.contact}\n\nCe qui vous gêne le plus :\n${data.message}` }),
       signal: AbortSignal.timeout(15000),
     });
   } catch (error) {

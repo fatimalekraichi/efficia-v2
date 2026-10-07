@@ -9,7 +9,7 @@ import { collectPageResultWithIsolatedChrome } from "./chromeHeadlessHarness.js"
 import { onRequestGet } from "../functions/diagnostic-gratuit.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const home = readFileSync(join(root, "index.html"), "utf8");
+const home = readFileSync(join(root, "optimisation-google-business.html"), "utf8");
 const source = readFileSync(join(root, "functions/diagnostic-gratuit.js"), "utf8");
 const removedTimingCopy = "En moins de 2 minutes, découvrez les principaux points qui limitent votre visibilité sur Google.";
 const confirmationTimingCopy = "Vous recevrez votre rapport personnalisé dans un délai de 48 à 72 heures ouvrées.";
@@ -27,7 +27,7 @@ function localRuntime(html = home, status = 200) {
     script: `${source}\nexport default {fetch(request, env) {return request.method === "HEAD" ? onRequestHead({request, env}) : onRequestGet({request, env});}};`,
     serviceBindings: {
       ASSETS: request => {
-        assert.equal(new URL(request.url).pathname, "/");
+        assert.equal(new URL(request.url).pathname, "/optimisation-google-business");
         assert.equal(new URL(request.url).search, "");
         return new Response(html, { status, headers: { "Content-Type": "text/html", "ETag": '"home"', "Referrer-Policy": "strict-origin" } });
       },
@@ -37,7 +37,7 @@ function localRuntime(html = home, status = 200) {
 
 test("la route publique dédiée réutilise le formulaire et l'envoi existants, sans second formulaire", () => {
   assert.equal(typeof onRequestGet, "function");
-  assert.match(source, /env\.ASSETS\.fetch\(new URL\("\/", request\.url\)\)/);
+  assert.match(source, /env\.ASSETS\.fetch\(new URL\("\/optimisation-google-business", request\.url\)\)/);
   assert.match(source, /\.on\("#diagnostic-modal"/);
   assert.match(home, /id="diagnostic-modal"/);
   assert.match(home, /name="firstName"/);
@@ -103,7 +103,7 @@ test("un formulaire source manquant échoue explicitement sans servir l'accueil"
 for (const scenario of [
   { path: "/diagnostic-gratuit", unknown: false, consent: "all" },
   { path: "/diagnostic-gratuit?utm_source=chatgpt&utm_medium=paid&utm_campaign=electriciens", unknown: true, consent: "ads" },
-  { path: "/", unknown: false, popup: true, consent: "all" },
+  { path: "/optimisation-google-business", unknown: false, popup: true, consent: "all" },
   { path: "/diagnostic-gratuit", unknown: true, consent: "refuse" },
   { path: "/diagnostic-gratuit", unknown: true, consent: "analytics" },
   { path: "/diagnostic-gratuit", unknown: true, consent: "withdraw" },
@@ -285,7 +285,7 @@ for (const scenario of [
         response.end(`<output id="landing-test-result"></output><script>addEventListener('message',e=>{if(e.origin===location.origin && e.data?.consentResult)document.getElementById('landing-test-result').textContent=e.data.consentResult;});</script><iframe src="/diagnostic-gratuit"></iframe>`);
         return;
       }
-      if (pathname === "/" || pathname.startsWith("/diagnostic-gratuit")) {
+      if (pathname === "/optimisation-google-business" || pathname.startsWith("/diagnostic-gratuit")) {
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); response.end(served); return;
       }
       if (!/^\/(?:css|js|assets)\//.test(pathname) || pathname.includes("..")) {response.writeHead(404);response.end();return;}

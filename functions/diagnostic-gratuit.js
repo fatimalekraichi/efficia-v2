@@ -2,10 +2,10 @@ const TITLE = "Diagnostic Google gratuit | Efficia Digital";
 const DESCRIPTION = "Obtenez gratuitement votre Score Efficia™.";
 const CANONICAL = "https://efficiadigital.com/diagnostic-gratuit";
 
-// Project the existing home-page form, rather than maintaining a second form.
+// Project the existing Google Business landing-page form, rather than maintaining a second form.
 // Only this response loses the home-page content and the modal presentation.
 export async function onRequestGet({ request, env }) {
-  const home = await env.ASSETS.fetch(new URL("/", request.url));
+  const home = await env.ASSETS.fetch(new URL("/optimisation-google-business", request.url));
   if (!home.ok) return new Response("Service temporairement indisponible.", { status: 503 });
   let formFound = false;
   const remove = { element: element => element.remove() };

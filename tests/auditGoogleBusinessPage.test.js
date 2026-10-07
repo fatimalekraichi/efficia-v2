@@ -84,6 +84,7 @@ test("aucune ancienne promesse chiffrée contradictoire ne subsiste dans les con
   const paths = [
     "audit-google-business.html",
     "index.html",
+    "optimisation-google-business.html",
     "functions/lib/renderAnalysisHtml.js",
     "admin/free-diagnostic-production/index.html",
   ];
@@ -92,7 +93,7 @@ test("aucune ancienne promesse chiffrée contradictoire ne subsiste dans les con
 });
 
 test("l’accueil relie clairement la carte, l’aperçu, la FAQ et le CTA final à la page Audit", async () => {
-  const html = await read("index.html");
+  const html = await read("optimisation-google-business.html");
   const links = html.match(/href="\/audit-google-business"/g) || [];
   assert.equal(links.length, 6, "les six points de maillage visibles doivent rester présents");
   assert.match(html, /href="\/achat\?offre=audit" class="btn btn-secondary price-btn">Je veux mon audit<\/a>/);
@@ -107,7 +108,7 @@ test("le sitemap contient uniquement l’URL propre de la page Audit", async () 
 });
 
 test("les offres Performance et les CGV distinguent création, optimisation et suivi sans changer les identifiants", async () => {
-  const home=await read('index.html'),terms=await read('cgv.html'),purchase=await read('js/purchase.js');
+  const home=await read('optimisation-google-business.html'),terms=await read('cgv.html'),purchase=await read('js/purchase.js');
   assert.match(home,/href="\/achat\?offre=performance"[^>]*>Choisir le Pack Performance<\/a>/);
   assert.doesNotMatch(home,/Pack Premium/);
   assert.match(purchase,/performance:\s*{\s*name: "Pack Performance"/);
@@ -129,7 +130,7 @@ test("le tunnel affiche 99 € TTC pour l’offre audit avant Stripe", async () 
 });
 
 test("les trois cartes et le tunnel affichent des prix TTC cohérents", async () => {
-  const home = await read("index.html");
+  const home = await read("optimisation-google-business.html");
   const pricingCss = await read("css/pricing.css");
   const purchaseHtml = await read("achat.html");
   const purchaseScript = await read("js/purchase.js");

@@ -41,3 +41,12 @@ test('oversized JSON and unavailable receipt storage fail closed',async t=>{
  assert.equal((await onRequestPost({request:request({...valid(),message:'é'.repeat(33000)}),env:environment()})).status,400);
  const env=environment();env.ORDERS_DB.prepare=()=>{throw Error('unavailable');};assert.equal((await onRequestPost({request:request(valid()),env})).status,503);assert.equal(calls,0);
 });
+test('contact page: company and message optional, topic restricted, distinct e-mail',async t=>{
+ const contact=()=>({source:'contact',name:'Test',contact:'test@example.com',company:'',message:'',topic:'les-deux',company_url:'',requestId:crypto.randomUUID()});
+ assert.ok(validateSiteRequest(contact()).data);assert.ok(validateSiteRequest({source:'contact',name:'Test',contact:'+32 478 020 842'}).data);
+ assert.ok(validateSiteRequest({...contact(),topic:'autre'}).error);assert.ok(validateSiteRequest({...contact(),name:''}).error);
+ assert.ok(validateSiteRequest({...valid(),company:''}).error,'redesign form keeps company required');
+ let sent;t.mock.method(globalThis,'fetch',async(url,options)=>{sent=JSON.parse(options.body);return new Response(null,{status:204});});
+ const r=await onRequestPost({request:request(contact()),env:environment()});assert.equal(r.status,200);
+ assert.match(sent.subject,/^Demande de contact/);assert.match(sent.text,/Demande concernant : Les deux/);assert.deepEqual(sent.to,['contact@efficiadigital.com']);
+});

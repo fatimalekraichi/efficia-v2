@@ -83,7 +83,7 @@ export function resolvePublicSite(request, env = {}) {
     environment,
     origin: configuredUrl.origin,
     successUrl: `${configuredUrl.origin}/paiement-reussi?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${configuredUrl.origin}/#offres`,
+    cancelUrl: `${configuredUrl.origin}/optimisation-google-business#offres`,
   };
 }
 

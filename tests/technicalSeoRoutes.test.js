@@ -8,7 +8,12 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 
 const publicPages = new Map([
   ["index.html", "https://efficiadigital.com/"],
+  ["services.html", "https://efficiadigital.com/services"],
+  ["optimisation-google-business.html", "https://efficiadigital.com/optimisation-google-business"],
   ["audit-google-business.html", "https://efficiadigital.com/audit-google-business"],
+  ["refonte-site-internet.html", "https://efficiadigital.com/refonte-site-internet"],
+  ["a-propos.html", "https://efficiadigital.com/a-propos"],
+  ["contact.html", "https://efficiadigital.com/contact"],
   ["mentions-legales.html", "https://efficiadigital.com/mentions-legales"],
   ["politique-confidentialite.html", "https://efficiadigital.com/politique-confidentialite"],
   ["cgv.html", "https://efficiadigital.com/cgv"],
@@ -37,8 +42,8 @@ test("la page 404 est désindexée, sans canonical et propose les trois sorties 
   assert.match(html, /<meta\s+name=["']robots["']\s+content=["']noindex, follow["']/i);
   assert.doesNotMatch(html, /<link\s+rel=["']canonical["']/i);
   assert.match(html, /href="\/"/);
-  assert.match(html, /href="\/#diagnostic"/);
-  assert.match(html, /href="\/#offres"/);
+  assert.match(html, /href="\/optimisation-google-business#diagnostic"/);
+  assert.match(html, /href="\/optimisation-google-business#offres"/);
 });
 
 test("le sitemap ne contient que les URL canoniques publiques finales", async () => {
@@ -64,7 +69,7 @@ test("robots.txt autorise le site et référence le sitemap canonique", async ()
 });
 
 test("le comparatif avant/après présente immédiatement son caractère fictif", async () => {
-  const html = await read("index.html");
+  const html = await read("optimisation-google-business.html");
   const disclosure = "Exemple fictif à visée illustrative. Les données affichées servent uniquement à comparer la présentation d’une fiche avant et après optimisation ; elles ne constituent ni un résultat client ni une promesse de performance.";
 
   assert.match(
