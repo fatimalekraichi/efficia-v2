@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  if (window.efficiaAds || !["/", "/index.html", "/diagnostic-gratuit", "/diagnostic-gratuit/"].includes(location.pathname)) return;
+  if (window.efficiaAds || !["/", "/index.html", "/optimisation-google-business", "/optimisation-google-business.html", "/diagnostic-gratuit", "/diagnostic-gratuit/"].includes(location.pathname)) return;
   const SCRIPT_ID = "efficia-openai-ads-sdk";
   const SENT_KEY = "efficiaOpenAILeadEvents";
   const pending = new Set();

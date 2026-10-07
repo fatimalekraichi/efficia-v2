@@ -76,11 +76,14 @@ test("pas d’intégration sur les pages admin ou commerciales hors périmètre"
 });
 test("CSP : seuls les deux hôtes officiels ajoutés aux pages diagnostic", () => {
   const headers=readFileSync(new URL("../_headers",import.meta.url),"utf8");
-  for(const path of ["/", "/index.html"]) {
+  for(const path of ["/", "/index.html", "/optimisation-google-business*"]) {
     const block=headers.split("\n\n").find(b=>b.startsWith(`${path}\n`));
     assert.match(block,/script-src[^;]*https:\/\/bzrcdn\.openai\.com/);
     assert.match(block,/connect-src[^;]*https:\/\/bzr\.openai\.com https:\/\/bzrcdn\.openai\.com/);
     assert.match(block,/img-src[^;]*https:\/\/bzr\.openai\.com/);
   }
   assert.doesNotMatch(headers,/\*\.openai\.com/);
+});
+test("le formulaire de diagnostic, déplacé sur /optimisation-google-business, reste mesuré", () => {
+  for(const path of ["/optimisation-google-business", "/optimisation-google-business.html"])assert.equal(typeof setup(new Map(),path).api?.leadCreated,"function");
 });
