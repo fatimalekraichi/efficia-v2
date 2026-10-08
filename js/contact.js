@@ -1,4 +1,4 @@
-import { validateSiteRequest } from './site-request-validation.js';
+import { validateSiteRequest } from './site-request-validation.js?v=20261008';
 const form = document.querySelector('#contact-request');
 const status = form.querySelector('.site-form-status');
 const button = form.querySelector('button[type="submit"]');
