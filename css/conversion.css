@@ -42,3 +42,14 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px soli
  html { scroll-behavior: auto; }
  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+[hidden] { display: none !important; }
+.hero-contact-link { grid-column: 1 / -1; text-align: center; }
+.realisation-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 36px; align-items: center; margin-top: 32px; }
+.realisation-grid .site-list { margin-top: 20px; }
+.realisation-grid img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.realisation-grid .site-small { margin-top: 20px; }
+.process-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+@media (max-width: 767px) {
+ .realisation-grid, .process-steps { grid-template-columns: 1fr; }
+ .realisation-grid picture { max-width: 390px; margin: auto; }
+}
