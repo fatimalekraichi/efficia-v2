@@ -1,0 +1,38 @@
+[
+  {
+    "barVisible": true,
+    "cookieHeight": 111.59375,
+    "headerCTA": "none",
+    "height": 667,
+    "scrollWidth": 375,
+    "width": 375,
+    "y": 450
+  },
+  {
+    "barVisible": true,
+    "cookieHeight": 111.59375,
+    "headerCTA": "none",
+    "height": 844,
+    "scrollWidth": 390,
+    "width": 390,
+    "y": 450
+  },
+  {
+    "barVisible": false,
+    "cookieHeight": 74,
+    "headerCTA": "flex",
+    "height": 1024,
+    "scrollWidth": 768,
+    "width": 768,
+    "y": 0
+  },
+  {
+    "barVisible": false,
+    "cookieHeight": 74,
+    "headerCTA": "flex",
+    "height": 800,
+    "scrollWidth": 1280,
+    "width": 1280,
+    "y": 0
+  }
+]

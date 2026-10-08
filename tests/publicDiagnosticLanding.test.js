@@ -64,18 +64,18 @@ test("HTTP 200 avec ou sans UTM : champs, étapes et messages identiques au pop-
       assert.equal(response.headers.get("referrer-policy"), "strict-origin");
       const html = await response.text();
       assert.equal(html.includes(removedTimingCopy), false, "la page dédiée ne réintroduit pas la phrase supprimée");
-      assert.match(html, /<title>Diagnostic Google gratuit \| Efficia Digital<\/title>/);
+      assert.match(html, /<title>Diagnostic Google \| Efficia Digital<\/title>/);
       assert.match(html, /rel="canonical" href="https:\/\/efficiadigital.com\/diagnostic-gratuit"/);
-      assert.match(html, /name="description" content="Obtenez gratuitement votre Score Efficia™/);
-      assert.match(html, /property="og:title" content="Diagnostic Google gratuit \| Efficia Digital"/);
-      assert.match(html, /name="twitter:title" content="Diagnostic Google gratuit \| Efficia Digital"/);
+      assert.match(html, /name="description" content="Obtenez votre Score Efficia™/);
+      assert.match(html, /property="og:title" content="Diagnostic Google \| Efficia Digital"/);
+      assert.match(html, /name="twitter:title" content="Diagnostic Google \| Efficia Digital"/);
       assert.equal((html.match(/id="diagnostic-modal"/g) || []).length, 1);
       assert.match(html, /data-diagnostic-page/);
       assert.match(html, /aria-hidden="false"/);
       assert.doesNotMatch(html, /\binert\b|class="hero"|<header\b|<footer\b|class="conversion-modal__backdrop"|class="conversion-modal__close"|FAQPage/);
       assert.deepEqual(html.match(/<form\b[\s\S]*?<\/form>/g), home.match(/<form\b[\s\S]*?<\/form>/g));
       assert.equal(html.match(/<div class="conversion-step conversion-confirmation"[\s\S]*?<\/ol>/)?.[0], home.match(/<div class="conversion-step conversion-confirmation"[\s\S]*?<\/ol>/)?.[0]);
-      for (const asset of ["/js/analytics.js?v=20260914-consent", "/js/app.js?v=20260915-manual-review", "/js/cookies.js?v=20260914-ads-v2", "/css/global.css"]) assert.ok(html.includes(`"${asset}"`), asset);
+      for (const asset of ["/js/analytics.js?v=20260914-consent", "/js/app.js?v=20261008-ga4", "/js/cookies.js?v=20261008-conversion", "/css/global.css"]) assert.ok(html.includes(`"${asset}"`), asset);
     }
     const head = await mf.dispatchFetch("https://efficiadigital.com/diagnostic-gratuit", { method: "HEAD" });
     assert.equal(head.status, 200);

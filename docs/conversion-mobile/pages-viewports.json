@@ -1,0 +1,226 @@
+[
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/services",
+    "width": 375
+  },
+  {
+    "barPresent": false,
+    "height": 667,
+    "overflow": false,
+    "path": "/contact",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/site-internet-electricien",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/refonte-site-internet",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/a-propos",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/audit-google-business",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 667,
+    "overflow": false,
+    "path": "/optimisation-google-business",
+    "width": 375
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/services",
+    "width": 390
+  },
+  {
+    "barPresent": false,
+    "height": 844,
+    "overflow": false,
+    "path": "/contact",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/site-internet-electricien",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/refonte-site-internet",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/a-propos",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/audit-google-business",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 844,
+    "overflow": false,
+    "path": "/optimisation-google-business",
+    "width": 390
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/services",
+    "width": 768
+  },
+  {
+    "barPresent": false,
+    "height": 1024,
+    "overflow": false,
+    "path": "/contact",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/site-internet-electricien",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/refonte-site-internet",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/a-propos",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/audit-google-business",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 1024,
+    "overflow": false,
+    "path": "/optimisation-google-business",
+    "width": 768
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/services",
+    "width": 1280
+  },
+  {
+    "barPresent": false,
+    "height": 800,
+    "overflow": false,
+    "path": "/contact",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/site-internet-electricien",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/refonte-site-internet",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/a-propos",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/audit-google-business",
+    "width": 1280
+  },
+  {
+    "barPresent": true,
+    "height": 800,
+    "overflow": false,
+    "path": "/optimisation-google-business",
+    "width": 1280
+  }
+]

@@ -9,6 +9,7 @@
     ["/", "Accueil"], ["/index", "Accueil"],
     ["/diagnostic-gratuit", "Diagnostic gratuit"],
     ["/optimisation-google-business", "Optimisation Google Business"],
+    ["/site-internet-electricien", "Site internet pour électricien"],
     ["/services", "Services"], ["/a-propos", "À propos"], ["/contact", "Contact"],
     ["/audit-google-business", "Audit Google Business"],
     ["/refonte-site-internet", "Création / refonte de site"],
@@ -109,7 +110,7 @@
       : url.protocol === "mailto:" ? "email"
       : (url.protocol === "https:" && ["wa.me", "api.whatsapp.com", "web.whatsapp.com"].includes(url.hostname)) ? "whatsapp" : null;
     if (channel) emit("contact_click", { contact_method: channel });
-    const location = link.dataset?.trackLocation;
+    const location = link.closest?.(".header .nav") && window.innerWidth >= 768 ? "header" : link.dataset?.trackLocation;
     if (url.protocol === "https:" && url.hostname === "wa.me"
       && ["sticky_bar", "header", "footer", "contact_page", "menu"].includes(location)) {
       emit("whatsapp_click", { link_location: location });

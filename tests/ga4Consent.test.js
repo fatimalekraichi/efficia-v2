@@ -70,7 +70,7 @@ test('preview, internal tools, admin and unknown paths fail closed even with con
   }
 });
 test('all public documents load one GA module before consent; diagnostic inherits home', () => {
-  for (const name of ['index','services','a-propos','contact','optimisation-google-business','achat','audit-google-business','refonte-site-internet','paiement-reussi','mentions-legales','cgv','politique-cookies','politique-confidentialite','404']) {
+  for (const name of ['site-internet-electricien','index','services','a-propos','contact','optimisation-google-business','achat','audit-google-business','refonte-site-internet','paiement-reussi','mentions-legales','cgv','politique-cookies','politique-confidentialite','404']) {
     const html = readFileSync(new URL(`../${name}.html`, import.meta.url), 'utf8');
     assert.equal((html.match(/src="[^" ]*js\/ga4\.js/g) || []).length, 1, name);
     assert.ok(html.indexOf('js/ga4.js') < html.indexOf('js/cookies.js'));

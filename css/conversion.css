@@ -53,3 +53,17 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px soli
  .realisation-grid, .process-steps { grid-template-columns: 1fr; }
  .realisation-grid picture { max-width: 390px; margin: auto; }
 }
+@media (min-width: 1101px) {
+ .footer-grid { grid-template-columns: minmax(0, 1.3fr) minmax(150px, 1fr) minmax(100px, .6fr) minmax(170px, 1fr); gap: 30px; }
+}
+@media (min-width: 768px) and (max-width: 1100px) {
+ .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+}
+.tap-link, .price-detail-link, .faq-detail-link a, .contact-direct a, .site-contact-links a, .breadcrumb a { display: inline-block; min-width: 44px; min-height: 44px; padding-block: 11px; }
+.footer a { min-width: 44px; min-height: 44px; }
+.site-contact-grid > * { min-width: 0; }
+.contact-direct dl { grid-template-columns: auto minmax(0, 1fr); }
+.contact-direct dd { overflow-wrap: anywhere; }
+.hero-visual .halo { max-width: 100%; }
+.hero-visual { overflow: clip; }
+@media (max-width: 860px) { .featured-price::before { inset-inline: 0; } }

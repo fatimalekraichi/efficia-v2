@@ -26,6 +26,7 @@
   }
   document.querySelectorAll('a[href]').forEach(link => {
     const url = new URL(link.href, location.origin);
+    if (link.textContent.includes('→')) link.classList.add('tap-link');
     const inFooter = Boolean(link.closest('footer'));
     if (url.hostname === 'wa.me') {
       link.href = WHATSAPP_URL;
