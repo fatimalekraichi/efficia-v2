@@ -1,30 +1,39 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://efficiadigital.com/</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/services</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/optimisation-google-business</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/audit-google-business</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/refonte-site-internet</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/a-propos</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/contact</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/politique-confidentialite</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
   <url>
     <loc>https://efficiadigital.com/politique-cookies</loc>
+    <lastmod>2026-10-08</lastmod>
   </url>
 </urlset>
