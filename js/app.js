@@ -428,6 +428,7 @@ stepTwoForm?.addEventListener("submit", async (event) => {
     try { window.efficiaAds?.leadCreated?.(result); } catch { /* Measurement must never block the form. */ }
     setLoading(stepTwoForm, false);
     window.trackAnalyticsEvent?.("diagnostic_submitted");
+    window.efficiaGA4?.trackFormSuccess("diagnostic", diagnosticIdempotencyKey);
     renderDiagnosticConfirmation(result);
     showStep(3);
     window.trackAnalyticsEvent?.("diagnostic_confirmation_view");

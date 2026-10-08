@@ -2,7 +2,7 @@
   "use strict";
 
   const COOKIE_STORAGE_KEY = "efficiaCookieConsent";
-  const CONSENT_VERSION = "2026-09-14-ads-v2";
+  const CONSENT_VERSION = "2026-10-08-ga4-v1";
   let memoryConsent = null;
 
   const readCookieConsent = () => {
@@ -36,7 +36,7 @@
       <div class="cookie-consent__inner">
         <div>
           <strong>Vos préférences de confidentialité</strong>
-          <p>Ce site utilise des cookies afin de vous offrir une meilleure expérience de navigation et de recueillir des informations sur son utilisation.</p>
+          <p>Avec votre accord, Google Analytics 4 et Clarity mesurent l’audience et les interactions pour améliorer le site. La mesure publicitaire OpenAI fait l’objet d’un choix séparé.</p>
           <p>En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="/politique-cookies">Politique relative aux cookies</a>.</p>
         </div>
         <div class="cookie-consent__actions">
@@ -67,7 +67,7 @@
           <label class="cookie-option">
             <div>
               <strong>Mesure d’audience</strong>
-              <span>Nous aide à comprendre l’utilisation du site et à l’améliorer.</span>
+              <span>Google Analytics 4 et Microsoft Clarity mesurent les visites et les interactions pour améliorer le site.</span>
             </div>
             <input type="checkbox" data-cookie-analytics>
           </label>
@@ -132,6 +132,7 @@
 
   const applyConsent = (allowed, advertising = allowed) => {
     saveCookieConsent(allowed, advertising);
+    window.efficiaGA4?.setConsent?.(allowed);
     window.efficiaAds?.setConsent?.(advertising);
     hideCookieBanner();
     closeCookiePreferences();
@@ -145,6 +146,7 @@
   };
 
   const storedConsent = readCookieConsent();
+  window.efficiaGA4?.setConsent?.(storedConsent?.analytics === true);
   window.efficiaAds?.setConsent?.(storedConsent?.advertising === true);
   if (!storedConsent) {
     showCookieBanner();
@@ -174,6 +176,7 @@
     if (event.key !== COOKIE_STORAGE_KEY && event.key !== null) return;
     memoryConsent = null;
     const consent = readCookieConsent();
+    window.efficiaGA4?.setConsent?.(consent?.analytics === true);
     window.efficiaAds?.setConsent?.(consent?.advertising === true);
     if (consent?.analytics) analytics?.loadClarity?.();
     else analytics?.denyClarityConsent?.();

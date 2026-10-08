@@ -35,6 +35,7 @@ form.addEventListener('submit', async event => {
       throw new Error(result?.error || 'L’envoi n’a pas pu être confirmé. Vos champs sont conservés. Vous pouvez nous contacter par e-mail ou WhatsApp.');
     }
     show('Merci, votre demande est bien envoyée. Nous revenons vers vous pour convenir d’un premier échange.', 'success');
+    window.efficiaGA4?.trackFormSuccess('site_request', requestId);
     form.reset(); lastPayload = ''; requestId = crypto.randomUUID();
   } catch (error) {
     show(error.name === 'TimeoutError' || error instanceof TypeError

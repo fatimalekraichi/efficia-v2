@@ -145,7 +145,7 @@ test("Clarity est centralisé et différé jusqu’au consentement explicite", a
   assert.match(analytics, /CLARITY_PROJECT_ID = "y4bpqqcrs7"/);
   assert.match(analytics, /script\.src = `https:\/\/www\.clarity\.ms\/tag\/\$\{CLARITY_PROJECT_ID\}`/);
   assert.doesNotMatch(analytics, /loadClarity\(\);\s*\}\)\(\);$/);
-  assert.match(cookies, /CONSENT_VERSION = "2026-09-14-ads-v2"/);
+  assert.match(cookies, /CONSENT_VERSION = "2026-10-08-ga4-v1"/);
   assert.match(cookies, /storedConsent\.analytics/);
   assert.match(cookies, /analytics\?\.loadClarity/);
   assert.match(cookies, /analytics\?\.denyClarityConsent/);
@@ -176,7 +176,7 @@ test("les textes simplifiés conservent les actions explicites de consentement",
   ]);
 
   assert.match(cookies, /<strong>Vos préférences de confidentialité<\/strong>/);
-  assert.match(cookies, /Ce site utilise des cookies afin de vous offrir une meilleure expérience de navigation et de recueillir des informations sur son utilisation\./);
+  assert.match(cookies, /Avec votre accord, Google Analytics 4 et Clarity mesurent l’audience et les interactions pour améliorer le site\./);
   assert.match(cookies, /En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="\/politique-cookies">Politique relative aux cookies<\/a>\./);
   assert.match(cookies, /data-cookie-accept>Accepter les cookies<\/button>/);
   assert.match(cookies, /data-cookie-refuse>Refuser les cookies<\/button>/);
@@ -184,7 +184,7 @@ test("les textes simplifiés conservent les actions explicites de consentement",
   assert.match(cookies, /<h2 id="cookie-preferences-title">Vos préférences de confidentialité<\/h2>/);
   assert.match(cookies, /Les cookies non essentiels restent désactivés sans votre accord pour chaque finalité\./);
   assert.match(cookies, /<strong>Fonctions nécessaires<\/strong>\s*<span>Indispensables au fonctionnement et à la sécurité du site\.<\/span>/);
-  assert.match(cookies, /<strong>Mesure d’audience<\/strong>\s*<span>Nous aide à comprendre l’utilisation du site et à l’améliorer\.<\/span>/);
+  assert.match(cookies, /<strong>Mesure d’audience<\/strong>\s*<span>Google Analytics 4 et Microsoft Clarity mesurent les visites et les interactions pour améliorer le site\.<\/span>/);
   assert.match(cookies, /data-cookie-close>Retour<\/button>/);
   assert.match(cookies, /data-cookie-save>Enregistrer<\/button>/);
   assert.doesNotMatch(cookies, /Mesure d’audience avec Clarity|masquage renforcé|Enregistrer mon choix|>Annuler<\/button>/);
@@ -408,5 +408,5 @@ test("la CSP publique autorise uniquement les fournisseurs nécessaires", async 
   }
   assert.match(headers, /object-src 'none'/);
   assert.match(headers, /Referrer-Policy: strict-origin/);
-  assert.doesNotMatch(headers, /google-analytics|googletagmanager|facebook\.net/);
+  assert.doesNotMatch(headers, /facebook\.net/);
 });
