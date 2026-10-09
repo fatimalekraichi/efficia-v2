@@ -64,11 +64,11 @@ test("HTTP 200 avec ou sans UTM : champs, étapes et messages identiques au pop-
       assert.equal(response.headers.get("referrer-policy"), "strict-origin");
       const html = await response.text();
       assert.equal(html.includes(removedTimingCopy), false, "la page dédiée ne réintroduit pas la phrase supprimée");
-      assert.match(html, /<title>Diagnostic Google \| Efficia Digital<\/title>/);
+      assert.match(html, /<title>Diagnostic Google gratuit \| Efficia Digital<\/title>/);
       assert.match(html, /rel="canonical" href="https:\/\/efficiadigital.com\/diagnostic-gratuit"/);
-      assert.match(html, /name="description" content="Obtenez votre Score Efficia™/);
-      assert.match(html, /property="og:title" content="Diagnostic Google \| Efficia Digital"/);
-      assert.match(html, /name="twitter:title" content="Diagnostic Google \| Efficia Digital"/);
+      assert.match(html, /name="description" content="Obtenez gratuitement votre Score Efficia™/);
+      assert.match(html, /property="og:title" content="Diagnostic Google gratuit \| Efficia Digital"/);
+      assert.match(html, /name="twitter:title" content="Diagnostic Google gratuit \| Efficia Digital"/);
       assert.equal((html.match(/id="diagnostic-modal"/g) || []).length, 1);
       assert.match(html, /data-diagnostic-page/);
       assert.match(html, /aria-hidden="false"/);

@@ -1,5 +1,5 @@
-const TITLE = "Diagnostic Google | Efficia Digital";
-const DESCRIPTION = "Obtenez votre Score Efficia™.";
+const TITLE = "Diagnostic Google gratuit | Efficia Digital";
+const DESCRIPTION = "Obtenez gratuitement votre Score Efficia™.";
 const CANONICAL = "https://efficiadigital.com/diagnostic-gratuit";
 
 // Project the existing Google Business landing-page form, rather than maintaining a second form.
