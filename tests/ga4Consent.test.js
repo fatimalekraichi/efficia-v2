@@ -65,7 +65,7 @@ test('contacts carry channel only; leads carry generic form name and deduplicate
   assert.ok(!/private|secret|321234567|other-id/.test(JSON.stringify(h.commands())));
 });
 test('preview, internal tools, admin and unknown paths fail closed even with consent', () => {
-  for (const url of ['http://efficiadigital.com/', 'https://branch.efficia.pages.dev/', 'http://localhost:8765/', 'https://preview.efficiadigital.com/', 'https://efficiadigital.com/admin', 'https://efficiadigital.com/admin.html', 'https://efficiadigital.com/admin/free-diagnostic-production/', 'https://efficiadigital.com/outil-score-efficia-auto-v5.html', 'https://efficiadigital.com/customer/private']) {
+  for (const url of ['https://efficiadigital.com/site-internet-electricien', 'https://efficiadigital.com/site-internet-electricien.html', 'http://efficiadigital.com/', 'https://branch.efficia.pages.dev/', 'http://localhost:8765/', 'https://preview.efficiadigital.com/', 'https://efficiadigital.com/admin', 'https://efficiadigital.com/admin.html', 'https://efficiadigital.com/admin/free-diagnostic-production/', 'https://efficiadigital.com/outil-score-efficia-auto-v5.html', 'https://efficiadigital.com/customer/private']) {
     const h = harness(url); h.api.setConsent(true); assert.equal(h.scripts.length, 0, url);
   }
 });

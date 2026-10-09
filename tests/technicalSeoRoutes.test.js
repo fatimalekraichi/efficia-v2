@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
@@ -22,7 +22,7 @@ const publicPages = new Map([
 ]);
 
 const sitemapPages = new Map(
-  [...publicPages].filter(([file]) => !["mentions-legales.html", "cgv.html"].includes(file)),
+  [...publicPages].filter(([file]) => !["mentions-legales.html", "cgv.html", "site-internet-electricien.html"].includes(file)),
 );
 
 test("les pages publiques déclarent une canonical unique sur le domaine sans www", async () => {
@@ -84,6 +84,7 @@ test("le comparatif avant/après présente immédiatement son caractère fictif"
 
 test("les pages transactionnelles, administratives et internes sont désindexées", async () => {
   const privatePages = [
+    "site-internet-electricien.html",
     "achat.html",
     "paiement-reussi.html",
     "admin.html",
@@ -100,4 +101,14 @@ test("les pages transactionnelles, administratives et internes sont désindexée
     const html = await read(file);
     assert.match(html, /<meta\s+name=["']robots["']\s+content=["']noindex,\s*(?:follow|nofollow)["']/i, `${file} doit être désindexée`);
   }
+});
+
+
+test("la page métier en pause est conservée sans lien de navigation ni entrée sitemap", async () => {
+  const files = (await readdir(root)).filter(name => name.endsWith(".html"));
+  for (const file of files) {
+    assert.doesNotMatch(await read(file), /<a\b[^>]*href=["'][^"']*site-internet-electricien(?:\.html)?(?:[/?#"'])/i, file);
+  }
+  assert.doesNotMatch(await read("sitemap.xml"), /site-internet-electricien/);
+  assert.match(await read("site-internet-electricien.html"), /<meta name="robots" content="noindex, follow">/);
 });

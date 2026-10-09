@@ -9,7 +9,6 @@
     ["/", "Accueil"], ["/index", "Accueil"],
     ["/diagnostic-gratuit", "Diagnostic gratuit"],
     ["/optimisation-google-business", "Optimisation Google Business"],
-    ["/site-internet-electricien", "Site internet pour électricien"],
     ["/services", "Services"], ["/a-propos", "À propos"], ["/contact", "Contact"],
     ["/audit-google-business", "Audit Google Business"],
     ["/refonte-site-internet", "Création / refonte de site"],
