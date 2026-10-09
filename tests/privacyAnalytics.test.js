@@ -105,6 +105,7 @@ test("Clarity : commandes en attente purgées au retrait et ancien stop non rejo
 });
 
 const publicPages = [
+  "site-internet-electricien.html",
   "index.html",
   "optimisation-google-business.html",
   "services.html",
@@ -122,7 +123,7 @@ const publicPages = [
 
 test("la personnalisation et les politiques expliquent les empreintes hachées après accord publicitaire", async () => {
   const cookies = await readProjectFile("js/cookies.js");
-  assert.match(cookies, /href="\/politique-cookies">Politique relative aux cookies/);
+  assert.match(cookies, /href="\/politique-cookies">En savoir plus/);
   assert.match(cookies, /Vos coordonnées, comme votre e-mail, peuvent être transformées dans votre navigateur en empreintes hachées, puis transmises à OpenAI/);
   assert.match(cookies, /data-cookie-advertising>/);
   assert.doesNotMatch(cookies, /<input[^>]*checked[^>]*data-cookie-advertising|<input[^>]*data-cookie-advertising[^>]*checked/);
@@ -156,9 +157,9 @@ test("Clarity est centralisé et différé jusqu’au consentement explicite", a
 
   const acceptClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-accept/)?.[1];
   const refuseClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-refuse/)?.[1];
-  const customizeClass = cookies.match(/class="([^"]*cookie-btn--choice[^"]*)"[^>]*data-cookie-customize/)?.[1];
+  const customizeClass = cookies.match(/class="([^"]*cookie-btn--customize[^"]*)"[^>]*data-cookie-customize/)?.[1];
   assert.equal(acceptClass, refuseClass, "Accepter et Refuser doivent avoir une visibilité comparable");
-  assert.equal(acceptClass, customizeClass, "Personnaliser doit avoir la même visibilité");
+  assert.ok(customizeClass, "Personnaliser reste accessible comme action texte");
 
   pages.forEach((html, index) => {
     assert.match(html, /js\/analytics\.js/u, `${publicPages[index]} doit charger l’orchestrateur analytics`);
@@ -175,12 +176,10 @@ test("les textes simplifiés conservent les actions explicites de consentement",
     readProjectFile("css/cookies.css"),
   ]);
 
-  assert.match(cookies, /<strong>Vos préférences de confidentialité<\/strong>/);
-  assert.match(cookies, /Avec votre accord, Google Analytics 4 et Clarity mesurent l’audience et les interactions pour améliorer le site\./);
-  assert.match(cookies, /En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="\/politique-cookies">Politique relative aux cookies<\/a>\./);
-  assert.match(cookies, /data-cookie-accept>Accepter les cookies<\/button>/);
-  assert.match(cookies, /data-cookie-refuse>Refuser les cookies<\/button>/);
-  assert.match(cookies, /data-cookie-customize>Personnaliser<br>mes choix<\/button>/);
+  assert.match(cookies, /Nous mesurons la fréquentation du site pour l’améliorer. Vous choisissez./);
+  assert.match(cookies, /data-cookie-accept>Accepter<\/button>/);
+  assert.match(cookies, /data-cookie-refuse>Refuser<\/button>/);
+  assert.match(cookies, /data-cookie-customize>Personnaliser<\/button>/);
   assert.match(cookies, /<h2 id="cookie-preferences-title">Vos préférences de confidentialité<\/h2>/);
   assert.match(cookies, /Les cookies non essentiels restent désactivés sans votre accord pour chaque finalité\./);
   assert.match(cookies, /<strong>Fonctions nécessaires<\/strong>\s*<span>Indispensables au fonctionnement et à la sécurité du site\.<\/span>/);

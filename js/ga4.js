@@ -9,6 +9,7 @@
     ["/", "Accueil"], ["/index", "Accueil"],
     ["/diagnostic-gratuit", "Diagnostic gratuit"],
     ["/optimisation-google-business", "Optimisation Google Business"],
+    ["/site-internet-electricien", "Site internet pour électricien"],
     ["/services", "Services"], ["/a-propos", "À propos"], ["/contact", "Contact"],
     ["/audit-google-business", "Audit Google Business"],
     ["/refonte-site-internet", "Création / refonte de site"],
@@ -90,13 +91,15 @@
     script.addEventListener("error", () => { ready = false; script.remove(); }, { once: true });
     document.head.appendChild(script);
   };
-  const trackFormSuccess = (formName, localKey) => {
+  const trackFormSuccess = (formName, localKey, topic = "") => {
     if (!["diagnostic", "site_request", "contact"].includes(formName)) return false;
     // The idempotency key stays in memory; never forward it to Google.
     const key = `${formName}:${localKey}`;
     if (completed.has(key)) return false;
     completed.add(key);
-    return emit("generate_lead", { form_name: formName });
+    const params = { form_name: formName };
+    if (formName === "contact" && ["", "google", "site", "les-deux", "ne-sait-pas"].includes(topic)) params.topic = topic;
+    return emit("generate_lead", params);
   };
   document.addEventListener("click", (event) => {
     const link = event.target.closest?.("a[href]");
@@ -107,6 +110,15 @@
       : url.protocol === "mailto:" ? "email"
       : (url.protocol === "https:" && ["wa.me", "api.whatsapp.com", "web.whatsapp.com"].includes(url.hostname)) ? "whatsapp" : null;
     if (channel) emit("contact_click", { contact_method: channel });
+    const location = link.closest?.(".header .nav") && window.innerWidth >= 768 ? "header" : link.dataset?.trackLocation;
+    if (url.protocol === "https:" && url.hostname === "wa.me"
+      && ["sticky_bar", "header", "footer", "contact_page", "menu"].includes(location)) {
+      emit("whatsapp_click", { link_location: location });
+    }
+    if (url.origin === window.location.origin && /^\/contact(?:\.html)?\/?$/.test(url.pathname)
+      && ["hero", "sticky_bar", "header", "process", "final_cta", "menu", "footer"].includes(location)) {
+      emit("contact_cta_click", { link_location: location });
+    }
   });
   window.efficiaGA4 = Object.freeze({ setConsent, trackFormSuccess });
 })();

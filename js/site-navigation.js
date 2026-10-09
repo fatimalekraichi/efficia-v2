@@ -30,5 +30,5 @@
   document.addEventListener('click', event => {
     if (!event.target.closest('.header')) close();
   });
-  window.matchMedia('(min-width: 861px)').addEventListener('change', close);
+  window.matchMedia('(min-width: 768px)').addEventListener('change', close);
 })();

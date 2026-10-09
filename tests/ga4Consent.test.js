@@ -18,7 +18,7 @@ function harness(url = 'https://efficiadigital.com/?email=secret@example.test#se
   vm.runInNewContext(source, context);
   const commands = () => (window.efficiaGA4Layer || []).map(a => Array.from(a));
   const events = () => commands().filter(a => a[0] === 'event');
-  const click = href => listeners.click({ target: { closest: () => ({ href }) } });
+  const click = (href, trackLocation) => listeners.click({ target: { closest: () => ({ href, dataset: { trackLocation } }) } });
   return { window, api: window.efficiaGA4, scripts, commands, events, click, writes, context };
 }
 test('no Google script or queue before choice or refusal; contacts and forms are dropped', () => {
@@ -70,7 +70,7 @@ test('preview, internal tools, admin and unknown paths fail closed even with con
   }
 });
 test('all public documents load one GA module before consent; diagnostic inherits home', () => {
-  for (const name of ['index','services','a-propos','contact','optimisation-google-business','achat','audit-google-business','refonte-site-internet','paiement-reussi','mentions-legales','cgv','politique-cookies','politique-confidentialite','404']) {
+  for (const name of ['site-internet-electricien','index','services','a-propos','contact','optimisation-google-business','achat','audit-google-business','refonte-site-internet','paiement-reussi','mentions-legales','cgv','politique-cookies','politique-confidentialite','404']) {
     const html = readFileSync(new URL(`../${name}.html`, import.meta.url), 'utf8');
     assert.equal((html.match(/src="[^" ]*js\/ga4\.js/g) || []).length, 1, name);
     assert.ok(html.indexOf('js/ga4.js') < html.indexOf('js/cookies.js'));
@@ -91,4 +91,35 @@ test('contact conversion also requires confirmed server delivery', () => {
  h.api.trackFormSuccess('contact', 'private-id'); h.api.trackFormSuccess('contact', 'private-id');
  assert.equal(h.events().filter(e => e[1] === 'generate_lead').length, 1);
  assert.equal(h.events().at(-1)[2].form_name, 'contact');
+});
+
+
+test('conversion clicks use one delegated listener and allowlisted locations without URL data', () => {
+ const h = harness();
+ h.click('https://wa.me/321234567?text=secret', 'sticky_bar');
+ h.click('https://efficiadigital.com/contact?email=private@example.test', 'hero');
+ assert.equal(h.events().length, 0);
+ h.api.setConsent(true); h.scripts[0].listeners.load();
+ for (const place of ['sticky_bar', 'header', 'footer', 'contact_page', 'menu']) h.click('https://wa.me/321234567?text=secret', place);
+ for (const place of ['hero', 'sticky_bar', 'header', 'process', 'final_cta', 'menu', 'footer']) h.click('https://efficiadigital.com/contact?email=private@example.test', place);
+ assert.equal(h.events().filter(e => e[1] === 'whatsapp_click').length, 5);
+ assert.equal(h.events().filter(e => e[1] === 'contact_cta_click').length, 7);
+ h.click('https://wa.me.evil.test/', 'sticky_bar');
+ h.click('https://other.test/contact', 'hero');
+ h.click('https://efficiadigital.com/contact', 'private@example.test');
+ assert.equal(h.events().filter(e => e[1] === 'contact_cta_click').length, 7);
+ assert.ok(!/private|secret|321234567/.test(JSON.stringify(h.events())));
+ h.api.setConsent(false); h.click('https://wa.me/321234567', 'footer');
+ assert.equal(h.events().length, 0);
+ assert.equal((source.match(/document.addEventListener\("click"/g) || []).length, 1);
+});
+test('contact topics are finite values; lead remains deduplicated and consent gated', () => {
+ const h = harness('https://efficiadigital.com/contact');
+ h.api.setConsent(true); h.scripts[0].listeners.load();
+ for (const topic of ['', 'google', 'site', 'les-deux', 'ne-sait-pas']) h.api.trackFormSuccess('contact', topic, topic);
+ assert.equal(JSON.stringify(h.events().filter(e => e[1] === 'generate_lead').map(e => e[2].topic)), JSON.stringify(['', 'google', 'site', 'les-deux', 'ne-sait-pas']));
+ h.api.trackFormSuccess('contact', 'secret-id', 'private@example.test');
+ assert.equal(h.events().at(-1)[2].topic, undefined);
+ h.api.setConsent(false); h.api.trackFormSuccess('contact', 'denied', 'site');
+ assert.equal(h.events().length, 0);
 });

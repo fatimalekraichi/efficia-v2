@@ -21,7 +21,8 @@
   <link rel="stylesheet" href="css/legal.css">
   <link rel="stylesheet" href="css/cookies.css?v=20260914-ads">
   <link rel="stylesheet" href="css/responsive.css">
-<link rel="stylesheet" href="/css/site-navigation.css?v=20261008-menu">
+<link rel="stylesheet" href="/css/site-navigation.css?v=20261008-conversion">
+<link rel="stylesheet" href="/css/conversion.css?v=20261008">
 </head>
 <body>
 <header class="header">
@@ -41,7 +42,7 @@
       <a href="/a-propos">À propos</a>
       <a href="/contact">Contact</a>
     </nav>
-    <a href="/contact" class="btn btn-primary header-btn">Parler de mon projet</a>
+    <a href="/contact" class="btn btn-primary header-btn">Être recontacté</a>
   </div>
 </header>
 
@@ -84,7 +85,7 @@
         <h2>3. Gestion du consentement</h2>
         <p>Google Analytics 4 et Microsoft Clarity partagent la catégorie « Mesure d’audience ». OpenAI mesure les demandes de diagnostic enregistrées en lien avec les publicités ChatGPT. Aucun script Google Analytics, Clarity ou OpenAI n’est chargé avant votre accord pour la finalité concernée. « Accepter les cookies » autorise les deux catégories, « Refuser les cookies » refuse les deux catégories et « Personnaliser mes choix » permet de les choisir séparément, sans case précochée lors de la première visite. Ignorer ou fermer le bandeau ne vaut pas acceptation. Les choix antérieurs à l’ajout de GA4 sont redemandés. Le refus n’empêche aucune fonctionnalité du formulaire.</p>
         <p>Vous pouvez modifier ou retirer votre choix via « Gérer mes cookies ». Le retrait arrête le suivi pour l’outil concerné et supprime ses cookies accessibles, sans recharger la page. Les événements bloqués ne sont pas envoyés ultérieurement après une acceptation.</p>
-        <p>Le pixel OpenAI est limité à l’accueil et à la page de diagnostic gratuit, uniquement après votre consentement publicitaire. L’événement « lead_created » est envoyé après confirmation de l’enregistrement complet par le serveur. Il contient un identifiant technique stable de la demande pour éviter les doublons, sans valeur d’achat. Lorsque la correspondance avancée automatique est activée, des coordonnées, comme votre e-mail, peuvent être détectées, normalisées et transformées dans votre navigateur en empreintes hachées SHA-256, puis transmises à OpenAI avec les conversions publicitaires. Les coordonnées brutes ne sont pas transmises par cette fonctionnalité ; le hachage ne constitue pas une anonymisation. Le SDK peut conserver l’identifiant publicitaire « oppref » dans le cookie « __oppref » et transmettre l’origine de la page ainsi que l’heure de l’événement. Voir la <a href="https://developers.openai.com/ads/measurement-pixel" target="_blank" rel="noopener noreferrer">documentation du pixel OpenAI</a>.</p>
+        <p>Le pixel OpenAI est limité à l’accueil et à la page de diagnostic, uniquement après votre consentement publicitaire. L’événement « lead_created » est envoyé après confirmation de l’enregistrement complet par le serveur. Il contient un identifiant technique stable de la demande pour éviter les doublons, sans valeur d’achat. Lorsque la correspondance avancée automatique est activée, des coordonnées, comme votre e-mail, peuvent être détectées, normalisées et transformées dans votre navigateur en empreintes hachées SHA-256, puis transmises à OpenAI avec les conversions publicitaires. Les coordonnées brutes ne sont pas transmises par cette fonctionnalité ; le hachage ne constitue pas une anonymisation. Le SDK peut conserver l’identifiant publicitaire « oppref » dans le cookie « __oppref » et transmettre l’origine de la page ainsi que l’heure de l’événement. Voir la <a href="https://developers.openai.com/ads/measurement-pixel" target="_blank" rel="noopener noreferrer">documentation du pixel OpenAI</a>.</p>
       </section>
 
       <section class="legal-section" id="conservation">
@@ -123,6 +124,7 @@
       </div>
       <nav class="footer-group" aria-label="Navigation footer">
         <strong>Navigation</strong>
+        <a href="/audit-google-business">Audit Google Business</a>
         <a href="/">Accueil</a>
         <a href="/services">Services</a>
         <a href="/optimisation-google-business">Fiche Google Business</a>
@@ -130,6 +132,7 @@
         <a href="/a-propos">À propos</a>
         <a href="/contact">Contact</a>
       </nav>
+      <nav class="footer-group" aria-label="Par métier"><strong>Par métier</strong><a href="/site-internet-electricien">Électricien</a></nav>
       <nav class="footer-group" aria-label="Informations footer">
         <strong>Informations</strong>
         <a href="/mentions-legales">Mentions légales</a>
@@ -147,8 +150,9 @@
   </div>
 </footer>
 <script src="js/analytics.js?v=20260914-consent"></script>
-<script src="/js/ga4.js?v=20261008-ga4-v1"></script>
-<script src="js/cookies.js?v=20261008-ga4-v1"></script>
-<script src="/js/site-navigation.js" defer></script>
+<script src="/js/ga4.js?v=20261008-conversion"></script>
+<script src="js/cookies.js?v=20261008-conversion"></script>
+<script src="/js/site-navigation.js?v=20261008-conversion" defer></script>
+<script src="/js/conversion.js?v=20261008" defer></script>
 </body>
 </html>

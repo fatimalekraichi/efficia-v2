@@ -95,7 +95,7 @@ test("aucune ancienne promesse chiffrée contradictoire ne subsiste dans les con
 test("l’accueil relie clairement la carte, l’aperçu, la FAQ et le CTA final à la page Audit", async () => {
   const html = await read("optimisation-google-business.html");
   const links = html.match(/href="\/audit-google-business"/g) || [];
-  assert.equal(links.length, 6, "les six points de maillage visibles doivent rester présents");
+  assert.equal(links.length, 7, "les six liens existants et le nouveau lien du footer restent présents");
   assert.match(html, /href="\/achat\?offre=audit" class="btn btn-secondary price-btn">Je veux mon audit<\/a>/);
   assert.match(html, /href="\/audit-google-business" class="price-detail-link">Découvrir l’audit en détail<\/a>/);
   assert.match(html, /href="\/audit-google-business">Découvrir le contenu complet de l’audit<\/a>/);
@@ -166,13 +166,13 @@ test("le comparatif et les CTA ne répètent pas les mentions commerciales", asy
   const html = await read("audit-google-business.html");
   const body = html.match(/<body>([\s\S]*?)<\/body>/)?.[1] || "";
   const comparison = body.match(/<div class="audit-comparison-grid">([\s\S]*?)<\/div>\s*<\/div>\s*<\/section>/)?.[1] || "";
-  assert.equal((comparison.match(/Diagnostic gratuit/g) || []).length, 1);
+  assert.equal((comparison.match(/Diagnostic/g) || []).length, 1);
   assert.doesNotMatch(comparison, />Gratuit<\/strong>/);
   assert.doesNotMatch(body, /Commander mon audit/);
   assert.equal((body.match(/>Je veux mon audit<\/a>/g) || []).length, 4);
-  assert.equal((body.match(/href="\/achat\?offre=audit"/g) || []).length, 5);
-  assert.equal((body.match(/class="audit-secondary-link">Commencer par le diagnostic gratuit<\/a>/g) || []).length, 2);
-  assert.doesNotMatch(body, /class="btn btn-secondary">Commencer par le diagnostic gratuit/);
+  assert.equal((body.match(/href="\/achat\?offre=audit"/g) || []).length, 4);
+  assert.equal((body.match(/class="audit-secondary-link">Commencer par le diagnostic<\/a>/g) || []).length, 2);
+  assert.doesNotMatch(body, /class="btn btn-secondary">Commencer par le diagnostic/);
 });
 
 test("aucun composant initialement aria-hidden ne contient de contrôle sans inert", async () => {

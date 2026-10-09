@@ -35,14 +35,12 @@
     banner.innerHTML = `
       <div class="cookie-consent__inner">
         <div>
-          <strong>Vos préférences de confidentialité</strong>
-          <p>Avec votre accord, Google Analytics 4 et Clarity mesurent l’audience et les interactions pour améliorer le site. La mesure publicitaire OpenAI fait l’objet d’un choix séparé.</p>
-          <p>En cliquant sur le bouton « ACCEPTER LES COOKIES », vous acceptez notre <a href="/politique-cookies">Politique relative aux cookies</a>.</p>
+          <p>Nous mesurons la fréquentation du site pour l’améliorer. Vous choisissez. <a href="/politique-cookies">En savoir plus</a></p>
         </div>
         <div class="cookie-consent__actions">
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Accepter les cookies</button>
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-refuse>Refuser les cookies</button>
-          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-customize>Personnaliser<br>mes choix</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-accept>Accepter</button>
+          <button class="cookie-btn cookie-btn--choice" type="button" data-cookie-refuse>Refuser</button>
+          <button class="cookie-btn cookie-btn--customize" type="button" data-cookie-customize>Personnaliser</button>
         </div>
       </div>
     `;

@@ -1,0 +1,32 @@
+{
+  "url": "https://525f9666.efficiadigital.pages.dev",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "bytes": 21622
+    },
+    {
+      "path": "/site-internet-electricien",
+      "status": 200,
+      "bytes": 11306
+    },
+    {
+      "path": "/optimisation-google-business",
+      "status": 200,
+      "bytes": 46122
+    },
+    {
+      "path": "/diagnostic-gratuit",
+      "status": 200,
+      "bytes": 9973,
+      "gratuit": true
+    },
+    {
+      "path": "/js/conversion.js",
+      "status": 200,
+      "bytes": 4095,
+      "identique": true
+    }
+  ]
+}
