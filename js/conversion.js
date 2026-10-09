@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const WHATSAPP_URL = 'https://wa.me/32478020842?text=Bonjour%20Efficia%20Digital%2C%20j%E2%80%99aimerais%20avoir%20des%20informations';
-  const GBP_URL = '';
+  const GBP_URL = "https://www.google.com/maps?cid=1527372809870091257";
   const path = location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
   const nav = document.querySelector('.header .nav');
   const whatsapp = (location, icon = false) => {
@@ -39,13 +39,6 @@
   });
   if (GBP_URL) {
     document.querySelectorAll('[data-gbp-link]').forEach(link => { link.href = GBP_URL; link.hidden = false; });
-    document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
-      const data = JSON.parse(script.textContent);
-      if (data['@type'] === 'ProfessionalService') {
-        data.sameAs = [...new Set([...(data.sameAs || []), GBP_URL])];
-        script.textContent = JSON.stringify(data);
-      }
-    });
   }
   if (path === '/contact') return;
   const bar = document.createElement('aside'); bar.className = 'mobile-contact-bar';
