@@ -1,0 +1,166 @@
+[
+  {
+    "path": "/",
+    "size": [
+      375,
+      667
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 480,
+    "overflow": 0
+  },
+  {
+    "path": "/site-internet-electricien",
+    "size": [
+      375,
+      667
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 480,
+    "overflow": 0
+  },
+  {
+    "path": "/optimisation-google-business",
+    "size": [
+      375,
+      667
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "overflow": 0
+  },
+  {
+    "path": "/contact",
+    "size": [
+      375,
+      667
+    ],
+    "barPresent": false,
+    "overflow": 0
+  },
+  {
+    "path": "/",
+    "size": [
+      390,
+      844
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 480,
+    "overflow": 0
+  },
+  {
+    "path": "/site-internet-electricien",
+    "size": [
+      390,
+      844
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 480,
+    "overflow": 0
+  },
+  {
+    "path": "/optimisation-google-business",
+    "size": [
+      390,
+      844
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "overflow": 0
+  },
+  {
+    "path": "/contact",
+    "size": [
+      390,
+      844
+    ],
+    "barPresent": false,
+    "overflow": 0
+  },
+  {
+    "path": "/",
+    "size": [
+      768,
+      1024
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 460.75,
+    "overflow": 0
+  },
+  {
+    "path": "/site-internet-electricien",
+    "size": [
+      768,
+      1024
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 460.75,
+    "overflow": 0
+  },
+  {
+    "path": "/optimisation-google-business",
+    "size": [
+      768,
+      1024
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "overflow": 0
+  },
+  {
+    "path": "/contact",
+    "size": [
+      768,
+      1024
+    ],
+    "barPresent": false,
+    "overflow": 0
+  },
+  {
+    "path": "/",
+    "size": [
+      1280,
+      800
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 763.25,
+    "overflow": 0
+  },
+  {
+    "path": "/site-internet-electricien",
+    "size": [
+      1280,
+      800
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "image": 763.25,
+    "overflow": 0
+  },
+  {
+    "path": "/optimisation-google-business",
+    "size": [
+      1280,
+      800
+    ],
+    "barPresent": true,
+    "barVisible": false,
+    "overflow": 0
+  },
+  {
+    "path": "/contact",
+    "size": [
+      1280,
+      800
+    ],
+    "barPresent": false,
+    "overflow": 0
+  }
+]
