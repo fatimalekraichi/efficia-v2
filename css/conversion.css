@@ -1,7 +1,7 @@
 /* Compléments conversion, sans fusion des feuilles existantes. */
 :root { --surface: var(--soft); }
 .mobile-contact-bar, .mobile-menu-contact { display: none; }
-.header .nav a, .footer-group a, .site-text-link, .service-card .site-text-link, .audit-secondary-link { display: inline-block; min-height: 44px; padding-block: 11px; }
+.header .nav a, .site-text-link, .service-card .site-text-link, .audit-secondary-link { display: inline-block; min-height: 44px; padding-block: 11px; }
 .footer-social-link { min-width: 44px; min-height: 44px; }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
 .cookie-consent:not(.is-visible) { visibility: hidden; }
@@ -14,6 +14,9 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px soli
  .header .brand img { width: 150px; }
 }
 @media (max-width: 767px) {
+ .footer a:not(.footer-social-link) { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding-block: 0; }
+ .footer-group, .footer-group ul, .footer-group ol { gap: 0; }
+ .footer-group li { margin-block: 0; }
  body.has-mobile-contact { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
  .mobile-menu-contact { display: grid; gap: 8px; margin-top: 12px; }
  .header .nav .btn-primary { color: var(--white); }
@@ -59,7 +62,6 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px soli
  .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
 }
 .tap-link, .price-detail-link, .faq-detail-link a, .contact-direct a, .site-contact-links a, .breadcrumb a { display: inline-block; min-width: 44px; min-height: 44px; padding-block: 11px; }
-.footer a { min-width: 44px; min-height: 44px; }
 .site-contact-grid > * { min-width: 0; }
 .contact-direct dl { grid-template-columns: auto minmax(0, 1fr); }
 .contact-direct dd { overflow-wrap: anywhere; }
