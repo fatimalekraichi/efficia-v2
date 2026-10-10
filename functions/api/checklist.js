@@ -3,6 +3,39 @@ const ERROR = 'Une erreur est survenue. Merci de réessayer dans quelques instan
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 const fail = (status, error = ERROR) => json({ success: false, error }, status);
 const hash = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), byte => byte.toString(16).padStart(2, '0')).join('');
+async function errorFields(response) {
+  const reader = response?.body?.getReader();
+  if (!reader) return [];
+  let timer;
+  try {
+    const body = await Promise.race([
+      (async () => {
+        const chunks = []; let size = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.length;
+          if (size > 16384) throw new Error('large');
+          chunks.push(value);
+        }
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+        return JSON.parse(new TextDecoder().decode(bytes));
+      })(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 1500); }),
+    ]);
+    if (!body?.errors || typeof body.errors !== 'object' || Array.isArray(body.errors)) return [];
+    // Never log arbitrary keys or messages: either can contain personal data.
+    const fields = new Set();
+    for (const field of Object.keys(body.errors)) {
+      if (['email', 'fields', 'fields.name', 'groups'].includes(field)) fields.add(field);
+      else if (/^groups\.\d+$/.test(field)) fields.add('groups');
+      else fields.add('other');
+    }
+    return [...fields].sort();
+  } catch { return []; }
+  finally { clearTimeout(timer); void reader.cancel().catch(() => {}); }
+}
 async function readBody(request) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error('body');
@@ -48,7 +81,7 @@ export async function onRequestPost({ request, env }) {
       ON CONFLICT(request_id) DO NOTHING`).bind(id, digest, rateKey, now, rateKey, now - 3600).run();
     if (inserted.meta?.changes !== 1) return fail(429, 'Plusieurs demandes ont déjà été effectuées. Patientez ou contactez-nous par e-mail ou WhatsApp.');
   } catch { return fail(503); }
-  let response;
+  let response; let transport = null;
   try {
     // POST is additive: omitted fields/groups survive. Never send status or resubscribe.
     response = await fetch('https://connect.mailerlite.com/api/subscribers', {
@@ -57,10 +90,14 @@ export async function onRequestPost({ request, env }) {
       body: JSON.stringify({ email, fields: { name: firstName }, groups: [group.groupId] }),
       signal: AbortSignal.timeout(15000),
     });
-  } catch { response = null; }
+  } catch (error) {
+    response = null;
+    transport = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'connection_failed';
+  }
   const sent = response?.status === 200 || response?.status === 201;
-  // As in subscribe.js, log only the numeric status, never upstream body/errors.
-  if (!sent) console.error('Checklist MailerLite request failed', { status: response?.status || null });
+  if (!sent) console.error('Checklist MailerLite request failed', {
+    status: response?.status || null, fields: await errorFields(response), transport,
+  });
   const state = sent ? 'sent' : response && response.status >= 400 && response.status < 500 ? 'failed' : 'uncertain';
   try { await db.prepare('UPDATE site_request_delivery SET status = ? WHERE request_id = ?').bind(state, id).run(); }
   catch { /* A receipt failure never triggers another upstream call. */ }

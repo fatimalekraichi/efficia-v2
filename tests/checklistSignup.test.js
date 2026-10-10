@@ -109,6 +109,49 @@ test('protocol checks, malformed/oversized JSON and unavailable D1 never call up
   assert.equal(onRequestGet().status, 405); assert.equal(onRequestOptions().status, 405);
   assert.equal(mock.mock.callCount(), 0);
 });
+test('MailerLite diagnostic logs only HTTP status, allowlisted field names and safe transport category', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const cases = [
+    [422, JSON.stringify({ message: valid().email, errors: {
+      email: [valid().email], 'fields.name': [valid().firstName], 'groups.0': ['test-only-secret'],
+      [valid().email]: ['private'],
+    } }), ['email', 'fields.name', 'groups', 'other']],
+    [401, JSON.stringify({ message: 'test-only-secret' }), []],
+    [403, '<html>private@example.test</html>', []],
+    [429, '{}', []],
+    [500, JSON.stringify({ errors: { email: ['x'.repeat(17000)] } }), []],
+  ];
+  for (const [status, body, fields] of cases) {
+    const mock = t.mock.method(globalThis, 'fetch', async () => new Response(body, { status }));
+    const { env, sql } = environment(preview);
+    assert.equal((await onRequestPost({ request: request(valid(), preview), env })).status, 502);
+    assert.deepEqual(logs.at(-1), ['Checklist MailerLite request failed', { status, fields, transport: null }]);
+    mock.mock.restore(); sql.close();
+  }
+  for (const [name, transport] of [['TimeoutError', 'timeout'], ['AbortError', 'timeout'], [valid().email, 'connection_failed']]) {
+    const mock = t.mock.method(globalThis, 'fetch', async () => { throw Object.assign(Error('test-only-secret'), { name }); });
+    const { env, sql } = environment(preview);
+    assert.equal((await onRequestPost({ request: request(valid(), preview), env })).status, 502);
+    assert.deepEqual(logs.at(-1)[1], { status: null, fields: [], transport });
+    mock.mock.restore(); sql.close();
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /private@example|Prénom|test-only-secret/);
+});
+test('unresponsive MailerLite error body is cancelled and cannot prevent the generic 502', async t => {
+  let cancelled = false;
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('{')); },
+    cancel() { cancelled = true; },
+  }), { status: 422 }));
+  const { env, sql } = environment(preview);
+  assert.equal((await onRequestPost({ request: request(valid(), preview), env })).status, 502);
+  assert.equal(cancelled, true);
+  assert.deepEqual(logs[0][1], { status: 422, fields: [], transport: null });
+  sql.close();
+});
 test('public placements share one form, have a no-JS fallback and do not expose PDF before success', () => {
   const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
   for (const name of ['checklist-site-internet.html', 'refonte-site-internet.html']) {
