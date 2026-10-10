@@ -177,6 +177,28 @@ test('503 diagnostics distinguish invalid configuration from database failure wi
   assert.doesNotMatch(JSON.stringify(logs), /private@example|Prénom|test-only-secret/);
   sql.close();
 });
+test('email rejection classification emits only fixed categories, never upstream messages', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  for (const [message, category] of [
+    ['Subscriber was deleted', 'deleted_contact'],
+    ['Subscriber limit reached', 'subscriber_limit'],
+    ['Email is blocked', 'blocked_contact'],
+    ['Subscriber is unsubscribed', 'unsubscribed_contact'],
+    ['Email already exists', 'already_exists'],
+    ['The email must be a valid email address.', 'invalid_email'],
+    ['Unknown rejection', 'unclassified'],
+  ]) {
+    const mock = t.mock.method(globalThis, 'fetch', async () => Response.json({ errors: {
+      email: [message + ' ' + valid().email + ' ' + valid().firstName + ' test-only-secret'],
+    } }, { status: 422 }));
+    const { env, sql } = environment(preview);
+    assert.equal((await onRequestPost({ request: request(valid(), preview), env })).status, 502);
+    assert.deepEqual(logs.at(-2), ['Checklist MailerLite validation category', { categories: [category] }]);
+    mock.mock.restore(); sql.close();
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /private@example|Prénom|test-only-secret/);
+});
 test('public placements share one form, have a no-JS fallback and do not expose PDF before success', () => {
   const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
   for (const name of ['checklist-site-internet.html', 'refonte-site-internet.html']) {

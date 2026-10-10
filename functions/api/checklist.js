@@ -32,6 +32,21 @@ async function errorFields(response) {
       else if (/^groups\.\d+$/.test(field)) fields.add('groups');
       else fields.add('other');
     }
+    if (Object.hasOwn(body.errors, 'email')) {
+      // Fixed categories only: never emit the upstream message or any of its values.
+      const messages = Array.isArray(body.errors.email) ? body.errors.email : [body.errors.email];
+      const categories = new Set(messages.map(message => {
+        if (typeof message !== 'string') return 'unclassified';
+        if (/forgotten|deleted|forget subscriber/i.test(message)) return 'deleted_contact';
+        if (/subscriber.{0,40}limit|limit.{0,40}subscriber/i.test(message)) return 'subscriber_limit';
+        if (/bounced|suppressed|blacklisted|blocked|banned/i.test(message)) return 'blocked_contact';
+        if (/unsubscribed/i.test(message)) return 'unsubscribed_contact';
+        if (/already.{0,20}(taken|exists)/i.test(message)) return 'already_exists';
+        if (/valid email|valid e-mail|invalid email|invalid e-mail/i.test(message)) return 'invalid_email';
+        return 'unclassified';
+      }));
+      console.error('Checklist MailerLite validation category', { categories: [...categories].sort() });
+    }
     return [...fields].sort();
   } catch { return []; }
   finally { clearTimeout(timer); void reader.cancel().catch(() => {}); }
