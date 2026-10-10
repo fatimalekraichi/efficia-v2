@@ -127,3 +127,20 @@ test('public placements share one form, have a no-JS fallback and do not expose 
   assert.match(read('_headers'), /\/assets\/documents\/votre-site-en-10-points.pdf\s+X-Robots-Tag: noindex/);
   assert.match(read('sitemap.xml'), /https:\/\/efficiadigital.com\/checklist-site-internet/);
 });
+
+
+test('refonte hero offers the checklist anchor after its existing actions, with a scoped FAQ spacing fix', () => {
+  const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
+  const html = read('refonte-site-internet.html');
+  const hero = html.match(/<section class="site-hero">[\s\S]*?<\/section>/)[0];
+  assert.match(hero, /class="site-text-link site-checklist-link" href="#checklist" data-track-location="hero-checklist">Pas encore sûr \? Recevez la checklist gratuite « Votre site en 10 points » ↓<\/a>/);
+  assert.ok(hero.indexOf('href="#checklist"') > hero.indexOf('href="#methode"'));
+  assert.equal((html.match(/id="checklist"/g) || []).length, 1);
+  assert.match(html, /<section class="section site-checklist" id="checklist">/);
+  assert.match(html, /class="section faq-section faq-before-checklist" id="faq"/);
+  assert.match(read('css/checklist.css'), /\.site-page \.faq-before-checklist \{ padding-bottom: 0; \}/);
+  assert.match(read('checklist-site-internet.html'), /class="site-page checklist-page"/);
+  const styles = read('css/global.css');
+  assert.match(styles, /scroll-behavior: smooth/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*scroll-behavior: auto/);
+});
