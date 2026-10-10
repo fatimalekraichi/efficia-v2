@@ -3,6 +3,7 @@ const PREVIEW_HOST = "efficiadigital.pages.dev";
 
 const MAILERLITE_GROUP_VARIABLES = {
   production: {
+    checklist: "MAILERLITE_PRODUCTION_CHECKLIST_GROUP_ID",
     diagnostic: "MAILERLITE_PRODUCTION_DIAGNOSTIC_GROUP_ID",
     audit: {
       prospect: "MAILERLITE_PRODUCTION_AUDIT_PROSPECT_GROUP_ID",
@@ -18,6 +19,7 @@ const MAILERLITE_GROUP_VARIABLES = {
     },
   },
   preview: {
+    checklist: "MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID",
     diagnostic: "MAILERLITE_PREVIEW_DIAGNOSTIC_GROUP_ID",
     audit: {
       prospect: "MAILERLITE_PREVIEW_AUDIT_PROSPECT_GROUP_ID",
@@ -91,6 +93,7 @@ function groupVariable(environment, { purpose, productCode, role }) {
   const scoped = MAILERLITE_GROUP_VARIABLES[environment];
   if (!scoped) return "";
   if (purpose === "diagnostic") return scoped.diagnostic;
+  if (purpose === "checklist") return scoped.checklist;
   return scoped[productCode]?.[role] || "";
 }
 

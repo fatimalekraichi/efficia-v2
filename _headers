@@ -57,3 +57,11 @@
 /contact*
   Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js https://bzrcdn.openai.com; connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://bzr.openai.com https://bzrcdn.openai.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://bzr.openai.com data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   Referrer-Policy: strict-origin
+
+
+/checklist-site-internet*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' https://*.clarity.ms https://static.cloudflareinsights.com/beacon.min.js https://bzrcdn.openai.com; connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://bzr.openai.com https://bzrcdn.openai.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://bzr.openai.com data: https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Referrer-Policy: strict-origin
+
+/assets/documents/votre-site-en-10-points.pdf
+  X-Robots-Tag: noindex

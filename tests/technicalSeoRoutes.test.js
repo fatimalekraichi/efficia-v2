@@ -19,6 +19,7 @@ const publicPages = new Map([
   ["cgv.html", "https://efficiadigital.com/cgv"],
   ["politique-cookies.html", "https://efficiadigital.com/politique-cookies"],
   ["site-internet-electricien.html", "https://efficiadigital.com/site-internet-electricien"],
+  ["checklist-site-internet.html", "https://efficiadigital.com/checklist-site-internet"],
 ]);
 
 const sitemapPages = new Map(

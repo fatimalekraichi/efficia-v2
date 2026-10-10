@@ -15,6 +15,7 @@
     "test:score-efficia": "node --test tests/scoreEfficiaHistorical.test.js",
     "test:privacy": "node --test tests/privacyAnalytics.test.js",
     "test:public-diagnostic": "node --test tests/publicDiagnosticRequest.test.js",
-    "test:environment-isolation": "node --test tests/environmentIsolation.test.js"
+    "test:environment-isolation": "node --test tests/environmentIsolation.test.js",
+    "test:checklist": "node --test tests/checklistSignup.test.js"
   }
 }

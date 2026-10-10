@@ -123,3 +123,16 @@ test('contact topics are finite values; lead remains deduplicated and consent ga
  h.api.setConsent(false); h.api.trackFormSuccess('contact', 'denied', 'site');
  assert.equal(h.events().length, 0);
 });
+
+test('checklist_signup is consent gated, not replayed, contains no input and is disabled in preview', () => {
+  const h = harness('https://efficiadigital.com/checklist-site-internet?email=private@example.test#secret');
+  assert.equal(h.api.trackChecklistSignup(), false);
+  h.api.setConsent(true); h.scripts[0].listeners.load();
+  assert.equal(h.events().filter(e => e[1] === 'checklist_signup').length, 0);
+  assert.equal(h.api.trackChecklistSignup({ email: 'private@example.test' }), true);
+  assert.equal(h.events().filter(e => e[1] === 'checklist_signup').length, 1);
+  assert.ok(!/private|secret|email/.test(JSON.stringify(h.events())));
+  h.api.setConsent(false); assert.equal(h.api.trackChecklistSignup(), false);
+  const p = harness('https://checklist.efficiadigital.pages.dev/checklist-site-internet');
+  p.api.setConsent(true); assert.equal(p.api.trackChecklistSignup(), false); assert.equal(p.scripts.length, 0);
+});

@@ -12,6 +12,7 @@
     ["/services", "Services"], ["/a-propos", "À propos"], ["/contact", "Contact"],
     ["/audit-google-business", "Audit Google Business"],
     ["/refonte-site-internet", "Création / refonte de site"],
+    ["/checklist-site-internet", "Checklist gratuite : votre site en 10 points"],
     ["/achat", "Commande"], ["/paiement-reussi", "Confirmation du paiement"],
     ["/mentions-legales", "Mentions légales"], ["/cgv", "CGV"],
     ["/politique-confidentialite", "Confidentialité"],
@@ -119,5 +120,5 @@
       emit("contact_cta_click", { link_location: location });
     }
   });
-  window.efficiaGA4 = Object.freeze({ setConsent, trackFormSuccess });
+  window.efficiaGA4 = Object.freeze({ setConsent, trackFormSuccess, trackChecklistSignup: () => emit("checklist_signup") });
 })();

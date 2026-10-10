@@ -250,3 +250,13 @@ test("resolvePublicSite ignore les en-têtes Origin et utilise la configuration 
   assert.equal(rootResult.ok, true);
   assert.equal(rootResult.origin, rootPagesOrigin);
 });
+
+test('le sélecteur checklist isole ses groupes et refuse absence, collision et identifiant invalide', () => {
+  const selector = { purpose: 'checklist' };
+  const env = { MAILERLITE_PRODUCTION_CHECKLIST_GROUP_ID: 'production-checklist', MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: 'preview-checklist' };
+  assert.equal(resolveMailerLiteGroupId(env, 'production', selector).groupId, 'production-checklist');
+  assert.equal(resolveMailerLiteGroupId(env, 'preview', selector).groupId, 'preview-checklist');
+  assert.equal(resolveMailerLiteGroupId({ ...env, MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: '' }, 'preview', selector).ok, false);
+  assert.equal(resolveMailerLiteGroupId({ ...env, MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: 'production-checklist' }, 'preview', selector).error, 'MAILERLITE_GROUP_ENVIRONMENT_COLLISION');
+  assert.equal(resolveMailerLiteGroupId({ ...env, MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: 'invalid / group' }, 'preview', selector).ok, false);
+});
