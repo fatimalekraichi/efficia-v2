@@ -64,9 +64,21 @@ export async function onRequestPost({ request, env }) {
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400, 'Indiquez une adresse e-mail valide.');
   if (input.consent !== true) return fail(400, 'Votre accord est nécessaire pour recevoir la checklist et nos conseils par e-mail.');
   const site = resolvePublicSite(request, env);
-  if (!site.ok) return fail(site.status === 403 ? 403 : 503);
+  if (!site.ok) {
+    console.error('Checklist configuration failed', { reason: site.error, variable: 'SITE_URL' });
+    return fail(site.status === 403 ? 403 : 503);
+  }
   const group = resolveMailerLiteGroupId(env, site.environment, { purpose: 'checklist' });
-  if (!group.ok || !env.MAILERLITE_API_KEY || !env.ORDERS_DB) return fail(503);
+  if (!group.ok) {
+    console.error('Checklist configuration failed', { reason: group.error, variable: group.variable });
+    return fail(503);
+  }
+  if (!env.MAILERLITE_API_KEY || !env.ORDERS_DB) {
+    console.error('Checklist configuration failed', {
+      reason: 'BINDING_NOT_CONFIGURED', variable: !env.MAILERLITE_API_KEY ? 'MAILERLITE_API_KEY' : 'ORDERS_DB',
+    });
+    return fail(503);
+  }
   const db = env.ORDERS_DB;
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
@@ -80,7 +92,10 @@ export async function onRequestPost({ request, env }) {
       SELECT ?, ?, ?, 'sending', ? WHERE (SELECT COUNT(*) FROM site_request_delivery WHERE rate_key = ? AND created_at > ?) < 5
       ON CONFLICT(request_id) DO NOTHING`).bind(id, digest, rateKey, now, rateKey, now - 3600).run();
     if (inserted.meta?.changes !== 1) return fail(429, 'Plusieurs demandes ont déjà été effectuées. Patientez ou contactez-nous par e-mail ou WhatsApp.');
-  } catch { return fail(503); }
+  } catch {
+    console.error('Checklist database failed', { reason: 'REQUEST_RESERVATION_FAILED' });
+    return fail(503);
+  }
   let response; let transport = null;
   try {
     // POST is additive: omitted fields/groups survive. Never send status or resubscribe.

@@ -152,6 +152,31 @@ test('unresponsive MailerLite error body is cancelled and cannot prevent the gen
   assert.deepEqual(logs[0][1], { status: 422, fields: [], transport: null });
   sql.close();
 });
+test('503 diagnostics distinguish invalid configuration from database failure without leaking values', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const upstream = t.mock.method(globalThis, 'fetch', async () => { throw Error('unexpected'); });
+  for (const [patch, reason, variable] of [
+    [{ SITE_URL: valid().email }, 'SITE_URL_INVALID', 'SITE_URL'],
+    [{ MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: valid().email }, 'MAILERLITE_GROUP_INVALID', 'MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID'],
+    [{ MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: '' }, 'MAILERLITE_GROUP_NOT_CONFIGURED', 'MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID'],
+    [{ MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID: 'prod-checklist' }, 'MAILERLITE_GROUP_ENVIRONMENT_COLLISION', 'MAILERLITE_PREVIEW_CHECKLIST_GROUP_ID'],
+    [{ MAILERLITE_API_KEY: '' }, 'BINDING_NOT_CONFIGURED', 'MAILERLITE_API_KEY'],
+    [{ ORDERS_DB: null }, 'BINDING_NOT_CONFIGURED', 'ORDERS_DB'],
+  ]) {
+    const { env, sql } = environment(preview);
+    assert.equal((await onRequestPost({ request: request(valid(), preview), env: { ...env, ...patch } })).status, 503);
+    assert.deepEqual(logs.at(-1), ['Checklist configuration failed', { reason, variable }]);
+    sql.close();
+  }
+  const { env, sql } = environment(preview);
+  env.ORDERS_DB.prepare = () => { throw Error(valid().email + 'test-only-secret'); };
+  assert.equal((await onRequestPost({ request: request(valid(), preview), env })).status, 503);
+  assert.deepEqual(logs.at(-1), ['Checklist database failed', { reason: 'REQUEST_RESERVATION_FAILED' }]);
+  assert.equal(upstream.mock.callCount(), 0);
+  assert.doesNotMatch(JSON.stringify(logs), /private@example|Prénom|test-only-secret/);
+  sql.close();
+});
 test('public placements share one form, have a no-JS fallback and do not expose PDF before success', () => {
   const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
   for (const name of ['checklist-site-internet.html', 'refonte-site-internet.html']) {
