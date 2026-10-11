@@ -388,3 +388,11 @@ test("un panel électricien conserve exactement 0, 1, 2 ou 3 concurrents qualifi
     globalThis.fetch = originalFetch;
   }
 });
+
+test('rang explicite et comparabilité survivent à l’exclusion de la cible et à la qualification',async()=>{
+ const restore=mockFetchOnce({data:[[{name:'Cible',place_id:'target'},{name:'Hors métier',place_id:'other',category:'Restaurant'},{name:'Concurrent',place_id:'peer'}]]});
+ try{
+   const r=await collectCompetitors({activite:'Électricien',ville:'Metz',placeIdCible:'target',apiKey:'test'});
+   assert.equal(r.concurrents[0].rank,3);assert.equal(r.concurrents[0].comparable,true);assert.equal(r.concurrents[0].positionKind,'observed');
+ }finally{restore();}
+});

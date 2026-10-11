@@ -115,7 +115,6 @@ test('priorité gratuite complète : première étape limitée, résultat sans p
 test('aucune identité de dossier codée en dur et branche branchée dans le vrai renderer',()=>{
  const changed=benchmark+selection+block('function narrationPrioriteV3(', 'function rendrePrioriteV3Principale(');
  assert.doesNotMatch(changed,/jd\s*b[aâ]timent|virton|[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}/i);
- assert.match(source,/const verdictConfiance = verdictConfianceDiagnostic\(\)/);
- assert.match(source,/verdictConfiance \? escapeHtml\(verdictConfiance.texte\)/);
- assert.match(source,/verdictConfiance\?\.titre \|\| phraseScore.texte/);
+ assert.match(source,/EfficiaDiagnosticReport.renderDiagnostic/);
+ assert.match(source,/modeleDiagnosticAvecPreuves/);
 });

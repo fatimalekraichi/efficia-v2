@@ -19,7 +19,7 @@ const route = readFileSync(new URL("../functions/api/admin/free-diagnostic-colle
 const CHROME = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 async function runQualifiedCompetitorsBrowserSmoke(harnessSource) {
-  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
+  let source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
     .replace(
       '<script src="/js/score-efficia-core.js?v=1"></script>',
       `<script>${readFileSync(new URL("../js/score-efficia-core.js", import.meta.url), "utf8")}</script>`,
@@ -32,6 +32,7 @@ async function runQualifiedCompetitorsBrowserSmoke(harnessSource) {
       '<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>',
       `<script>${readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8")}</script>`,
     );
+  for(const name of ['diagnostic-tone-config','diagnostic-evidence','diagnostic-report'])source=source.replace(`<script src="/js/${name}.js?v=1"></script>`,()=>`<script>${readFileSync(new URL(`../js/${name}.js`,import.meta.url),'utf8')}</script>`);
   const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
   assert.ok(source.includes(marker), "point d'instrumentation du renderer absent");
   const fetchFixture = `<script>
@@ -157,7 +158,7 @@ test("un panel qualifié et versionné insuffisant ne calcule ni moyenne, ni con
   assert.equal(restoredConfidence.points, null);
   assert.equal(restoredConfidence.evidence.averageRating, null);
   assert.equal(restoredConfidence.evidence.averageReviews, null);
-  assert.match(html, /Panel concurrentiel insuffisant pour comparaison\./);
+  assert.match(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8'), /Comparaison indicative/);
   assert.match(html, /concurrents\.length !== 3/);
   assert.match(route, /minimumCompetitors: 3/);
 });
@@ -388,7 +389,7 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
     assert.equal(scenario.averageReviews, null);
     assert.equal(scenario.hasComparison, false);
     assert.equal(scenario.hasComparableBenchmark, false);
-    assert.match(scenario.reportText, /Panel concurrentiel insuffisant pour comparaison\./u);
+    assert.match(scenario.reportText, new RegExp(`Comparaison indicative fondée sur ${count} fiches sélectionnées`));
   }
   assert.equal(result.three.title, "Top 3 concurrents qualifiés sur la recherche testée");
   assert.match(result.three.status, /3 concurrents qualifiés : comparaison concurrentielle disponible\./u);
@@ -400,7 +401,7 @@ test("smoke UI/PDF : un panel électrique insuffisant ne rend ni benchmark ni co
   assert.equal(result.historical.averageReviews, null);
   assert.equal(result.historical.hasComparison, false);
   assert.equal(result.historical.hasComparableBenchmark, false);
-  assert.match(result.historical.reportText, /Panel concurrentiel à actualiser — relance nécessaire\./u);
+  assert.match(result.historical.reportText, /Comparaison indicative fondée sur 0 fiches sélectionnées/u);
   assert.doesNotMatch(result.historical.reportText, /Boulange \/ François|Camperplaats Houffalize|Recyparc d’Houffalize/u);
   assert.equal(result.pdfPages, 4);
   assert.equal(result.canvasCount, 4);

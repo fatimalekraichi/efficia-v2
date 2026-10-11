@@ -35,7 +35,7 @@ test("le sous-libellé Visibilité ne préfixe pas deux fois une position déjà
   assert.equal(context.libelle({ position: 5, requeteTestee: "" }), "5e position");
   assert.equal(context.libelle({ position: 0, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
   assert.equal(context.libelle({ position: null, requeteTestee: "Électricien Dudelange" }), "présence locale à confirmer");
-  assert.match(html, /\["PRÉSENCE GOOGLE", indicesV3\.visibilite, "sur la recherche testée à améliorer"\]/u);
+  assert.match(html, /'Position au test':model.profile.rank/u);
   assert.doesNotMatch(html, /position \$\{libellePositionRapport\(dIdent\)\}/u);
 });
 
@@ -55,7 +55,7 @@ test("la page 5 reprend exclusivement le compteur prioritaire canonique de la pa
     presentees: 3,
     restants: 0,
   });
-  assert.match(html, /compteursPrioritesPage5\(checklistV3\.counts\.ko, top3p\.length\)/u);
+  assert.match(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8'), /model.counts.ko\+model.counts.warn-model.priorities.length/);
   assert.doesNotMatch(html, /prioritesDistinctesRapport\(priorites, top3p\)/u);
   assert.doesNotMatch(html, /compterPrioritesRestantesRapport\(priorites, top3p\)/u);
 });
@@ -313,7 +313,7 @@ test("le module de finalisation chargé comme un script navigateur expose la vé
   assert.ok(html.indexOf('/js/questionnaire-finalization.js?v=7ee0654') < html.indexOf('isAddressVerificationComplete(reponseAdresse())'));
 });
 
-test("un clic PDF complet compose quatre pages et atteint pdf.save", async () => {
+test("un clic PDF complet compose trois pages et atteint pdf.save", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const preparationCode = sliceBetween(html, "function boutonsGenerationDiagnosticGratuit()", "/* ================= AUDIT EFFICIA PREMIUM");
   const downloadCode = sliceBetween(html, "async function telechargerPDF()", "</script>");
@@ -322,7 +322,7 @@ test("un clic PDF complet compose quatre pages et atteint pdf.save", async () =>
   let savedFilename = "";
   let savedDraft = 0;
   let finalizedSnapshot = 0;
-  const pages = Array.from({ length: 4 }, () => ({}));
+  const pages = Array.from({ length: 3 }, () => ({}));
   class FakePdf {
     constructor() {
       this.pageCount = 1;
@@ -344,6 +344,7 @@ test("un clic PDF complet compose quatre pages et atteint pdf.save", async () =>
       },
       querySelectorAll(selector) { return selector === "#rapport-contenu .page" ? pages : []; },
     },
+    validerEditorialDiagnostic: () => {}, // Real gate tested separately.
     questionnairePretPourFinalisation: () => true,
     assurerVersionAnalyseRapport: async () => true,
     sauvegardeBrouillonD1EnCours: false,
@@ -369,7 +370,7 @@ test("un clic PDF complet compose quatre pages et atteint pdf.save", async () =>
   vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 4);
+  assert.equal(canvasCalls, 3);
   assert.equal(savedFilename, "diagnostic-six-pages.pdf");
   assert.equal(savedDraft, 1);
   assert.equal(finalizedSnapshot, 1);
@@ -391,6 +392,7 @@ test("un élément restant bloque le PDF avant toute composition", async () => {
       },
       querySelectorAll: () => [],
     },
+    validerEditorialDiagnostic: () => {}, // Real gate tested separately.
     questionnairePretPourFinalisation: () => false,
     genererRapport: () => { composed += 1; return true; },
     statut: () => {},
@@ -421,7 +423,8 @@ test("les échecs de préparation, d’aperçu et de PDF sont visibles et réact
         },
         querySelectorAll(selector) { return selector === "#rapport-contenu .page" ? Array.from({ length: 6 }, () => ({})) : []; },
       },
-      questionnairePretPourFinalisation: () => true,
+      validerEditorialDiagnostic: () => {}, // Real gate tested separately.
+    questionnairePretPourFinalisation: () => true,
       assurerVersionAnalyseRapport: async () => true,
       sauvegardeBrouillonD1EnCours: false,
       enregistrerBrouillonD1: async () => true,

@@ -250,6 +250,13 @@ export function buildFreeDiagnosticCollectionState(analysis) {
         };
       })(),
       competitors: competitors.map((competitor) => ({
+        rank: numberOrNull(competitor?.rank),
+        positionKind: competitor?.positionKind || null,
+        comparable: typeof competitor?.comparable === 'boolean' ? competitor.comparable : null,
+        searchQuery: competitor?.searchQuery || business.searchQuery || null,
+        searchAnalyzedAt: competitor?.searchAnalyzedAt || analysis?.timestamps?.updatedAt || null,
+        actualSearchLocation: competitor?.actualSearchLocation || null,
+        rankEvidence: competitor?.rankEvidence || null,
         name: firstNonEmpty(competitor?.name),
         rating: numberOrNull(competitor?.rating),
         reviews: numberOrNull(competitor?.reviews),
