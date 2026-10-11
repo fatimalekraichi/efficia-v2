@@ -7,6 +7,7 @@ import { withDiagnosticCollectionLock } from '../functions/lib/diagnosticCollect
 function database() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0023_free_diagnostic_collection_locks.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0024_free_diagnostic_lock_releases.sql', import.meta.url), 'utf8'));
   return { sqlite, prepare(sql) { return { bind(...values) { return { async run() {
     return { success: true, meta: { changes: Number(sqlite.prepare(sql).run(...values).changes) } };
   } }; } }; } };
@@ -36,7 +37,7 @@ test('une exception libère le verrou sans relancer automatiquement le fournisse
 
 test('un ancien verrou persiste et ne permet aucune reprise automatique facturable', async () => {
   const db = database(); let calls = 0;
-  db.sqlite.prepare('INSERT INTO free_diagnostic_collection_locks VALUES (?, ?, ?)').run('test', 'other-owner', '2000-01-01T00:00:00Z');
+  db.sqlite.prepare('INSERT INTO free_diagnostic_collection_locks (analysis_id, token, acquired_at) VALUES (?, ?, ?)').run('test', 'other-owner', '2000-01-01T00:00:00Z');
   const response = await withDiagnosticCollectionLock(db, 'test', async () => { calls++; });
   assert.equal(response.status, 409); assert.equal(calls, 0);
   assert.equal(db.sqlite.prepare('SELECT token FROM free_diagnostic_collection_locks').get().token, 'other-owner');

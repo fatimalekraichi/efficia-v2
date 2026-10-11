@@ -1,13 +1,13 @@
 import { jsonResponse } from "../admin/_shared.js";
 
-export async function withDiagnosticCollectionLock(db, analysisId, operation) {
+export async function withDiagnosticCollectionLock(db, analysisId, operation, operationName = "initial_collection") {
   const token = crypto.randomUUID();
   let result;
   try {
     result = await db.prepare(`
-      INSERT INTO free_diagnostic_collection_locks (analysis_id, token, acquired_at)
-      VALUES (?, ?, ?) ON CONFLICT(analysis_id) DO NOTHING
-    `).bind(analysisId, token, new Date().toISOString()).run();
+      INSERT INTO free_diagnostic_collection_locks (analysis_id, token, acquired_at, operation)
+      VALUES (?, ?, ?, ?) ON CONFLICT(analysis_id) DO NOTHING
+    `).bind(analysisId, token, new Date().toISOString(), operationName).run();
   } catch {
     return jsonResponse({ success: false, error: "COLLECTION_LOCK_UNAVAILABLE" }, 503);
   }

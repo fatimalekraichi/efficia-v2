@@ -39,6 +39,7 @@ const ADMIN_SECRET = "geo-anchor-test-secret";
 const ANALYSIS_ID = "analysis-geo-anchor-computelec";
 const migrations = [
   "0023_free_diagnostic_collection_locks.sql",
+  "0024_free_diagnostic_lock_releases.sql",
   "0001_orders_tasks.sql", "0002_audit_production_tracking.sql", "0003_analyses.sql",
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",

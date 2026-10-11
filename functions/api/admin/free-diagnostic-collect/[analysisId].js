@@ -539,7 +539,7 @@ export async function onRequestPost(context) {
       return jsonResponse({ success: false, error: "INITIAL_COLLECTION_REQUIRED" }, 409);
     }
     return withDiagnosticCollectionLock(db, analysisId, () =>
-      refreshSearchAnalysis({ context, db, analysis, analysisId, payload: searchRefresh }));
+      refreshSearchAnalysis({ context, db, analysis, analysisId, payload: searchRefresh }), "refresh_search");
   }
 
   return withDiagnosticCollectionLock(db, analysisId, async () => {
