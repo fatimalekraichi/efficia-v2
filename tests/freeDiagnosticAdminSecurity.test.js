@@ -17,6 +17,7 @@ const ANALYSIS_ID = "analysis-free-123";
 const GOOGLE_URL = "https://maps.app.goo.gl/short-test";
 const CANONICAL_GOOGLE_URL = "https://www.google.com/maps/place/Maison-Test";
 const migrations = [
+  "0023_free_diagnostic_collection_locks.sql",
   "0001_orders_tasks.sql", "0002_audit_production_tracking.sql", "0003_analyses.sql",
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",
@@ -40,7 +41,7 @@ class LocalD1 {
       bind: (...nextParams) => bound(nextParams),
       all: async () => ({ results: database.prepare(sql).all(...params) }),
       first: async () => database.prepare(sql).get(...params) || null,
-      run: async () => database.prepare(sql).run(...params),
+      run: async () => ({ success: true, meta: { changes: Number(database.prepare(sql).run(...params).changes) } }),
     });
     return bound();
   }
@@ -779,3 +780,27 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);
 });
+
+for (const refresh of [false, true]) {
+test(`deux ${refresh ? 'relances' : 'collectes initiales'} simultanées ne doublent pas les appels fournisseur`, async()=>{
+ const db=new LocalD1();seedAnalysis(db);if (refresh) markAnalysisCollected(db);
+ const bodies={operation:'refresh_search',company:'Maison Test',city:'Bruxelles',activity:'Pâtisserie',searchQuery:'Pâtisserie Bruxelles',searchZone:{city:'Bruxelles',countryCode:'BE',postalCode:'1000'}};
+ const contexts=await Promise.all([context(db,ANALYSIS_ID,{body:refresh ? bodies : {}}),context(db,ANALYSIS_ID,{body:refresh ? bodies : {}})]);
+ const restore=installProviderFixture();const provider=globalThis.fetch;let resolveEntered,release;
+ const entered=new Promise(r=>resolveEntered=r);const gate=new Promise(r=>release=r);let searches=0;
+ globalThis.fetch=async(input,init)=>{if(new URL(String(input)).hostname==='api.app.outscraper.com'){searches++;resolveEntered();await gate;}return provider(input,init);};
+ try{
+  const first=collectDiagnostic(contexts[0]);await entered;
+  const second=collectDiagnostic(contexts[1]);
+  let timer;
+  try {
+    const blocked = await Promise.race([second, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('La seconde relance attend le fournisseur')), 1000); })]);
+    assert.equal(blocked.status, 409);
+  } finally { clearTimeout(timer); release(); }
+  const results=await Promise.all([first,second]);
+  assert.equal(searches,refresh ? 1 : 2,'un appel par étape, jamais de doublon');
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  assert.equal(db.count('free_diagnostic_collection_locks'), 0);
+ }finally{release();restore();}
+});
+}
