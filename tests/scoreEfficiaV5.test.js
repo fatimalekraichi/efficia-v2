@@ -250,8 +250,8 @@ test("les barres des six familles suivent le maximum effectif affiché, jamais l
     { score:3, maximum:6, ratio:50 },
     { score:0, maximum:6, ratio:0 },
   ]);
-  assert.match(html, /pourcentageBarreFamille\(pointsPonderes, maximumEffectifNormalise \?\? poidsProfil\)/u);
-  assert.match(html, /<strong>\$\{pointsAffiches\}<\/strong>/u);
+  assert.match(html, /maximum:Math.round\(d.maximumEffectifNormalise\?\?d.poidsProfil\)/u);
+  assert.match(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8'), /100\*d.points\/d.maximum/u);
 });
 
 test("administration et serveur produisent le même score v5 sur un questionnaire complet", () => {
@@ -291,7 +291,8 @@ test("questionnaire incomplet : administration, brouillon, aperçu et PDF partag
   assert.equal(previewScore, pdfScore);
   assert.equal(endpoint.reviewedScore.provisional, true);
   assert.match(html, /scoreSnapshot:\{[\s\S]*score:Math\.round\(detail\.total\)/);
-  assert.match(html, /const detailScore = calculScoreDetail\(\);\s*const score = Math\.round\(detailScore\.total\);/);
+  assert.match(html, /const detail=calculScoreDetail\(\);/);
+  assert.match(html, /score:Math.round\(detail.total\)/);
   assert.match(serverRenderer, /free\.provisional \? `<p class="methode-note">\$\{PROVISIONAL_SCORE_NOTE\}/);
 });
 
@@ -405,11 +406,11 @@ test("le reliquat utilise les contrôles canoniques dédupliqués sans ajouter u
   vm.runInNewContext(`${extractFunction(html,'listeControlesRapportV3','libelleStatutRapportV3')}\n${extractFunction(html,'compteursPrioritesPage5','prioriteInfosRevendiquee')}\ncontrols=listeControlesRapportV3();result=compteursPrioritesPage5(controls.filter(c=>c.statut==='ko').length,3);`,context);
   assert.deepEqual(Array.from(context.controls,c=>c.cr.key),['revendiquee','adresse','horaires','contact','nap','warn','neutral']);
   assert.deepEqual({...context.result},{total:5,presentees:3,restants:2});
-  assert.match(html,/compteursPrioritesPage5\(checklistV3\.counts\.ko, top3p\.length\)/u);
+  assert.match(html,/EfficiaDiagnosticReport.renderDiagnostic/);
   for(const [total,presented,remaining] of [[0,0,0],[1,1,0],[2,2,0],[3,3,0],[7,3,4],[0,1,0]]){
     assert.deepEqual({...context.compteursPrioritesPage5(total,presented)},{total,presentees:presented,restants:remaining});
   }
-  assert.match(html, /projete:Math\.max\(Math\.round\(score\), projectionBrute\.projete\)/u, "le potentiel affiché ne peut pas être inférieur au score actuel");
+  assert.doesNotMatch(html.slice(html.indexOf("function genererRapport(options"),html.indexOf("function majPaginationRapport")), /scoreProjetePack/, "aucune projection commerciale non observée");
 });
 
 test("v4 explicite conserve le moteur historique et une analyse sans version reste historique", () => {

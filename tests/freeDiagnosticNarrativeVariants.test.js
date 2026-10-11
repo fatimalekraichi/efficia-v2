@@ -133,7 +133,7 @@ test("toutes les variantes d’introduction restent simples et laissent l’aver
   }
   const scopeNote = "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.";
   const historicalScopeNote = "Ce score évalue uniquement la manière dont votre fiche Google présente et rassure aujourd'hui un client potentiel. Il ne juge ni la qualité de votre travail ni votre savoir-faire.";
-  assert.equal(source.split(scopeNote).length - 1, 1, "l’avertissement court demeure unique");
+  assert.equal(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8').split(scopeNote).length - 1, 0, "la méthode interne ne figure plus dans le texte client");
   assert.equal(source.split(historicalScopeNote).length - 1, 0, "l’avertissement historique n’est plus rendu");
 });
 

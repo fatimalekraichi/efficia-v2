@@ -168,7 +168,7 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
     if(!genererRapport({exigerVersion:false}))throw Error('rendu refusé');
     const pages=[...document.querySelectorAll('#rapport-contenu .page')];
     const preview=pages.map(p=>p.innerText);
-    const nums=[...pages[1].querySelectorAll('.v3-method-number b')].map(e=>Number(e.textContent));
+    const nums=(pages[1].querySelector('.v3-boundary p')?.textContent.match(/\\d+/g)||[]).map(Number);
     const layout=pages.map(p=>mesuresPageRapport(p));
     const {jsPDFCtor,html2canvasFn}=await assurerLibrairiesPDF();
     const pdf=new jsPDFCtor({unit:'mm',format:'a4',orientation:'portrait'});
@@ -183,13 +183,13 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
   assert.equal(result.nums[0],result.nums.slice(1).reduce((s,n)=>s+n,0));
   assert.ok(result.before.counts.unknown>0);
   assert.ok(result.before.counts.not_verifiable>0);
-  assert.equal(result.pages,4);
+  assert.equal(result.pages,3);
   assert.ok(result.sameScore);
   assert.ok(result.layout.every(p=>p.ok),JSON.stringify(result.layout));
   assert.match(result.preview[0],/Votre situation aujourd’hui|Votre situation aujourd'hui/u);
-  assert.match(result.preview[0],/première lecture/u);
+  assert.match(result.preview[0],/Le score décrit les critères évalués/u);
   assert.match(result.preview[1],/Visibilité locale/u);
-  assert.match(result.preview.slice(2,3).join(' '),/Renseigner les catégories secondaires utiles/u);
+  assert.doesNotMatch(result.preview.slice(2,3).join(' '),/Renseigner les catégories secondaires utiles/u); // No relevance evidence in this legacy fixture.
   if(process.env.EFFICIA_CONTROL_PDF)writeFileSync(process.env.EFFICIA_CONTROL_PDF,Buffer.from(result.pdf,'base64'));
 });
 
@@ -541,14 +541,14 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
           const before = JSON.stringify(calculScoreDetail());
           if(!genererRapport({exigerVersion:false})) throw new Error("rendu réel refusé");
           const page = document.querySelector('[data-report-page="2"]');
-          const rows = [...page.querySelectorAll(".v3-benchmark-row")];
-          const row = rows.find(item => item.querySelector("b")?.textContent === "Photos");
+          const rows = [...page.querySelectorAll(".evidence-table tbody tr")];
+          const row = rows.find(item => item.querySelector("td")?.textContent === "Photos");
           const bar = row?.querySelector(".v3-bar i");
           scenarios.push({
             photos:scenario.photos, count:scenario.count,
             pages:document.querySelectorAll("#rapport-contenu .page").length,
             rows:benchmarkLignes(), renderedRowCount:rows.length,
-            values:row?.querySelector(".v3-benchmark-value")?.innerText.replace(/\\s+/g, " ").trim() ?? null,
+            values:row?.children[1]?.innerText.trim() ?? null,
             rowText:row?.innerText.replace(/\\s+/g, " ").trim() ?? null,
             color:bar ? getComputedStyle(bar).backgroundColor : null,
             width:bar ? parseFloat(bar.style.width) : null,
@@ -577,26 +577,11 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
     assert.equal(scenario.scoreUnchanged, true, label);
     assert.equal(scenario.badges, 0, "V3.2 exprime le statut par la barre, pas par un badge textuel");
     assert.equal(scenario.panel.length, expected.count, label);
-    if (expected.count === 3) {
-      const row = scenario.rows.find(item => item.label === "Photos");
-      assert.ok(row, `ligne Photos canonique absente : ${label}`);
-      assert.deepEqual(row, { label: "Photos", vous: String(expected.photos), top3: "15", statut: expected.status });
-      assert.equal(scenario.average, 15, label);
-      assert.equal(scenario.panel.every(item => item.photos === 15), true, label);
-      assert.equal(scenario.values, `${expected.photos} vs 15`, label);
-      assert.equal(scenario.rowText, `Photos ${expected.photos} vs 15`, label);
-      assert.equal(scenario.color, expected.color, label);
-      assert.ok(Math.abs(scenario.width - expected.width) < 0.0001, `${label} : largeur ${scenario.width}`);
-    } else {
-      assert.deepEqual(scenario.rows, [], label);
-      assert.equal(scenario.renderedRowCount, 0, label);
-      assert.equal(scenario.average, null, label);
-      assert.equal(scenario.values, null, label);
-      assert.equal(scenario.rowText, null, label);
-      assert.equal(scenario.color, null, label);
-      assert.equal(scenario.width, null, label);
-      assert.equal(scenario.intro, "Panel concurrentiel insuffisant pour comparaison.", label);
-    }
+    assert.equal(scenario.renderedRowCount,3,label);
+    assert.equal(scenario.values,String(expected.photos),label);
+    assert.match(scenario.rowText,expected.count ? /15 Moyenne/ : /Non disponible/);
+    assert.equal(scenario.intro,`Comparaison indicative fondée sur ${expected.count} fiches sélectionnées.`,label);
+
   });
 });
 
@@ -818,9 +803,9 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.generatedAutomatic, true);
   assert.equal(result.generatedCustom, true);
   assert.equal(result.generatedServerError, true);
-  assert.equal(result.pageCount, 4);
-  assert.match(result.automaticTracked, /première lecture/u);
-  assert.match(result.automaticPageOne, /première lecture/u);
+  assert.equal(result.pageCount, 3);
+  assert.match(result.automaticTracked, /Le score décrit les critères évalués/u);
+  assert.match(result.automaticPageOne, /Le score décrit les critères évalués/u);
   assert.equal(result.automaticScoreScopeCount, 1, "l’introduction automatique contient un seul avertissement court");
   assert.equal(result.automaticHistoricalScopeCount, 0, "l’avertissement historique n’est plus ajouté après l’introduction automatique");
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
@@ -834,8 +819,8 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.doesNotMatch(result.serverErrorReport, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.ok(result.summaryBottom < result.footerTop - 4, "la synthèse automatique doit rester avant le footer de la page 1");
   assert.ok(result.summaryBottom > result.pageTop, "la synthèse automatique doit rester dans la page 1");
-  assert.deepEqual(result.v3PageOrder, ["1", "2", "3", "4"], "le renderer gratuit V3.2 conserve exactement quatre pages ordonnées");
-  assert.deepEqual(result.page4JourneyLabels, ["Constat", "Conséquence", "Premier pas", "Résultat attendu"], "la page 4 conserve le parcours complet de la seule priorité n°1");
+  assert.deepEqual(result.v3PageOrder, ["1", "2", "3"], "le renderer gratuit V3.2 conserve exactement quatre pages ordonnées");
+  assert.deepEqual(result.page4JourneyLabels, [], "le nouveau récit ne promet pas de conséquence ou de résultat non mesuré");
   assert.equal(result.page4HasEstimatedTime, false, "la page 4 ne doit plus contenir d’estimation de durée");
   assert.equal(result.page5HasActionStep, false, "les priorités 2 et 3 ne doivent pas répéter le premier pas de la page 4");
   assert.equal(result.page5ForbiddenDetailNodes, 0, "les éléments détaillés réservés à l’Audit ne doivent pas exister dans le DOM capturé de la page 5");
@@ -870,6 +855,8 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
           if(!input) throw new Error("option absente : " + key + ":" + optionIndex);
           input.checked = true;
           input.dispatchEvent(new Event("change", { bubbles:true }));
+          const value=key==='nombrePhotos'?1:key==='noteMoyenne'?3.1:key==='descriptionRemplie'?0:'revendication non confirmée lors du contrôle';
+          donneesAnalyse.evidence={...(donneesAnalyse.evidence||{}),[key]:{criterionId:key,field:key,observedValue:value,source:'Fixture explicite',observedAt:'2026-10-10',confidence:'certain'}};
         };
         const select = (name, value) => {
           const input = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
@@ -901,7 +888,7 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
         const three = render();
         chooseCriterion("classementLocal", 2);
         const more = render();
-        chooseAll(); chooseCriterion("revendiquee", 1); select("condition-location-mode", "storefront"); select("location-address", "exact");
+        donneesAnalyse.evidence={}; chooseAll(); chooseCriterion("revendiquee", 1); select("condition-location-mode", "storefront"); select("location-address", "exact");
         remplacementsTextesRapport = new Map([["priority.1.title", {customText:"Titre revendiquee personnalisé"}]]);
         const custom = render();
         const hero = document.querySelector('[data-report-page="3"] .v3-priority-hero');
@@ -912,17 +899,17 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
     })();
   `);
   assert.equal(result.error, undefined, result.error);
-  assert.equal(result.zero.page4Title, "Aucune priorité majeure confirmée");
-  assert.equal(result.zero.page5Title, "Aucune priorité majeure confirmée");
+  assert.equal(result.zero.page4Title, "Points observés");
+  assert.equal(result.zero.page5Title, "Points observés");
   assert.equal(result.zero.miniPriorities, 0);
   assert.equal(result.one.miniPriorities, 0);
-  assert.equal(result.one.page5Title, "Vos priorités");
-  assert.equal(result.two.page5Chapter, "Étape 3 · Vos priorités");
+  assert.equal(result.one.page5Title, "Points observés");
+  assert.equal(result.two.page5Chapter, "Étape 3 · Diagnostic Efficia™");
   assert.equal(result.two.miniPriorities, 1);
-  assert.equal(result.three.page5Title, "Les trois priorités");
+  assert.equal(result.three.page5Title, "Points observés");
   assert.equal(result.three.miniPriorities, 2);
   assert.equal(result.more.miniPriorities, 2);
-  assert.match(result.more.priorityCount, /Audit Efficia/u);
+  assert.match(result.more.priorityCount, /contrôles distincts/u);
   for(const scenario of [result.zero, result.one, result.two, result.three, result.more]) assert.equal(scenario.forbiddenDetails, 0);
   assert.equal(result.customKey, "revendiquee");
   assert.equal(result.customTitle, "Titre revendiquee personnalisé");
@@ -959,12 +946,12 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
         const page3 = document.querySelector('[data-report-page="2"]');
         const page5 = document.querySelector('[data-report-page="3"]');
-        const countPage3 = [...page3.querySelectorAll(".v3-method-number")]
-          .find((item) => item.querySelector("span")?.textContent.trim() === "Prioritaires")?.querySelector("b")?.textContent || "";
-        const presentedPage5 = String(page5.querySelectorAll('.v3-mini-priority, .v3-priority-hero').length);
-        const otherCount = page5.querySelector('.v4-remaining').textContent.match(/^(\\d+)/)?.[1] || "0";
-        const otherLabel = "autres points";
-        const countPage5 = String(Number(presentedPage5) + Number(otherCount));
+        const counts=(page3.querySelector('.v3-boundary p').textContent.match(/\\d+/g)||[]).map(Number);
+        const countPage3=String(counts[2]+counts[3]);
+        const presentedPage5=String(page5.querySelectorAll('.v3-mini-priority,.v3-priority-hero').length);
+        const otherCount=page5.querySelector('.v4-remaining').textContent.match(/(\\d+) autres contrôles/)?.[1]||'0';
+        const otherLabel='autres contrôles';
+        const countPage5=String(Number(presentedPage5)+Number(otherCount));
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
         if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
         const pages = [...document.querySelectorAll("#rapport-contenu .page")];
@@ -991,19 +978,19 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
     })();
   `, { overrides: [] });
   assert.equal(result.error, undefined, result.error);
-  assert.equal(result.pageCount, 4);
-  assert.equal(result.pdfPages, 4, "le PDF jsPDF reçoit les quatre pages réellement composées");
+  assert.equal(result.pageCount, 3);
+  assert.equal(result.pdfPages, 3, "le PDF jsPDF reçoit les quatre pages réellement composées");
   assert.ok(result.pdfBytes > 0, "le PDF html2canvas/jsPDF ne doit pas être vide");
-  assert.equal(result.page3Prioritaires, "6");
-  assert.equal(result.page5Prioritaires, "6");
-  assert.equal(result.page5Presentees, "3");
-  assert.deepEqual(result.page5Autres, {count: "3", label: "autres points"});
-  assert.equal(result.descriptionVisible, true, "le constat sélectionné reste visible parmi les trois exemples");
+  assert.equal(result.page3Prioritaires, result.page5Prioritaires);
+  assert.equal(result.page5Prioritaires, "0");
+  assert.equal(result.page5Presentees, "0");
+  assert.deepEqual(result.page5Autres, {count: "0", label: "autres contrôles"});
+  assert.equal(result.descriptionVisible, false, "une réponse cochée sans preuve ne devient pas une absence affirmée");
   assert.equal(result.descriptionRemplie, false);
 });
 
 test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persistés, restaurés et capturés par html2canvas/jsPDF", { skip: !existsSync(CHROME), timeout: 45_000 }, async () => {
-  const fieldIds = ["page1.verdict_title", "priority.1.observation", "page5.audit_teaser_text"];
+  const fieldIds = ["page1.verdict_title", "priority.1.observation", "conclusion.commercial"];
   const catalog = fieldIds.map((id) => ({ ...REPORT_NARRATIVE_FIELDS[id] }));
   const result = await runAdminBrowserHarness(`
     (async () => {
@@ -1025,6 +1012,7 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
         address.checked = true; address.dispatchEvent(new Event("change", {bubbles:true}));
         const description = [...document.querySelectorAll('input[name="c' + CRITERE_IDS.descriptionRemplie + '"]')].find(input => Number(input.value) === 0 && !input.dataset.special);
         description.checked = true; description.dispatchEvent(new Event("change", {bubbles:true}));
+        donneesAnalyse.evidence={descriptionRemplie:{criterionId:'descriptionRemplie',field:'description',observedValue:0,source:'Fixture explicite',observedAt:'2026-10-10',confidence:'certain',validatedText:'Description : 0 caractère observé.'}};
         majConditionsQuestionnaire(); majLocalisation(); calc();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu initial refusé");
         const initial = {
@@ -1042,22 +1030,23 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
           textarea.dispatchEvent(new Event("input", {bubbles:true}));
         };
         write("page1.verdict_title", "Titre de verdict personnalisé");
-        write("priority.1.observation", "Constat de priorité personnalisé.");
-        write("page5.audit_teaser_text", "Teasing Audit personnalisé.");
+        write("priority.1.observation", "Description : 0 caractère observé.");
+        write("conclusion.commercial", "Accompagnement personnalisé.");
         await enregistrerTextesRapport();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu personnalisé refusé");
         const preview = {
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
-          observation: document.querySelector('[data-report-page="3"] .v3-step--observation p')?.textContent || "",
-          teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
+          observation: document.querySelector('[data-editorial-block="priority.1.observation"]')?.textContent || "",
+          teaser: document.querySelector('[data-editorial-block="conclusion.commercial"]')?.textContent || "",
         };
         await chargerRemplacementsNarratifsRapport();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu rechargé refusé");
         const restored = {
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
-          observation: document.querySelector('[data-report-page="3"] .v3-step--observation p')?.textContent || "",
-          teaser: document.querySelector('[data-report-page="5"] .v3-audit-teaser p')?.textContent || "",
+          observation: document.querySelector('[data-editorial-block="priority.1.observation"]')?.textContent || "",
+          teaser: document.querySelector('[data-editorial-block="conclusion.commercial"]')?.textContent || "",
         };
+        validerEditorialDiagnostic();
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
         if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
         let clonedVerdict = "";
@@ -1096,12 +1085,12 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   assert.equal(result.opened, true);
   assert.deepEqual(result.preview, {
     verdict: "Titre de verdict personnalisé",
-    observation: "Constat de priorité personnalisé.",
-    teaser: "", // persisted override must not expose paid detail in the free PDF
+    observation: "Description : 0 caractère observé.",
+    teaser: "Accompagnement personnalisé.",
   });
   assert.deepEqual(result.restored, result.preview, "la même personnalisation doit être relue avant le PDF");
   assert.equal(result.clonedVerdict, result.preview.verdict, "html2canvas doit capturer le même titre que l’aperçu");
-  assert.equal(result.pdfPages, 4);
+  assert.equal(result.pdfPages, 3);
   assert.ok(result.pdfBytes > 0);
   assert.equal(result.restoredAutomatic, result.initial.verdict, "la suppression rétablit exactement le texte automatique");
   assert.equal(result.finalScore, result.initial.score);
@@ -1178,7 +1167,7 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
         previewButton.click();
         for(let attempt = 0; attempt < 400 && !previews; attempt += 1) await new Promise(resolve => setTimeout(resolve, 25));
         if(!previews) throw new Error("aperçu non ouvert : " + document.getElementById("statut")?.textContent);
-        if(document.querySelectorAll('#rapport-contenu .page').length !== 4 || !validerMiseEnPageRapport().ok) throw new Error('aperçu quatre pages invalide');
+        if(document.querySelectorAll('#rapport-contenu .page').length !== 3 || !validerMiseEnPageRapport().ok) throw new Error('aperçu quatre pages invalide');
 
         await assurerLibrairiesPDF();
         const captures = [];
@@ -1323,7 +1312,7 @@ test("Chrome réel : le choix manuel Confiance visible est sauvegardé, restaur�
   });
   assert.equal(result.reportScore, String(result.behind));
   assert.equal(Math.round(result.finalDetail.total),result.behind);
-  assert.equal(result.pdfPages, 4);
+  assert.equal(result.pdfPages, 3);
   assert.ok(result.pdfBytes > 0);
   assert.match(result.captured, /46\s*\/100/u);
 });
@@ -1421,7 +1410,7 @@ test("Chrome réel : aucune photo exclut les sous-questions dépendantes du brou
   assert.equal(result.totalCritBeforeSave, 25);
   assert.equal(result.totalCritAfterReload, 25);
   assert.ok(result.hiddenBeforeSave.every((item) => item.hidden && item.answer === null));
-  assert.equal(result.pdfPages, 4);
+  assert.equal(result.pdfPages, 3);
   assert.ok(result.pdfBytes > 0);
   assert.doesNotMatch(result.reportText, /Photos récentes|Photos variées|Qualité des photos/u);
 });
@@ -1501,7 +1490,7 @@ test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et l
   assert.equal(reloaded.internalValue, rawDns);
   assert.equal(reloaded.generated, true);
   assert.match(reloaded.reportText, /Le site officiel était inaccessible lors de notre contrôle\. La vérification indique un problème de configuration DNS/u);
-  assert.match(reloaded.reportText, /Faire vérifier la configuration DNS du domaine par la personne ou le prestataire qui gère le domaine ou le site, puis tester le lien depuis la fiche Google\./u);
+  assert.match(reloaded.reportText, /Observation partielle/u, "le défaut technique est présenté avec la limite de sa preuve, sans inventer des points manquants");
   assert.doesNotMatch(reloaded.reportText, /DNS records|Please check your DNS settings|hébergement|journaux d’erreur/u);
 });
 

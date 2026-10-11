@@ -35,7 +35,7 @@ export async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {
     overrides: [{ fieldId: "summary.general", customText: "Texte persistant après rechargement", needsReview: false }],
     ...fixtureOverrides,
   };
-  const source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
+  let source = readFileSync(new URL("../admin/free-diagnostic-production/index.html", import.meta.url), "utf8")
     .replace('<script src="/js/diagnostic-pdf-filename.js?v=1"></script>', `<script>${readFileSync(new URL("../js/diagnostic-pdf-filename.js", import.meta.url), "utf8")}</script>`)
     .replace(
       '<script src="/js/score-efficia-core.js?v=1"></script>',
@@ -49,6 +49,9 @@ export async function runAdminBrowserHarness(harnessSource, fixtureOverrides = {
       '<script src="/src/decision-engine/criteria.catalog.js?v=4"></script>',
       `<script>${readFileSync(new URL("../src/decision-engine/criteria.catalog.js", import.meta.url), "utf8")}</script>`,
     );
+  for (const name of ['diagnostic-tone-config','diagnostic-evidence','diagnostic-report']) {
+    source=source.replace(`<script src="/js/${name}.js?v=1"></script>`,()=>`<script>${readFileSync(new URL(`../js/${name}.js`,import.meta.url),'utf8')}</script>`);
+  }
   const marker = "<script>\n/* ============ CONFIG SCORE EFFICIA™";
   const fetchFixture = `<script>
     window.__workflowFixture = ${JSON.stringify(fixture).replaceAll("</", "<\\/")};

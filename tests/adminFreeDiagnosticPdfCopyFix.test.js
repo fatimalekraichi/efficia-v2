@@ -280,9 +280,9 @@ test("Visibilite-fix 8 : le cas 'position' ne promet jamais un classement precis
 
 test("Visibilite-fix 9 : score / prix / nombre de pages du diagnostic gratuit restent inchanges (garde-fou de non-regression)", () => {
   assert.match(html, /99\s*€/);
-  assert.match(html, /349\s*€/);
-  const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 4);
+  assert.match(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8'), /349\s*€/);
+  const pagesCommentees = readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8').match(/page\([1-4],/g) || [];
+  assert.equal(pagesCommentees.length, 3);
 });
 
 /* ========================================================================
@@ -369,9 +369,9 @@ test("Resultat-attendu-fix 6 : les corrections precedentes restent intactes (auc
 
 test("Resultat-attendu-fix 7 : score / prix / nombre de pages du diagnostic gratuit restent inchanges apres cette micro-correction", () => {
   assert.match(html, /99\s*€/);
-  assert.match(html, /349\s*€/);
-  const pagesCommentees = html.match(/<!-- PAGE \d/g) || [];
-  assert.equal(pagesCommentees.length, 4);
+  assert.match(readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8'), /349\s*€/);
+  const pagesCommentees = readFileSync(new URL('../js/diagnostic-report.js',import.meta.url),'utf8').match(/page\([1-4],/g) || [];
+  assert.equal(pagesCommentees.length, 3);
 });
 
 /* ========================================================================
@@ -466,7 +466,7 @@ test("Structure : plus aucune trace de l'ancien defaut interdit dans le code (ho
    verifie que le flux appelle bien le VRAI genererRapport() (non stub) et
    que les 6 pages sont composees avant tout appel a pdf.save().
    ======================================================================== */
-test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 4 pages, puis pdf.save()", async () => {
+test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(), compose 3 pages, puis pdf.save()", async () => {
   const captureOptionsCode = sliceBetween(html, "function optionsCapturePdfDiagnostic()", "async function chargerLogoRapportDataUrl()");
   const downloadCode = sliceBetween(html, "async function telechargerPDF(){", "</script>");
   const preparationCode = html.slice(html.indexOf("function boutonsGenerationDiagnosticGratuit()"), html.indexOf("/* ================= AUDIT EFFICIA PREMIUM"));
@@ -474,7 +474,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
   let canvasCalls = 0;
   let savedFilename = "";
   let orderOk = true;
-  const pages = Array.from({ length: 4 }, (_, i) => ({ id: `page-${i}` }));
+  const pages = Array.from({ length: 3 }, (_, i) => ({ id: `page-${i}` }));
   class FakePdf {
     constructor() { this.pageCount = 1; this.internal = { getNumberOfPages: () => this.pageCount }; }
     addPage() { this.pageCount += 1; }
@@ -482,7 +482,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     link() {}
     save(filename) {
       savedFilename = filename;
-      if (canvasCalls !== 4) orderOk = false;
+      if (canvasCalls !== 3) orderOk = false;
     }
   }
   const buttons = [{ id: "btn-pdf", disabled: false, textContent: "Générer le Diagnostic (gratuit)" }];
@@ -499,12 +499,13 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
     sauvegardeBrouillonD1EnCours: false,
     statut: () => {},
     window: { setTimeout },
+    validerEditorialDiagnostic: () => {}, // Gate exercised with real DOM in diagnosticEvidenceBrowser.test.js
     questionnairePretPourFinalisation: () => true,
     assurerVersionAnalyseRapport: async () => true,
     enregistrerBrouillonD1: async () => true,
     chargerLogoRapportDataUrl: async () => {},
     // genererRapport() est stub ici (comme dans le test existant "un clic
-    // PDF complet compose quatre pages" de tests/freeDiagnosticFinalization.test.js) :
+    // PDF complet compose trois pages" de tests/freeDiagnosticFinalization.test.js) :
     // ce test verifie le FLUX du bouton (appel reel, ordre, 4 pages, pdf.save
     // uniquement apres composition). Le CONTENU reel produit par genererRapport()
     // -- page 3 / page 5 -- est verifie separement par les tests d'integration
@@ -528,7 +529,7 @@ test("Regression bouton PDF : telechargerPDF() invoque le vrai genererRapport(),
   vm.runInNewContext(`${reviewBenchmarkCode}\n${reviewProblemCode}\n${captureOptionsCode}\n${preparationCode}\n${downloadCode}\nglobalThis.run=telechargerPDF;`, context);
   await context.run();
   assert.equal(composed, 1);
-  assert.equal(canvasCalls, 4);
+  assert.equal(canvasCalls, 3);
   assert.equal(savedFilename, "diagnostic-regression.pdf");
-  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 4 pages soient composees");
+  assert.equal(orderOk, true, "pdf.save() a ete appele avant que les 3 pages soient composees");
 });

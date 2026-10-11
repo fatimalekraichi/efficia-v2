@@ -72,28 +72,28 @@ test('filtre technique : 551 avis reste un volume, HTTP 500 reste une erreur',()
  for(const text of ['551 avis','Entre 96 et 551 avis, médiane de 217 avis.','500 clients'])assert.equal(ctx.normaliserTexteProspectRapport(text),text);
  for(const text of ['HTTP 500','status code: 502','500','Internal Server Error'])assert.match(ctx.normaliserTexteProspectRapport(text),/erreur serveur/);
 });
-test('fixture Selbelec : véritable renderer quatre pages, score, priorités et liens', {skip:!existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),timeout:120000},async()=>{
+test('fixture Selbelec : véritable renderer trois pages, score, priorités et liens', {skip:!existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),timeout:120000},async()=>{
  const result=await runAdminBrowserHarness(selbelecDiagnosticScript,{analysisId:'selbelec-control-fixture',overrides:[],capturePdf:Boolean(process.env.EFFICIA_CONTROL_PDF)},{timeout:110000,resultWait:100000});
  assert.equal(result.error,undefined,result.error);
- assert.equal(result.preview.length,4);assert.ok(result.layout.every(p=>p.ok));
+ assert.equal(result.preview.length,3);assert.ok(result.layout.every(p=>p.ok));
  assert.equal(result.detail.pointsApplicables,100);assert.equal(result.detail.total,result.detail.categories.reduce((s,c)=>s+c.pointsPonderes,0));
  assert.doesNotMatch(result.preview[0],/Potentiel estimé|CONVERSION|Bonjour,/);
- assert.match(result.preview[0],/Ce qui freine les contacts/);assert.match(result.preview[0],/Électricien Bruxelles/);
- assert.match(result.preview[1],/médiane de 217 avis/);
+ assert.match(result.preview[0],/Les points à améliorer/);assert.match(result.preview[0],/Électricien Bruxelles/);
+ assert.match(result.preview[0],/217[\s\S]*Médiane/);
  assert.deepEqual(result.priorities.map(p=>p.title),['Renseigner les catégories secondaires utiles','Développer les avis authentiques','Clarifier votre spécialité']);
  assert.match(result.priorities[0].action,/catégories secondaires/);assert.match(result.priorities[1].observation,/médiane de 217/);assert.match(result.priorities[1].action,/solliciter régulièrement/);
  assert.doesNotMatch(result.priorities[2].action+' '+result.priorities[2].result,/classement|position Google|visibilité/);
- for(const[offer,label]of [['audit','Recevoir mon plan d’action complet'],['visibility','Confier l’optimisation à Efficia']]){
+ for(const[offer,label]of [['audit','Je veux savoir quoi corriger en premier'],['visibility','Optimiser ma fiche maintenant']]){
   const link=result.links.find(l=>l.text===label);assert.ok(link,label);
   const url=new URL(link.href);assert.equal(url.pathname,'/achat');assert.equal(url.searchParams.get('offre'),offer);assert.equal(url.searchParams.get('audit'),'selbelec-control-fixture');
  }
  const pack=result.links.find(l=>new URL(l.href).searchParams.get('offre')==='visibility');
  assert.equal(pack.color,'rgb(255, 255, 255)');assert.equal(pack.background,'rgb(34, 95, 219)');
- assert.match(result.preview[3],/99 € TTC/);assert.match(result.preview[3],/349 € TTC/);
- for(const[i,page]of result.preview.entries())assert.match(page,new RegExp('Page '+(i+1)+'/4'));
+ assert.match(result.preview[2],/99 € TTC/);assert.match(result.preview[2],/349 € TTC/);
+ for(const[i,page]of result.preview.entries())assert.match(page,new RegExp('Page '+(i+1)+'/3'));
  if(process.env.EFFICIA_CONTROL_PDF){
   const bytes=Buffer.from(result.pdf,'base64').toString('latin1');
-  assert.equal((bytes.match(/\/Subtype \/Link/g)||[]).length,2);
+  assert.equal((bytes.match(/\/Subtype \/Link/g)||[]).length,3);
   for(const link of result.links)assert.ok(bytes.includes(link.href));
   writeFileSync(process.env.EFFICIA_CONTROL_PDF,Buffer.from(result.pdf,'base64'));delete result.pdf;writeFileSync(process.env.EFFICIA_CONTROL_PDF+'.json',JSON.stringify(result,null,2));}
 });
