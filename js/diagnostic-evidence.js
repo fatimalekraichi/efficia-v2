@@ -31,7 +31,7 @@
     const confidence=usable&&source&&!['not_retrieved','unavailable'].includes(r.availability)&&r.observed!==false&&['certain','partial'].includes(r.confidence)?r.confidence:'uncertain';
     return {criterionId:r.criterionId||'',field:r.field||'',observedValue:value,source,observedAt:date(r.observedAt),confidence,
       availability:r.availability|| (usable?'observed':'not_retrieved'),period:r.period||null,complete:r.complete===true,
-      relevant:r.relevant===true,comparison:r.comparison||null,validatedText:r.validatedText||null,operatorAnswer:r.operatorAnswer===true,operator:r.operator||null,url:r.url||null,reviewCounts:r.reviewCounts||null};
+      relevant:r.relevant===true,comparison:r.comparison||null,validatedText:r.validatedText||null,operatorAnswer:r.operatorAnswer===true,operator:r.operator||null,url:r.url||null,reviewCounts:r.reviewCounts||null,siteState:r.siteState?.etat==='inaccessible'?{etat:'inaccessible',problemeTechnique:['dns','erreur_serveur','incident_technique'].includes(r.siteState.problemeTechnique)?r.siteState.problemeTechnique:null}:null};
   }
   function competitiveFactor(evidence,comparison={}){
     const e=normalizeEvidence(evidence);

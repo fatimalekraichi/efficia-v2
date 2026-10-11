@@ -7942,7 +7942,7 @@ function modeleDiagnosticAvecPreuves(detailScore){
     }
     if(!evidence && cr.key==='nap'){
       const site=etatSiteOfficielCourant();
-      if(['inaccessible','incomplet'].includes(site?.etat))evidence={criterionId:cr.key,field:'site web',observedValue:messageEtatSiteOfficiel(site),source:'Contrôle du site officiel renseigné dans le diagnostic',observedAt:site.checkedAt||null,confidence:'partial'};
+      if(['inaccessible','incomplet'].includes(site?.etat))evidence={criterionId:cr.key,field:'site web',siteState:{etat:site.etat,problemeTechnique:site.problemeTechnique},observedValue:messageEtatSiteOfficiel(site),source:'Contrôle du site officiel renseigné dans le diagnostic',observedAt:site.checkedAt||null,confidence:'partial'};
     }
     // A selected score is not proof that a precise public field is absent.
     if(!evidence)evidence={criterionId:cr.key,field:cr.key,observedValue:null,source:'',confidence:'uncertain'};

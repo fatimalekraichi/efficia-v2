@@ -168,7 +168,7 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
     if(!genererRapport({exigerVersion:false}))throw Error('rendu refusé');
     const pages=[...document.querySelectorAll('#rapport-contenu .page')];
     const preview=pages.map(p=>p.innerText);
-    const nums=(pages[1].querySelector('.v3-boundary p')?.textContent.match(/\\d+/g)||[]).map(Number);
+    const nums=(pages[1].querySelector('.checks-line')?.textContent.match(/\\d+/g)||[]).map(Number);
     const layout=pages.map(p=>mesuresPageRapport(p));
     const {jsPDFCtor,html2canvasFn}=await assurerLibrairiesPDF();
     const pdf=new jsPDFCtor({unit:'mm',format:'a4',orientation:'portrait'});
@@ -176,18 +176,20 @@ test("Chrome : compteurs réconciliés, présence Google et catégories secondai
       const canvas=await html2canvasFn(page,optionsCapturePdfDiagnostic());
       if(i)pdf.addPage('a4','portrait');pdf.addImage(canvas.toDataURL('image/jpeg',.98),'JPEG',0,0,210,297);
     }
-    document.getElementById('workflow-browser-result').textContent=JSON.stringify({before:{total:before.total,counts:before.counts},restored:{total:restored.total,counts:restored.counts},nums,preview,layout,pages:pdf.getNumberOfPages(),sameScore:scoreBefore===document.getElementById('score-live').textContent,pdf:pdf.output('datauristring').split(',')[1]});
+    document.getElementById('workflow-browser-result').textContent=JSON.stringify({before:{total:before.total,counts:before.counts},restored:{total:restored.total,counts:restored.counts},modelCounts:modeleDiagnosticAvecPreuves(calculScoreDetail()).model.counts,nums,preview,layout,pages:pdf.getNumberOfPages(),sameScore:scoreBefore===document.getElementById('score-live').textContent,pdf:pdf.output('datauristring').split(',')[1]});
   }catch(e){document.getElementById('workflow-browser-result').textContent=JSON.stringify({error:String(e.stack||e)});}})();`,{overrides:[]},{timeout:110000,resultWait:100000});
   assert.equal(result.error,undefined,result.error);
   assert.deepEqual(result.restored,result.before);
-  assert.equal(result.nums[0],result.nums.slice(1).reduce((s,n)=>s+n,0));
+  assert.equal(result.nums.length,4);
+  assert.equal(result.nums[0],result.before.total);
+  assert.deepEqual(result.nums.slice(1),[result.modelCounts.ok,result.modelCounts.warn,result.modelCounts.ko]);
   assert.ok(result.before.counts.unknown>0);
   assert.ok(result.before.counts.not_verifiable>0);
   assert.equal(result.pages,3);
   assert.ok(result.sameScore);
   assert.ok(result.layout.every(p=>p.ok),JSON.stringify(result.layout));
-  assert.match(result.preview[0],/Votre situation aujourd’hui|Votre situation aujourd'hui/u);
-  assert.match(result.preview[0],/Le score décrit les critères évalués/u);
+  assert.match(result.preview[0],/Votre situation/u);
+  assert.match(result.preview[0],/Voici les points d’appui de votre fiche et les actions à privilégier\./u);
   assert.match(result.preview[1],/Visibilité locale/u);
   assert.doesNotMatch(result.preview.slice(2,3).join(' '),/Renseigner les catégories secondaires utiles/u); // No relevance evidence in this legacy fixture.
   if(process.env.EFFICIA_CONTROL_PDF)writeFileSync(process.env.EFFICIA_CONTROL_PDF,Buffer.from(result.pdf,'base64'));
@@ -540,7 +542,7 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
           majConditionsQuestionnaire(); majLocalisation(); synchroniserDonneesManuelles(); calc();
           const before = JSON.stringify(calculScoreDetail());
           if(!genererRapport({exigerVersion:false})) throw new Error("rendu réel refusé");
-          const page = document.querySelector('[data-report-page="2"]');
+          const page = document.querySelector('[data-report-page="1"]');
           const rows = [...page.querySelectorAll(".evidence-table tbody tr")];
           const row = rows.find(item => item.querySelector("td")?.textContent === "Photos");
           const bar = row?.querySelector(".v3-bar i");
@@ -553,7 +555,7 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
             color:bar ? getComputedStyle(bar).backgroundColor : null,
             width:bar ? parseFloat(bar.style.width) : null,
             badges:page.querySelectorAll(".bench-ecart").length,
-            intro:page.querySelector(".rapport-subtitle")?.textContent,
+            intro:page.querySelector(".comparison-caption")?.textContent,
             average:donneesAnalyse.moyennesConcurrents?.photos,
             panel:donneesAnalyse.concurrents,
             scoreUnchanged:before === JSON.stringify(calculScoreDetail()),
@@ -573,14 +575,14 @@ test("Chrome V3.2 : le rapport réel restitue les valeurs, couleurs et barres ph
     const label = `${expected.photos}/15, panel de ${expected.count}`;
     assert.equal(scenario.photos, expected.photos, label);
     assert.equal(scenario.count, expected.count, label);
-    assert.equal(scenario.pages, 4, label);
+    assert.equal(scenario.pages, 3, label);
     assert.equal(scenario.scoreUnchanged, true, label);
     assert.equal(scenario.badges, 0, "V3.2 exprime le statut par la barre, pas par un badge textuel");
     assert.equal(scenario.panel.length, expected.count, label);
     assert.equal(scenario.renderedRowCount,3,label);
     assert.equal(scenario.values,String(expected.photos),label);
     assert.match(scenario.rowText,expected.count ? /15 Moyenne/ : /Non disponible/);
-    assert.equal(scenario.intro,`Comparaison indicative fondée sur ${expected.count} fiches sélectionnées.`,label);
+    assert.equal(scenario.intro,`Comparaison indicative sur ${expected.count} fiches proches.`,label);
 
   });
 });
@@ -718,9 +720,9 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
         const generatedServerError = genererRapport({ exigerVersion: false });
         const serverErrorReport = document.getElementById("rapport-contenu")?.innerText || "";
         const reportPages = [...document.querySelectorAll("#rapport-contenu .page")];
-        const page4 = document.querySelector('[data-report-page="3"]');
-        const page5 = document.querySelector('[data-report-page="3"] .v3-priorities');
-        const page6 = document.querySelector('[data-report-page="4"]');
+        const page4 = document.querySelector('[data-report-page="2"]');
+        const page5 = document.querySelector('[data-report-page="2"]');
+        const page6 = document.querySelector('[data-report-page="3"]');
         const offerCards = [...(page6?.querySelectorAll(".v3-offer") || [])];
         const layout = reportPages.map((page) => {
           const measure = mesuresPageRapport(page);
@@ -804,14 +806,14 @@ test("Gabbana historique : le HTML réellement composé pour telechargerPDF reca
   assert.equal(result.generatedCustom, true);
   assert.equal(result.generatedServerError, true);
   assert.equal(result.pageCount, 3);
-  assert.match(result.automaticTracked, /Le score décrit les critères évalués/u);
-  assert.match(result.automaticPageOne, /Le score décrit les critères évalués/u);
-  assert.equal(result.automaticScoreScopeCount, 1, "l’introduction automatique contient un seul avertissement court");
+  assert.match(result.automaticTracked, /Voici les points d’appui de votre fiche et les actions à privilégier\./u);
+  assert.match(result.automaticPageOne, /Voici les points d’appui de votre fiche et les actions à privilégier\./u);
+  assert.equal(result.automaticScoreScopeCount, 0, "la version client ne contient plus de phrase méthodologique défensive");
   assert.equal(result.automaticHistoricalScopeCount, 0, "l’avertissement historique n’est plus ajouté après l’introduction automatique");
   assert.doesNotMatch(result.automaticPageOne, /aucun site officiel identifiable/u);
   assert.doesNotMatch(result.automaticPageOne, /Bonjour, La fiche Google contient aucun site officiel identifiable/u);
   assert.match(result.customPageOne, /Texte choisi volontairement par l’utilisateur\./u);
-  assert.equal(result.customScoreScopeCount, 1, "un override conserve un unique avertissement court distinct de son texte");
+  assert.equal(result.customScoreScopeCount, 0, "un override ne réintroduit pas la phrase méthodologique supprimée");
   assert.equal(result.customHistoricalScopeCount, 0, "un override ne réintroduit pas l’avertissement historique");
   assert.doesNotMatch(result.customPageOne, /aucun lien vers le site officiel n’est renseigné sur la fiche Google/u);
   assert.match(result.serverErrorReport, /erreur serveur/u);
@@ -865,15 +867,15 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
           input.dispatchEvent(new Event("change", { bubbles:true }));
         };
         const capture = () => {
-          const p4 = document.querySelector('[data-report-page="3"]');
-          const p5 = document.querySelector('[data-report-page="3"]');
+          const p4 = document.querySelector('[data-report-page="2"]');
+          const p5 = document.querySelector('[data-report-page="2"]');
           return {
             page4Title:p4?.querySelector(".rapport-title")?.textContent || "",
             page5Chapter:p5?.querySelector(".chapitre")?.textContent || "",
             page5Title:p5?.querySelector(".rapport-title")?.textContent || "",
-            miniPriorities:p5?.querySelectorAll(".v3-mini-priority").length || 0,
-            forbiddenDetails:p5?.querySelectorAll(".v3-mini-priority .v3-step--action, .v3-mini-priority .v3-step--result, .v3-mini-priority .v3-example, .v3-mini-priority .v3-time").length || 0,
-            priorityCount:p5?.querySelector(".v4-remaining")?.textContent || "",
+            miniPriorities:p5?.querySelectorAll(".priority-short").length || 0,
+            forbiddenDetails:p5?.querySelectorAll(".priority-short .v3-step--action, .priority-short .v3-step--result, .priority-short .v3-example, .priority-short .v3-time").length || 0,
+            priorityCount:p5?.querySelector(".checks-line")?.textContent || "",
           };
         };
         const render = () => { majConditionsQuestionnaire(); majLocalisation(); calc(); genererRapport({exigerVersion:false}); return capture(); };
@@ -891,25 +893,25 @@ test("V3.2 adapte les pages 4 et 5 au nombre réel de priorités et conserve le 
         donneesAnalyse.evidence={}; chooseAll(); chooseCriterion("revendiquee", 1); select("condition-location-mode", "storefront"); select("location-address", "exact");
         remplacementsTextesRapport = new Map([["priority.1.title", {customText:"Titre revendiquee personnalisé"}]]);
         const custom = render();
-        const hero = document.querySelector('[data-report-page="3"] .v3-priority-hero');
-        document.getElementById("workflow-browser-result").textContent = JSON.stringify({zero, one, two, three, more, custom, customTitle:hero?.querySelector(".v3-priority-title")?.textContent || "", customKey:hero?.dataset.priorityKey || ""});
+        const hero = document.querySelector('[data-report-page="2"] .priority-expanded');
+        document.getElementById("workflow-browser-result").textContent = JSON.stringify({zero, one, two, three, more, custom, customTitle:hero?.querySelector("h2")?.textContent || "", customKey:hero?.dataset.priorityKey || ""});
       } catch(error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
       }
     })();
   `);
   assert.equal(result.error, undefined, result.error);
-  assert.equal(result.zero.page4Title, "Points observés");
-  assert.equal(result.zero.page5Title, "Points observés");
+  assert.equal(result.zero.page4Title, "Lecture du score et vos priorités");
+  assert.equal(result.zero.page5Title, "Lecture du score et vos priorités");
   assert.equal(result.zero.miniPriorities, 0);
   assert.equal(result.one.miniPriorities, 0);
-  assert.equal(result.one.page5Title, "Points observés");
-  assert.equal(result.two.page5Chapter, "Étape 3 · Diagnostic Efficia™");
+  assert.equal(result.one.page5Title, "Lecture du score et vos priorités");
+  assert.equal(result.two.page5Chapter, "Étape 2 · Diagnostic Efficia™");
   assert.equal(result.two.miniPriorities, 1);
-  assert.equal(result.three.page5Title, "Points observés");
+  assert.equal(result.three.page5Title, "Lecture du score et vos priorités");
   assert.equal(result.three.miniPriorities, 2);
   assert.equal(result.more.miniPriorities, 2);
-  assert.match(result.more.priorityCount, /contrôles distincts/u);
+  assert.match(result.more.priorityCount, /Ce que nous avons vérifié/u);
   for(const scenario of [result.zero, result.one, result.two, result.three, result.more]) assert.equal(scenario.forbiddenDetails, 0);
   assert.equal(result.customKey, "revendiquee");
   assert.equal(result.customTitle, "Titre revendiquee personnalisé");
@@ -945,12 +947,12 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
         majConditionsQuestionnaire(); majLocalisation(); calc();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu du rapport refusé");
         const page3 = document.querySelector('[data-report-page="2"]');
-        const page5 = document.querySelector('[data-report-page="3"]');
-        const counts=(page3.querySelector('.v3-boundary p').textContent.match(/\\d+/g)||[]).map(Number);
+        const page5 = page3;
+        const counts=(page3.querySelector('.checks-line').textContent.match(/\\d+/g)||[]).map(Number);
         const countPage3=String(counts[2]+counts[3]);
-        const presentedPage5=String(page5.querySelectorAll('.v3-mini-priority,.v3-priority-hero').length);
-        const otherCount=page5.querySelector('.v4-remaining').textContent.match(/(\\d+) autres contrôles/)?.[1]||'0';
-        const otherLabel='autres contrôles';
+        const presentedPage5=String(page5.querySelectorAll('.v5-priority').length);
+        const otherCount=(page5.querySelector('.audit-teaser')?.textContent||'').match(/(\\d+) autres points/)?.[1]||'0';
+        const otherLabel='autres points';
         const countPage5=String(Number(presentedPage5)+Number(otherCount));
         const {jsPDFCtor, html2canvasFn} = await assurerLibrairiesPDF();
         if(!jsPDFCtor || !html2canvasFn) throw new Error("bibliothèques PDF absentes");
@@ -962,6 +964,8 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, 210, 297);
         }
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({
+          modelCounts: modeleDiagnosticAvecPreuves(calculScoreDetail()).model.counts,
+          modelPriorities: modeleDiagnosticAvecPreuves(calculScoreDetail()).model.priorities.length,
           pageCount: pages.length,
           pdfPages: pdf.internal.getNumberOfPages(),
           pdfBytes: pdf.output("arraybuffer").byteLength,
@@ -981,10 +985,12 @@ test("PDF Chrome réel : les compteurs prioritaires des pages 3 et 5 et le libel
   assert.equal(result.pageCount, 3);
   assert.equal(result.pdfPages, 3, "le PDF jsPDF reçoit les quatre pages réellement composées");
   assert.ok(result.pdfBytes > 0, "le PDF html2canvas/jsPDF ne doit pas être vide");
+  assert.equal(Number(result.page3Prioritaires), result.modelCounts.warn + result.modelCounts.ko);
+  assert.equal(Number(result.page5Presentees), result.modelPriorities);
   assert.equal(result.page3Prioritaires, result.page5Prioritaires);
-  assert.equal(result.page5Prioritaires, "0");
-  assert.equal(result.page5Presentees, "0");
-  assert.deepEqual(result.page5Autres, {count: "0", label: "autres contrôles"});
+  assert.equal(Number(result.page5Presentees), Math.min(3, Number(result.page5Prioritaires)));
+  assert.equal(Number(result.page5Autres.count), Math.max(0, Number(result.page5Prioritaires)-Number(result.page5Presentees)));
+  assert.equal(result.page5Autres.label, "autres points");
   assert.equal(result.descriptionVisible, false, "une réponse cochée sans preuve ne devient pas une absence affirmée");
   assert.equal(result.descriptionRemplie, false);
 });
@@ -995,7 +1001,7 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   const result = await runAdminBrowserHarness(`
     (async () => {
       try {
-        for(let attempt = 0; attempt < 50 && !document.getElementById("p-entreprise")?.value; attempt += 1) await new Promise(resolve => setTimeout(resolve, 20));
+        await initialisationContexteAdminPromise; // Attendre aussi la restauration des faits, pas seulement le nom.
         const chooseAll = () => {
           const groups = {};
           document.querySelectorAll('input[type="radio"][name^="c"]').forEach(input => (groups[input.name] ??= []).push(input));
@@ -1012,15 +1018,15 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
         address.checked = true; address.dispatchEvent(new Event("change", {bubbles:true}));
         const description = [...document.querySelectorAll('input[name="c' + CRITERE_IDS.descriptionRemplie + '"]')].find(input => Number(input.value) === 0 && !input.dataset.special);
         description.checked = true; description.dispatchEvent(new Event("change", {bubbles:true}));
-        donneesAnalyse.evidence={descriptionRemplie:{criterionId:'descriptionRemplie',field:'description',observedValue:0,source:'Fixture explicite',observedAt:'2026-10-10',confidence:'certain',validatedText:'Description : 0 caractère observé.'}};
+        donneesAnalyse.evidence={descriptionRemplie:{criterionId:'descriptionRemplie',field:'description',observedValue:0,source:'Fixture explicite',observedAt:'2026-10-10',confidence:'certain',validatedText:'Votre fiche ne contient aucune description.'}};
         majConditionsQuestionnaire(); majLocalisation(); calc();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu initial refusé");
         const initial = {
           verdict: document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
           score: document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
-          benchmark: document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
-          priorityKey: document.querySelector('[data-report-page="3"] .v3-priority-hero')?.dataset.priorityKey || "",
-          prices: [...document.querySelectorAll('[data-report-page="4"] .offer-price')].map(item => item.textContent),
+          benchmark: document.querySelector('[data-report-page="1"] .evidence-table')?.textContent || "",
+          priorityKey: document.querySelector('[data-report-page="2"] .priority-expanded')?.dataset.priorityKey || "",
+          prices: [...document.querySelectorAll('[data-report-page="3"] .offer-price')].map(item => item.textContent),
         };
         const opened = await ouvrirEditeurTextesRapport();
         const write = (fieldId, value) => {
@@ -1030,7 +1036,7 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
           textarea.dispatchEvent(new Event("input", {bubbles:true}));
         };
         write("page1.verdict_title", "Titre de verdict personnalisé");
-        write("priority.1.observation", "Description : 0 caractère observé.");
+        write("priority.1.observation", "Votre fiche ne contient aucune description.");
         write("conclusion.commercial", "Accompagnement personnalisé.");
         await enregistrerTextesRapport();
         if(!genererRapport({exigerVersion:false})) throw new Error("rendu personnalisé refusé");
@@ -1072,9 +1078,9 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
           pdfPages:pdf.internal.getNumberOfPages(), pdfBytes:pdf.output("arraybuffer").byteLength,
           restoredAutomatic:document.querySelector('[data-report-page="1"] .v3-verdict h2')?.textContent || "",
           finalScore:document.querySelector('[data-report-page="1"] .score-gauge')?.textContent || "",
-          finalBenchmark:document.querySelector('[data-report-page="2"] .v3-comparison')?.textContent || "",
-          finalPriorityKey:document.querySelector('[data-report-page="3"] .v3-priority-hero')?.dataset.priorityKey || "",
-          finalPrices:[...document.querySelectorAll('[data-report-page="4"] .offer-price')].map(item => item.textContent),
+          finalBenchmark:document.querySelector('[data-report-page="1"] .evidence-table')?.textContent || "",
+          finalPriorityKey:document.querySelector('[data-report-page="2"] .priority-expanded')?.dataset.priorityKey || "",
+          finalPrices:[...document.querySelectorAll('[data-report-page="3"] .offer-price')].map(item => item.textContent),
         });
       } catch(error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({error:String(error?.stack || error)});
@@ -1085,7 +1091,7 @@ test("éditeur V3.2 : le titre page 1, une priorité et le teasing sont persist�
   assert.equal(result.opened, true);
   assert.deepEqual(result.preview, {
     verdict: "Titre de verdict personnalisé",
-    observation: "Description : 0 caractère observé.",
+    observation: "Votre fiche ne contient aucune description.",
     teaser: "Accompagnement personnalisé.",
   });
   assert.deepEqual(result.restored, result.preview, "la même personnalisation doit être relue avant le PDF");
@@ -1211,10 +1217,10 @@ test("activité, prénom et textes sauvegardés : aperçu et PDF attendent le br
   `, { catalog, overrides: [], answers:qualifiedWorkflowAnswers() }, { timeout: 45_000, resultWait: 40_000 });
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.previews, 1);
-  assert.equal(result.captures.length, 4, JSON.stringify(result));
+  assert.equal(result.captures.length, 3, JSON.stringify(result));
   assert.match(String(result.filename), /Score-Efficia_/u);
   assert.match(String(result.savedPdf?.filename), /Score-Efficia_/u);
-  assert.equal(result.savedPdf?.pages, 4);
+  assert.equal(result.savedPdf?.pages, 3);
   assert.ok(result.savedPdf?.bytes > 0);
   assert.ok(result.labels.some(label => label.includes("Préparation de l’aperçu…")));
   assert.ok(result.labels.some(label => label.includes("Génération du PDF en cours…")));
@@ -1434,6 +1440,7 @@ test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et l
           internalValue: document.getElementById("d-site-code").value,
           generated,
           reportText,
+          evidenceConfidence:modeleDiagnosticAvecPreuves(calculScoreDetail()).model.observations.find(o=>o.key==='nap')?.evidence.confidence,
           draftBody: draftWrite?.body || null,
         });
       } catch (error) {
@@ -1461,6 +1468,7 @@ test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et l
           internalValue: document.getElementById("d-site-code").value,
           generated,
           reportText,
+          evidenceConfidence:modeleDiagnosticAvecPreuves(calculScoreDetail()).model.observations.find(o=>o.key==='nap')?.evidence.confidence,
         });
       } catch (error) {
         document.getElementById("workflow-browser-result").textContent = JSON.stringify({ error: String(error?.stack || error) });
@@ -1490,7 +1498,8 @@ test("smoke Chrome : le détail DNS brut persiste dans le brouillon interne et l
   assert.equal(reloaded.internalValue, rawDns);
   assert.equal(reloaded.generated, true);
   assert.match(reloaded.reportText, /Le site officiel était inaccessible lors de notre contrôle\. La vérification indique un problème de configuration DNS/u);
-  assert.match(reloaded.reportText, /Observation partielle/u, "le défaut technique est présenté avec la limite de sa preuve, sans inventer des points manquants");
+  assert.equal(reloaded.evidenceConfidence, "partial", "la fiabilité reste dans la preuve interne");
+  assert.doesNotMatch(reloaded.reportText, /Observation partielle/u, "les détails de fiabilité ne sont pas du texte client");
   assert.doesNotMatch(reloaded.reportText, /DNS records|Please check your DNS settings|hébergement|journaux d’erreur/u);
 });
 
