@@ -7,6 +7,10 @@
 <meta name="robots" content="noindex, nofollow">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
 <script src="/js/score-efficia-core.js?v=1"></script>
+<script src="/js/diagnostic-tone-config.js?v=1"></script>
+<script src="/js/diagnostic-evidence.js?v=1"></script>
+<script src="/js/diagnostic-report.js?v=1"></script>
+
 <script src="/js/diagnostic-pdf-filename.js?v=1"></script>
 <!-- ============================================================
      SCORE EFFICIA™ — VERSION AUTOMATISÉE (API Google Places)
@@ -375,6 +379,16 @@
   .report-v3 .v3-secondary-lead{margin-top:2mm;color:#53647b;font-size:12.5px;line-height:1.5}.report-v3 .v3-priorities{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:7mm}.report-v3 .v3-mini-priority{padding-top:4mm;border-top:2px solid #dce5f2}.report-v3 .v3-mini-priority--two{border-color:#c97109}.report-v3 .v3-mini-priority--three{border-color:#225fdb}.report-v3 .v3-mini-priority h2{margin-top:3mm;color:#0c1b38;font-size:18px;line-height:1.25}.report-v3 .v3-mini-priority p{margin-top:3mm;color:#4c5d75;font-size:11.5px;line-height:1.55}.report-v3 .v3-mini-label{margin-top:5mm;color:#748399;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.report-v3 .v3-audit-teaser{display:grid;grid-template-columns:1.5fr .5fr;gap:25px;align-items:center;margin-top:6mm;padding:5mm;background:#f6f8fb}.report-v3 .v3-audit-teaser h2{font-size:15px;color:#0c1b38}.report-v3 .v3-audit-teaser p{margin-top:2mm;color:#63748a;font-size:11.5px;line-height:1.5}.report-v3 .v3-audit-count{text-align:right;color:#225fdb;font-size:25px;font-weight:800;letter-spacing:-.06em}.report-v3 .v3-audit-count small{display:block;color:#617188;font-size:9px;letter-spacing:0}.report-v3 .v3-priority-count{display:flex;gap:22px;margin-top:4mm;color:#617188;font-size:10px}.report-v3 .v3-priority-count b{color:#0c1b38}
   .report-v3 .v3-solution-lead{margin-top:2mm;color:#53647b;font-size:12px;line-height:1.5}.report-v3 .v3-offer-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:18px;margin-top:6mm}.report-v3 .v3-offer{display:flex;flex-direction:column;padding:5mm;border:1.5px solid #aec7f6;background:#fff}.report-v3 .v3-offer--pack{border:2px solid #225fdb;background:linear-gradient(150deg,#f2f6ff,#fff 57%);box-shadow:0 12px 26px rgba(34,95,219,.14)}.report-v3 .v3-offer-tag{align-self:flex-start;color:#225fdb;background:#eaf1ff;padding:5px 9px;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.report-v3 .v3-offer--pack .v3-offer-tag{color:#fff;background:#225fdb}.report-v3 .v3-offer h2{margin-top:3mm;color:#0c1b38;font-size:18px;line-height:1.2}.report-v3 .v3-offer .offer-price{margin-top:2mm;color:#0c1b38;font-size:28px}.report-v3 .v3-offer p{margin-top:2.5mm;color:#51627a;font-size:10.5px;line-height:1.45}.report-v3 .v3-offer ul{display:grid;gap:5px;margin:3.5mm 0 0;padding:0;list-style:none;color:#40526c;font-size:10px;line-height:1.32}.report-v3 .v3-offer li{display:flex;gap:7px}.report-v3 .v3-offer li:before{content:'✓';color:#078c68;font-weight:800}.report-v3 .v3-offer .offer-note{margin-top:auto;padding-top:4mm;color:#63748b;font-size:9.5px;line-height:1.4}.report-v3 .payment-button{margin-top:4mm;border-radius:0;padding:11px 9px;font-family:'Plus Jakarta Sans',Inter,sans-serif;font-size:10.5px}.report-v3 .payment-button--audit{color:#225fdb;background:#fff;border:1.5px solid #225fdb}.report-v3 .payment-button--pack{color:#fff;background:#225fdb;border-color:#225fdb}.report-v3 .v3-after{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:5mm;padding-top:4mm;border-top:1px solid #dce5f2;color:#61718a;font-size:9.5px;line-height:1.42}.report-v3 .v3-after--single{grid-template-columns:1fr}.report-v3 .v3-after b{display:block;color:#0c1b38;font-size:10px;margin-bottom:3px}.report-v3 .v3-signature{margin-top:4mm;padding:3mm 0;color:#4b5d76;font-size:10px;border-top:1px solid #dce5f2}.report-v3 .v3-legal{margin-top:3mm;color:#8693a5;font-size:8.5px;line-height:1.36}
   /* Diagnostic gratuit avec fiche : quatre pages, mêmes tailles de texte. */
+  #rapport-contenu .report-v4 .v4-unverified{position:absolute;bottom:22mm;font-size:12px;color:#52637a}
+  #rapport-contenu .report-v4 .v3-signals{grid-template-columns:1fr;gap:2mm}
+  #rapport-contenu .report-v4 .evidence-source{display:block;font-size:12px;line-height:1.4;color:#52637a}
+  #rapport-contenu .report-v4 .v5-priority{border-top:1px solid #ccd9ec;padding:2.5mm 0;margin:0}
+  #rapport-contenu .report-v4 .v5-priority h2{font-size:18px;margin:1mm 0}
+  #rapport-contenu .report-v4 .v5-priority p{font-size:13px;margin:1mm 0;line-height:1.4}
+  #rapport-contenu .report-v4 .v5-other-actions{font-size:12px;line-height:1.4;margin:3mm 0}
+  #rapport-contenu .report-v4 .v5-other-actions h2{font-size:16px}
+  #rapport-contenu .report-v4 .v5-other-actions ul{margin:1mm 0;padding-left:5mm}
+  #rapport-contenu .report-v4 .v5-comparison-note{position:absolute;bottom:22mm;font-size:12px;color:#52637a}
   .report-v4 .v4-comparison-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:4mm;align-items:start}
   .report-v4 .v4-comparison-grid .v3-score-lines{margin-top:0;gap:4mm}
   .report-v4 .v4-comparison-grid .v3-score-line{grid-template-columns:1fr 52px;gap:4px}
@@ -634,6 +648,37 @@
     h1,h2,h3{break-after:avoid;page-break-after:avoid}
     .page-action{break-before:page;page-break-before:always;padding-top:13mm}
   }
+.profile-badge{font-weight:800;border:1px solid currentColor;border-radius:16px;padding:5px 12px;display:inline-block;margin-bottom:12px}
+.evidence-source{display:block;font-size:10px;color:#64748b;margin-top:6px;line-height:1.4}
+.evidence-table{width:100%;border-collapse:collapse;font-size:12px}.evidence-table th,.evidence-table td{padding:9px 5px;text-align:left;border-bottom:1px solid #e2e8f0}.evidence-table small{display:block;font-size:10px;color:#64748b}
+.evidence-domain{padding:7px 0;border-bottom:1px solid #e2e8f0;font-size:12px}.evidence-domain span{float:right}.evidence-domain small{display:block;font-size:10px;color:#64748b;margin-top:4px}
+@media print{#diagnostic-editorial-errors{display:none}}
+
+  /* Client V4: three pages; commercial page styles stay unchanged. */
+  #rapport-contenu .report-client-v4:not(.page-offres) .rapport-title{font-size:27px;margin-bottom:3mm}
+  #rapport-contenu .report-client-v4 .diagnostic-context{font-size:12px;line-height:1.5;margin:2mm 0}
+  #rapport-contenu .report-client-v4 .v3-signals{grid-template-columns:1fr 1fr;gap:6mm;margin-top:4mm;padding-top:3mm}
+  #rapport-contenu .report-client-v4 .v3-signals p{font-size:16px;line-height:1.5}
+  #rapport-contenu .report-client-v4 .evidence-table{width:100%;margin-top:6mm}
+  #rapport-contenu .report-client-v4 .evidence-table td{padding:18px 5px;font-size:14px}
+  #rapport-contenu .report-client-v4 .comparison-caption{font-size:12px;margin:2mm 0}
+  #rapport-contenu .report-client-v4 .domain-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm 5mm;margin:3mm 0}
+  #rapport-contenu .report-client-v4 .evidence-domain{margin:0;padding:0}
+  #rapport-contenu .report-client-v4 .evidence-domain b{display:flex;justify-content:space-between;font-size:13px}
+  #rapport-contenu .report-client-v4 .evidence-domain small{font-size:12px;line-height:1.3;display:block;white-space:nowrap}
+  #rapport-contenu .report-client-v4 .evidence-domain .v3-bar{height:5px;margin:1.5mm 0}
+  #rapport-contenu .report-client-v4 .checks-line{font-size:12px;margin:3mm 0;line-height:1.4}
+  #rapport-contenu .report-client-v4 .v5-priority{padding:3mm 0}
+  #rapport-contenu .report-client-v4 .v5-priority h2{font-size:18px;margin:1mm 0}
+  #rapport-contenu .report-client-v4 .v5-priority p{font-size:13px;line-height:1.45;margin:2mm 0}
+  #rapport-contenu .report-client-v4 .reply-examples{background:#f1f6fd;border-left:3px solid #225fdb;padding:2mm 3mm;margin:2mm 0;font-size:12px;line-height:1.4}
+  #rapport-contenu .report-client-v4 .priority-compact-copy{white-space:nowrap}
+
+
+  #rapport-contenu .report-client-v4 .audit-teaser{background:#f1f6fd;border-left:3px solid #225fdb;padding:3mm;font-size:12px;line-height:1.4;margin-top:2mm}
+  #rapport-contenu .report-client-v4 .after-order{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin-top:4mm;font-size:12px;line-height:1.4}
+  #rapport-contenu .report-client-v4 .report-contact{font-size:12px;line-height:1.5;margin-top:4mm}
+  #rapport-contenu .report-client-v4 .report-contact a{color:#225fdb;text-decoration:underline}
 </style>
 <style>
 /* ===== Audit Efficia Premium — produit payant, mise en page fluide ===== */
@@ -706,6 +751,26 @@
 </head>
 <body>
 <div id="formulaire">
+  <fieldset style="margin:20px;padding:16px">
+    <legend>Confirmation du rang</legend>
+    <label><input id="rang-organique-confirme" type="checkbox" onchange="enregistrerConfirmationRang()"> Rang organique confirmé visuellement (pas une annonce)</label>
+    <label>Date de vérification <input id="rang-organique-date" type="date" onchange="enregistrerConfirmationRang()"></label>
+    <p id="rang-organique-statut" role="status"></p>
+  </fieldset>
+  <details style="margin:20px;padding:16px;border:1px solid #cbd5e1">
+    <summary>Preuves du diagnostic — renseigner un constat précis</summary>
+    <p>Un score coché ne prouve pas une absence. Renseignez le champ réellement observé, sa source et sa date. Les preuves sont conservées dans le brouillon.</p>
+    <label>Critère <select id="preuve-critere" onchange="chargerPreuveDiagnostic()"></select></label>
+    <label>Champ précis (ex. téléphone, horaires habituels, horaires jours fériés)<input id="preuve-champ"></label>
+    <label>Observation (valeur mesurée, absence confirmée ou description précise)<input id="preuve-valeur"></label>
+    <label>Source ou lien vérifié<input id="preuve-source"></label>
+    <label>Date de l’observation<input id="preuve-date" type="date"></label>
+    <label>Fiabilité<select id="preuve-confiance"><option value="partial">Partielle</option><option value="certain">Certaine</option><option value="uncertain">Incertaine</option></select></label>
+    <label><input id="preuve-pertinente" type="checkbox"> Pertinence vérifiée pour cette activité (catégories et attributs)</label>
+    <label>Texte personnalisé vérifié contre cette preuve, si nécessaire<textarea id="preuve-texte"></textarea></label>
+    <button type="button" class="btn" onclick="enregistrerPreuveDiagnostic()">Appliquer la preuve au brouillon</button>
+    <p id="preuve-statut" role="status"></p>
+  </details>
   <div class="score-flottant">
     <div><strong>Score Efficia™ AUTO</strong> — <span id="compteur-restant">analyse non lancée</span></div>
     <div class="val"><span id="score-live">—</span>/100 <span id="score-provisoire" class="score-provisoire" hidden>provisoire</span></div>
@@ -832,6 +897,7 @@
     <button class="btn" id="btn-apercu-rapport" data-report-generation onclick="apercuImpression()">Aperçu avant impression</button>
     <button class="btn" style="background:var(--gris)" onclick="document.body.classList.remove('mode-rapport')">← Revenir à l'analyse</button>
   </div>
+  <div id="diagnostic-editorial-errors" role="alert" hidden style="white-space:pre-wrap;color:#991b1b;padding:16px"></div>
   <div id="rapport-contenu"></div>
 </div>
 
@@ -880,6 +946,7 @@
    0-1 = note minimale.
 ================================================ */
 const CONFIG = {
+  contact: {whatsapp:"32478020842"},
   totalScore: 100,
   seuils: {
     noteExcellente: 4.5,
@@ -1252,6 +1319,7 @@ GRILLE.forEach(cat => {
       const noReviewsResponse = cr.key === "tauxReponseAvis" && special === "no_reviews";
       html += `<label${noReviewsResponse ? " hidden" : ""}><input type="radio" name="c${idx}" value="${pts}" data-option-index="${optionIndex}"${special ? ` data-special="${special}"` : ""}${noReviewsResponse ? " disabled" : ""} onchange="majConditionsQuestionnaire()">${lab} <span style="color:var(--gris)">(${pts})</span></label>`;
     });
+    html += `<label><input type="radio" name="c${idx}" value="" data-special="not_verifiable" data-option-index="-1" onchange="majConditionsQuestionnaire()">Non vérifiable</label>`;
     html += `</div>`;
     if(cr.key === "categoriesSecondaires"){
       html += `<div class="category-evidence" id="category-evidence" aria-live="polite">
@@ -1324,7 +1392,7 @@ function lirePoints(id){
   if(critere?.key === "adresse") return scoreLocalisation();
   if(critere && critereEstNonApplicable(critere)) return null;
   const coche = document.querySelector(`input[name="c${id}"]:checked`);
-  return coche ? parseFloat(coche.value) : null;
+  return coche && coche.dataset.special!=="not_verifiable" ? parseFloat(coche.value) : null;
 }
 const PHOTO_DEPENDENT_KEYS = ["photoRecente","varietePhotos","qualitePhotos"];
 const REVIEW_DEPENDENT_KEYS = ["volumeAvis","recenceAvis","tauxReponseAvis","qualiteReponsesAvis"];
@@ -1464,7 +1532,7 @@ function critereEstNonApplicable(cr){
 }
 
 function critereEstNonVerifiablePubliquement(cr){
-  return cr?.key === "adresse" && localisationNonVerifiablePubliquement();
+  return cr?.key === "adresse" && localisationNonVerifiablePubliquement() || document.querySelector(`input[name="c${cr?.id}"]:checked`)?.dataset.special === "not_verifiable";
 }
 
 function majConditionsQuestionnaire(){
@@ -3442,6 +3510,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     statutCategoriesSecondaires: business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
     verificationMaps: business.mapsVerification || null,
     preuveRang: business.rankEvidence || null,
+    lieuReelTest:globalThis.EfficiaDiagnosticEvidence.searchLocation(business.actualSearchLocation,business.geographicAnchor),
     liensAction: Array.isArray(business.actionLinks) ? business.actionLinks : [],
     statutLiensAction: business.actionLinksStatus === "available" ? "available" : "unavailable",
     descriptionLongueur: estNombre(business.descriptionLength) ? Number(business.descriptionLength) : null,
@@ -3451,6 +3520,7 @@ function appliquerCollecteDiagnosticGratuit(business, scorePrefill){
     competitorQualificationStatus: qualificationStatus,
     concurrents: concurrents.map((item) => ({
       label: item.name || "Concurrent",
+      rank:item.rank, positionKind:item.positionKind, query:item.searchQuery, observedAt:item.searchAnalyzedAt, location:item.actualSearchLocation, comparable:item.comparable, rankEvidence:item.rankEvidence, criteria:item.criteria,
       note: estNombre(item.rating) ? Number(item.rating) : null,
       avis: estNombre(item.reviews) ? Number(item.reviews) : null,
       photos: estNombre(item.photos_count) ? Number(item.photos_count) : null,
@@ -3655,6 +3725,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
   const qualificationVersion = Number(business.competitorQualificationVersion);
   const competitors = (qualificationStatus === "refresh_required" ? [] : business.competitors.slice(0, 3)).map((item) => ({
     label:String(item.name || "").trim() || null,
+    rank:item.rank, positionKind:item.positionKind, query:item.searchQuery, observedAt:item.searchAnalyzedAt, location:item.actualSearchLocation, comparable:item.comparable, rankEvidence:item.rankEvidence, criteria:item.criteria,
     note:estNombre(item.rating) ? Number(item.rating) : null,
     avis:estNombre(item.reviews) ? Number(item.reviews) : null,
     photos:estNombre(item.photos_count) ? Number(item.photos_count) : null,
@@ -3669,7 +3740,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     sponsoredResultsExcluded:estNombre(business.sponsoredResultsExcluded) ? Number(business.sponsoredResultsExcluded) : 0,
     requeteTestee:actualQuery,
     derniereRequeteAnalysee:actualQuery,
-    derniereAnalyseRechercheAt:analyzedAt || business.searchAnalyzedAt || new Date().toISOString(),
+    derniereAnalyseRechercheAt:analyzedAt || business.searchAnalyzedAt || null,
     derniereActiviteAnalysee:normaliserRecherche(document.getElementById("p-activite")?.value),
     requeteAffichee:actualQuery,
     activiteConfirmee:business.confirmedActivity || normaliserRecherche(document.getElementById("p-activite")?.value) || null,
@@ -3678,6 +3749,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     statutCategoriesSecondaires:business.secondaryCategoriesStatus === "available" ? "available" : "unavailable",
     verificationMaps:business.mapsVerification || null,
     preuveRang:business.rankEvidence || null,
+    lieuReelTest:globalThis.EfficiaDiagnosticEvidence.searchLocation(business.actualSearchLocation,business.geographicAnchor),
     liensAction:Array.isArray(business.actionLinks) ? business.actionLinks : [],
     statutLiensAction:business.actionLinksStatus === "available" ? "available" : "unavailable",
     competitorQualificationVersion:qualificationStatus === "refresh_required" ? null : qualificationVersion,
@@ -3697,6 +3769,7 @@ function appliquerResultatsRecherche(business, scorePrefill, analyzedAt, expecte
     });
   }
   donneesAnalyse = next;
+  chargerConfirmationRang();
   actualiserPanneauConcurrentsQualifies(competitors.length, qualificationStatus);
   actualiserZoneGeographique(business);
   actualiserPreuvesCategories(business);
@@ -3834,6 +3907,9 @@ function collecterReponses(){
       ? null
       : document.querySelector(`input[name="c${cr.id}"]:checked`);
     if(selected?.dataset.special === "no_reviews") return;
+    if(selected?.dataset.special === "not_verifiable"){
+      reponses[cr.key]={points:null,value:'not_verifiable',source:'manual',statut:'manuelle',selectedOptionIndex:-1};return;
+    }
     const p = lirePoints(cr.id);
     if(p !== null){
       const el = document.getElementById("crit-"+cr.id);
@@ -4110,6 +4186,10 @@ function appliquerReponses(reponses){
       : [...document.querySelectorAll(`input[name="c${cr.id}"]`)].find(r => parseFloat(r.value) === parseFloat(valeur) && !r.dataset.special);
     if(radio) radio.checked = true;
     if(savedManual){
+      if(cr.key!=='revendiquee'&&!donneesAnalyse.evidence?.[cr.key]){
+        const answer=saved.value==='not_verifiable'?'Non vérifiable':cr.opts[saved.selectedOptionIndex]?.[0];
+        donneesAnalyse.evidence={...(donneesAnalyse.evidence||{}),[cr.key]:globalThis.EfficiaDiagnosticEvidence.operatorEvidence({criterionId:cr.key,field:LIBELLES_COURTS[cr.key]||cr.key,answer,observedAt:donneesAnalyse.operatorObservedAt,url:donneesAnalyse.verificationMaps?.url})};
+      }
       criteresTouchesManuellement.add(cr.id);
       sourcesCriteres.set(cr.id, "manual");
       const element = document.getElementById(`crit-${cr.id}`);
@@ -4416,7 +4496,7 @@ async function restaurerBrouillonD1(){
   appliquerChampsBrouillonD1(fields);
   proposerZoneRechercheDepuisRequete();
   profilActif = answers.profileKey || profilActif;
-  donneesAnalyse = {...donneesAnalyse, ...observedData};
+  donneesAnalyse = {...donneesAnalyse, ...observedData, operatorObservedAt:observedData.operatorObservedAt||draft.updatedAt||null};
   // Conserver l'ordre des emplacements : une entrée invalide reste un emplacement
   // vide, sans décaler les champs enregistrés des concurrents suivants.
   donneesAnalyse.concurrents = Array.isArray(donneesAnalyse.concurrents)
@@ -4429,6 +4509,7 @@ async function restaurerBrouillonD1(){
     donneesAnalyse.competitorQualificationStatus = "refresh_required";
     neutraliserPanelConcurrentielHistorique();
   }
+  chargerConfirmationRang();
   restaurerChampsConcurrents(fields);
   if(answers.photoPresence && answers.photoPresence !== "unknown"){
     const radio = answers.photoPresence === "none"
@@ -4888,12 +4969,19 @@ if(!modeLectureSeule()){
     programmerSauvegardeBrouillonD1();
   });
   document.getElementById("zone-criteres")?.addEventListener("change", (event) => {
-    const match = String(event.target?.name || "").match(/^c(\d+)$/);
+    const match = String(event.target?.name || "").match(/^c(\d+)$/) || (event.target?.dataset.checkCrit ? [null,event.target.dataset.checkCrit] : null);
     if(match){
       marquerTextesPersonnalisesAReverifierLocalement();
       const id = Number(match[1]);
       criteresTouchesManuellement.add(id);
       sourcesCriteres.set(id, "manual");
+      const criterion=trouverCritere(id);
+      const selectedAnswer=document.querySelector(`input[name="c${id}"]:checked`);
+      const answer=selectedAnswer?.dataset.special==='not_verifiable'?'Non vérifiable':criterion?.opts[Number(selectedAnswer?.dataset.optionIndex)]?.[0];
+      if(criterion && criterion.key!=='revendiquee'){
+        const day=new Date().toLocaleDateString('sv-SE');
+        donneesAnalyse.evidence={...(donneesAnalyse.evidence||{}),[criterion.key]:globalThis.EfficiaDiagnosticEvidence.operatorEvidence({criterionId:criterion.key,field:LIBELLES_COURTS[criterion.key]||criterion.key,answer,observedAt:day,url:donneesAnalyse.verificationMaps?.url})};
+      }
       const element = document.getElementById(`crit-${id}`);
       if(element){
         element.classList.remove("a-verifier");
@@ -7797,297 +7885,122 @@ function supprimerPromesseDelaiAudit(texte){
     .trim();
 }
 
+function contexteRangDiagnostic(){
+  const d=donneesAnalyse,E=globalThis.EfficiaDiagnosticEvidence;
+  return {rank:d.position,query:d.derniereRequeteAnalysee||d.requeteTestee,observedAt:d.derniereAnalyseRechercheAt,location:E.searchLocation(d.lieuReelTest,d.zoneGeographique)};
+}
+function chargerConfirmationRang(){
+  const p=donneesAnalyse.organicConfirmation;
+  document.getElementById('rang-organique-confirme').checked=globalThis.EfficiaDiagnosticEvidence.organicConfirmationMatches({...contexteRangDiagnostic(),organicConfirmation:p});
+  document.getElementById('rang-organique-date').value=p?.observedAt?.slice(0,10)||'';
+}
+function enregistrerConfirmationRang(){
+  const checked=document.getElementById('rang-organique-confirme').checked;
+  const input=document.getElementById('rang-organique-date');
+  if(checked&&!input.value)input.value=new Date().toLocaleDateString('sv-SE');
+  const context=contexteRangDiagnostic();
+  const E=globalThis.EfficiaDiagnosticEvidence;
+  const valid=Boolean(context.query&&E.date(context.observedAt)&&Number.isInteger(context.rank)&&context.rank>0&&E.date(input.value)&&input.value<=new Date().toLocaleDateString('sv-SE')&&input.value>=context.observedAt.slice(0,10));
+  donneesAnalyse.organicConfirmation=E.confirmOrganicRank(context,checked&&valid,input.value);
+  document.getElementById('rang-organique-statut').textContent=checked&&!valid?'Renseignez une recherche datée et une date de vérification valide.':checked?'Confirmation conservée pour ce rang et cette recherche.':'Rang non confirmé visuellement.';
+  marquerTextesPersonnalisesAReverifierLocalement();programmerSauvegardeBrouillonD1();
+}
+function chargerPreuveDiagnostic(){
+  const select=document.getElementById('preuve-critere');
+  if(!select.options.length)select.innerHTML=GRILLE.flatMap(c=>c.criteres).map(c=>`<option value="${escapeHtml(c.key)}">${escapeHtml(LIBELLES_COURTS[c.key]||c.q)}</option>`).join('');
+  const p=donneesAnalyse.evidence?.[select.value]||{};
+  for(const [id,key] of Object.entries({champ:'field',valeur:'observedValue',source:'source',date:'observedAt',confiance:'confidence',texte:'validatedText'}))document.getElementById('preuve-'+id).value=(id==='date'?p[key]?.slice(0,10):p[key])??(id==='confiance'?'partial':'');
+  document.getElementById('preuve-pertinente').checked=p.relevant===true;
+  let metadata=document.getElementById('preuve-metadata');
+  if(!metadata){metadata=document.createElement('pre');metadata.id='preuve-metadata';metadata.style.whiteSpace='pre-wrap';metadata.style.overflowWrap='anywhere';document.getElementById('preuve-statut').after(metadata);}
+  metadata.textContent=JSON.stringify(p,null,2);
+}
+function enregistrerPreuveDiagnostic(){
+  const get=id=>document.getElementById('preuve-'+id).value.trim();
+  if(!get('champ')||!get('valeur')||!get('source')||!get('date')){document.getElementById('preuve-statut').textContent='Renseignez le champ, la valeur, la source et la date.';return;}
+  const key=get('critere'),value=get('valeur');
+  donneesAnalyse.evidence={...(donneesAnalyse.evidence||{}),[key]:{criterionId:key,field:get('champ'),observedValue:/^\d+(?:[.,]\d+)?$/.test(value)?Number(value.replace(',','.')):value,
+    source:get('source'),observedAt:get('date'),confidence:get('confiance'),relevant:document.getElementById('preuve-pertinente').checked,validatedText:get('texte'),availability:'observed'}};
+  document.getElementById('preuve-statut').textContent='Preuve appliquée. Enregistrez le brouillon pour la conserver.';
+}
+document.getElementById('preuve-critere').closest('details').addEventListener('toggle',event=>{if(event.target.open)chargerPreuveDiagnostic();});
+function modeleDiagnosticAvecPreuves(detailScore){
+  const E=globalThis.EfficiaDiagnosticEvidence,C=globalThis.EfficiaDiagnosticToneConfig;
+  const data=donneesAnalyse||{};
+  const controls=listeControlesRapportV3().map(({cat,cr,statut:status})=>{
+    const domain=detailScore.categories.find(d=>d.cat===cat||d.cat.key===cat.key);
+    let stored=data.evidence?.[cr.key];
+    const metric=C.metricFields[cr.key];
+    let evidence=stored?{...stored,criterionId:cr.key}:null;
+    if(!evidence && metric && E.number(data[metric.field])!==null){
+      evidence={criterionId:cr.key,field:metric.field,observedValue:Number(data[metric.field]),
+        source:'Donnée renseignée dans le diagnostic',observedAt:data.derniereAnalyseRechercheAt||null,
+        confidence:'partial',comparison:{comparable:data.competitorQualificationStatus==='qualified'}};
+    }
+    if(!evidence && cr.key==='classementLocal' && Number.isInteger(data.position) && data.position>0 && E.date(data.derniereAnalyseRechercheAt) && data.derniereRequeteAnalysee){
+      evidence={criterionId:cr.key,field:'rang observé',observedValue:data.position,source:'Collecte de la recherche Google Maps',observedAt:data.derniereAnalyseRechercheAt,confidence:'partial'};
+    }
+    if(!evidence && cr.key==='nap'){
+      const site=etatSiteOfficielCourant();
+      if(['inaccessible','incomplet'].includes(site?.etat))evidence={criterionId:cr.key,field:'site web',observedValue:messageEtatSiteOfficiel(site),source:'Contrôle du site officiel renseigné dans le diagnostic',observedAt:site.checkedAt||null,confidence:'partial'};
+    }
+    // A selected score is not proof that a precise public field is absent.
+    if(!evidence)evidence={criterionId:cr.key,field:cr.key,observedValue:null,source:'',confidence:'uncertain'};
+    if(C.datedCriteria[cr.key] && !evidence.operatorAnswer && !E.date(evidence.observedValue))evidence.confidence='uncertain';
+    if(['attributs','categoriesSecondaires'].includes(cr.key)&&evidence.relevant!==true)evidence.confidence='uncertain';
+    if(!evidence.operatorAnswer&&C.specificFieldsRequired.includes(cr.key)&&(!stored||!stored.field||stored.field===cr.key))evidence.confidence='uncertain';
+    if(cr.key==='tauxReponseAvis'&&E.number(data.avisAnalyses)!==null&&E.number(data.reponsesProprietaire)!==null&&data.avisAnalyses>=data.reponsesProprietaire&&data.reponsesProprietaire>=0){
+      evidence.reviewCounts={total:Number(data.avisAnalyses),unanswered:Number(data.avisAnalyses)-Number(data.reponsesProprietaire),complete:Number(data.avisAnalyses)===Number(data.nbAvis)};
+    }
+    const fieldKey=String(evidence.field||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+    if(!evidence.operatorAnswer&&C.preciseFields[cr.key]&&!C.preciseFields[cr.key].includes(fieldKey))evidence.confidence='uncertain';
+    return {key:cr.key,label:stored?.field||metric?.label||LIBELLES_COURTS[cr.key]||cr.q,evidence,status,
+      actionable:!['classementLocal','attractiviteConcurrents'].includes(cr.key),
+      missingPoints:Math.max(0,cr.max-(lirePoints(cr.id)??cr.max)),rawDomainMaximum:domain?.maxEvalue,
+      normalizedDomainMaximum:domain?.maximumEffectifNormalisePrecis??domain?.maximumEffectifNormalise??domain?.poidsProfil};
+  });
+  const searchTest={rank:data.position,positionKind:data.positionKind,query:data.derniereRequeteAnalysee||data.requeteTestee,
+    observedAt:data.derniereAnalyseRechercheAt,location:E.searchLocation(data.lieuReelTest,data.zoneGeographique),rankEvidence:data.preuveRang,organicConfirmation:data.organicConfirmation,
+    rankConfirmed:data.preuveRang?.rankConfirmed===true,absenceConfirmed:data.preuveRang?.absenceConfirmed===true,scope:data.preuveRang?.scope||null};
+  const competitors=data.competitorQualificationStatus==='refresh_required'?[]:(data.concurrents||[]);
+  return {model:E.buildDiagnosticModel({listing:data,competitors,searchTest,controls}),searchTest};
+}
+let dernierControleEditorialDiagnostic=null;
+function validerEditorialDiagnostic(){
+  const result=dernierControleEditorialDiagnostic;
+  if(!result)throw erreurRenduDiagnostic('EDITORIAL_MODEL_MISSING','Préparez le diagnostic avant son export.');
+  const errors=[...result.errors];
+  errors.push(...globalThis.EfficiaDiagnosticEvidence.lintDiagnosticText([{id:'client-surface',kind:'copy',text:document.getElementById('rapport-contenu').textContent}]).filter(error=>['technical-client-copy','defensive-client-copy'].includes(error.rule)));
+  // Check the actual final DOM too, so post-render mutations cannot bypass the gate.
+  for(const b of result.blocks){
+    const node=[...document.querySelectorAll('[data-editorial-block]')].find(n=>n.dataset.editorialBlock===b.id);
+    if(!node||node.textContent!==b.text)errors.push({blockId:b.id,correction:'Régénérer le rapport : son texte a changé après validation.'});
+  }
+  if(errors.length)throw erreurRenduDiagnostic('EDITORIAL_VALIDATION_FAILED',errors.map(e=>`${e.blockId} : ${e.correction}`).join('\n'));
+}
 function genererRapport(options = {}){
   synchroniserDonneesManuelles();
-  if(options.exigerVersion !== false){
-    const versionInfo = obtenirVersionAnalyseRapport();
-    if(!versionInfo.ok){
-      statut(versionInfo.message, "erreur");
-      return false;
-    }
-  }
-  const detailScore = calculScoreDetail();
-  const score = Math.round(detailScore.total);
-  const bande = BANDES.find(b => score >= b.min);
-  const phraseScore = phraseDirecteScoreDiagnosticGratuit(score);
-  const entreprise = document.getElementById("p-entreprise").value || "Votre entreprise";
-  const activite = corrigerLibelleRapport(document.getElementById("p-activite").value || "");
-  const ville = document.getElementById("p-ville").value || "";
-  const contact = document.getElementById("p-contact").value;
-  const dateStr = new Date().toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
-  const nbControles = compterCriteresApplicablesRapport();
-  const auditPaymentUrl = resolvePaymentUrl(AUDIT_PAYMENT_URL, "audit");
-  const packPaymentUrl = resolvePaymentUrl(PACK_PAYMENT_URL, "visibility");
-
-  let catsBlocs = [], forces = [], priorites = [], categoriesTriees = [];
-  detailScore.categories.forEach(({cat, pct, poidsProfil, pointsPonderes, maxEvalue, maximumEffectifNormalise}) => {
-    let pts = 0;
-    cat.criteres.forEach(cr => {
-      if(critereEstMasque(cr) || critereEstNonApplicable(cr)) return;
-      const p = lirePoints(cr.id);
-      if(p === null) return;
-      pts += p;
-      if(critereEstNonVerifiablePubliquement(cr)) return;
-      if(p >= cr.max) forces.push({txt:forceRapport(cr), poids:cr.max, cr});
-      else priorites.push({critere:cr, points:p, perdu:cr.max - p});
-    });
-    const pctAffiche = pct === null ? 0 : Math.round(100 * pct);
-    const statut = maxEvalue
-      ? statutDomaine(pctAffiche)
-      : {label:"Données insuffisantes", couleur:"#64748b", fond:"#f8fafc"};
-    categoriesTriees.push({cat, pct:pctAffiche});
-    const pointsAffiches = maxEvalue ? `${Math.round(pointsPonderes)}/${Math.round(maximumEffectifNormalise ?? poidsProfil)}` : "À confirmer";
-    const pourcentageBarre = pourcentageBarreFamille(pointsPonderes, maximumEffectifNormalise ?? poidsProfil);
-    catsBlocs.push({pct:pctAffiche, evalue:!!maxEvalue, html:`<div class="barre-cat"><div class="ligne"><span>${cat.cat}</span><strong>${pointsAffiches}</strong>
-      <span class="statut-domaine" style="background:${statut.fond};color:${statut.couleur}">${statut.label}</span></div>
-      <div class="barre-fond"><div class="barre-rempli" style="width:${pourcentageBarre}%;background:${statut.couleur}"></div></div></div>`});
+  if(options.exigerVersion!==false){const v=obtenirVersionAnalyseRapport();if(!v.ok){statut(v.message,'erreur');return false;}}
+  const detail=calculScoreDetail();
+  const {model,searchTest}=modeleDiagnosticAvecPreuves(detail);
+  const plain=s=>{const n=document.createElement('div');n.innerHTML=s;return n.textContent;};
+  const result=globalThis.EfficiaDiagnosticReport.renderDiagnostic({model,score:Math.round(detail.total),searchTest,contact:CONFIG.contact||{},
+    domains:detail.categories.map(d=>({key:d.cat.key,label:d.cat.cat,points:d.maxEvalue?Math.round(d.pointsPonderes):null,maximum:Math.round(d.maximumEffectifNormalise??d.poidsProfil)})),
+    identity:{contact:document.getElementById('p-contact').value.trim(),company:document.getElementById('p-entreprise').value||'Votre entreprise',activity:document.getElementById('p-activite').value,city:document.getElementById('p-ville').value,
+      facts:{Note:globalThis.EfficiaDiagnosticEvidence.number(donneesAnalyse.note),'Nombre d’avis':globalThis.EfficiaDiagnosticEvidence.number(donneesAnalyse.nbAvis),Photos:globalThis.EfficiaDiagnosticEvidence.number(donneesAnalyse.nbPhotos),'Position au test':model.profile.rank}},
+    override:(id,s)=>{const automatic=plain(textePublicationDiagnostic(id,escapeHtml(s)));const custom=remplacementsTextesRapport.get(id);return custom?.customText?.trim()&&!custom.needsReview?custom.customText.trim():automatic;},
+    header:()=>rapportHeaderHtml('Diagnostic Efficia™'),gauge:scoreGaugeHtml,
+    payment:kind=>paymentButtonHtml({url:resolvePaymentUrl(kind==='audit'?AUDIT_PAYMENT_URL:PACK_PAYMENT_URL,kind==='audit'?'audit':'visibility'),label:kind==='audit'?'Je veux savoir quoi corriger en premier':'Optimiser ma fiche maintenant',variant:kind})});
+  dernierControleEditorialDiagnostic=result;
+  document.getElementById('rapport-contenu').innerHTML=result.html;
+  // Keep the existing hierarchy; raise only text smaller than 9 pt (12 CSS px).
+  document.querySelectorAll('#rapport-contenu .report-v4 *').forEach(node=>{
+    if(parseFloat(getComputedStyle(node).fontSize)<12)node.style.setProperty('font-size','12px','important');
   });
-  const catsHtml = catsBlocs.sort((a,b) => (Number(b.evalue) - Number(a.evalue)) || (b.pct - a.pct)).map(b => b.html).join("");
-  forces.sort((a,b) => b.poids - a.poids);
-  priorites.sort((a,b) => b.perdu - a.perdu);
-  categoriesTriees.sort((a,b) => a.pct - b.pct);
-  const categoriesFortes = [...categoriesTriees].sort((a,b) => b.pct - a.pct).slice(0,2);
-  const top3f = forces.slice(0,3);
-  const top3p = appliquerPrioriteSiteInaccessible(selectionnerPrioritesDynamiques(priorites), etatSiteOfficielCourant());
-  const pied = n => `<div class="pied"><span>Efficia Digital — Diagnostic Efficia™</span><span class="pagination-rapport" data-page="${n}">Page ${n}</span></div>`;
-  const salutation = contact ? `Bonjour ${contact},` : `Bonjour,`;
-  const faibles = categoriesTriees.filter(c => c.pct < 70);
-  const interpretation = interpretationScore(score, categoriesFortes, faibles);
-  const factsHtml = faitsObservesHtml();
-  const indicesHtml = indicesProspectHtml();
-  const signification = significationHtml(categoriesFortes, faibles.length ? faibles : categoriesTriees.slice(0,2));
-  const concurrenceBloc = concurrenceHtml();
-  const projectionBrute = scoreProjetePack();
-  // Le potentiel est une projection de complétude du même diagnostic : il ne
-  // peut jamais être inférieur au score déjà obtenu. Le plafond historique de
-  // scoreProjetePack() reste inchangé pour les autres usages, notamment Premium.
-  const proj = {...projectionBrute, projete:Math.max(Math.round(score), projectionBrute.projete)};
-  const tempsDiy = calculerTempsInterne().minutes;
-  const dateLimite = new Date(Date.now() + CONFIG.rapport.joursValiditeDeduction * 864e5)
-    .toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"});
-  const deductionNote = CONFIG.rapport.joursValiditeDeduction
-    ? `Les 99 € de l’audit sont déduits du Pack Visibilité commandé dans les ${CONFIG.rapport.joursValiditeDeduction} jours.`
-    : "";
-  const enjeuBloc = enjeuRapportHtml(score, activite, ville);
-  const projectionBloc = proj.projete > score + 2 ? `
-    <div class="projection-grid">
-      <div class="proj-col"><div class="lab">Aujourd'hui</div><div class="num" style="color:${bande.couleur}">${score}<span style="font-size:.9rem;color:#64748b">/100</span></div></div>
-      <div class="proj-fleche">→</div>
-      <div class="proj-col"><div class="lab">Objectif réaliste</div><div class="num" style="color:#059669">${proj.projete}<span style="font-size:.9rem;color:#64748b">/100</span></div></div>
-    </div>
-    <p style="color:#8a97a8;font-size:.62rem;line-height:1.35;margin-top:5px">Projection du score de complétude Efficia après correction des critères directement maîtrisables. Elle ne constitue pas une garantie de classement Google, d'appels ou de chiffre d'affaires.</p>` : "";
-  const effortBloc = tempsDiy >= 45 ? `
-    <div class="effort-grid">
-      <div class="effort-card">Appliquer vous-même l'ensemble des recommandations<b>${formatMinutes(tempsDiy)}</b>au total, selon les éléments déjà disponibles et les vérifications nécessaires</div>
-      <div class="effort-card" style="border-color:#93c5fd;background:#f8fbff">Avec le Pack Visibilité<b>20 à 30 minutes</b>de votre côté : transmettre les informations, puis valider avant publication</div>
-    </div>` : "";
-  /* — Moteur narratif : angle du rapport selon la faiblesse dominante — */
-  const axeInfo = axeDominant();
-  const angle = axeInfo.axe && ANGLES[axeInfo.axe] ? ANGLES[axeInfo.axe] : null;
-  const resumePerso = resumePersonnalise(score, axeInfo);
-  const significationBloc = significationV2(forces, priorites) || signification;
-  const texteIntroConsultant = texteConsultantPage1({contact, entreprise, activite, ville, score, scoreProjete:proj.projete, priorites:top3p});
-  const verdictConfiance = verdictConfianceDiagnostic();
-  const texteIntroEffectif = textePublicationDiagnostic("summary.general",
-    verdictConfiance ? escapeHtml(verdictConfiance.texte) : `${contact ? `Bonjour ${escapeHtml(contact)},<br>` : ""}Sur la recherche « ${escapeHtml(libelleRechercheRapport(donneesAnalyse.derniereRequeteAnalysee || document.getElementById("d-requete").value) || "votre activité locale")} », ${score < 50 ? "votre fiche présente encore plusieurs freins au choix d’un nouveau client" : "votre fiche dispose de points d’appui, avec des signaux à consolider"}. Cette première lecture distingue vos atouts des obstacles visibles avant le premier contact.`);
-  const titrePage1Effectif = texteEffectifRapport("page1.title", "Votre situation aujourd'hui");
-  const surtitreVerdictEffectif = texteEffectifRapport("page1.verdict_eyebrow", "Verdict personnalisé");
-  const titreVerdictEffectif = textePublicationDiagnostic("page1.verdict_title", verdictConfiance?.titre || phraseScore.texte);
-  const precisionScoreEffectif = texteEffectifRapport("page1.score_disclaimer", "Ce score concerne uniquement votre fiche Google. Il ne juge pas la qualité de votre travail.");
-  const syntheseFaiblessesEffectif = texteEffectifRapport("weaknesses.summary", phraseTransitionPage2(categoriesTriees));
-  const conclusionCommercialeEffectif = textePublicationDiagnostic(
-    "conclusion.commercial",
-    `Pour la fiche de ${escapeHtml(entreprise)}, choisissez le plan d’action complet à appliquer vous-même ou confiez les optimisations à Efficia.`
-  );
-  const dIdent = donneesAnalyse;
-  const checklist = checklistHtml();
-  const checklistV3 = checklistV3Html();
-  const compteursPriorites = compteursPrioritesPage5(checklistV3.counts.ko, top3p.length);
-  const indicesV3 = indicesProspect();
-  const domainesV3 = [
-    ["PRÉSENCE GOOGLE", indicesV3.visibilite, "sur la recherche testée à améliorer"],
-    ["Confiance", indicesV3.confiance, estNombre(dIdent?.nbAvis) ? `${nEntier(dIdent.nbAvis)} avis observé${Number(dIdent.nbAvis) > 1 ? "s" : ""}` : "preuves clients à confirmer"],
-    ["SIGNAUX DE CONTACT", indicesV3.conversion === null ? "À confirmer" : indicesV3.conversion >= 80 ? "Bien renseignés" : "À renforcer", "Éléments facilitant le passage à l’action"]
-  ];
-  const elementsRestants = elementsIndeterminesPage5(checklist);
-  const benchTable = benchmarkTableHtml();
-  const panelConcurrentielHistorique = donneesAnalyse.competitorQualificationStatus === "refresh_required";
-  const panelConcurrentielSuffisant = !panelConcurrentielHistorique && (donneesAnalyse.concurrents || []).length === 3;
-  const notePanelConcurrentiel = panelConcurrentielSuffisant
-    ? ""
-    : panelConcurrentielHistorique
-      ? "Panel concurrentiel à actualiser — relance nécessaire."
-      : "Panel concurrentiel insuffisant pour comparaison.";
-  const ecartsBloc = ecartsExpliquesHtml();
-  const idParts = [];
-  if(estNombre(dIdent.note)) idParts.push(`<span>Note <b>${fmtNote(dIdent.note)} ★</b></span>`);
-  if(estNombre(dIdent.nbAvis)) idParts.push(`<span>Avis <b>${nEntier(dIdent.nbAvis)}</b></span>`);
-  if(estNombre(dIdent.nbPhotos)) idParts.push(`<span>Photos <b>${nEntier(dIdent.nbPhotos)}</b></span>`);
-  if(estNombre(dIdent.nbServices)) idParts.push(`<span>Services <b>${nEntier(dIdent.nbServices)}</b></span>`);
-  if(estNombre(dIdent.position)) idParts.push(`<span>Position <b>${dIdent.position === 0 ? "non visible" : dIdent.position + "e"}</b></span>`);
-  const identiteBandeau = idParts.length >= 2 ? `<div class="identite-bandeau"><span><b>Fiche analysée :</b> ${nomCourtRapport(entreprise, 48)}</span>${idParts.join("")}</div>` : "";
-  const requeteAffichee = estTexte(dIdent.requeteTestee) ? `« ${libelleRechercheRapport(dIdent.requeteTestee)} »` : "votre recherche locale principale";
-  const comparisonLabel = buildCompetitorComparisonLabel((donneesAnalyse.concurrents || []).length, requeteAffichee);
-  const domainesPrioritaires = categoriesTriees
-    .filter(c => c.pct < 60)
-    .slice(0,3)
-    .map(c => c.cat.cat.toLowerCase());
-  const postesFaibles = detailScore.categories
-    .filter(c => c.maxEvalue)
-    .map(c => ({label:c.cat.cat, pts:Math.round(c.pointsPonderes), max:Math.round(c.maximumEffectifNormalise ?? c.poidsProfil), pct:c.pct === null ? 0 : c.pct}))
-    .sort((a,b) => a.pct - b.pct)
-    .slice(0,2);
-  const page2SansBenchmark = `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} Votre score se construit sur six domaines. Voici, d'un coup d'œil, où votre fiche est déjà solide — et où elle perd des points aujourd'hui.</p>
-       ${notePanelConcurrentiel ? `<p class="comparison-note">${notePanelConcurrentiel}</p>` : ""}
-       ${catsHtml}
-       <div class="comparison-insight">
-         <h2>En résumé</h2>
-         <ul>
-           ${top3f.slice(0,1).map(f => `<li><span><strong>Votre point d'appui</strong> — ${forceChiffree(f.cr)}</span></li>`).join("")}
-           ${postesFaibles.map((p,i) => `<li><span><strong>À traiter en priorité</strong> — ${p.label.toLowerCase()} : ${p.pts}/${p.max} points — ${detailPosteFaible(p.label) || (i === 0 ? "le domaine où votre fiche perd le plus de points" : "l'autre grand poste de points perdus")}.</span></li>`).join("")}
-         </ul>
-         <p class="comparison-note">Les éléments « à confirmer » ne sont pas des défauts : ils demandent simplement une vérification manuelle.</p>
-       </div>`;
-  const benchmarkBloc = benchTable
-    ? `<p class="rapport-subtitle">${PHRASE_PEDAGOGIE_PAGE2} ${comparisonLabel}</p>
-       ${benchTable}${ecartsBloc}
-       <h2 style="margin:12px 0 7px;font-size:.96rem">Répartition de votre score par domaine</h2>${catsHtml}`
-    : page2SansBenchmark;
-  const nombrePrioritesPresentees = top3p.length;
-  const page4Chapitre = nombrePrioritesPresentees ? "Étape 4 · Priorité numéro 1" : "Étape 4 · Synthèse des actions";
-  const page4Titre = nombrePrioritesPresentees ? "Le premier levier à traiter" : "Aucune priorité majeure confirmée";
-  const page5Chapitre = nombrePrioritesPresentees >= 3 ? "Étape 5 · Les deux priorités suivantes" : nombrePrioritesPresentees === 2 ? "Étape 5 · La priorité suivante" : "Étape 5 · Aucun autre point prioritaire";
-  const page5Titre = nombrePrioritesPresentees >= 3 ? "Deux freins à traiter ensuite" : nombrePrioritesPresentees === 2 ? "Un frein à traiter ensuite" : "Aucune autre priorité à traiter";
-  const page5Lead = nombrePrioritesPresentees >= 2
-    ? "Ces priorités expliquent ce que le prospect peut encore avoir du mal à comprendre. La marche à suivre complète reste détaillée dans l'Audit Efficia™."
-    : "Aucune deuxième ou troisième priorité confirmée ne nécessite un développement dans ce diagnostic gratuit.";
-  const notePackPriorites = nombrePrioritesPresentees === 1
-    ? "La priorité identifiée dans ce diagnostic fait partie des optimisations incluses."
-    : nombrePrioritesPresentees > 1
-      ? `Les ${nombrePrioritesPresentees} priorités identifiées dans ce diagnostic font partie des optimisations incluses.`
-      : "Les optimisations confirmées de ce diagnostic font partie des actions que le Pack peut prendre en charge.";
-  const prioritePage4 = top3p[0]
-    ? rendrePrioriteV3Principale(top3p[0])
-    : `<div class="bloc-item"><div class="d">Aucune priorité majeure confirmée ne nécessite d'action détaillée. Les contrôles non conclusifs restent signalés séparément comme « À confirmer ».</div></div>`;
-  const prioritesPage5 = top3p.slice(1,3).map((p, index) => rendrePrioriteV3Resume(p, index + 1)).join("");
-  const forcesV3 = forces.slice(0,2).map(f => forceChiffree(f.cr)).filter(Boolean);
-  // Une priorité synthétique (site officiel) n'a pas de critère de grille :
-  // elle reste présentée page 4, sans être envoyée au formateur de faiblesse
-  // chiffrée réservé aux critères notés.
-  const vigilancesV3 = top3p.slice(0,2).map(p => p?.famille === "site_officiel" ? contenuPrioriteSiteV3(p).constat : constatObservePriorite(p, contexteRapport())).filter(Boolean);
-  const titreForcesEffectif = texteEffectifRapport("page1.strengths_heading", "Ce qui fonctionne déjà");
-  const titreFreinsEffectif = texteEffectifRapport("page1.weaknesses_heading", "Ce qui freine les contacts");
-  const forcesV3Effectives = (forcesV3.length ? forcesV3 : ["Les éléments positifs sont indiqués uniquement lorsqu'ils sont démontrés."])
-    .map((text, index) => textePublicationDiagnostic(`page1.strength.${index + 1}`, text));
-  const vigilancesV3Effectives = (vigilancesV3.length ? vigilancesV3 : ["Aucun frein majeur confirmé n'a été retenu dans les données disponibles."])
-    .map((text, index) => textePublicationDiagnostic(`page1.weakness.${index + 1}`, text));
-  const noteComparaisonV3 = ecartsExpliquesHtml() || (panelConcurrentielSuffisant
-    ? "Les concurrents restent anonymisés : il s'agit de repères de zone, pas d'un classement public d'entreprises."
-    : notePanelConcurrentiel);
-  const faitsV3 = [
-    estNombre(dIdent.note) ? ["Note", `${fmtNote(dIdent.note)}/5`] : null,
-    estNombre(dIdent.nbAvis) ? ["Avis", nEntier(dIdent.nbAvis)] : null,
-    estNombre(dIdent.nbPhotos) ? ["Photos", nEntier(dIdent.nbPhotos)] : null,
-    estNombre(dIdent.position) ? ["Position au test", !estTexte(dIdent.derniereRequeteAnalysee) ? "À confirmer" : dIdent.position === 0 ? "Non détectée" : libellePositionRapport(dIdent)] : null
-  ].filter(Boolean);
-  const scoreLignesV3 = detailScore.categories.map(({cat, pct, pointsPonderes, maximumEffectifNormalise, poidsProfil}) => {
-    const ratio = pct === null ? 0 : pourcentageBarreFamille(pointsPonderes, maximumEffectifNormalise ?? poidsProfil);
-    return `<div class="v3-score-line"><span>${cat.cat}</span><div class="v3-bar"><i class="${ratio < 60 ? "warn" : ratio >= 80 ? "good" : ""}" style="width:${ratio}%"></i></div><b>${pct === null ? "À confirmer" : `${Math.round(pointsPonderes)}/${Math.round(maximumEffectifNormalise ?? poidsProfil)}`}</b></div>`;
-  }).join("");
-  const comparisonIntroV3 = benchTable
-    ? `Lecture simplifiée à partir de ${(donneesAnalyse.concurrents || []).length} fiche${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} concurrente${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} anonymisée${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""} réellement comparable${(donneesAnalyse.concurrents || []).length > 1 ? "s" : ""}.`
-    : notePanelConcurrentiel || "Les données concurrentielles publiques ne permettent pas une comparaison suffisamment fiable sur cette fiche.";
-  const titrePage2Effectif = texteEffectifRapport("page2.title", "Comment votre fiche se situe localement");
-  const comparaisonLocaleEffectif = texteEffectifRapport("page2.comparison_intro", comparisonIntroV3);
-  const titreLectureEfficiaEffectif = texteEffectifRapport("page2.efficia_label", "Lecture Efficia");
-  const precisionLectureEfficiaEffectif = texteEffectifRapport(
-    "page2.efficia_explanation",
-    benchTable ? "Les écarts ci-dessous s'appuient uniquement sur les données concurrentielles réellement collectées et restent anonymisés." : "Aucun concurrent n'est inventé lorsque les informations publiques ne suffisent pas à établir une moyenne."
-  );
-  const noteMethodePage2Effectif = texteEffectifRapport("page2.micro_note", "Avis : médiane des volumes connus ; autres repères : moyennes arrondies. Les données manquantes sont exclues, jamais remplacées par zéro.");
-  const titrePage3Effectif = texteEffectifRapport("page3.title", "Une méthode rigoureuse, sans vous noyer dans la technique");
-  const introductionPage3Effectif = texteEffectifRapport("page3.introduction", "Nous regardons les signaux qu'un client peut observer avant de décider d'appeler. Voici les éléments les plus représentatifs.");
-  const titreAuditPage3Effectif = texteEffectifRapport("page3.audit_boundary_title", "Ce qui est réservé à l'Audit Efficia™");
-  const texteAuditPage3Effectif = texteEffectifRapport("page3.audit_boundary_text", "L'Audit détaille les corrections exactes, les contenus à publier, l'ordre des actions et les vérifications qui nécessitent l'accès au compte. Le diagnostic gratuit révèle les freins visibles ; il ne prétend pas tout déduire de l'extérieur.");
-  const titrePage5Effectif = texteEffectifRapport("page5.title", page5Titre);
-  const sousTitrePage5Effectif = texteEffectifRapport("page5.subtitle", page5Lead);
-  const titreTeasingAuditPage5Effectif = texteEffectifRapport("page5.audit_teaser_title", "La marche à suivre précise est détaillée dans l'Audit Efficia™.");
-  const texteTeasingAuditPage5Effectif = texteEffectifRapport("page5.audit_teaser_text", "Textes adaptés, contenus à prioriser, ordre d'intervention et vérifications à mener : l'Audit transforme ces constats en plan d'action adapté aux informations réelles de votre entreprise.");
-  const titrePage6Effectif = textePublicationDiagnostic("page6.title", "Choisir la suite");
-  const surtitreAuditEffectif = texteEffectifRapport("page6.audit_tag", "Je le fais moi-même");
-  const descriptionAuditEffectif = texteEffectifRapport("page6.audit_description", "Vous recevez tout ce qu'il faut pour agir vous-même, dans le bon ordre.");
-  const beneficesAuditEffectifs = ["Analyse approfondie et benchmark concurrentiel", "Priorités détaillées et recommandations personnalisées", "Textes et corrections recommandés", "Plan d’action complet à appliquer vous-même"]
-    .map((text, index) => texteEffectifRapport(`page6.audit_benefit.${index + 1}`, text));
-  const ctaAuditEffectif = texteEffectifRapport("page6.audit_cta", "Recevoir mon plan d’action complet");
-  const surtitrePackEffectif = texteEffectifRapport("page6.pack_tag", "Efficia s'occupe de tout");
-  const descriptionPackEffectif = texteEffectifRapport("page6.pack_description", "Vous préférez que les optimisations soient prises en charge ? Nous les réalisons à votre place.");
-  const beneficesPackEffectifs = ["Audit inclus", "Optimisations réalisées par Efficia", "Description, services et catégories retravaillés", "Validation avant toute publication", "Paiement unique, sans abonnement"]
-    .map((text, index) => texteEffectifRapport(`page6.pack_benefit.${index + 1}`, text));
-  const ctaPackEffectif = texteEffectifRapport("page6.pack_cta", "Confier l’optimisation à Efficia");
-  const apresAuditEffectif = supprimerPromesseDelaiAudit(texteEffectifRapport("page6.after_audit", ""));
-  const apresPackEffectif = texteEffectifRapport("page6.after_pack", "Nous préparons les optimisations puis vous les faisons valider avant toute publication.");
-  const titreApresAuditEffectif = texteEffectifRapport("page6.after_audit_title", "Après votre commande — Audit");
-  const titreApresPackEffectif = texteEffectifRapport("page6.after_pack_title", "Après votre commande — Pack");
-  const blocsApresCommande = [
-    apresAuditEffectif ? `<div><b>${titreApresAuditEffectif}</b>${apresAuditEffectif}</div>` : "",
-    apresPackEffectif ? `<div><b>${titreApresPackEffectif}</b>${apresPackEffectif}</div>` : ""
-  ].filter(Boolean);
-  const piedProspectEffectif = texteEffectifRapport("page6.prospect_footer", "Diagnostic réalisé par l'équipe Efficia Digital · Une question ? Répondez simplement à l'e-mail.");
-  const legalPage6Effectif = texteEffectifRapport("page6.legal", `Ce Diagnostic Efficia™ est offert, sans engagement. Les constats reposent sur l'état public de votre fiche Google Business au ${dateStr}${(donneesAnalyse.concurrents || []).length ? ", et sur les données publiques agrégées de fiches concurrentes de votre zone" : ""}. Efficia Digital n'est pas affilié à Google. Conformément à notre charte : aucun faux avis, uniquement des optimisations conformes aux règles Google.`);
-
-  document.getElementById("rapport-contenu").innerHTML = `
-  <!-- PAGE 1 — Votre situation actuelle -->
-  <div class="page page-hero report-v3 report-v4" data-report-page="1">
-    ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 1 · Votre fiche aujourd'hui</div><h1 class="rapport-title">${titrePage1Effectif}</h1>
-    <p class="rapport-subtitle">${entreprise}${activite ? " — " + activite : ""}${ville ? " (" + ville + ")" : ""} · Diagnostic réalisé le ${dateStr}</p>
-    <div class="v3-facts">${faitsV3.map(([label, value]) => `<span class="v3-fact"><strong>${label}</strong>${value}</span>`).join("")}</div>
-    <section class="v3-situation"><div>${scoreGaugeHtml(score)}</div><div class="v3-verdict"><div class="v3-eyebrow">${surtitreVerdictEffectif}</div><h2>${titreVerdictEffectif}</h2><p class="hero-analysis-text">${texteIntroEffectif}</p><p class="v3-scope">${precisionScoreEffectif}</p></div></section>
-    ${mentionScoreProvisoireHtml()}
-    <section class="v3-signals"><div><h2>${titreForcesEffectif}</h2><div class="v3-signal-list">${forcesV3Effectives.map(text => `<p class="v3-signal v3-signal--ok">${text}</p>`).join("")}</div></div><div><h2>${titreFreinsEffectif}</h2><div class="v3-signal-list">${vigilancesV3Effectives.map(text => `<p class="v3-signal">${text}</p>`).join("")}</div></div></section>
-    ${pied(1)}
-  </div>
-
-  <!-- PAGE 2 — Comparaison et vérifications -->
-  <div class="page page-benchmark report-v3 report-v4" data-report-page="2">
-    ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 2 · Comparaison locale et vérifications</div><h1 class="rapport-title">Comparaison locale et vérifications</h1>
-    <p class="rapport-subtitle">${comparaisonLocaleEffectif}</p>
-    <div class="v4-comparison-grid"><section>${benchmarkV3Html() || `<p class="rapport-subtitle">${notePanelConcurrentiel}</p>`}</section><section class="v3-score-lines">${scoreLignesV3}</section></div>
-    <p class="v3-micro-note">${repereAvisConcurrents()} ${noteMethodePage2Effectif}</p>
-    ${checklistV3.html}
-    <div class="v3-boundary"><h2>Une première lecture des signaux visibles</h2><p>L’analyse complète, les recommandations et le plan d’action sont réservés à l’Audit Efficia™.</p></div>
-    ${pied(2)}
-  </div>
-
-  <!-- PAGE 3 — Une priorité révélée et deux aperçus -->
-  <div class="page page-priorities report-v3 report-v4" data-report-page="3">
-    ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 3 · Vos priorités</div><h1 class="rapport-title">${nombrePrioritesPresentees === 3 ? "Les trois priorités" : nombrePrioritesPresentees ? "Vos priorités" : "Aucune priorité majeure confirmée"}</h1>
-    ${prioritePage4}
-    <section class="v3-priorities">${prioritesPage5}</section>
-    <div class="v4-remaining">${compteursPriorites.restants ? `${compteursPriorites.restants} autre${compteursPriorites.restants > 1 ? "s" : ""} point${compteursPriorites.restants > 1 ? "s ont" : " a"} été détecté${compteursPriorites.restants > 1 ? "s" : ""}. L’Audit Efficia™ les classe par priorité et précise comment les corriger.` : "L’Audit Efficia™ approfondit les vérifications et précise les recommandations adaptées à votre fiche."}</div>
-    ${pied(3)}
-  </div>
-
-  <!-- PAGE 4 — Choisir la suite -->
-  <div class="page page-offres report-v3 report-v4" data-report-page="4">
-    ${rapportHeaderHtml("Diagnostic Efficia™")}
-    <div class="chapitre">Étape 4 · Choisir la suite</div><h1 class="rapport-title">${titrePage6Effectif}</h1><p class="v3-solution-lead">${conclusionCommercialeEffectif}</p>
-    <section class="v3-offer-grid">
-      <article class="v3-offer"><span class="v3-offer-tag">${surtitreAuditEffectif}</span><h2>Audit complet Google Business</h2><div class="offer-price">99 € <small>TTC</small></div><p>${descriptionAuditEffectif}</p><ul>${beneficesAuditEffectifs.map(text => `<li>${text}</li>`).join("")}</ul><p class="offer-note">${deductionNote}</p>${paymentButtonHtml({url:auditPaymentUrl, label:ctaAuditEffectif, variant:"audit"})}</article>
-      <article class="v3-offer v3-offer--pack"><span class="v3-offer-tag">${surtitrePackEffectif}</span><h2>Pack Visibilité Google</h2><div class="offer-price">349 € <small>TTC</small></div><p>${descriptionPackEffectif}</p><ul>${beneficesPackEffectifs.map(text => `<li>${text}</li>`).join("")}</ul><p class="offer-note"><strong>${notePackPriorites}</strong> Votre seule tâche : nous transmettre quelques informations, puis valider.</p>${paymentButtonHtml({url:packPaymentUrl, label:ctaPackEffectif, variant:"pack"})}</article>
-    </section>
-    ${blocsApresCommande.length ? `<section class="v3-after${blocsApresCommande.length === 1 ? " v3-after--single" : ""}">${blocsApresCommande.join("")}</section>` : ""}
-    <div class="v3-signature">${piedProspectEffectif}</div><p class="v3-legal">${legalPage6Effectif}</p>
-    ${pied(4)}
-  </div>`;
-
-  document.body.classList.add("mode-rapport");
-  majPaginationRapport();
-  appliquerCompactionLocaleRapport();
-  majPaginationRapport();
-  window.scrollTo(0,0);
+  document.querySelector('#rapport-contenu .v3-situation')?.insertAdjacentHTML('afterend',mentionScoreProvisoireHtml());
+  const alert=document.getElementById('diagnostic-editorial-errors');
+  if(alert){alert.hidden=!result.errors.length;alert.textContent=result.errors.map(e=>`${e.blockId} : ${e.correction}`).join('\n');}
+  document.body.classList.add('mode-rapport');majPaginationRapport();appliquerCompactionLocaleRapport();majPaginationRapport();window.scrollTo(0,0);
   return true;
 }
 
@@ -8136,7 +8049,7 @@ function appliquerCompactionLocaleRapport(){
 
 function validerMiseEnPageRapport(){
   const pages = [...document.querySelectorAll("#rapport-contenu .page")];
-  if(pages.length !== 4) return {ok:false, page:0, reason:"page_count", count:pages.length};
+  if(pages.length !== 3) return {ok:false, page:0, reason:"page_count", count:pages.length};
   for(const [index, page] of pages.entries()){
     const mesure = mesuresPageRapport(page);
     if(mesure.overflow === "hidden" || mesure.overflow === "clip"){
@@ -8256,6 +8169,7 @@ function lignesPDFDepuisTexte(txt, maxChars){
 }
 
 function telechargerPDFNatif(filename){
+  validerEditorialDiagnostic();
   const pagesDom = [...document.querySelectorAll("#rapport-contenu .page")];
   const pageTexts = pagesDom.map(page => page.innerText);
   const totalPages = Math.max(pageTexts.length, 1);
@@ -8423,6 +8337,7 @@ async function preparerRenduDiagnosticGratuit(){
   if(!genererRapport()){
     throw erreurRenduDiagnostic("REPORT_MODEL_BUILD_FAILED", "Le rapport n’a pas pu être préparé. Vérifiez les informations du diagnostic puis réessayez.");
   }
+  validerEditorialDiagnostic();
 }
 
 /* ================= AUDIT EFFICIA PREMIUM (produit payant) =================
@@ -8953,8 +8868,8 @@ async function telechargerPDF(){
       throw erreurRenduDiagnostic("PDF_LIBRARIES_UNAVAILABLE", "La génération du PDF est indisponible pour le moment. Vérifiez votre connexion internet puis réessayez.");
     }
     const pages = [...document.querySelectorAll("#rapport-contenu .page")];
-    if(pages.length !== 4){
-      throw erreurRenduDiagnostic("REPORT_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${pages.length} pages au lieu de 4.`);
+    if(pages.length !== 3){
+      throw erreurRenduDiagnostic("REPORT_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${pages.length} pages au lieu de 3.`);
     }
     const layout = validerMiseEnPageRapport();
     if(!layout.ok){
@@ -8969,8 +8884,8 @@ async function telechargerPDF(){
       ajouterLiensPdfPourPage(pdf, page);
     }
     const totalPdf = pdf.internal.getNumberOfPages();
-    if(totalPdf !== 4){
-      throw erreurRenduDiagnostic("PDF_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${totalPdf} pages au lieu de 4.`);
+    if(totalPdf !== 3){
+      throw erreurRenduDiagnostic("PDF_PAGE_COUNT_INVALID", `Erreur de mise en page : le rapport contient ${totalPdf} pages au lieu de 3.`);
     }
     pdf.save(filename);
     await finaliserBrouillonD1ApresPDF(filename);

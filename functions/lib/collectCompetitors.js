@@ -504,7 +504,13 @@ export async function collectCompetitors({
   const qualifiedCandidates = afterExclusion.filter((place) => qualifyCompetitorByCategory(place, qualificationContext).qualified);
   const concurrents = observationOnly
     ? selectObservedCompetitors(qualifiedCandidates)
-    : selectValidReviewCompetitors(qualifiedCandidates, 3).map(mapCompetitor);
+    : selectValidReviewCompetitors(qualifiedCandidates, 3).map(place=>({
+      ...mapCompetitor(place),
+      rank:normalizeProviderRank(place,rankedPlaces.indexOf(place)).normalizedOneBasedRank,
+      rankEvidence:normalizeProviderRank(place,rankedPlaces.indexOf(place)),
+      positionKind:sponsorshipClassificationAvailable ? "organic" : "observed",
+      comparable:true,searchQuery:requete
+    }));
 
   if (!suppressSensitiveLogs) {
     console.log("collectCompetitors:retained", {
