@@ -150,6 +150,7 @@ function refreshBody(overrides = {}) {
     city: "Bruxelles",
     activity: "Boulangerie",
     searchQuery: "Boulangerie Bruxelles",
+    searchZone: {city:"Bruxelles", countryCode:"BE", postalCode:"1000"},
     ...overrides,
   };
 }
