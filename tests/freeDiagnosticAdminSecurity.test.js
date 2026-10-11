@@ -17,6 +17,8 @@ const ANALYSIS_ID = "analysis-free-123";
 const GOOGLE_URL = "https://maps.app.goo.gl/short-test";
 const CANONICAL_GOOGLE_URL = "https://www.google.com/maps/place/Maison-Test";
 const migrations = [
+  "0023_free_diagnostic_collection_locks.sql",
+  "0024_free_diagnostic_lock_releases.sql",
   "0001_orders_tasks.sql", "0002_audit_production_tracking.sql", "0003_analyses.sql",
   "0004_analysis_competitors.sql", "0005_analysis_benchmark.sql", "0006_analysis_knowledge.sql",
   "0007_analysis_reasoning_composer.sql", "0008_order_analysis_link.sql", "0009_manual_review_gate.sql",
@@ -40,7 +42,7 @@ class LocalD1 {
       bind: (...nextParams) => bound(nextParams),
       all: async () => ({ results: database.prepare(sql).all(...params) }),
       first: async () => database.prepare(sql).get(...params) || null,
-      run: async () => database.prepare(sql).run(...params),
+      run: async () => ({ success: true, meta: { changes: Number(database.prepare(sql).run(...params).changes) } }),
     });
     return bound();
   }
@@ -156,7 +158,7 @@ async function context(db, analysisId = ANALYSIS_ID, { authenticated = true, bod
   };
 }
 
-function installProviderFixture({ fail = false, notFound = false } = {}) {
+function installProviderFixture({ fail = false, notFound = false, centerCity = "Bruxelles" } = {}) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -177,7 +179,7 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
       // tests/freeDiagnosticGeographicAnchor.test.js).
       assert.equal(init.headers["X-API-KEY"], "simulated-provider-key");
       return Response.json({
-        data: [[{ latitude: 50.8503, longitude: 4.3517, city: "Bruxelles", postal_code: "1000", country_code: "BE" }]],
+        data: [[{ latitude: centerCity === "Attert" ? 49.7864 : 50.8503, longitude: centerCity === "Attert" ? 5.7864 : 4.3517, city: centerCity, postal_code: centerCity === "Attert" ? "6717" : "1000", country_code: "BE" }]],
       });
     }
     assert.equal(url.hostname, "api.app.outscraper.com");
@@ -187,7 +189,7 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
     }
     const query = url.searchParams.get("query") || "";
     if (notFound && query === CANONICAL_GOOGLE_URL) {
-      return Response.json({ data: [[{ place_id: "__NO_PLACE_FOUND__", error: "secret-provider-payload" }]] });
+      return Response.json({ data: [[]] });
     }
     const target = {
       name: "Maison Test",
@@ -209,6 +211,7 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
       : [[target,
         {
           name: "Concurrent local",
+          category: "Pâtisserie",
           place_id: "place-competitor",
           rating: 4.8,
           reviews: 120,
@@ -217,6 +220,7 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
         },
         {
           name: "Concurrent local 2",
+          category: "Pâtisserie",
           place_id: "place-competitor-2",
           rating: 4.6,
           reviews: 90,
@@ -225,6 +229,7 @@ function installProviderFixture({ fail = false, notFound = false } = {}) {
         },
         {
           name: "Concurrent local 3",
+          category: "Pâtisserie",
           place_id: "place-competitor-3",
           rating: 4.7,
           reviews: 100,
@@ -426,9 +431,9 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
     }
     providerQuery = url.searchParams.get("query") || "";
     return Response.json({ data: [[
-      { name:"AS pro elec", place_id:"new-1", rating:4.4, reviews:7, photos_count:0, services:["a","b","c"], posts:[1,2], sponsored:false },
-      { name:"Moris Wilfried", place_id:"new-2", rating:5, reviews:5, photos_count:1, services:["a"], posts:[1], sponsored:false },
-      { name:"Electrolux95", place_id:"new-3", rating:5, reviews:20, photos_count:2, services:["a","b"], posts:[], sponsored:false },
+      { name:"AS pro elec", category:"Electrician", place_id:"new-1", rating:4.4, reviews:7, photos_count:0, services:["a","b","c"], posts:[1,2], sponsored:false },
+      { name:"Moris Wilfried", category:"Electrician", place_id:"new-2", rating:5, reviews:5, photos_count:1, services:["a"], posts:[1], sponsored:false },
+      { name:"Electrolux95", category:"Electrician", place_id:"new-3", rating:5, reviews:20, photos_count:2, services:["a","b"], posts:[], sponsored:false },
       { name:"Bivert Alain", place_id:"place-target", rank:3, rating:1.8, reviews:5, photos_count:1, category:"Fournisseur d’électricité", location_link:"https://www.google.com/maps/place/Bivert-Alain", reservation_links:[], booking_appointment_link:null, order_links:null, sponsored:false },
     ]] });
   };
@@ -440,6 +445,7 @@ test("la relance réelle Bivert Alain classe Fournisseur d’électricité comme
       city: "Attert",
       activity: "Électricien",
       searchQuery: "Électricien Attert",
+      searchZone: {city:"Attert", countryCode:"BE", postalCode:"6717"},
     } }));
     const body = await response.json();
     assert.equal(response.status, 200);
@@ -498,11 +504,12 @@ test("un échec de relance conserve intégralement les anciens résultats et le 
   seedManualMetadataAndDraft(db);
   const before = db.sqlite.prepare("SELECT * FROM analyses WHERE analysis_id = ?").get(ANALYSIS_ID);
   const draftBefore = db.sqlite.prepare("SELECT * FROM audit_drafts WHERE analysis_id = ?").get(ANALYSIS_ID);
-  const restoreFetch = installProviderFixture({ fail: true });
+  const restoreFetch = installProviderFixture({ fail: true, centerCity:"Attert" });
   try {
     const response = await collectDiagnostic(await context(db, ANALYSIS_ID, { body: {
       operation:"refresh_search", analysisId:ANALYSIS_ID, company:"B&V électricité",
-      city:"Attert", activity:"Électricien", searchQuery:"Électricien Attert"
+      city:"Attert", activity:"Électricien", searchQuery:"Électricien Attert",
+      searchZone: {city:"Attert", countryCode:"BE", postalCode:"6717"}
     } }));
     assert.equal(response.status, 502);
     assert.equal((await response.json()).error, "SEARCH_REFRESH_FAILED");
@@ -774,3 +781,27 @@ test("le client admin ne reçoit aucun secret et garde Premium inactif sans paie
   assert.doesNotMatch(route, /INSERT INTO orders|INSERT INTO order_items|INSERT INTO order_tasks|pdf|mailer|email/i);
   assert.match(route, /WHERE analysis_id = \? AND report_type = 'free' AND status = 'awaiting_review'/);
 });
+
+for (const refresh of [false, true]) {
+test(`deux ${refresh ? 'relances' : 'collectes initiales'} simultanées ne doublent pas les appels fournisseur`, async()=>{
+ const db=new LocalD1();seedAnalysis(db);if (refresh) markAnalysisCollected(db);
+ const bodies={operation:'refresh_search',company:'Maison Test',city:'Bruxelles',activity:'Pâtisserie',searchQuery:'Pâtisserie Bruxelles',searchZone:{city:'Bruxelles',countryCode:'BE',postalCode:'1000'}};
+ const contexts=await Promise.all([context(db,ANALYSIS_ID,{body:refresh ? bodies : {}}),context(db,ANALYSIS_ID,{body:refresh ? bodies : {}})]);
+ const restore=installProviderFixture();const provider=globalThis.fetch;let resolveEntered,release;
+ const entered=new Promise(r=>resolveEntered=r);const gate=new Promise(r=>release=r);let searches=0;
+ globalThis.fetch=async(input,init)=>{if(new URL(String(input)).hostname==='api.app.outscraper.com'){searches++;resolveEntered();await gate;}return provider(input,init);};
+ try{
+  const first=collectDiagnostic(contexts[0]);await entered;
+  const second=collectDiagnostic(contexts[1]);
+  let timer;
+  try {
+    const blocked = await Promise.race([second, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('La seconde relance attend le fournisseur')), 1000); })]);
+    assert.equal(blocked.status, 409);
+  } finally { clearTimeout(timer); release(); }
+  const results=await Promise.all([first,second]);
+  assert.equal(searches,refresh ? 1 : 2,'un appel par étape, jamais de doublon');
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  assert.equal(db.count('free_diagnostic_collection_locks'), 0);
+ }finally{release();restore();}
+});
+}

@@ -1,3 +1,4 @@
+import { withDiagnosticCollectionLock } from "../../../lib/diagnosticCollectionLock.js";
 import { isValidAnalysisId, loadAnalysisById } from "../../analysis/_shared.js";
 import { jsonResponse, normalizeText, onOptions, requireAdminSession, requireOrdersDb } from "../../../admin/_shared.js";
 import { collectFiche } from "../../../lib/collectFiche.js";
@@ -537,9 +538,21 @@ export async function onRequestPost(context) {
     if (!buildFreeDiagnosticCollectionState(analysis)) {
       return jsonResponse({ success: false, error: "INITIAL_COLLECTION_REQUIRED" }, 409);
     }
-    return refreshSearchAnalysis({ context, db, analysis, analysisId, payload: searchRefresh });
+    return withDiagnosticCollectionLock(db, analysisId, () =>
+      refreshSearchAnalysis({ context, db, analysis, analysisId, payload: searchRefresh }), "refresh_search");
   }
 
+  return withDiagnosticCollectionLock(db, analysisId, async () => {
+    // Relire sous verrou : une autre requête a pu terminer depuis la lecture initiale.
+    const current = await loadAnalysisById(db, analysisId);
+    if (!current || current.reportType !== "free" || current.status !== "awaiting_review") {
+      return jsonResponse({ success: false, error: "DIAGNOSTIC_NOT_AWAITING_REVIEW" }, 409);
+    }
+    return collectInitialAnalysis({ context, db, analysis: current, analysisId, payload, diagnosticRequest });
+  });
+}
+
+async function collectInitialAnalysis({ context, db, analysis, analysisId, payload, diagnosticRequest }) {
   // La création administrative passe déjà par /api/analyze puis /api/benchmark.
   // Si ces données sont exploitables, le bouton de l'ancien questionnaire ne
   // doit ni rappeler le fournisseur, ni réécrire l'analyse. Ce court-circuit
