@@ -20,3 +20,9 @@ audit-efficia.pdf
 .dev.vars*
 .env*
 output/
+
+# Local editor locks and temporary database files
+.~*
+*.db
+*.db-shm
+*.db-wal
