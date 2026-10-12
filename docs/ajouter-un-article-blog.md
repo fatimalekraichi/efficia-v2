@@ -1,0 +1,11 @@
+# Ajouter un nouvel article
+
+1. Copier `blog/fiche-google-ou-site-internet-artisan.html` sous `blog/votre-slug.html`. Ce premier article sert de gabarit : conserver les chemins absolus `/css/`, `/js/`, `/assets/`, l’en-tête, le pied de page, les scripts de consentement et le bouton `data-blog-cta`.
+2. Remplacer le corps, la catégorie, le H1, l’auteur, le temps de lecture et les dates visibles (`<time datetime="AAAA-MM-JJ">`). Actualiser title, description, canonical, Open Graph, fil d’Ariane visible et JSON-LD `BlogPosting` / `BreadcrumbList` (dont dates, auteur, URL et titre). Conserver le logo existant ; utiliser une image Open Graph propre à l’article.
+3. Copier une carte dans `blog.html`, placer la nouvelle en tête et actualiser son titre, extrait, catégorie, lien et date. Ajouter le même article à `blogPost` dans le JSON-LD de cette page.
+4. Ajouter l’URL sans `.html` ni barre finale et sa date à `sitemap.xml`, puis la même entrée dans `publicPages` de `tests/technicalSeoRoutes.test.js`, dans le même ordre. Pour mesurer les visites après accord, ajouter l’URL et un titre générique fixe à la liste `PAGES` de `js/ga4.js`, puis actualiser son paramètre `?v=` sur les pages publiques. Ne jamais transmettre de contenu saisi, de paramètres d’URL ou de données personnelles.
+5. Exécuter `npm run test:blog`, puis `node --test tests/*.test.js`. Vérifier les liens, le menu et le rendu à 375, 768 et 1280 px. Les redirections `.html` et barre finale sont gérées par Cloudflare Pages : ne pas ajouter de règle sans constater un problème. Faire valider avant toute publication.
+
+Déposer les images sous `assets/images/blog/<slug>-*.webp` (versions 768 et 1536 px) et `<slug>-og.jpg` (1200 × 630).
+Reprendre les figures du premier article : `srcset`, `sizes`, dimensions, texte alternatif descriptif, une seule image à la une en `eager` / `fetchpriority="high"`, les autres en `lazy` ; la carte garde un `alt` vide.
+Actualiser `og:image`, ses dimensions et son texte alternatif dans l’article, ainsi que le tableau `image` des deux JSON-LD `BlogPosting` (article et liste) ; conserver l’Open Graph par défaut de la page Blog.

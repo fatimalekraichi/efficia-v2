@@ -105,6 +105,8 @@ test("Clarity : commandes en attente purgées au retrait et ancien stop non rejo
 });
 
 const publicPages = [
+  "blog.html",
+  "blog/fiche-google-ou-site-internet-artisan.html",
   "site-internet-electricien.html",
   "index.html",
   "optimisation-google-business.html",

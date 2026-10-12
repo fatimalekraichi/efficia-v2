@@ -19,7 +19,7 @@ function harness(url = 'https://efficiadigital.com/?email=secret@example.test#se
   const commands = () => (window.efficiaGA4Layer || []).map(a => Array.from(a));
   const events = () => commands().filter(a => a[0] === 'event');
   const click = (href, trackLocation) => listeners.click({ target: { closest: () => ({ href, dataset: { trackLocation } }) } });
-  return { window, api: window.efficiaGA4, scripts, commands, events, click, writes, context };
+  return { window, api: window.efficiaGA4, scripts, commands, events, click, writes, context, listeners };
 }
 test('no Google script or queue before choice or refusal; contacts and forms are dropped', () => {
   const h = harness(); h.click('tel:+321234567'); h.api.trackFormSuccess('diagnostic', 'private');
@@ -135,4 +135,18 @@ test('checklist_signup is consent gated, not replayed, contains no input and is 
   h.api.setConsent(false); assert.equal(h.api.trackChecklistSignup(), false);
   const p = harness('https://checklist.efficiadigital.pages.dev/checklist-site-internet');
   p.api.setConsent(true); assert.equal(p.api.trackChecklistSignup(), false); assert.equal(p.scripts.length, 0);
+});
+
+test('blog CTA is consent gated, not replayed and carries no personal data', () => {
+  const h = harness('https://efficiadigital.com/blog/fiche-google-ou-site-internet-artisan?email=private@example.test#secret');
+  const listeners = h.listeners;
+  const click = (marked = true, href = 'https://efficiadigital.com/contact?email=private@example.test') => listeners.click({ target: { closest: () => ({ href, hasAttribute: name => marked && name === 'data-blog-cta', dataset: {} }) } });
+  click(); assert.equal(h.events().length, 0); assert.equal(h.scripts.length, 0);
+  h.window.efficiaGA4.setConsent(true); h.scripts[0].listeners.load();
+  assert.equal(h.events().filter(e => e[1] === 'blog_cta_click').length, 0);
+  click(false); click(true, 'https://other.test/contact');
+  assert.equal(h.events().filter(e => e[1] === 'blog_cta_click').length, 0);
+  click(); assert.equal(h.events().filter(e => e[1] === 'blog_cta_click').length, 1);
+  assert.ok(!/private|secret|email/.test(JSON.stringify(h.events())));
+  h.window.efficiaGA4.setConsent(false); click(); assert.equal(h.events().length, 0);
 });

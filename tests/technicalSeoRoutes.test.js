@@ -20,6 +20,8 @@ const publicPages = new Map([
   ["politique-cookies.html", "https://efficiadigital.com/politique-cookies"],
   ["site-internet-electricien.html", "https://efficiadigital.com/site-internet-electricien"],
   ["checklist-site-internet.html", "https://efficiadigital.com/checklist-site-internet"],
+  ["blog.html", "https://efficiadigital.com/blog"],
+  ["blog/fiche-google-ou-site-internet-artisan.html", "https://efficiadigital.com/blog/fiche-google-ou-site-internet-artisan"],
 ]);
 
 const sitemapPages = new Map(

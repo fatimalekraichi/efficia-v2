@@ -36,3 +36,6 @@
  .nav-sub-inner { border: 0; box-shadow: none; padding: 0; background: none; }
  .header .nav .nav-sub a { font-size: 14px; color: #52627a; }
 }
+
+/* Keep desktop navigation visible between the legacy 860px and mobile 768px breakpoints. */
+@media (min-width: 768px) { .header .nav { display: flex; } }

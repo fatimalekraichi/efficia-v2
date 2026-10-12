@@ -13,6 +13,8 @@
     ["/audit-google-business", "Audit Google Business"],
     ["/refonte-site-internet", "Création / refonte de site"],
     ["/checklist-site-internet", "Checklist gratuite : votre site en 10 points"],
+    ["/blog", "Blog"],
+    ["/blog/fiche-google-ou-site-internet-artisan", "Fiche Google ou site internet"],
     ["/achat", "Commande"], ["/paiement-reussi", "Confirmation du paiement"],
     ["/mentions-legales", "Mentions légales"], ["/cgv", "CGV"],
     ["/politique-confidentialite", "Confidentialité"],
@@ -106,6 +108,10 @@
     if (!link) return;
     let url;
     try { url = new URL(link.href, window.location.origin); } catch { return; }
+    if (path.startsWith("/blog/") && link.hasAttribute?.("data-blog-cta")
+      && url.origin === window.location.origin && url.pathname === "/contact") {
+      emit("blog_cta_click");
+    }
     const channel = url.protocol === "tel:" ? "phone"
       : url.protocol === "mailto:" ? "email"
       : (url.protocol === "https:" && ["wa.me", "api.whatsapp.com", "web.whatsapp.com"].includes(url.hostname)) ? "whatsapp" : null;
