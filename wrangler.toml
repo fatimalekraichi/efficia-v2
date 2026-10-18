@@ -1,6 +1,7 @@
 name = "efficia-v2"
 compatibility_date = "2026-07-15"
-pages_build_output_dir = "."
+# Local development only. Pages deployment settings remain managed in Cloudflare.
+# Do not add pages_build_output_dir: that would override dashboard settings.
 
 [[d1_databases]]
 binding = "DB"

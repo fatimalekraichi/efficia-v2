@@ -1,0 +1,22 @@
+{
+  "configuration_source": "Cloudflare runtime variables; identifiers intentionally excluded from public Git",
+  "environments": [
+    "production",
+    "preview"
+  ],
+  "required_group_roles": [
+    "DIAGNOSTIC",
+    "AUDIT_PROSPECT",
+    "AUDIT_CLIENT",
+    "VISIBILITY_PROSPECT",
+    "VISIBILITY_CLIENT",
+    "PERFORMANCE_PROSPECT",
+    "PERFORMANCE_CLIENT",
+    "CUSTOM_CLIENT",
+    "STOP"
+  ],
+  "requirements": [
+    "Keep environment registries disjoint",
+    "Do not change existing memberships during deployment"
+  ]
+}

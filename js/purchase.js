@@ -178,16 +178,24 @@ form?.addEventListener("input", (event) => {
   }
 });
 
+let purchaseSubmitting = false;
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (purchaseSubmitting) return;
   setError("");
 
   const payload = validateForm(form);
   if (!payload) return;
 
+  purchaseSubmitting = true;
   setLoading(true);
 
   try {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
+    const storageKey = `efficia-checkout-${hash}`;
+    payload.request_id = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+    sessionStorage.setItem(storageKey, payload.request_id);
     const response = await fetch("/prepare-checkout", {
       method: "POST",
       headers: {
@@ -205,6 +213,7 @@ form?.addEventListener("submit", async (event) => {
     window.location.href = data.url;
   } catch (error) {
     console.error("Erreur préparation paiement", error);
+    purchaseSubmitting = false;
     setLoading(false);
     setError(`Une erreur est survenue. Merci de réessayer dans quelques instants. (${error.message})`);
   }

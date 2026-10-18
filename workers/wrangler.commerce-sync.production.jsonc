@@ -1,0 +1,36 @@
+{
+  "name": "efficia-commerce-sync-production",
+  "main": "commerce-sync-jobs.js",
+  "compatibility_date": "2026-10-12",
+  "workers_dev": false,
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "ORDERS_DB",
+      "database_name": "efficia_orders",
+      "database_id": "216a7d6a-56d2-4a08-b472-c3462f3280f7",
+      "migrations_dir": "../migrations"
+    }
+  ],
+  "vars": {
+    "SITE_URL": "https://efficiadigital.com",
+    "STRIPE_MODE": "live",
+    "COMMERCE_REMINDERS_ENABLED": "false",
+    "COMMERCE_REMINDER_OWNER_VERIFIED": "unverified",
+    "COMMERCE_EVENT_CUTOVER": "1792270731",
+    "COMMERCE_INVOICE_CUTOVER": "1792270731",
+    "COMMERCE_CHECKOUT_ENABLED": "true",
+    "COMMERCE_CONFIRMATIONS_ENABLED": "true",
+    "COMMERCE_CONFIRMATION_OWNER": "server_only",
+    "COMMERCE_CONFIRMATION_CUTOVER": "1792270731",
+    "COMMERCE_PAYMENT_METHODS": "card",
+    "STRIPE_PRICE_AUDIT": "price_1Ts6wn7gNYuPJ9xf3QqBlARm",
+    "STRIPE_PRICE_VISIBILITY": "price_1Ts6yB7gNYuPJ9xfVcUuJLd0",
+    "STRIPE_PRICE_PERFORMANCE": "price_1Ts71L7gNYuPJ9xfGNZbyho6"
+  },
+  "keep_vars": true
+}

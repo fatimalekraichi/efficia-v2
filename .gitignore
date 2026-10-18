@@ -26,3 +26,6 @@ output/
 *.db
 *.db-shm
 *.db-wal
+
+# Packaged Pages deployment
+dist/

@@ -496,21 +496,8 @@ const showPricingError = (message) => {
 };
 
 const submitCheckoutRequest = async (product) => {
-  const response = await fetch("/create-checkout-session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ product }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.success || !data.url) {
-    throw new Error(data.error || "Checkout session failed.");
-  }
-
-  return data.url;
+  if (!["audit", "visibility", "performance"].includes(product)) throw new Error("Offre inconnue");
+  return `/achat?offre=${encodeURIComponent(product)}`;
 };
 
 checkoutButtons.forEach((button) => {

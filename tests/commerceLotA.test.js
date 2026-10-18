@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {fixture,EMAIL} from './commerceFixture.js';
+import {preparePurchase} from '../functions/lib/commerceCheckout.js';
+import {handleEvent} from '../functions/lib/commerceEvents.js';
+import {groups,now} from '../functions/lib/commerceCore.js';
+import {runSyncJobs} from '../functions/lib/commerceSyncJobs.js';
+for (const offer of ['audit','visibility','performance']) test(`lot A ${offer}: card-only session, paid groups, one confirmation through Worker`,async t=>{
+ const f=fixture();t.mock.method(globalThis,'fetch',f.fetch);
+ Object.assign(f.env,{COMMERCE_PAYMENT_METHODS:'card',COMMERCE_REMINDERS_ENABLED:'false',COMMERCE_CONFIRMATIONS_ENABLED:'true',COMMERCE_CONFIRMATION_OWNER:'server_only',COMMERCE_CONFIRMATION_CUTOVER:now()-1});
+ await preparePurchase(f.env,f.payload(offer));const session=[...f.sessions.values()][0],g=groups(f.env);
+ const create=f.calls.find(c=>c.url.endsWith('/checkout/sessions')&&c.method==='POST');
+ assert.equal(create.body['payment_method_types[0]'],'card');assert.equal(create.body['payment_method_types[1]'],undefined);
+ assert.ok(f.people.get(EMAIL).groups.some(x=>x.id===g.prospects[offer]));assert.equal(f.emails.length,0);
+ session.status='complete';session.payment_status='paid';const event=f.event(session);
+ await handleEvent(f.env,event);await handleEvent(f.env,event);await handleEvent(f.env,f.event(session));
+ await Promise.all([runSyncJobs(f.env),runSyncJobs(f.env)]);
+ const ids=f.people.get(EMAIL).groups.map(x=>x.id);
+ assert.ok(ids.includes(g.clients[offer]));assert.ok(!ids.includes(g.prospects[offer]));
+ assert.equal(f.env.ORDERS_DB.db.prepare('SELECT count(*) n FROM orders').get().n,1);
+ assert.equal(f.emails.length,1);await runSyncJobs(f.env);assert.equal(f.emails.length,1);
+});

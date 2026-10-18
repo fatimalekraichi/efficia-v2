@@ -1,0 +1,21 @@
+{
+  "status": "CLIENT_STOP_PROTECTIONS_ALREADY_APPLIED_DO_NOT_REAPPLY",
+  "before_commercial_reminder": {
+    "match": "ANY",
+    "groups": [
+      "Clients - Audit",
+      "Clients - Pack Visibilit\u00e9",
+      "Clients - Pack Performance",
+      "Clients - Prestations personnalis\u00e9es",
+      "Relances \u2014 STOP"
+    ],
+    "matched": "EXIT_WITHOUT_EMAIL",
+    "otherwise": "EXISTING_EMAIL"
+  },
+  "preserve": [
+    "existing contacts and deadlines",
+    "direct enrollment",
+    "immediate request confirmation"
+  ],
+  "deployment_action": "NONE"
+}

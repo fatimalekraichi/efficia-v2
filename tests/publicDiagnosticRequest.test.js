@@ -1,3 +1,4 @@
+import { fixture as commerceFixture } from './commerceFixture.js';
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -34,6 +35,8 @@ const migrationNames = [
   "0013_diagnostic_requests.sql",
   "0019_diagnostic_lead_captures.sql",
   "0020_diagnostic_manual_review.sql",
+  "0025_commerce_reconciliation.sql",
+  "0028_commerce_sync_terminal.sql",
 ];
 
 class LocalD1 {
@@ -112,11 +115,12 @@ const makeSubscribeContext = (db, payload) => ({
     body: JSON.stringify(payload),
   }),
   env: {
+    ...commerceFixture().env,
     SITE_URL: PREVIEW_ORIGIN,
     CONNECTOR_TOKEN: TOKEN,
     OUTSCRAPER_API_KEY: "local-outscraper-key",
     MAILERLITE_API_KEY: "local-mailerlite-key",
-    MAILERLITE_PREVIEW_DIAGNOSTIC_GROUP_ID: "preview-diagnostic",
+    MAILERLITE_PREVIEW_DIAGNOSTIC_GROUP_ID: "100",
     ORDERS_DB: db,
   },
 });
@@ -165,12 +169,22 @@ function installFetchRouter({
       });
     }
     if (url.hostname === "connect.mailerlite.com") {
+      const group = url.pathname.match(/\/groups\/(\d+)$/);
+      if (group) {
+        if (!mailerLiteOk) return new Response(null,{status:503});
+        if (!subscriber.groups.some(g=>String(g.id||g)===group[1])) subscriber.groups.push(group[1]);
+        return new Response(null,{status:204});
+      }
       if (!options.method || options.method === "GET") {
         if (mailerLiteLookupResponse) return mailerLiteLookupResponse();
-        return subscriber ? Response.json({ data: subscriber }) : new Response(null, { status: 404 });
+        return subscriber ? Response.json({ data: {...subscriber, groups:(subscriber.groups||[]).map(g=>typeof g === "string"?{id:g}:g)} }) : new Response(null, { status: 404 });
       }
-      assert.equal(options.method, "POST");
-      assert.equal(url.pathname, "/api/subscribers");
+      if (options.method === "PUT") {
+        assert.equal(url.pathname, `/api/subscribers/${subscriber.id}`);
+      } else {
+        assert.equal(options.method, "POST");
+        assert.equal(url.pathname, "/api/subscribers");
+      }
       const status = mailerLiteStatuses.shift() ?? (mailerLiteOk ? 200 : 500);
       if (status >= 400) return new Response(null, { status });
       const incoming = JSON.parse(options.body);
@@ -179,7 +193,7 @@ function installFetchRouter({
       if (incoming.status) subscriber.status = incoming.status;
       if (incoming.resubscribe) subscriber.status = "active";
       for (const group of incoming.groups || []) if (!subscriber.groups.includes(group)) subscriber.groups.push(group);
-      return Response.json({ data: subscriber }, { status });
+      return Response.json({ data: {...subscriber, groups:(subscriber.groups||[]).map(g=>typeof g === "string"?{id:g}:g)} }, { status });
     }
     if (url.hostname.includes("outscraper")) {
       if (providerResponse) return providerResponse();
@@ -303,8 +317,8 @@ for (const scenario of [
       assert.equal(router.calls.some(c=>new URL(c.url).pathname==='/api/benchmark'),false);
       assert.equal(router.subscriber().status,"unsubscribed");
       assert.equal(router.subscriber().fields.audit_status,"audit envoyé");
-      assert.deepEqual(router.subscriber().groups,["existing"]);
-      for(const call of router.calls.filter(c=>c.url.includes('mailerlite') && c.options.method==='POST')){
+      assert.deepEqual(router.subscriber().groups,["existing", "100"]);
+      for(const call of router.calls.filter(c=>new URL(c.url).pathname==='/api/subscribers' && c.options.method==='POST')){
         const sent=JSON.parse(call.options.body);
         for(const key of ['groups','status','resubscribe']) assert.equal(sent[key],undefined);
       }
@@ -357,7 +371,7 @@ for (const mailerLiteStatuses of [[422,200],[500,500]]) {
       assert.ok(result.warning);
       const listing=await diagnosticsInAdmin(db);
       assert.equal(listing.diagnostics.length,1);
-      assert.equal(listing.diagnostics[0].mailerLiteStatus,partial?'partial':'failed');
+      assert.equal(listing.diagnostics[0].mailerLiteStatus,'failed');
       assert.equal(db.count('analyses'),0);
     } finally {router.restore();db.sqlite.close();}
   });
@@ -445,7 +459,8 @@ const capturePayload = () => ({
   audit_status: "lead capturé", source: "Score Efficia gratuit",
 });
 const marketingPayloads = (router) => router.calls
-  .filter(({ url, options }) => new URL(url).hostname === "connect.mailerlite.com" && options.method === "POST")
+  .filter(({ url, options }) => (new URL(url).pathname === "/api/subscribers" && options.method === "POST") ||
+    (/^\/api\/subscribers\/[^/]+$/.test(new URL(url).pathname) && options.method === "PUT"))
   .map(({ options }) => JSON.parse(options.body));
 async function diagnosticsInAdmin(db, query = "") {
   const cookie = (await createSessionCookie({ ADMIN_SESSION_SECRET: ADMIN_SECRET })).split(";")[0];
@@ -600,32 +615,20 @@ for (const scenario of [
   });
 }
 
-test("le repli sans champs métier signale une synchronisation partielle, sans groupe ni réactivation", async () => {
-  const db = new LocalD1();
-  const router = installFetchRouter({ db, mailerLiteStatuses: [200, 422, 200] });
-  try {
-    await subscribe(makeSubscribeContext(db, capturePayload()));
-    const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
-    assert.equal(response.status, 200);
-    assert.equal((await response.json()).warning, "Marketing synchronization incomplete.");
-    assert.equal((await diagnosticsInAdmin(db)).diagnostics.length, 1);
-    assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "partial");
-    const payloads = marketingPayloads(router);
-    assert.equal(payloads.length, 3);
-    assert.equal(payloads[0].fields.audit_status, undefined);
-    assert.equal(payloads[1].fields.audit_status, "diagnostic demandé");
-    assert.deepEqual(payloads[2].fields, { name: "Fatima" });
-    for (const p of payloads) {
-      assert.equal(p.groups, undefined);
-      assert.equal(p.status, undefined);
-      assert.equal(p.resubscribe, undefined);
-    }
-    // A partial sync must not short-circuit a retry as if it were fully synced.
-    await subscribe(makeSubscribeContext(db, diagnosticPayload()));
-    assert.equal(db.count("diagnostic_requests"), 1);
-    assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "synced");
-    assert.equal(router.subscriber().fields.audit_status, "diagnostic demandé");
-  } finally { router.restore(); db.sqlite.close(); }
+test("un échec des champs métier conserve le travail durable et reprend sans confirmation double", async () => {
+ const db=new LocalD1();const router=installFetchRouter({db,mailerLiteStatuses:[200,503,200]});
+ try {
+  await subscribe(makeSubscribeContext(db,capturePayload()));
+  const response=await subscribe(makeSubscribeContext(db,diagnosticPayload()));
+  assert.equal(response.status,200);assert.equal((await response.json()).warning,"Marketing synchronization queued.");
+  assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status,"failed");
+  assert.deepEqual(router.subscriber().groups,[]);
+  await subscribe(makeSubscribeContext(db,diagnosticPayload()));
+  assert.equal(db.count("diagnostic_requests"),1);
+  assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status,"synced");
+  assert.deepEqual(router.subscriber().groups,["100"]);
+  for(const payload of marketingPayloads(router)){assert.equal(payload.status,undefined);assert.equal(payload.resubscribe,undefined);}
+ } finally {router.restore();db.sqlite.close();}
 });
 
 test("reprendre la première étape ne régresse pas audit_status après une demande complète", async () => {
@@ -655,16 +658,16 @@ for (const subscriptionStatus of ["active", "unsubscribed", "unconfirmed", "boun
           const response = await subscribe(makeSubscribeContext(db, payload));
           assert.equal(response.status, 200);
           const body = await response.json();
-          assert.equal(body.warning, fallback ? "Marketing synchronization incomplete." : undefined);
+          assert.equal(body.warning, fallback ? (payload.step === "diagnostic_request" ? "Marketing synchronization queued." : "Marketing synchronization incomplete.") : undefined);
           assert.equal(router.subscriber().status, subscriptionStatus);
           assert.equal(router.subscriber().fields.audit_status, "diagnostic envoyé");
-          assert.deepEqual(router.subscriber().groups, ["existing-group"]);
+          assert.deepEqual(router.subscriber().groups, payload.step === "diagnostic_request" && !fallback ? ["existing-group", "100"] : ["existing-group"]);
         }
         for (const payload of marketingPayloads(router)) {
           for (const field of ["status", "resubscribe", "groups"]) assert.equal(Object.hasOwn(payload, field), false);
           assert.equal(Object.hasOwn(payload.fields, "audit_status"), false);
         }
-        assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, fallback ? "partial" : "synced");
+        assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, fallback ? "failed" : "synced");
       } finally { router.restore(); db.sqlite.close(); }
     });
   }
@@ -695,7 +698,7 @@ for (const lookup of [
     try {
       const response = await subscribe(makeSubscribeContext(db, diagnosticPayload()));
       assert.equal(response.status, 200);
-      assert.equal((await response.json()).warning, "Marketing synchronization unavailable.");
+      assert.equal((await response.json()).warning, "Marketing synchronization queued.");
       assert.equal(db.count("diagnostic_requests"), 1);
       assert.equal(db.first("SELECT mailerlite_status FROM diagnostic_requests").mailerlite_status, "failed");
       assert.equal(marketingPayloads(router).length, 0);
@@ -717,7 +720,7 @@ test("une capture livrée tardivement ne remplace jamais le statut d'une demande
   } finally { router.restore(); db.sqlite.close(); }
 });
 
-test("le groupe diagnostic n'est plus requis ni transmis, même si une ancienne configuration est présente", async () => {
+test("le groupe diagnostic est requis pour confirmer la demande complète, jamais pour la capture", async () => {
   const db = new LocalD1();
   const router = installFetchRouter({ db });
   try {
@@ -725,7 +728,7 @@ test("le groupe diagnostic n'est plus requis ni transmis, même si une ancienne 
       const context = makeSubscribeContext(db, payload);
       delete context.env.MAILERLITE_PREVIEW_DIAGNOSTIC_GROUP_ID;
       const response = await subscribe(context);
-      assert.equal(response.status, 200);
+      assert.equal(response.status, payload.step === "diagnostic_request" ? 503 : 200);
     }
     assert.ok(marketingPayloads(router).every(p => !Object.hasOwn(p, "groups")));
     assert.deepEqual(router.subscriber().groups, []);
@@ -738,7 +741,7 @@ test("la synchronisation partielle remonte depuis D1 jusqu'au libellé réel du 
   try {
     await subscribe(makeSubscribeContext(db, diagnosticPayload()));
     const { diagnostics } = await diagnosticsInAdmin(db);
-    assert.equal(diagnostics[0].mailerLiteStatus, "partial");
+    assert.equal(diagnostics[0].mailerLiteStatus, "failed");
     const source = readFileSync(new URL("../js/admin.js", import.meta.url), "utf8");
     const context = vm.createContext({ diagnosticsBody: { innerHTML: "" },
       escapeHtml: String, formatDate: String, diagnosticStatusLabels: {}, reportTypeLabels: {} });
@@ -746,7 +749,7 @@ test("la synchronisation partielle remonte depuis D1 jusqu'au libellé réel du 
       + source.slice(source.indexOf("const buildFreeDiagnosticToolUrl ="), source.indexOf("const draftResumeUrl ="))
       + "\nthis.renderDiagnostics = renderDiagnostics;", context);
     context.renderDiagnostics(diagnostics);
-    assert.match(context.diagnosticsBody.innerHTML, /Synchronisation partielle/);
+    assert.match(context.diagnosticsBody.innerHTML, /Synchronisation échouée|Échec|échouée/);
     assert.doesNotMatch(context.diagnosticsBody.innerHTML, />Synchronisé</);
   } finally { router.restore(); db.sqlite.close(); }
 });

@@ -1,0 +1,14 @@
+{
+  "status": "ALREADY_CONFIGURED_DO_NOT_RECREATE",
+  "endpoint": "https://efficiadigital.com/stripe-webhook",
+  "required_events": [
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+    "payment_intent.payment_failed",
+    "checkout.session.async_payment_failed",
+    "checkout.session.expired",
+    "invoice.paid"
+  ],
+  "signature": "Existing secret retained in Cloudflare; never commit",
+  "replay_historical_events": false
+}

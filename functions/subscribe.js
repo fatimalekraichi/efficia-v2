@@ -1,3 +1,4 @@
+import { queueDiagnostic, syncContact } from './lib/commerceCore.js';
 import {
   normalizeDiagnosticSubmission,
   normalizeDiagnosticCapture,
@@ -327,13 +328,25 @@ export async function onRequestPost(context) {
       }
       return jsonResponse({ success: false, error: ERROR_MESSAGE }, 502);
     }
-    if (diagnostic.idempotent && diagnostic.mailerLiteStatus === "synced") {
-      return jsonResponse({
-        success: true,
-        ...(diagnostic.requestId ? { requestId: diagnostic.requestId, reviewReason: diagnostic.reviewReason } : {}),
-        analysisId: diagnostic.analysisId,
-        status: diagnostic.status,
+    try {
+      const completedSync = await context.env.ORDERS_DB.prepare(`SELECT 1 FROM commerce_contacts
+        WHERE environment=? AND email=? AND diagnostic_group_done=1 AND revision=synced_revision`)
+        .bind(site.environment,submission.email).first();
+      if(diagnostic.idempotent && diagnostic.mailerLiteStatus==='synced' && completedSync) {
+        return jsonResponse({success:true,analysisId:diagnostic.analysisId,requestId:diagnostic.requestId,
+          reviewReason:diagnostic.reviewReason,status:diagnostic.status});
+      }
+      await queueDiagnostic(context.env, submission.email, {
+        name: submission.firstName, company: submission.companyName,
+        google_business_url: submission.googleBusinessUrl, city: submission.city,
       });
+      const synced=await syncContact(context.env, submission.email);
+      await safelyUpdateMailerLiteStatus(context.env.ORDERS_DB, diagnostic.analysisId,
+        synced ? "synced" : "failed", diagnostic.requestId || null);
+      return jsonResponse({success:true,analysisId:diagnostic.analysisId,requestId:diagnostic.requestId,reviewReason:diagnostic.reviewReason,
+        status:diagnostic.status,...(!synced?{warning:"Marketing synchronization queued."}:{})});
+    } catch {
+      return jsonResponse({success:false,error:"DIAGNOSTIC_SYNC_QUEUE_UNAVAILABLE"},503);
     }
   }
 
