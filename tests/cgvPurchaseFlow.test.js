@@ -68,9 +68,9 @@ test("les CGV définissent le Client professionnel et la rétractation B2B", asy
     readProjectFile("sitemap.xml"),
   ]);
 
-  assert.equal(ACTIVE_CGV_VERSION, "2026-08-18-v2");
-  assert.match(cgvPage, /Version des CGV : 2026-08-18-v2/);
-  assert.match(cgvPage, /Dernière mise à jour : 18 août 2026/);
+  assert.equal(ACTIVE_CGV_VERSION, "2026-10-19-v3");
+  assert.match(cgvPage, /Version des CGV : 2026-10-19-v3/);
+  assert.match(cgvPage, /Dernière mise à jour : 19 octobre 2026/);
   assert.match(cgvPage, /Les services Efficia Digital sont exclusivement destinés aux professionnels\./);
   assert.match(cgvPage, /Est considéré comme Client professionnel toute personne physique ou morale, publique ou privée/);
   assert.match(cgvPage, /le Client déclare agir exclusivement dans le cadre de son activité professionnelle et non à titre privé/);

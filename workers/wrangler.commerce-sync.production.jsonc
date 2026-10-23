@@ -19,8 +19,6 @@
   "vars": {
     "SITE_URL": "https://efficiadigital.com",
     "STRIPE_MODE": "live",
-    "COMMERCE_REMINDERS_ENABLED": "false",
-    "COMMERCE_REMINDER_OWNER_VERIFIED": "unverified",
     "COMMERCE_EVENT_CUTOVER": "1792270731",
     "COMMERCE_INVOICE_CUTOVER": "1792270731",
     "COMMERCE_CHECKOUT_ENABLED": "true",

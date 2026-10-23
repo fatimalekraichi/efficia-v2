@@ -23,7 +23,7 @@ export function fixture() {
  const env={SITE_URL:'https://commerce.efficiadigital.pages.dev',ORDERS_DB:new D1(),STRIPE_MODE:'test',STRIPE_SECRET_KEY:'sk_test_simulation',
   MAILERLITE_API_KEY:'simulation',STRIPE_PRICE_AUDIT:'price_Audit',STRIPE_PRICE_VISIBILITY:'price_Visibility',STRIPE_PRICE_PERFORMANCE:'price_Performance',
   COMMERCE_LINK_SECRET:'isolated-test-secret-at-least-32-characters',COMMERCE_INVOICE_CUTOVER:1,
-  COMMERCE_REMINDERS_ENABLED:'true',COMMERCE_REMINDER_OWNER_VERIFIED:'server_only',HOSTINGER_MAIL_API_TOKEN:'mock',HOSTINGER_MAILBOX_ID:'mock'};
+  COMMERCE_REMINDER_CUTOVER:'1',COMMERCE_REMINDERS_ENABLED:'true',COMMERCE_REMINDER_OWNER_VERIFIED:'server_only',HOSTINGER_MAIL_API_TOKEN:'mock',HOSTINGER_MAILBOX_ID:'mock'};
  const registry={production:[],preview:[]};
  for(const [scope,start] of [['PREVIEW',100],['PRODUCTION',200]]) {
   for(const [i,key] of ['DIAGNOSTIC','AUDIT_PROSPECT','AUDIT_CLIENT','VISIBILITY_PROSPECT','VISIBILITY_CLIENT','PERFORMANCE_PROSPECT','PERFORMANCE_CLIENT','CUSTOM_CLIENT','STOP'].entries()) {
@@ -70,7 +70,7 @@ export function fixture() {
   if(u.hostname==='api.mail.hostinger.com'){assert.deepEqual(body.to,[EMAIL]);emails.push(body);return new Response(null,{status:204});}
   throw Error(`UNMOCKED_NETWORK_${u.hostname}_${u.pathname}`);
  };
- state.payload=(product='audit')=>({request_id:crypto.randomUUID(),product,full_name:'Test dédié',email:EMAIL,company_name:'Test Efficia',city:'Bruxelles',unknown_google_business:true,cgv_accepted:true,cgv_version:'2026-08-18-v2'});
+ state.payload=(product='audit')=>({request_id:crypto.randomUUID(),product,full_name:'Test dédié',email:EMAIL,company_name:'Test Efficia',city:'Bruxelles',unknown_google_business:true,cgv_accepted:true,cgv_version:'2026-10-19-v3'});
  state.event=(session,type='checkout.session.completed')=>({id:`evt_${crypto.randomUUID().replaceAll('-','')}`,type,livemode:false,created:now(),data:{object:{id:session.id}}});
  state.person=(status='active',ids=[])=>{const p={id:'1',email:EMAIL,status,groups:ids.map(id=>({id})),fields:{}};people.set(EMAIL,p);return p;};
  state.due=()=>env.ORDERS_DB.db.exec("UPDATE commerce_attempts SET created_at=created_at-86401");

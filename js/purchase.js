@@ -4,20 +4,21 @@ const OFFERS = {
     price: "99 € TTC",
     amount: "99 €",
     tax: "TTC",
+    description: "Rapport PDF sous 3 à 5 jours ouvrés après réception de votre commande complète : paiement confirmé et informations nécessaires pour identifier votre entreprise et votre fiche. Si une précision manque, nous vous contactons avant de commencer. Aucun accès à votre fiche n’est nécessaire.",
   },
   visibility: {
     name: "Pack Visibilité Google",
     price: "349 € TTC",
     amount: "349 €",
     tax: "TTC",
-    description: "Mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante selon votre situation. Nous vérifions d’abord si une fiche existe pour éviter les doublons. Si nécessaire, nous vous accompagnons pour en récupérer la gestion. Le Pack Visibilité comprend la configuration des informations, l’intégration des photos fournies et l’accompagnement à la validation Google. La validation et ses délais dépendent de Google.",
+    description: "Mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante selon votre situation. Nous vérifions d’abord si une fiche existe pour éviter les doublons. Si nécessaire, nous vous accompagnons pour en récupérer la gestion. Le Pack Visibilité comprend la configuration des informations, l’intégration des photos fournies et l’aide aux démarches de validation de votre fiche auprès de Google. Cette aide comprend la vérification des informations, les indications pour préparer les justificatifs demandés par Google et une relecture des éléments avant leur transmission. Elle ne comprend pas des recours ou une assistance illimités ; la validation et ses délais dépendent de Google.",
   },
   performance: {
     name: "Pack Performance",
     price: "499 € TTC",
     amount: "499 €",
     tax: "TTC",
-    description: "Tout le Pack Visibilité : mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante, avec vérification préalable pour éviter les doublons. Le Pack Performance ajoute un mois de suivi, les ajustements nécessaires et un bilan des actions réalisées, des données disponibles et des recommandations. Pour une nouvelle fiche, ce mois commence lorsqu’elle est validée et visible sur Google ; la validation et ses délais dépendent de Google. Les données du premier mois peuvent être limitées. Le suivi n’est pas une assistance illimitée ; la résolution des suspensions et des litiges de propriété n’est pas garantie.",
+    description: "Tout le Pack Visibilité : mise en place et optimisation initiale d’une nouvelle fiche Google, ou optimisation d’une fiche existante, avec vérification préalable pour éviter les doublons. Le Pack Performance ajoute quatre publications, à raison d’une par semaine pendant un mois, des conseils pour demander des avis et y répondre, un mois de suivi, les ajustements nécessaires et un bilan des actions réalisées, des données disponibles et des recommandations. Pour une nouvelle fiche, le mois commence à sa mise en ligne ; pour une fiche déjà en ligne, à compter du démarrage du suivi convenu avec le client. La validation et ses délais dépendent de Google. Les données du premier mois peuvent être limitées. Le suivi n’est pas une assistance illimitée ; la résolution des suspensions et des litiges de propriété n’est pas garantie.",
   },
 };
 
