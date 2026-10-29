@@ -1,0 +1,30 @@
+name: Publication quotidienne du blog
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: publication-blog-production
+  cancel-in-progress: false
+jobs:
+  deploy-hook:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Déclencher le build Cloudflare de main
+        env:
+          DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_HOOK }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$DEPLOY_HOOK" ]]; then
+            echo "Configurer le secret CLOUDFLARE_PAGES_DEPLOY_HOOK avant de lancer la publication."
+            exit 1
+          fi
+          if ! curl --fail --silent --output /dev/null --connect-timeout 15 --max-time 60 --request POST "$DEPLOY_HOOK"; then
+            echo "Le déclenchement Cloudflare a échoué. Vérifier le hook dans Cloudflare."
+            exit 1
+          fi
+          echo "Build demandé. Vérifier sa réussite dans Cloudflare Pages > Deployments."
