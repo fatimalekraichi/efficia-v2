@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir, rm, cp, lstat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, rm, lstat } from 'node:fs/promises';
 import { resolve, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,27 +76,22 @@ function targetSlug(href, page) {
     return decodeURIComponent(url.pathname).replace(/\/+$/, '').replace(/\.html$/, '').match(/^\/blog\/([^/]+)$/)?.[1];
   } catch { return null; }
 }
-export async function build({ root = process.cwd(), today = dateInBrussels(), includeFuture = false } = {}) {
+export async function build({ root = process.cwd(), site: siteOption = 'dist/site', today = dateInBrussels(), includeFuture = false } = {}) {
   root = resolve(root); validDate(today);
   if (includeFuture && process.env.CF_PAGES) fail('--include-future est réservé aux prévisualisations locales');
-  const out = join(root, 'dist'), site = join(out, 'site');
-  // A failed build leaves no old publishable tree. Never follow a dist symlink.
-  try { if (!(await lstat(out)).isDirectory()) fail('dist doit être un dossier généré, pas un lien ou un fichier'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  await rm(out, { recursive: true, force: true });
-  try {
-    const articles = await validateSources(root);
-    const future = new Set(articles.filter(a => a.date > today && !includeFuture).map(a => a.slug));
-    await mkdir(site, { recursive: true });
-    // Only runtime assets are copied: no Git data, drafts, tests, docs or secrets.
-    const dirs = new Set(['admin', 'admin-login', 'admin-order', 'assets', 'blog', 'css', 'js', 'src']);
-    for (const entry of await readdir(root, { withFileTypes: true })) {
-      if ((entry.isDirectory() && dirs.has(entry.name)) || (entry.isFile() && (/\.html$/.test(entry.name) || ['_headers', '_redirects', '_routes.json', 'robots.txt', 'sitemap.xml'].includes(entry.name)))) {
-        await cp(join(root, entry.name), join(site, entry.name), { recursive: true, filter: path => !basename(path).startsWith('.') });
-      }
-    }
-    // Archive of server sources, OUTSIDE the static directory; Pages compiles root/functions.
-    await cp(join(root, 'functions'), join(out, 'functions'), { recursive: true });
-    for (const slug of future) await rm(join(site, 'blog', `${slug}.html`));
+  const site = resolve(root, siteOption);
+  if (site !== join(root, 'dist', 'site')) fail('Le filtrage est limité au dossier préparé dist/site');
+  for (const dir of [join(root, 'dist'), site]) {
+    try { if (!(await lstat(dir)).isDirectory()) fail(`${dir} doit être un dossier, sans lien symbolique`); }
+    catch (e) { if (e.code === 'ENOENT') fail('Packaging manquant : lancer d’abord node scripts/package-commerce.mjs dist/site'); throw e; }
+  }
+  const files = await filesUnder(site); // Reject symlinks before reading or writing anything.
+  const articles = await validateSources(site);
+  const future = new Set(articles.filter(a => a.date > today && !includeFuture).map(a => a.slug));
+  const deleted = new Set([...future].map(slug => join(site, 'blog', `${slug}.html`)));
+  const edits = new Map();
+  // Work only on the package; validate the complete result before applying edits.
+  if (future.size) {
     const listingPath = join(site, 'blog.html');
     let listing = await readFile(listingPath, 'utf8');
     for (const card of cardsIn(listing)) if (future.has(attrs(card[0].split('>')[0])['data-blog-slug'])) listing = listing.replace(card[0], '');
@@ -106,15 +101,17 @@ export async function build({ root = process.cwd(), today = dateInBrussels(), in
       data.blogPost = data.blogPost.filter(post => !future.has(targetSlug(post.url, 'blog.html')));
       return whole.replace(json, JSON.stringify(data, null, 2));
     });
-    await writeFile(listingPath, listing);
+    edits.set(listingPath, listing);
     const sitemapPath = join(site, 'sitemap.xml');
-    await writeFile(sitemapPath, (await readFile(sitemapPath, 'utf8')).replace(/<url>[\s\S]*?<\/url>/g, entry => future.has(targetSlug(entry.match(/<loc>([^<]+)<\/loc>/)?.[1], 'sitemap.xml')) ? '' : entry));
+    edits.set(sitemapPath, (await readFile(sitemapPath, 'utf8')).replace(/<url>[\s\S]*?<\/url>/g, entry => future.has(targetSlug(entry.match(/<loc>([^<]+)<\/loc>/)?.[1], 'sitemap.xml')) ? '' : entry));
     const ga4Path = join(site, 'js/ga4.js');
     const ga4 = await readFile(ga4Path, 'utf8');
-    await writeFile(ga4Path, ga4.replace(/const PAGES = new Map\(\[([\s\S]*?)\]\);/, (whole, entries) => whole.replace(entries, entries.replace(/\[\s*(["'])(.*?)\1\s*,\s*(["'])(?:\\.|(?!\3).)*\3\s*\]\s*,?/g, (entry, quote, url) => future.has(targetSlug(url, 'js/ga4.js')) ? '' : entry))));
-    for (const file of await filesUnder(site)) {
+    edits.set(ga4Path, ga4.replace(/const PAGES = new Map\(\[([\s\S]*?)\]\);/, (whole, entries) => whole.replace(entries, entries.replace(/\[\s*(["'])(.*?)\1\s*,\s*(["'])(?:\\.|(?!\3).)*\3\s*\]\s*,?/g, (entry, quote, url) => future.has(targetSlug(url, 'js/ga4.js')) ? '' : entry))));
+  }
+    for (const file of files) {
+      if (deleted.has(file)) continue;
       if (!/\.(?:html|js|json|xml|css|txt)$/.test(file)) continue;
-      const content = await readFile(file, 'utf8'), page = file.slice(site.length + 1);
+      const content = edits.get(file) ?? await readFile(file, 'utf8'), page = file.slice(site.length + 1);
       for (const match of content.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
         const slug = targetSlug(match[1] ?? match[2] ?? match[3], page);
         if (future.has(slug)) fail(`Erreur de calendrier : ${page} contient un lien vers l'article programmé ${slug}`);
@@ -123,16 +120,19 @@ export async function build({ root = process.cwd(), today = dateInBrussels(), in
       let decoded = decodeEntities(content); try { decoded = decodeURIComponent(decoded); } catch { /* retain text */ }
       for (const slug of future) if (decoded.includes(slug)) fail(`Erreur de calendrier : référence à l'article programmé ${slug} dans ${page}`);
     }
+    for (const [file, content] of edits) await writeFile(file, content);
+    for (const file of deleted) await rm(file);
+    console.log('Filtrage du dossier préparé : dist/site (sans recopie)');
     const published = articles.filter(a => !future.has(a.slug)), scheduled = articles.filter(a => future.has(a.slug));
     console.log(`Date Bruxelles : ${today}${includeFuture ? ' (prévisualisation locale, futurs inclus)' : ''}`);
     for (const [label, list] of [['Publiés', published], ['Programmés', scheduled]]) console.log(`${label} :\n${list.map(a => `- ${a.date} — ${a.slug}`).join('\n') || '- aucun'}`);
     return { published, scheduled, site };
-  } catch (error) { await rm(out, { recursive: true, force: true }); throw error; }
 }
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
-    if (args.some(a => a !== '--include-future' && !a.startsWith('--today=')) || args.filter(a => a.startsWith('--today=')).length > 1) fail('Usage : node scripts/publish-blog.mjs [--today=AAAA-MM-JJ] [--include-future]');
+    if (args.some(a => a !== '--include-future' && !a.startsWith('--today=') && a !== '--site=dist/site') || args.filter(a => a.startsWith('--today=')).length > 1) fail('Usage : node scripts/publish-blog.mjs [--site=dist/site] [--today=AAAA-MM-JJ] [--include-future]');
     await build({ today: args.find(a => a.startsWith('--today='))?.slice(8) ?? dateInBrussels(), includeFuture: args.includes('--include-future') });
   } catch (error) { console.error(`Publication interrompue : ${error.message}`); process.exitCode = 1; }
 }

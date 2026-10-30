@@ -3,7 +3,7 @@
 ## Fonctionnement en cinq lignes
 
 1. Chaque article a une date de référence dans `<meta name="efficia:publish-date" content="AAAA-MM-JJ">`.
-2. À chaque build, Node détermine la date du jour à Bruxelles et prépare les fichiers publics dans `dist/site`.
+2. À chaque build, le packaging commerce prépare `dist/site`, puis le filtre détermine la date du jour à Bruxelles.
 3. Les articles futurs disparaissent de cette copie, des cartes, du JSON-LD, du sitemap et de la liste GA4.
 4. GitHub demande un nouveau build chaque jour à 05:00 UTC, soit 7 h en été et 6 h en hiver à Bruxelles.
 5. L’article devient public à la fin du premier déploiement réussi à partir de sa date ; les sources restent intactes.
@@ -21,12 +21,12 @@ Depuis le 12 octobre, `main` a évolué : le contrat de déploiement `docs/lot-a
 ### Réglages à effectuer vous-même
 
 1. Dans Cloudflare, ouvrez **Workers & Pages → efficiadigital → Settings → Builds** (selon l’interface, la section peut porter le nom **Builds & deployments**).
-2. Dans **Build configurations → Edit**, choisissez **Framework preset: None**, **Build command: `npm run build`**, **Build output directory: `dist/site`**. Gardez **Root directory** vide (racine du dépôt), pour que Cloudflare trouve `functions/`. Appliquez les réglages aux environnements **Production et Preview**, puis enregistrez. `wrangler.toml` ne doit pas imposer de dossier : le tableau de bord fait foi. Effectuez ce changement après la livraison validée de l’étape A, avant tout ajout d’article futur.
+2. Dans **Build configurations → Edit**, choisissez **Framework preset: None**, **Build command: `node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site`**, **Build output directory: `dist/site`**. Gardez **Root directory** vide (racine du dépôt), pour que Cloudflare trouve `functions/`. Appliquez les réglages aux environnements **Production et Preview**, puis enregistrez. `wrangler.toml` ne doit pas imposer de dossier : le tableau de bord fait foi. Effectuez ce changement après la livraison validée de l’étape A, avant tout ajout d’article futur.
 3. Dans **Settings → Builds → Deploy hooks → Add deploy hook**, indiquez **Deploy hook name: `publication-blog`** et **Branch to build: `main`**, puis créez le hook. Copiez son URL, sans la publier ni l’ajouter au dépôt.
 4. Sur GitHub, ouvrez **fatimalekraichi/efficia-v2 → Settings → Secrets and variables → Actions → New repository secret**.
 5. Dans **Name**, saisissez exactement `CLOUDFLARE_PAGES_DEPLOY_HOOK`. Collez l’URL dans **Secret**, puis cliquez sur **Add secret**.
 6. Après fusion validée dans `main`, ouvrez **Actions → Publication quotidienne du blog → Run workflow**, choisissez **main**, puis **Run workflow**. Le workflow refuse de déclencher la production depuis une autre branche.
-7. Vérifiez ensuite **Cloudflare → Workers & Pages → efficiadigital → Deployments** : le build doit réussir avec `npm run build` et `dist/site`. Un workflow GitHub vert confirme seulement que la demande de build a été acceptée ; il ne confirme pas la réussite finale du déploiement.
+7. Vérifiez ensuite **Cloudflare → Workers & Pages → efficiadigital → Deployments** : le build doit réussir avec les deux commandes enchaînées et la sortie `dist/site`. Un workflow GitHub vert confirme seulement que la demande de build a été acceptée ; il ne confirme pas la réussite finale du déploiement.
 
 GitHub peut démarrer les tâches planifiées avec retard. La publication n’est donc pas garantie à la minute près. Un push sur `main` le jour prévu peut aussi publier l’article avant le déclenchement quotidien. Sans nouveau build réussi, le site conserve la version précédente. Sur un dépôt public inactif, GitHub peut désactiver les workflows planifiés après 60 jours : vérifiez l’onglet Actions si les déclenchements cessent.
 
@@ -54,18 +54,25 @@ npm run build -- --today=2026-10-14
 npm run build -- --include-future
 ```
 
-`--include-future` sert uniquement au contrôle local, et est refusé dans Cloudflare Pages. Ne configurez ni cette option ni `--today` dans la commande de build Cloudflare. Le dossier généré est recréé à chaque build. Une erreur de calendrier efface la sortie incomplète et bloque le déploiement.
+`--include-future` sert uniquement au contrôle local, et est refusé dans Cloudflare Pages. Ne configurez ni cette option ni `--today` dans la commande de build Cloudflare. Le packaging crée le dossier exclusivement et refuse de réutiliser un `dist/site` existant. Pour refaire un build local, déplacer ou supprimer uniquement ce dossier généré avant de relancer. Le filtre ne recopie aucun fichier source : il lit le package et ne modifie que les pages futures, les cartes/JSON-LD, le sitemap et la liste GA4. Une erreur de calendrier est détectée avant toute écriture et bloque le déploiement sans écraser le package.
 
 ## Avancer ou reculer une date
 
 Changez la balise `efficia:publish-date`, puis alignez toutes ses copies (date visible et libellé français, JSON-LD article et liste, carte et sitemap). Réordonnez les cartes si nécessaire, lancez les tests et faites valider le changement avant de pousser. Un build à une date égale ou postérieure publiera l’article. Repousser un article déjà publié le retire du prochain build, mais n’efface pas les copies déjà indexées ou mises en cache : évitez de modifier la date réelle d’un article déjà en ligne.
 
-## Dossiers et Functions
+## Commande combinée et fichiers préservés
 
-- `dist/site/` : seuls fichiers servis au public ; pages, assets, CSS, JS, `src/` utilisé par l’administration, `_headers`, `_redirects`, `robots.txt`, sitemap.
-- `dist/functions/` : copie de contrôle des Functions, à côté des fichiers publics, jamais servie comme asset.
-- `functions/` à la racine : source compilée par Cloudflare Pages et Wrangler ; ses imports restent inchangés. Les bindings D1 et secrets des déploiements restent gérés dans Cloudflare, sans modification par ce build. Ne déplacez pas la racine du projet dans `dist`.
-- `.git`, `.env`, `.dev.vars`, tests, documentation et scripts de build ne sont pas copiés dans les fichiers publics. `dist/` est ignoré par Git.
+Commande exacte à mettre dans Cloudflare (Production et Preview), sortie `dist/site` :
+
+```sh
+node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site
+```
+
+`npm run build` est un raccourci strictement identique. Le `&&` interdit le filtrage si le packaging échoue et empêche le déploiement si le filtre échoue. Aucun nouveau contenu n'est ajouté avant validation de cette chaîne.
+
+Le packaging commerce reste inchangé. Il conserve ses choix de copie et d'exclusion : le filtre n'ajoute pas de fichier que le packaging a exclu, et ne remplace pas ses pages, assets, en-têtes ou Functions. Cloudflare continue de compiler `functions/` à la racine, avec les mêmes imports, bindings et secrets gérés dans le tableau de bord. `wrangler.toml` reste local-only, sans `pages_build_output_dir`.
+
+Un test ajoute des fichiers et modifie des pages, une image et une Function uniquement dans le package, puis vérifie leurs empreintes après filtrage. Il vérifie aussi qu'un fichier volontairement absent du package n'est pas recopié depuis les sources.
 
 ## Références officielles
 
