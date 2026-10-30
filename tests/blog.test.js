@@ -78,13 +78,14 @@ test('liens internes des articles : pages et ancres existantes', () => {
 function checkPromises(value) {
   assert.doesNotMatch(value, /\bgaranti(?:e|s|es)?\b/iu);
   for (const sentence of value.split(/[.!?]/u)) {
-    if (/première place/iu.test(sentence)) assert.match(sentence, /\b(?:pas|aucun|aucune|jamais|sans)\b/iu);
+    if (/première place/iu.test(sentence)) assert.match(sentence, /\b(?:pas|aucun|aucune|jamais|sans|méfiez-vous|personne ne)\b/iu);
   }
 }
 test('aucune promesse de résultat : la négation de première place est conservée', () => {
   for (const file of articles) checkPromises(text(read(file).match(/<div class="blog-prose">([\s\S]*?)<\/div>/)[1]));
   assert.throws(() => checkPromises('La première place sur Google.'));
   assert.throws(() => checkPromises('Résultat garanti.'));
+  assert.doesNotThrow(() => checkPromises('Méfiez-vous si on vous propose : une « première place » sur Google. Personne ne peut la promettre.'));
   assert.throws(() => checkPromises('Une garantie de classement.'));
   assert.doesNotThrow(() => checkPromises('Pas de promesse de « première place sur Google ». Aucun outil ne garantit un classement.'));
 });
@@ -159,4 +160,32 @@ test('partage : Open Graph propre à chaque article et images JSON-LD cohérente
   const img = attributes(card);
   assert.equal(img.alt, ''); assert.equal(img.loading, 'lazy');
   assert.equal(img.width, '768'); assert.equal(img.height, '512'); localAsset(img.src);
+});
+
+const november = JSON.parse(read('tests/fixtures/blog-novembre.json'));
+const decodeEntities = value => value.replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, (_, hex, dec) => String.fromCodePoint(parseInt(hex || dec, hex ? 16 : 10))).replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+test('novembre : textes fournis conservés mot pour mot et calendrier sans lien vers un article ultérieur', () => {
+  for (const [slug, expected] of Object.entries(november)) {
+    const html = read(`blog/${slug}.html`);
+    const body = html.match(/<div class="blog-prose">([\s\S]*?)<\/div>/)[1];
+    assert.equal(createHash('sha256').update(decodeEntities(text(body))).digest('hex'), expected.textSha256, slug);
+    assert.match(html, new RegExp(`name="efficia:publish-date" content="${expected.date}"`));
+    for (const [, target] of body.matchAll(/href="\/blog\/([^"]+)"/g)) {
+      if (november[target]) assert.ok(november[target].date <= expected.date, `${slug} → ${target}`);
+    }
+  }
+});
+test('novembre : tableaux, sources, modèles et checklist sémantiques', () => {
+  for (const slug of ['prix-site-internet-artisan', 'fiche-google-soi-meme-ou-confier']) {
+    const html = read(`blog/${slug}.html`);
+    assert.match(html, /class="blog-table-scroll" role="region"[^>]+tabindex="0"><table>/);
+    assert.match(html, /<th scope="col">/);
+  }
+  for (const slug of ['prix-site-internet-artisan', 'avis-google-artisan']) {
+    assert.match(read(`blog/${slug}.html`), /<section class="blog-sources"[\s\S]*?<\/section>\s*<\/div>\s*<\/article>/);
+  }
+  assert.equal((read('blog/avis-google-artisan.html').match(/<blockquote>/g) || []).length, 5);
+  const winter = read('blog/chauffagiste-plombier-visible-google-hiver.html');
+  assert.match(winter, /<ul class="blog-checklist-visual">/);
+  assert.doesNotMatch(winter, /\[ \]|type="checkbox"/);
 });

@@ -18,6 +18,24 @@ async function fixture(t, date = '2026-10-14') {
   await writeFile(join(dir, 'scripts/package-commerce.mjs'), await read(join(root, 'scripts/package-commerce.mjs')));
   for (const name of ['blog.html', `blog/${first}.html`, 'sitemap.xml', 'js/ga4.js', '_headers', '_redirects', 'robots.txt']) await writeFile(join(dir, name), await read(join(root, name)));
   for (const [name, text] of Object.entries({'css/blog.css':'body {}', 'assets/test.webp':'image', 'functions/ping.js':'export const onRequest = () => new Response("ok");', 'index.html':'<a href="/blog">Blog</a>', '.env':'SECRET_NOT_PUBLIC', 'docs/draft.html':future, 'tests/draft.html':future})) await writeFile(join(dir, name), text);
+  // Keep the two-article fixture independent of the growing editorial catalogue.
+  const catalogue = await validateSources(root);
+  for (const article of catalogue.filter(a => a.slug !== first)) {
+    const slug = article.slug;
+    for (const name of ['blog.html', 'sitemap.xml', 'js/ga4.js']) {
+      let value = await read(join(dir, name));
+      if (name === 'blog.html') {
+        value = value.replace(/<article class="blog-card"[\s\S]*?<\/article>/g, card => card.includes(`data-blog-slug="${slug}"`) ? '' : card);
+        value = value.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/, (_, start, json, end) => {
+          const data = JSON.parse(json); data.blogPost = data.blogPost.filter(p => p.url !== article.url);
+          return start + JSON.stringify(data) + end;
+        });
+      } else if (name === 'sitemap.xml') {
+        value = value.replace(/<url>[\s\S]*?<\/url>/g, entry => entry.includes(`<loc>${article.url}</loc>`) ? '' : entry);
+      } else value = value.split('\n').filter(line => !line.includes(`/blog/${slug}"`)).join('\n');
+      await writeFile(join(dir, name), value);
+    }
+  }
   const label = new Intl.DateTimeFormat('fr-BE', { day:'numeric',month:'long',year:'numeric',timeZone:'Europe/Brussels' }).format(new Date(`${date}T12:00:00Z`));
   const futureHtml = (await read(join(dir, `blog/${first}.html`))).replaceAll(first, future).replaceAll('2026-10-12', date).replaceAll('12 octobre 2026', label);
   await writeFile(join(dir, `blog/${future}.html`), futureHtml);
@@ -138,4 +156,23 @@ test('packaging obligatoire ; erreur de calendrier sans écrasement du dossier p
  result=spawnSync(process.execPath,[script,'--today=2026-10-13'],{cwd:dir,encoding:'utf8'});
  assert.notEqual(result.status,0); assert.match(result.stderr,/Erreur de calendrier/);
  assert.deepEqual(await snapshot(site),before);
+});
+
+test('calendrier novembre : fichiers, cartes, JSON-LD, sitemap et GA4 suivent les cinq dates', async t => {
+ const dir = await mkdtemp(join(tmpdir(), 'efficia-calendrier-novembre-'));
+ t.after(() => rm(dir, { recursive:true, force:true }));
+ for (const folder of ['blog','js','scripts']) await mkdir(join(dir,folder));
+ const catalogue = await validateSources(root);
+ for (const name of ['blog.html','sitemap.xml','js/ga4.js','scripts/package-commerce.mjs', ...catalogue.map(a=>`blog/${a.slug}.html`)]) await writeFile(join(dir,name),await read(join(root,name)));
+ const expectedCounts = { '2026-11-01':1, '2026-11-02':2, '2026-11-06':3, '2026-11-10':4, '2026-11-14':5 };
+ for (const [today,count] of Object.entries(expectedCounts)) {
+  const result = await run(dir,`--today=${today}`);
+  assert.equal(result.status,0,result.stderr);
+  assert.equal((await readdir(join(dir,'dist/site/blog'))).length,count,today);
+  for (const article of catalogue) {
+   const published = article.date <= today;
+   assert.equal(await exists(join(dir,`dist/site/blog/${article.slug}.html`)),published,`${today}: ${article.slug}`);
+   for (const file of ['blog.html','sitemap.xml','js/ga4.js']) assert.equal((await read(join(dir,'dist/site',file))).includes(`/blog/${article.slug}`),published,`${today}: ${file}: ${article.slug}`);
+  }
+ }
 });

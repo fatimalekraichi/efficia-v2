@@ -22,6 +22,10 @@ const publicPages = new Map([
   ["checklist-site-internet.html", "https://efficiadigital.com/checklist-site-internet"],
   ["blog.html", "https://efficiadigital.com/blog"],
   ["blog/fiche-google-ou-site-internet-artisan.html", "https://efficiadigital.com/blog/fiche-google-ou-site-internet-artisan"],
+  ["blog/chauffagiste-plombier-visible-google-hiver.html", "https://efficiadigital.com/blog/chauffagiste-plombier-visible-google-hiver"],
+  ["blog/prix-site-internet-artisan.html", "https://efficiadigital.com/blog/prix-site-internet-artisan"],
+  ["blog/avis-google-artisan.html", "https://efficiadigital.com/blog/avis-google-artisan"],
+  ["blog/fiche-google-soi-meme-ou-confier.html", "https://efficiadigital.com/blog/fiche-google-soi-meme-ou-confier"],
 ]);
 
 const sitemapPages = new Map(
