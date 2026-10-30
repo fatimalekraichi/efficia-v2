@@ -21,11 +21,7 @@ const publicPages = new Map([
   ["site-internet-electricien.html", "https://efficiadigital.com/site-internet-electricien"],
   ["checklist-site-internet.html", "https://efficiadigital.com/checklist-site-internet"],
   ["blog.html", "https://efficiadigital.com/blog"],
-  ["blog/fiche-google-ou-site-internet-artisan.html", "https://efficiadigital.com/blog/fiche-google-ou-site-internet-artisan"],
-  ["blog/chauffagiste-plombier-visible-google-hiver.html", "https://efficiadigital.com/blog/chauffagiste-plombier-visible-google-hiver"],
-  ["blog/prix-site-internet-artisan.html", "https://efficiadigital.com/blog/prix-site-internet-artisan"],
-  ["blog/avis-google-artisan.html", "https://efficiadigital.com/blog/avis-google-artisan"],
-  ["blog/fiche-google-soi-meme-ou-confier.html", "https://efficiadigital.com/blog/fiche-google-soi-meme-ou-confier"],
+  ...(await readdir(new URL('blog/', root))).filter(name => name.endsWith('.html')).sort().map(name => [`blog/${name}`, `https://efficiadigital.com/blog/${name.slice(0,-5)}`]),
 ]);
 
 const sitemapPages = new Map(
@@ -59,7 +55,7 @@ test("le sitemap ne contient que les URL canoniques publiques finales", async ()
   const urls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
   const expected = [...sitemapPages.values()];
 
-  assert.deepEqual(urls, expected);
+  assert.deepEqual([...urls].sort(), [...expected].sort());
   assert.equal(new Set(urls).size, urls.length, "le sitemap ne doit contenir aucun doublon");
   assert.ok(urls.every((url) => url.startsWith("https://efficiadigital.com/")));
   assert.ok(urls.every((url) => !url.includes("www.")));

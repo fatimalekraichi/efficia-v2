@@ -1,0 +1,128 @@
+{
+  "avis-google-artisan": {
+    "images": [
+      {
+        "base": "avis-google-artisan-une",
+        "alt": "Cliente qui laisse un avis cinq étoiles à un électricien sur son téléphone",
+        "figure": "<figure class=\"blog-figure blog-figure--hero\">\n<img src=\"/assets/images/blog/avis-google-artisan-une-1536.webp\" srcset=\"/assets/images/blog/avis-google-artisan-une-768.webp 768w, /assets/images/blog/avis-google-artisan-une-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), (max-width: 1008px) calc(100vw - 48px), 960px\" width=\"1536\" height=\"1024\" alt=\"Cliente qui laisse un avis cinq étoiles à un électricien sur son téléphone\" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "avis-google-artisan-qr-code",
+        "alt": "QR code pour laisser un avis, collé sur la camionnette d'un artisan et imprimé sur sa facture",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/avis-google-artisan-qr-code-1536.webp\" srcset=\"/assets/images/blog/avis-google-artisan-qr-code-768.webp 768w, /assets/images/blog/avis-google-artisan-qr-code-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"QR code pour laisser un avis, collé sur la camionnette d&#x27;un artisan et imprimé sur sa facture\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      }
+    ],
+    "og": "avis-google-artisan-og.jpg",
+    "schemaImages": [
+      "https://efficiadigital.com/assets/images/blog/avis-google-artisan-une-1536.webp",
+      "https://efficiadigital.com/assets/images/blog/avis-google-artisan-og.jpg"
+    ],
+    "gaTitle": "Avis Google : comment en obtenir plus sans harceler vos clients",
+    "placement": [
+      "LIST:sur un petit autocollant"
+    ],
+    "cssVersion": "20261030-novembre"
+  },
+  "chauffagiste-plombier-visible-google-hiver": {
+    "images": [
+      {
+        "base": "chauffagiste-plombier-visible-google-hiver-une",
+        "alt": "Chauffagiste devant une chaudière, consultant sa fiche Google sur son téléphone",
+        "figure": "<figure class=\"blog-figure blog-figure--hero\">\n<img src=\"/assets/images/blog/chauffagiste-plombier-visible-google-hiver-une-1536.webp\" srcset=\"/assets/images/blog/chauffagiste-plombier-visible-google-hiver-une-768.webp 768w, /assets/images/blog/chauffagiste-plombier-visible-google-hiver-une-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), (max-width: 1008px) calc(100vw - 48px), 960px\" width=\"1536\" height=\"1024\" alt=\"Chauffagiste devant une chaudière, consultant sa fiche Google sur son téléphone\" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "chauffagiste-plombier-visible-google-hiver-publication",
+        "alt": "Publication sur une fiche Google rappelant l'entretien de chaudière avant l'hiver",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/chauffagiste-plombier-visible-google-hiver-publication-1536.webp\" srcset=\"/assets/images/blog/chauffagiste-plombier-visible-google-hiver-publication-768.webp 768w, /assets/images/blog/chauffagiste-plombier-visible-google-hiver-publication-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"Publication sur une fiche Google rappelant l&#x27;entretien de chaudière avant l&#x27;hiver\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      }
+    ],
+    "og": "chauffagiste-plombier-visible-google-hiver-og.jpg",
+    "schemaImages": [
+      "https://efficiadigital.com/assets/images/blog/chauffagiste-plombier-visible-google-hiver-une-1536.webp",
+      "https://efficiadigital.com/assets/images/blog/chauffagiste-plombier-visible-google-hiver-og.jpg"
+    ],
+    "gaTitle": "Chauffagistes, plombiers : être trouvés sur Google quand les pannes de chauffage commencent",
+    "placement": [
+      "Votre chaudière a-t-elle"
+    ],
+    "cssVersion": "20261030-novembre"
+  },
+  "fiche-google-ou-site-internet-artisan": {
+    "images": [
+      {
+        "base": "fiche-google-ou-site-internet-une",
+        "alt": "Téléphone affichant la fiche Google d'un électricien et ordinateur affichant son site internet, sur un établi",
+        "figure": "<figure class=\"blog-figure blog-figure--hero\">\n<img src=\"/assets/images/blog/fiche-google-ou-site-internet-une-1536.webp\" srcset=\"/assets/images/blog/fiche-google-ou-site-internet-une-768.webp 768w, /assets/images/blog/fiche-google-ou-site-internet-une-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), (max-width: 1008px) calc(100vw - 48px), 960px\" width=\"1536\" height=\"1024\" alt=\"Téléphone affichant la fiche Google d&#x27;un électricien et ordinateur affichant son site internet, sur un établi\" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "fiche-google-ou-site-internet-recherche",
+        "alt": "Client qui cherche un électricien sur son téléphone, le soir, après une panne",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/fiche-google-ou-site-internet-recherche-1536.webp\" srcset=\"/assets/images/blog/fiche-google-ou-site-internet-recherche-768.webp 768w, /assets/images/blog/fiche-google-ou-site-internet-recherche-1536.webp 1536w\" sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"Client qui cherche un électricien sur son téléphone, le soir, après une panne\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "fiche-google-ou-site-internet-les-deux",
+        "alt": "La même entreprise d'électricité présentée sur sa fiche Google et sur son site internet",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/fiche-google-ou-site-internet-les-deux-1536.webp\" srcset=\"/assets/images/blog/fiche-google-ou-site-internet-les-deux-768.webp 768w, /assets/images/blog/fiche-google-ou-site-internet-les-deux-1536.webp 1536w\" sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"La même entreprise d&#x27;électricité présentée sur sa fiche Google et sur son site internet\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      }
+    ],
+    "og": "fiche-google-ou-site-internet-og.jpg",
+    "schemaImages": [
+      "https://efficiadigital.com/assets/images/blog/fiche-google-ou-site-internet-une-1536.webp",
+      "https://efficiadigital.com/assets/images/blog/fiche-google-ou-site-internet-og.jpg"
+    ],
+    "gaTitle": "Fiche Google ou site internet",
+    "placement": [
+      "Avant même de voir le moindre site",
+      "La vraie question n'est donc"
+    ],
+    "cssVersion": "20261012-images"
+  },
+  "fiche-google-soi-meme-ou-confier": {
+    "images": [
+      {
+        "base": "fiche-google-soi-meme-ou-confier-une",
+        "alt": "Artisan qui configure sa fiche Google sur son ordinateur, le soir",
+        "figure": "<figure class=\"blog-figure blog-figure--hero\">\n<img src=\"/assets/images/blog/fiche-google-soi-meme-ou-confier-une-1536.webp\" srcset=\"/assets/images/blog/fiche-google-soi-meme-ou-confier-une-768.webp 768w, /assets/images/blog/fiche-google-soi-meme-ou-confier-une-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), (max-width: 1008px) calc(100vw - 48px), 960px\" width=\"1536\" height=\"1024\" alt=\"Artisan qui configure sa fiche Google sur son ordinateur, le soir\" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "fiche-google-soi-meme-ou-confier-options",
+        "alt": "Trois façons de s'occuper de sa fiche Google : seul, avec un plan d'action, ou en la confiant",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/fiche-google-soi-meme-ou-confier-options-1536.webp\" srcset=\"/assets/images/blog/fiche-google-soi-meme-ou-confier-options-768.webp 768w, /assets/images/blog/fiche-google-soi-meme-ou-confier-options-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"Trois façons de s&#x27;occuper de sa fiche Google : seul, avec un plan d&#x27;action, ou en la confiant\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      }
+    ],
+    "og": "fiche-google-soi-meme-ou-confier-og.jpg",
+    "schemaImages": [
+      "https://efficiadigital.com/assets/images/blog/fiche-google-soi-meme-ou-confier-une-1536.webp",
+      "https://efficiadigital.com/assets/images/blog/fiche-google-soi-meme-ou-confier-og.jpg"
+    ],
+    "gaTitle": "Créer sa fiche Google Business soi-même ou la confier : le comparatif honnête",
+    "placement": [
+      "TABLE:1"
+    ],
+    "cssVersion": "20261030-novembre"
+  },
+  "prix-site-internet-artisan": {
+    "images": [
+      {
+        "base": "prix-site-internet-artisan-une",
+        "alt": "Artisan qui compare un devis de site en paiement unique et un contrat d'abonnement",
+        "figure": "<figure class=\"blog-figure blog-figure--hero\">\n<img src=\"/assets/images/blog/prix-site-internet-artisan-une-1536.webp\" srcset=\"/assets/images/blog/prix-site-internet-artisan-une-768.webp 768w, /assets/images/blog/prix-site-internet-artisan-une-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), (max-width: 1008px) calc(100vw - 48px), 960px\" width=\"1536\" height=\"1024\" alt=\"Artisan qui compare un devis de site en paiement unique et un contrat d&#x27;abonnement\" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">\n</figure>\n"
+      },
+      {
+        "base": "prix-site-internet-artisan-contenu",
+        "alt": "Site vitrine d'artisan affiché sur ordinateur et téléphone, avec la liste des pages essentielles",
+        "figure": "<figure class=\"blog-figure\">\n<img src=\"/assets/images/blog/prix-site-internet-artisan-contenu-1536.webp\" srcset=\"/assets/images/blog/prix-site-internet-artisan-contenu-768.webp 768w, /assets/images/blog/prix-site-internet-artisan-contenu-1536.webp 1536w\" sizes=\"(max-width: 860px) calc(100vw - 32px), 745px\" width=\"1536\" height=\"1024\" alt=\"Site vitrine d&#x27;artisan affiché sur ordinateur et téléphone, avec la liste des pages essentielles\" loading=\"lazy\" decoding=\"async\">\n</figure>\n"
+      }
+    ],
+    "og": "prix-site-internet-artisan-og.jpg",
+    "schemaImages": [
+      "https://efficiadigital.com/assets/images/blog/prix-site-internet-artisan-une-1536.webp",
+      "https://efficiadigital.com/assets/images/blog/prix-site-internet-artisan-og.jpg"
+    ],
+    "gaTitle": "Combien coûte un site internet pour un artisan en 2026 ?",
+    "placement": [
+      "TABLE:2"
+    ],
+    "cssVersion": "20261030-novembre"
+  }
+}

@@ -3,7 +3,7 @@
 ## Fonctionnement en cinq lignes
 
 1. Chaque article a une date de référence dans `<meta name="efficia:publish-date" content="AAAA-MM-JJ">`.
-2. À chaque build, le packaging commerce prépare `dist/site`, puis le filtre détermine la date du jour à Bruxelles.
+2. À chaque build, le packaging commerce prépare `dist/site`, puis le générateur Markdown prépare les articles, et le filtre détermine la date du jour à Bruxelles.
 3. Les articles futurs disparaissent de cette copie, des cartes, du JSON-LD, du sitemap et de la liste GA4.
 4. GitHub demande un nouveau build chaque jour à 05:00 UTC, soit 7 h en été et 6 h en hiver à Bruxelles.
 5. L’article devient public à la fin du premier déploiement réussi à partir de sa date ; les sources restent intactes.
@@ -12,21 +12,15 @@
 
 Le projet **efficiadigital** est relié à **fatimalekraichi/efficia-v2**, avec **main** comme branche de production. Le workflow appelle un Deploy Hook, il ne déploie pas avec Wrangler. Aucun jeton API Cloudflare n’est nécessaire pour ce workflow.
 
-La programmation reste inactive tant que cette modification n’est pas validée, fusionnée dans `main` et que les réglages ci-dessous ne sont pas terminés. Aucun réglage distant n’est changé à l’étape A.
+La publication programmée est déjà active. Le Deploy Hook `publication-blog` et le secret GitHub `CLOUDFLARE_PAGES_DEPLOY_HOOK` existent : ne pas les recréer.
 
-Depuis le 12 octobre, `main` a évolué : le contrat de déploiement `docs/lot-a-deployment.md` prévoit déjà `node scripts/package-commerce.mjs dist/site`, avec `dist/site` comme sortie. Il faut vérifier la valeur réellement affichée dans Cloudflare avant le changement. Conserver une copie des réglages Production et Preview pour pouvoir les rétablir si la validation de l’étape B échoue.
+La transition Markdown reste en attente de validation. La commande Cloudflare actuelle est `node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site`. Après accord et fusion de la partie A, ajouter le générateur entre les deux commandes, en Production et Preview :
 
-`wrangler.toml` reste identique à `main`, sans clé `pages_build_output_dir`. Les réglages, secrets et bindings Cloudflare restent gérés dans le tableau de bord. Ne pas ajouter cette clé : elle remplacerait la configuration distante. Le nouveau script peut être livré sans changer les réglages : l’ancienne commande continue de fonctionner. Tant que le filtrage n’est pas activé et vérifié, **ne pas ajouter les articles futurs au dépôt publié**.
+```sh
+node scripts/package-commerce.mjs dist/site && node scripts/build-articles.mjs --site=dist/site && node scripts/publish-blog.mjs --site=dist/site
+```
 
-### Réglages à effectuer vous-même
-
-1. Dans Cloudflare, ouvrez **Workers & Pages → efficiadigital → Settings → Builds** (selon l’interface, la section peut porter le nom **Builds & deployments**).
-2. Dans **Build configurations → Edit**, choisissez **Framework preset: None**, **Build command: `node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site`**, **Build output directory: `dist/site`**. Gardez **Root directory** vide (racine du dépôt), pour que Cloudflare trouve `functions/`. Appliquez les réglages aux environnements **Production et Preview**, puis enregistrez. `wrangler.toml` ne doit pas imposer de dossier : le tableau de bord fait foi. Effectuez ce changement après la livraison validée de l’étape A, avant tout ajout d’article futur.
-3. Dans **Settings → Builds → Deploy hooks → Add deploy hook**, indiquez **Deploy hook name: `publication-blog`** et **Branch to build: `main`**, puis créez le hook. Copiez son URL, sans la publier ni l’ajouter au dépôt.
-4. Sur GitHub, ouvrez **fatimalekraichi/efficia-v2 → Settings → Secrets and variables → Actions → New repository secret**.
-5. Dans **Name**, saisissez exactement `CLOUDFLARE_PAGES_DEPLOY_HOOK`. Collez l’URL dans **Secret**, puis cliquez sur **Add secret**.
-6. Après fusion validée dans `main`, ouvrez **Actions → Publication quotidienne du blog → Run workflow**, choisissez **main**, puis **Run workflow**. Le workflow refuse de déclencher la production depuis une autre branche.
-7. Vérifiez ensuite **Cloudflare → Workers & Pages → efficiadigital → Deployments** : le build doit réussir avec les deux commandes enchaînées et la sortie `dist/site`. Un workflow GitHub vert confirme seulement que la demande de build a été acceptée ; il ne confirme pas la réussite finale du déploiement.
+Conserver la sortie `dist/site`, la racine vide et les bindings/secrets actuels. Ne pas ajouter `pages_build_output_dir` dans `wrangler.toml`. Vérifier ensuite le succès du déploiement Cloudflare et les URL publiques ; un workflow GitHub vert confirme seulement la demande de build, pas le déploiement final.
 
 GitHub peut démarrer les tâches planifiées avec retard. La publication n’est donc pas garantie à la minute près. Un push sur `main` le jour prévu peut aussi publier l’article avant le déclenchement quotidien. Sans nouveau build réussi, le site conserve la version précédente. Sur un dépôt public inactif, GitHub peut désactiver les workflows planifiés après 60 jours : vérifiez l’onglet Actions si les déclenchements cessent.
 
@@ -34,9 +28,9 @@ GitHub peut démarrer les tâches planifiées avec retard. La publication n’es
 
 Suivez [Ajouter un nouvel article](ajouter-un-article-blog.md). La balise de publication, les dates JSON-LD, le `<time>` visible, la carte et le `lastmod` du sitemap doivent tous correspondre. Le build refuse une date absente ou impossible, une carte manquante, un ordre incorrect ou une incohérence.
 
-Chaque carte porte `data-blog-slug="votre-slug"` et `data-publish-date="AAAA-MM-JJ"`. Classez les cartes de la date la plus récente à la plus ancienne. Ne mettez aucun lien vers cet article dans une page qui sera publique avant lui. Les cartes et entrées du sitemap sont filtrées automatiquement ; les autres liens provoquent une erreur de calendrier.
+Chaque carte porte `data-blog-slug="votre-slug"` et `data-publish-date="AAAA-MM-JJ"`. Le générateur classe les cartes de la date la plus récente à la plus ancienne. Ne mettez aucun lien vers cet article dans une page qui sera publique avant lui. Les cartes et entrées du sitemap sont filtrées automatiquement ; les autres liens provoquent une erreur de calendrier.
 
-Les articles Markdown de novembre ne sont pas encore intégrés à l’étape A. Après validation du mécanisme et des réglages, le calendrier prévu est : chauffagiste/plombier le 2 novembre 2026, prix d’un site le 6 novembre, avis Google le 10 novembre, fiche Google seul ou accompagné le 14 novembre. Le premier article garde sa date réelle du **2026-10-12**.
+Calendrier validé le 30 octobre 2026 : premier article le 12 octobre, chauffagistes/plombiers le 30 octobre, prix du site le 3 novembre, avis Google le 7 novembre, fiche Google soi-même ou confiée le 11 novembre.
 
 ## Vérifier ou relancer
 
@@ -58,19 +52,19 @@ npm run build -- --include-future
 
 ## Avancer ou reculer une date
 
-Changez la balise `efficia:publish-date`, puis alignez toutes ses copies (date visible et libellé français, JSON-LD article et liste, carte et sitemap). Réordonnez les cartes si nécessaire, lancez les tests et faites valider le changement avant de pousser. Un build à une date égale ou postérieure publiera l’article. Repousser un article déjà publié le retire du prochain build, mais n’efface pas les copies déjà indexées ou mises en cache : évitez de modifier la date réelle d’un article déjà en ligne.
+Modifier uniquement `date_publication` dans le Markdown ; le générateur aligne les dates visibles, métadonnées, cartes et sitemap. Faire valider avant de pousser. Repousser un article déjà publié le retire du prochain build, sans effacer les copies indexées ou mises en cache.
 
 ## Commande combinée et fichiers préservés
 
 Commande exacte à mettre dans Cloudflare (Production et Preview), sortie `dist/site` :
 
 ```sh
-node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site
+node scripts/package-commerce.mjs dist/site && node scripts/build-articles.mjs --site=dist/site && node scripts/publish-blog.mjs --site=dist/site
 ```
 
 `npm run build` est un raccourci strictement identique. Le `&&` interdit le filtrage si le packaging échoue et empêche le déploiement si le filtre échoue. Aucun nouveau contenu n'est ajouté avant validation de cette chaîne.
 
-Le packaging commerce reste inchangé. Il conserve ses choix de copie et d'exclusion : le filtre n'ajoute pas de fichier que le packaging a exclu, et ne remplace pas ses pages, assets, en-têtes ou Functions. Cloudflare continue de compiler `functions/` à la racine, avec les mêmes imports, bindings et secrets gérés dans le tableau de bord. `wrangler.toml` reste local-only, sans `pages_build_output_dir`.
+Le packaging commerce conserve son comportement ; seule l’exclusion du nouveau dossier source `contenus/` est ajoutée pour éviter de servir les PNG et brouillons. Il conserve ses choix de copie et d'exclusion : le filtre n'ajoute pas de fichier que le packaging a exclu, et ne remplace pas ses pages, assets, en-têtes ou Functions. Cloudflare continue de compiler `functions/` à la racine, avec les mêmes imports, bindings et secrets gérés dans le tableau de bord. `wrangler.toml` reste local-only, sans `pages_build_output_dir`.
 
 Un test ajoute des fichiers et modifie des pages, une image et une Function uniquement dans le package, puis vérifie leurs empreintes après filtrage. Il vérifie aussi qu'un fichier volontairement absent du package n'est pas recopié depuis les sources.
 
@@ -81,3 +75,13 @@ Un test ajoute des fichiers et modifie des pages, une image et une Function uniq
 - [Cloudflare : Functions à la racine du projet](https://developers.cloudflare.com/pages/functions/get-started/)
 - [GitHub : secrets Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 - [GitHub : horaires et limites des déclenchements planifiés](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+
+## Transition Markdown — à faire après validation de la partie A
+
+La commande actuelle en production reste `node scripts/package-commerce.mjs dist/site && node scripts/publish-blog.mjs --site=dist/site` jusqu’à votre accord. La branche `feat/blog-markdown` contient les instantanés HTML régénérés, ce qui permet de vérifier la compatibilité de cet ancien build en prévisualisation. La nouvelle chaîne complète est testée localement et en CI.
+
+Après accord : fusionner la partie A dans main, puis ajouter `node scripts/build-articles.mjs --site=dist/site` entre packaging et filtrage dans les réglages Cloudflare Production et Preview. Conserver `dist/site` comme sortie et la racine vide. Ne pas ajouter de clé `pages_build_output_dir` dans wrangler.toml. Vérifier un déploiement réussi avec les trois commandes avant de commencer la partie B ou d’ajouter un article uniquement en Markdown.
+
+Le workflow images ne publie que les dérivés, avec un token d’écriture dans un job séparé qui n’exécute aucun code de PR. Les pushes de GITHUB_TOKEN ne relancent pas automatiquement Actions : le job attache donc le check `Blog Markdown validé` au commit exact composé du parent testé et des assets testés. La fusion doit aussi attendre le succès Cloudflare sur ce commit. Si la branche avance entre-temps, le job refuse la mise à jour.
+
+Référence : https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow

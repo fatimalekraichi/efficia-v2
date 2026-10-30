@@ -1,13 +1,24 @@
-# Ajouter un nouvel article
+# Ajouter un article au blog
 
-1. Copier `blog/fiche-google-ou-site-internet-artisan.html` sous `blog/votre-slug.html`. Ce premier article sert de gabarit : conserver les chemins absolus `/css/`, `/js/`, `/assets/`, l’en-tête, le pied de page, les scripts de consentement et le bouton `data-blog-cta`.
-2. Définir la date de référence dans `<meta name="efficia:publish-date" content="AAAA-MM-JJ">` (une seule balise dans le `<head>`). Toutes les dates et leur libellé visible français doivent lui correspondre. Remplacer le corps, la catégorie, le H1, l’auteur, le temps de lecture et les dates visibles (`<time datetime="AAAA-MM-JJ">`). Actualiser title, description, canonical, Open Graph, fil d’Ariane visible et JSON-LD `BlogPosting` / `BreadcrumbList` (dont dates, auteur, URL et titre). Conserver le logo existant ; utiliser une image Open Graph propre à l’article.
-3. Copier une carte dans `blog.html`, lui donner `data-blog-slug="votre-slug"` et `data-publish-date="AAAA-MM-JJ"`, la placer selon sa date décroissante et actualiser son titre, extrait, catégorie, lien et date. Ajouter le même article à `blogPost` dans le JSON-LD de cette page.
-4. Ajouter l’URL sans `.html` ni barre finale et sa date à `sitemap.xml`, puis la même entrée dans `publicPages` de `tests/technicalSeoRoutes.test.js`, dans le même ordre. Pour mesurer les visites après accord, ajouter l’URL et un titre générique fixe à la liste `PAGES` de `js/ga4.js`, puis actualiser son paramètre `?v=` sur les pages publiques. Ne jamais transmettre de contenu saisi, de paramètres d’URL ou de données personnelles.
-5. Exécuter `npm run test:blog`, `npm run test:publish-blog`, `npm run build`, puis `node --test tests/*.test.js`. Vérifier les liens, le menu et le rendu à 375, 768 et 1280 px. Les redirections `.html` et barre finale sont gérées par Cloudflare Pages : ne pas ajouter de règle sans constater un problème. Faire valider avant toute publication.
+1. Créer `contenus/blog/<slug>/article.md`, `une.png` et `illustration.png`. Utiliser le [format complet](format-article-blog.md), avec `statut: brouillon`, et deux PNG 1536 × 1024.
+2. Ouvrir une PR vers `main`. Le workflow `Images et validation du blog Markdown` convertit les images et les committe sur la même branche (PR du même dépôt uniquement). Pour une PR provenant d’un fork, le workflow vérifie mais n’a pas de droit de commit ; un mainteneur doit reprendre les assets dans une branche du dépôt.
+3. Relire et valider le texte, les faits, les images et la date. Passer `statut` à `valide`. Le workflow valide la génération, les images et les tests. Le contrôle `Blog Markdown validé` porte sur le commit exact après ajout des images. Un nouveau commit humain exige une nouvelle validation. Le workflow ne fusionne jamais une PR et ne publie aucun réseau social.
+4. Vérifier le build et l’aperçu. Les articles futurs sont volontairement absents de l’aperçu Cloudflare normal. En local, avec les outils d’images installés :
 
-Déposer les images sous `assets/images/blog/<slug>-*.webp` (versions 768 et 1536 px) et `<slug>-og.jpg` (1200 × 630).
-Reprendre les figures du premier article : `srcset`, `sizes`, dimensions, texte alternatif descriptif, une seule image à la une en `eager` / `fetchpriority="high"`, les autres en `lazy` ; la carte garde un `alt` vide.
-Actualiser `og:image`, ses dimensions et son texte alternatif dans l’article, ainsi que le tableau `image` des deux JSON-LD `BlogPosting` (article et liste) ; conserver l’Open Graph par défaut de la page Blog.
+```sh
+node scripts/convert-blog-images.mjs
+node scripts/build-articles.mjs --write-sources
+npm run test:build-articles
+npm run test:blog
+npm run test:publish-blog
+node --test tests/technicalSeoRoutes.test.js
+npm run build -- --include-future
+```
 
-Pour préparer des articles futurs, suivre [Publication programmée](publication-programmee-blog.md). Ne jamais lier un article futur depuis une page publiée : le build le refuse. Utiliser `npm run build -- --include-future` uniquement en local.
+Supprimer ou déplacer uniquement le `dist/site` généré avant de refaire un build. `--include-future` reste interdit sur Cloudflare. Les brouillons ne sont jamais inclus.
+
+5. Faire valider la PR, puis la fusionner. La commande Cloudflare doit d’abord avoir été mise à jour, après accord, selon [Publication programmée](publication-programmee-blog.md). Le workflow quotidien reconstruit le site ; l’article devient visible à partir de sa date lors du premier build réussi.
+
+Aucune modification manuelle de `blog.html`, du sitemap, du JSON-LD, de GA4 ou de la liste des tests SEO n’est nécessaire. `--write-sources` peut mettre à jour les instantanés HTML du dépôt pour les revues ; le build Cloudflare génère lui-même la sortie à partir des Markdown.
+
+Le convertisseur utilise `cwebp` et ImageMagick (`convert`) ; sur les runners Ubuntu, le workflow installe `webp imagemagick` via apt. Aucune dépendance npm n’est ajoutée.

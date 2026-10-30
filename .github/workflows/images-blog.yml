@@ -1,0 +1,113 @@
+name: Images et validation du blog Markdown
+on:
+  pull_request:
+    paths:
+      - 'contenus/blog/**'
+      - 'scripts/build-articles.mjs'
+      - 'scripts/convert-blog-images.mjs'
+      - 'scripts/blog/**'
+      - 'scripts/templates/**'
+      - 'tests/buildArticles.test.js'
+      - '.github/workflows/images-blog.yml'
+permissions:
+  contents: read
+concurrency:
+  group: images-blog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: sudo apt-get update && sudo apt-get install -y webp imagemagick
+      - name: Convertir les PNG (sans secret ni droit d’écriture)
+        run: node scripts/convert-blog-images.mjs
+        env:
+          BLOG_IMAGE_MANIFEST: ${{ runner.temp }}/blog-images.json
+      - name: Générer et valider
+        run: |
+          node scripts/build-articles.mjs --write-sources
+          npm run test:build-articles
+          npm run test:blog
+          npm run test:publish-blog
+          node --test tests/technicalSeoRoutes.test.js
+          npm run build
+      - name: Préparer les seuls assets à committer
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          root = pathlib.Path('image-artifact'); root.mkdir()
+          files = json.loads(pathlib.Path(os.environ['MANIFEST']).read_text())
+          for name in files:
+              src = pathlib.Path(name)
+              if src.is_symlink() or not src.is_file(): raise RuntimeError('Asset invalide')
+              dest = root / src; dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(src, dest)
+          (root / 'manifest.json').write_text(json.dumps(files))
+          PY
+        env:
+          MANIFEST: ${{ runner.temp }}/blog-images.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blog-images
+          path: image-artifact/
+          retention-days: 3
+  commit-images:
+    needs: prepare
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+      checks: write
+    steps:
+      # Never checkout or execute PR code with a write token.
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-images
+          path: image-artifact
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const {owner, repo} = context.repo;
+            const pr = (await github.rest.pulls.get({owner, repo, pull_number: context.payload.pull_request.number})).data;
+            const expected = context.payload.pull_request.head.sha;
+            if (pr.head.sha !== expected || pr.head.repo.full_name !== `${owner}/${repo}` || pr.head.ref === 'main') throw new Error('Branche déplacée ou interdite : relancer les contrôles');
+            const files = JSON.parse(fs.readFileSync('image-artifact/manifest.json', 'utf8'));
+            if (!Array.isArray(files) || files.length > 350 || new Set(files).size !== files.length) throw new Error('Manifeste invalide');
+            const commit = (await github.rest.git.getCommit({owner, repo, commit_sha: expected})).data;
+            const tree = (await github.rest.git.getTree({owner, repo, tree_sha: commit.tree.sha, recursive: 'true'})).data;
+            if (tree.truncated) throw new Error('Arbre tronqué');
+            const entries = [];
+            for (const path of files) {
+              if (!/^assets\/images\/blog\/[a-z0-9]+(?:-[a-z0-9]+)*-(?:(?:une|illustration)-(?:1536|768)\.webp|(?:og|instagram|google)\.jpg)$/.test(path)) throw new Error('Chemin interdit');
+              const local = `image-artifact/${path}`;
+              const stat = fs.lstatSync(local);
+              if (!stat.isFile() || stat.size > 10 * 1024 * 1024) throw new Error('Asset invalide');
+              const bytes = fs.readFileSync(local);
+              const hash = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+              if (tree.tree.some(x => x.path === path && x.sha === hash && x.mode === '100644')) continue;
+              const blob = (await github.rest.git.createBlob({owner, repo, content: bytes.toString('base64'), encoding: 'base64'})).data;
+              entries.push({path, mode: '100644', type: 'blob', sha: blob.sha});
+            }
+            let head = expected;
+            if (entries.length) {
+              const nextTree = (await github.rest.git.createTree({owner, repo, base_tree: commit.tree.sha, tree: entries})).data;
+              const next = (await github.rest.git.createCommit({owner, repo, message: 'Préparer les images du blog', tree: nextTree.sha, parents: [expected]})).data;
+              await github.rest.git.updateRef({owner, repo, ref: `heads/${pr.head.ref}`, sha: next.sha, force: false});
+              head = next.sha;
+            }
+            // GITHUB_TOKEN pushes do not retrigger Actions: attach the validation
+            // to the exact commit consisting of the tested parent + tested assets.
+            await github.rest.checks.create({owner, repo, name: 'Blog Markdown validé', head_sha: head, status: 'completed', conclusion: 'success', output: {title: 'Génération et images validées', summary: 'Tests du générateur, blog, publication et SEO réussis ; build combiné réussi. Seuls les assets testés ont été ajoutés.'}});
