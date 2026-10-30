@@ -1,22 +1,22 @@
 {
   "chauffagiste-plombier-visible-google-hiver": {
-    "date": "2026-11-02",
+    "date": "2026-10-30",
     "textSha256": "2724450d843b44133a3968689804f016e0673a3801a45521e63a606c6b88995a",
-    "sourceSha256": "294d34f3dfedcff9337fd58eca771e7424759040c2a776d178e981012d952a99"
+    "sourceSha256": "5714f6de4af3b123a1d7ac25856a664305cab608ed3acdf33226e6882aaeb7fe"
   },
   "prix-site-internet-artisan": {
-    "date": "2026-11-06",
+    "date": "2026-11-03",
     "textSha256": "8835ec0c6f0c4d5403a884d8a523b6c420955641deedb1f1373c343de3e2283d",
-    "sourceSha256": "de0208ab960a1832f5aee10170b7f791fc6b46c1ed0e86bd0e0c3597a416c61e"
+    "sourceSha256": "0eb95e1d9b868996c119b8e8b08b2f350d998797269dfcd435706975a4b37324"
   },
   "avis-google-artisan": {
-    "date": "2026-11-10",
+    "date": "2026-11-07",
     "textSha256": "a814323bb02d80a95bd4bfeadf93c20ec74987b35582d15f7039aa861023798d",
-    "sourceSha256": "733ed07d2833c1ffeb5bb4b99a79c1a1b90c571e9f2ccc9d57a34abdcfb35181"
+    "sourceSha256": "99136616e466afd6538054b6695acb02a3cd82de0ee9dd18b481666b9e5d839c"
   },
   "fiche-google-soi-meme-ou-confier": {
-    "date": "2026-11-14",
+    "date": "2026-11-11",
     "textSha256": "5d9aaf310d11f867fbbde8ca58df0f61a2f94a898a754d48f691b7b075c698dd",
-    "sourceSha256": "ed26a126d82cdd41935e42fb26a49887d9e9310bf1dab5460de527b6d64129ef"
+    "sourceSha256": "a118ff62898c3893528964af52ffedd643f885e3f17ddb085af6307b5530f5e6"
   }
 }

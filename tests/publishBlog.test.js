@@ -158,13 +158,13 @@ test('packaging obligatoire ; erreur de calendrier sans écrasement du dossier p
  assert.deepEqual(await snapshot(site),before);
 });
 
-test('calendrier novembre : fichiers, cartes, JSON-LD, sitemap et GA4 suivent les cinq dates', async t => {
+test('calendrier novembre : fichiers, cartes, JSON-LD, sitemap et GA4 suivent le calendrier avancé de trois jours', async t => {
  const dir = await mkdtemp(join(tmpdir(), 'efficia-calendrier-novembre-'));
  t.after(() => rm(dir, { recursive:true, force:true }));
  for (const folder of ['blog','js','scripts']) await mkdir(join(dir,folder));
  const catalogue = await validateSources(root);
  for (const name of ['blog.html','sitemap.xml','js/ga4.js','scripts/package-commerce.mjs', ...catalogue.map(a=>`blog/${a.slug}.html`)]) await writeFile(join(dir,name),await read(join(root,name)));
- const expectedCounts = { '2026-11-01':1, '2026-11-02':2, '2026-11-06':3, '2026-11-10':4, '2026-11-14':5 };
+ const expectedCounts = { '2026-10-29':1, '2026-10-30':2, '2026-11-02':2, '2026-11-03':3, '2026-11-06':3, '2026-11-07':4, '2026-11-10':4, '2026-11-11':5 };
  for (const [today,count] of Object.entries(expectedCounts)) {
   const result = await run(dir,`--today=${today}`);
   assert.equal(result.status,0,result.stderr);
