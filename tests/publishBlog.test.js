@@ -164,8 +164,9 @@ test('calendrier novembre : fichiers, cartes, JSON-LD, sitemap et GA4 suivent le
  for (const folder of ['blog','js','scripts']) await mkdir(join(dir,folder));
  const catalogue = await validateSources(root);
  for (const name of ['blog.html','sitemap.xml','js/ga4.js','scripts/package-commerce.mjs', ...catalogue.map(a=>`blog/${a.slug}.html`)]) await writeFile(join(dir,name),await read(join(root,name)));
- const expectedCounts = { '2026-10-29':1, '2026-10-30':2, '2026-11-02':2, '2026-11-03':3, '2026-11-06':3, '2026-11-07':4, '2026-11-10':4, '2026-11-11':5 };
- for (const [today,count] of Object.entries(expectedCounts)) {
+ const dates = ['2026-10-29','2026-10-30','2026-11-02','2026-11-03','2026-11-06','2026-11-07','2026-11-10','2026-11-11'];
+ for (const today of dates) {
+  const count = catalogue.filter(article => article.date <= today).length;
   const result = await run(dir,`--today=${today}`);
   assert.equal(result.status,0,result.stderr);
   assert.equal((await readdir(join(dir,'dist/site/blog'))).length,count,today);

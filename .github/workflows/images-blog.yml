@@ -8,6 +8,12 @@ on:
       - 'scripts/blog/**'
       - 'scripts/templates/**'
       - 'tests/buildArticles.test.js'
+      - 'tests/blog.test.js'
+      - 'tests/publishBlog.test.js'
+      - 'tests/technicalSeoRoutes.test.js'
+      - 'scripts/package-commerce.mjs'
+      - 'scripts/publish-blog.mjs'
+      - 'package.json'
       - '.github/workflows/images-blog.yml'
 permissions:
   contents: read
