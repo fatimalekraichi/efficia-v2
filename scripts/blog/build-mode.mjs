@@ -10,8 +10,12 @@ export function isPreviewBuild(env = process.env) {
 export function previewHtml(html) {
   // Replace existing directives rather than leaving contradictory index/follow tags.
   html = html.replace(/<meta\b(?=[^>]*\bname\s*=\s*["'](?:robots|googlebot)["'])[^>]*>\s*/gi, '');
-  if (!/<head\b[^>]*>/i.test(html)) throw Error('Prévisualisation : page HTML sans head');
-  return html.replace(/(<head\b[^>]*>)/i, '$1\n<meta name="robots" content="noindex, nofollow">');
+  if (!/<head\b[^>]*>/i.test(html)) {
+    // Static fragments (including the email signature) are also reachable pages.
+    if (/<html\b[^>]*>/i.test(html)) html = html.replace(/(<html\b[^>]*>)/i, '$1<head></head>');
+    else html = '<!doctype html><html><head></head><body>' + html + '</body></html>';
+  }
+  return html.replace(/(<head\b[^>]*>)\s*/i, '$1\n<meta name="robots" content="noindex, nofollow">\n');
 }
 
 export const previewBanner = '<aside data-blog-preview-banner role="note" style="position:relative;z-index:10000;padding:16px 24px;background:#081B3A;color:#fff;text-align:center;font:700 16px/1.5 sans-serif">Brouillon — non publié</aside>';

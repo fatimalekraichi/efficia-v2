@@ -8,10 +8,18 @@ import {spawnSync} from 'node:child_process';
 import {buildArticles} from '../scripts/build-articles.mjs';
 import {parseArticle,renderMarkdown} from '../scripts/blog/markdown.mjs';
 import {imageSize} from '../scripts/blog/images.mjs';
-import {isPreviewBuild} from '../scripts/blog/build-mode.mjs';
+import {isPreviewBuild,previewHtml} from '../scripts/blog/build-mode.mjs';
 import {validatePosts} from '../scripts/blog/posts.mjs';
 const root=new URL('../',import.meta.url).pathname;
 const first='fiche-google-ou-site-internet-artisan';
+test('preview : fragments HTML protégés et traitement idempotent',()=>{
+ for(const source of ['<table><tr><td>Signature</td></tr></table>','<html><body>Page</body></html>']) {
+  const result=previewHtml(source);
+  assert.match(result,/<head>\s*<meta name="robots" content="noindex, nofollow">/);
+  assert.equal(previewHtml(result),result);
+  assert.ok(result.includes(source.includes('Signature')?'Signature':'Page'));
+ }
+});
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'efficia-md-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  for(const name of ['scripts','contenus','blog','assets/images/blog'])await cp(join(root,name),join(dir,name),{recursive:true});
