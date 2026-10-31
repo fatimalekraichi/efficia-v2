@@ -119,13 +119,13 @@ test('dates absentes, invalides ou incohérentes bloquent le build sans toucher 
   assert.notEqual(result.status,0); assert.equal(await exists(join(dir,'dist')),true);
  }
 });
-test('include-future local inclut tout ; arguments inconnus et date impossible refusés',async t=>{
+test('include-future ne contourne pas le mode production ; arguments inconnus et date impossible refusés',async t=>{
  const dir=await fixture(t); let result=await run(dir,'--today=2026-10-13','--include-future');
- assert.equal(result.status,0,result.stderr); assert.equal(await exists(join(dir,`dist/site/blog/${future}.html`)),true);
+ assert.notEqual(result.status,0); assert.match(result.stderr,/branche de prévisualisation/);
  assert.notEqual((await run(dir,'--today=2026-02-30')).status,0);
  assert.notEqual((await run(dir,'--unexpected')).status,0);
  result=spawnSync(process.execPath,[script,'--include-future'],{cwd:dir,encoding:'utf8',env:{...process.env,CF_PAGES:'1'}});
- assert.notEqual(result.status,0); assert.match(result.stderr,/locales/);
+ assert.notEqual(result.status,0); assert.match(result.stderr,/branche de prévisualisation/);
 });
 
 test('filtrage après packaging : aucun fichier commerce recopié, écrasé ou supprimé', async t => {

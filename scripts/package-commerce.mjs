@@ -8,7 +8,7 @@ if(out===path.join(root,'dist','site'))await mkdir(path.join(root,'dist'),{recur
 await mkdir(out,{recursive:false});
 const excluded=new Set(['contenus','dist','.git','.wrangler','node_modules','tests','scripts','workers','config','migrations','docs','output','tmp']);
 async function copy(from,to){for(const entry of await readdir(from,{withFileTypes:true})){
- if((from===root && excluded.has(entry.name))||entry.name==='node_modules'||entry.name.startsWith('.')||/\.(?:md|txt|sql|log|jsonc|toml|patch|sqlite|db)$/.test(entry.name)||['package.json','package-lock.json'].includes(entry.name))continue;
+ if((from===root && excluded.has(entry.name))||entry.name==='node_modules'||entry.name.startsWith('.')||/\.(?:md|txt|sql|log|jsonc|toml|patch|sqlite|db)$/.test(entry.name)||['package.json','package-lock.json','posts.json'].includes(entry.name))continue;
  if(entry.isDirectory()){await mkdir(path.join(to,entry.name));await copy(path.join(from,entry.name),path.join(to,entry.name));}
  else if(entry.isFile())await copyFile(path.join(from,entry.name),path.join(to,entry.name));
 }}

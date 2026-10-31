@@ -4,6 +4,9 @@ import { resolve, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArticle, renderMarkdown, escape, plain } from './blog/markdown.mjs';
 import { requireSize } from './blog/images.mjs';
+import { isPreviewBuild, previewBanner } from './blog/build-mode.mjs';
+import { validatePosts } from './blog/posts.mjs';
+import { dateInBrussels } from './publish-blog.mjs';
 const sourceRoot=resolve(fileURLToPath(new URL('../',import.meta.url)));
 const origin='https://efficiadigital.com';
 const fields=['slug','title_seo','meta_description','h1','extrait','categorie','auteur','date_publication','temps_lecture','mot_cle_principal','mots_cles_secondaires','alt_une','alt_illustration','illustration_apres','statut'];
@@ -51,8 +54,10 @@ function makeArticle(template,article){
  const values={cssversion:legacy?.cssVersion||'20261030-novembre',date:m.date_publication,title:escape(m.title_seo),description:escape(m.meta_description),h1:escape(m.h1),url,og:origin+'/assets/images/blog/'+images.og,alt:escape(m.alt_une),post:json(post),breadcrumb:json(breadcrumb),article:articleHtml};
  return {html:template.replace(/\{\{([a-z][a-z0-9_]*)\}\}/g,(_,key)=>{if(!(key in values))throw Error('Gabarit inconnu : '+key);return values[key];}),post,card:`<article class="blog-card" data-blog-slug="${m.slug}" data-publish-date="${m.date_publication}">\n<img class="blog-card-image" src="/assets/images/blog/${images.hero}-768.webp" width="768" height="512" loading="lazy" decoding="async" alt="">\n<div class="blog-card-content">\n<span class="section-kicker">${escape(m.categorie)}</span>\n<h2><a href="/blog/${m.slug}">${escape(m.h1)}</a></h2>\n<p>${escape(m.extrait)}</p>\n<time datetime="${m.date_publication}">${dateLabel(m.date_publication)}</time>\n<a class="site-text-link" href="/blog/${m.slug}">Lire l'article →</a>\n</div>\n</article>`};
 }
-export async function buildArticles({root=sourceRoot,site='dist/site',writeSources=false}={}){
+export async function buildArticles({root=sourceRoot,site='dist/site',writeSources=false,today=dateInBrussels()}={}){
  root=resolve(root);if(writeSources&&process.env.CF_PAGES)throw Error('--write-sources réservé au local');
+ if(!validDate(today))throw Error('Date de build invalide');
+ const preview=!writeSources&&isPreviewBuild();
  if(site!=='dist/site')throw Error('Seul --site=dist/site est autorisé');
  const out=writeSources?root:join(root,'dist/site');
  if(!writeSources){for(const p of [join(root,'dist'),out]){if(!(await exists(p))||!(await lstat(p)).isDirectory())throw Error('Packaging manquant ou lien symbolique : préparer dist/site');}}
@@ -61,10 +66,19 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
  const template=await readFile(join(root,'scripts/templates/article.html'),'utf8');const articles=[],drafts=new Set(),known=new Set();
  for(const entry of (await readdir(content,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
   if(!entry.isDirectory()||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.name))throw Error(`Dossier slug invalide : ${entry.name}`);
+  const folder=join(content,entry.name);
+  for(const item of await readdir(folder,{withFileTypes:true})){
+   if(!item.isFile()||!['article.md','une.png','illustration.png','posts.json'].includes(item.name))throw Error(`${entry.name} : fichier non autorisé ${item.name}`);
+  }
+  const postsFile=join(folder,'posts.json');
+  if(await exists(postsFile)){
+   if((await lstat(postsFile)).size>100000)throw Error('posts.json : taille excessive');
+   validatePosts(JSON.parse(await readFile(postsFile,'utf8')),entry.name);
+  }
   const file=join(content,entry.name,'article.md'),{meta:m,body}=parseArticle(await readFile(file,'utf8'));
   if(m.slug!==entry.name||known.has(m.slug))throw Error(`Slug unique identique au dossier requis : ${entry.name}`);known.add(m.slug);
   if(!['valide','brouillon'].includes(m.statut))throw Error(`Statut invalide : ${m.slug}`);
-  if(m.statut==='brouillon'){drafts.add(m.slug);continue;}
+  if(m.statut==='brouillon'){drafts.add(m.slug);if(!preview)continue;}
   for(const field of fields)if(!m[field]?.trim())throw Error(`${m.slug} : champ obligatoire ${field}`);
   for(const key of Object.keys(m))if(!fields.includes(key))throw Error(`Champ inconnu : ${key}`);
   if(!validDate(m.date_publication))throw Error(`Date invalide : ${m.date_publication}`);
@@ -82,6 +96,12 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
  }
  articles.sort((a,b)=>b.meta.date_publication.localeCompare(a.meta.date_publication)||a.meta.slug.localeCompare(b.meta.slug));
  const generated=new Map(articles.map(a=>[a.meta.slug,{...makeArticle(template,a),meta:a.meta}]));
+ if(preview)for(const a of generated.values()){
+  if(a.meta.statut==='brouillon'||a.meta.date_publication>today){
+   a.html=a.html.replace(/(<body\b[^>]*>)/i,'$1\n'+previewBanner);
+  }
+  if(a.meta.statut==='brouillon')a.html=a.html.replace('</head>','<meta name="efficia:status" content="brouillon">\n</head>');
+ }
  // Check links against the final catalogue, including dates and anchors, before any write.
  for(const [slug,a] of generated)for(const [,encoded] of a.html.match(/<main[^>]*>([\s\S]*?)<\/main>/)[1].matchAll(/href="([^"]+)"/g)){
   const href=plain(encoded);let u;try{u=new URL(href,origin+'/blog/'+slug);}catch{throw Error('Lien invalide : '+href);}
@@ -102,7 +122,7 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
  const stale=(await readdir(join(out,'blog'))).filter(n=>n.endsWith('.html')&&!generated.has(n.slice(0,-5)));
  for(const [file,value] of edits){await mkdir(resolve(file,'..'),{recursive:true});if(!(await exists(file))||(await readFile(file,'utf8'))!==value)await writeFile(file,value);}
  for(const file of stale)await rm(join(out,'blog',file));
- console.log(`Articles Markdown : ${articles.length} validés, ${drafts.size} brouillons ignorés ; sortie ${writeSources?'sources (local)':site}`);
+ console.log(`Articles Markdown : ${articles.length} générés, ${drafts.size} brouillons ${preview?'inclus en prévisualisation':'ignorés'} ; sortie ${writeSources?'sources (local)':site}`);
  return {articles:[...generated.keys()],drafts:[...drafts]};
 }
 if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){

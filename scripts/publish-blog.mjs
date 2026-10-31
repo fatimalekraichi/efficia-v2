@@ -1,6 +1,8 @@
 import { readdir, readFile, writeFile, rm, lstat } from 'node:fs/promises';
 import { resolve, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { isPreviewBuild, previewHtml } from './blog/build-mode.mjs';
 
 const origin = 'https://efficiadigital.com';
 const attrs = tag => Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)].map(m => [m[1].toLowerCase(), m[3]]));
@@ -52,7 +54,8 @@ export async function validateSources(root) {
     checkPost(foundPosts[0], date, `Liste ${slug}`);
     const urls = entries.filter(e => e.includes(`<loc>${url}</loc>`));
     if (urls.length !== 1 || !urls[0].includes(`<lastmod>${date}</lastmod>`)) fail(`${slug} : date du sitemap incohérente`);
-    articles.push({ slug, date, url });
+    const draft=/<meta\s+name="efficia:status"\s+content="brouillon"\s*\/?\s*>/i.test(head);
+    articles.push({ slug, date, url, ...(draft?{draft:true}:{}) });
   }
   if (cards.length !== articles.length || posts.length !== articles.length) fail('blog.html : cartes ou JSON-LD sans article correspondant');
   const cardDates = cards.map(m => attrs(m[0].split('>')[0])['data-publish-date']);
@@ -78,7 +81,8 @@ function targetSlug(href, page) {
 }
 export async function build({ root = process.cwd(), site: siteOption = 'dist/site', today = dateInBrussels(), includeFuture = false } = {}) {
   root = resolve(root); validDate(today);
-  if (includeFuture && process.env.CF_PAGES) fail('--include-future est réservé aux prévisualisations locales');
+  const preview=isPreviewBuild();
+  if (includeFuture && !preview) fail('--include-future exige une branche de prévisualisation Cloudflare reconnue');
   const site = resolve(root, siteOption);
   if (site !== join(root, 'dist', 'site')) fail('Le filtrage est limité au dossier préparé dist/site');
   for (const dir of [join(root, 'dist'), site]) {
@@ -87,7 +91,7 @@ export async function build({ root = process.cwd(), site: siteOption = 'dist/sit
   }
   const files = await filesUnder(site); // Reject symlinks before reading or writing anything.
   const articles = await validateSources(site);
-  const future = new Set(articles.filter(a => a.date > today && !includeFuture).map(a => a.slug));
+  const future = new Set(articles.filter(a => !preview && (a.date > today || a.draft)).map(a => a.slug));
   const deleted = new Set([...future].map(slug => join(site, 'blog', `${slug}.html`)));
   const edits = new Map();
   // Work only on the package; validate the complete result before applying edits.
@@ -120,16 +124,22 @@ export async function build({ root = process.cwd(), site: siteOption = 'dist/sit
       let decoded = decodeEntities(content); try { decoded = decodeURIComponent(decoded); } catch { /* retain text */ }
       for (const slug of future) if (decoded.includes(slug)) fail(`Erreur de calendrier : référence à l'article programmé ${slug} dans ${page}`);
     }
+    if(preview){
+      for(const file of files)if(file.endsWith('.html')&&!deleted.has(file))edits.set(file,previewHtml(edits.get(file)??await readFile(file,'utf8')));
+      const headersPath=join(site,'_headers');
+      const headers=await readFile(headersPath,'utf8');
+      if(!headers.includes('# Efficia preview robots'))edits.set(headersPath,headers+'\n# Efficia preview robots\n/*\n  X-Robots-Tag: noindex, nofollow\n');
+    }
     for (const [file, content] of edits) await writeFile(file, content);
     for (const file of deleted) await rm(file);
     console.log('Filtrage du dossier préparé : dist/site (sans recopie)');
     const published = articles.filter(a => !future.has(a.slug)), scheduled = articles.filter(a => future.has(a.slug));
-    console.log(`Date Bruxelles : ${today}${includeFuture ? ' (prévisualisation locale, futurs inclus)' : ''}`);
+    console.log(`Date Bruxelles : ${today}${preview ? ' (prévisualisation Cloudflare, brouillons et futurs inclus)' : ''}`);
     for (const [label, list] of [['Publiés', published], ['Programmés', scheduled]]) console.log(`${label} :\n${list.map(a => `- ${a.date} — ${a.slug}`).join('\n') || '- aucun'}`);
     return { published, scheduled, site };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args.some(a => a !== '--include-future' && !a.startsWith('--today=') && a !== '--site=dist/site') || args.filter(a => a.startsWith('--today=')).length > 1) fail('Usage : node scripts/publish-blog.mjs [--site=dist/site] [--today=AAAA-MM-JJ] [--include-future]');

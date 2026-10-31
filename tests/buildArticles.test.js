@@ -8,6 +8,8 @@ import {spawnSync} from 'node:child_process';
 import {buildArticles} from '../scripts/build-articles.mjs';
 import {parseArticle,renderMarkdown} from '../scripts/blog/markdown.mjs';
 import {imageSize} from '../scripts/blog/images.mjs';
+import {isPreviewBuild} from '../scripts/blog/build-mode.mjs';
+import {validatePosts} from '../scripts/blog/posts.mjs';
 const root=new URL('../',import.meta.url).pathname;
 const first='fiche-google-ou-site-internet-artisan';
 async function fixture(t){
@@ -109,4 +111,66 @@ test('conversion réelle : sept images, dimensions et résultat reproductible', 
  for(const file of files){const b=await readFile(join(dir,file));const expected=file.endsWith('-og.jpg')?[1200,630]:file.endsWith('-instagram.jpg')?[1080,1350]:file.endsWith('-google.jpg')?[1200,900]:file.endsWith('-768.webp')?[768,512]:[1536,1024];assert.deepEqual(imageSize(b),expected);hashes.push(createHash('sha256').update(b).digest('hex'));}
  assert.equal(await readFile(join(assets,'legacy.webp'),'utf8'),'inchangé');assert.deepEqual(await convertImages(dir),files);
  for(let i=0;i<files.length;i++)assert.equal(createHash('sha256').update(await readFile(join(dir,files[i]))).digest('hex'),hashes[i]);
+});
+
+function postsFor(slug){
+ const url='https://efficiadigital.com/blog/'+slug;
+ return {facebook:{text:'Votre fiche mérite des informations claires. '.repeat(11),url},instagram:{text:'Votre activité mérite une présentation claire et utile. '.repeat(13)+'\n#artisan #Belgique #commerce\nLien dans la bio',image:slug+'-instagram.jpg'},google:{text:'Nous vous invitons à vérifier les informations présentées sur votre fiche avant de préparer votre prochaine mise à jour. '.repeat(9),url,image:slug+'-google.jpg',topicType:'STANDARD',actionType:'LEARN_MORE'}};
+}
+test('posts.json : structure stricte, réseaux, longueurs, liens et images',()=>{
+ const valid=postsFor(first);assert.deepEqual(validatePosts(valid,first),valid);
+ const change=fn=>{const p=structuredClone(valid);fn(p);assert.throws(()=>validatePosts(p,first),/posts.json/);};
+ change(p=>p.tiktok={text:'non autorisé'});change(p=>delete p.google);change(p=>p.facebook.secret='interdit');
+ change(p=>p.facebook.url='https://example.com');change(p=>p.facebook.text='trop court');
+ change(p=>p.instagram.image='../prive.jpg');change(p=>p.instagram.text+=' https://example.com');
+ change(p=>p.google.topicType='EVENT');change(p=>p.google.text+=' Appelez le 0471 23 45 67');
+ change(p=>p.facebook.text+=' 99 €');change(p=>p.facebook.text+=' !');
+});
+test('posts.json invalide bloque aussi un brouillon avant toute écriture',async t=>{
+ const dir=await fixture(t),slug=await newArticle(dir);await edit(dir,slug,s=>s.replace('statut: "valide"','statut: "brouillon"'));
+ await writeFile(join(dir,'contenus/blog',slug,'posts.json'),JSON.stringify({facebook:{text:'incomplet'}}));
+ const before=await snapshot(dir);await assert.rejects(run(dir),/posts.json/);assert.deepEqual(await snapshot(dir),before);
+});
+test('fichiers supplémentaires non autorisés dans un article',async t=>{
+ const dir=await fixture(t);await writeFile(join(dir,'contenus/blog',first,'secret.json'),'{}');await assert.rejects(run(dir),/fichier non autorisé/);
+});
+test('mode preview explicite, branche absente ou inconnue = production',()=>{
+ for(const env of [{},{CF_PAGES:'1'},{CF_PAGES:'1',CF_PAGES_BRANCH:''},{CF_PAGES:'1',CF_PAGES_BRANCH:'main'},{CF_PAGES:'1',CF_PAGES_BRANCH:'inconnue'},{CF_PAGES_BRANCH:'feat/blog-n8n-preview'},{CF_PAGES:'0',CF_PAGES_BRANCH:'feat/blog-n8n-preview'}])assert.equal(isPreviewBuild(env),false);
+ assert.equal(isPreviewBuild({CF_PAGES:'1',CF_PAGES_BRANCH:'feat/blog-n8n-preview'}),true);
+ assert.equal(isPreviewBuild({CF_PAGES:'1',CF_PAGES_BRANCH:'blog/2026-11-10-artisan'}),true);
+});
+async function packageAndBuild(dir,branch){
+ const env={...process.env,CF_PAGES:'1'};delete env.CF_PAGES_BRANCH;if(branch!==undefined)env.CF_PAGES_BRANCH=branch;
+ for(const [script,args] of [['package-commerce.mjs',['dist/site']],['build-articles.mjs',[]],['publish-blog.mjs',['--today=2026-10-30']]]){
+  const r=spawnSync(process.execPath,[join(dir,'scripts',script),...args],{cwd:dir,env,encoding:'utf8'});assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
+ }
+ return join(dir,'dist/site');
+}
+for(const branch of ['main',undefined,'inconnue'])test(`build ${branch??'sans branche'} : brouillon et futurs absents partout, posts privés`,async t=>{
+ const dir=await fixture(t),slug=await newArticle(dir);await edit(dir,slug,s=>s.replace('statut: "valide"','statut: "brouillon"').replace('2026-12-01','2026-10-01'));
+ await writeFile(join(dir,'contenus/blog',slug,'posts.json'),JSON.stringify(postsFor(slug)));
+ // Accidental copies outside contenus must also be excluded by packaging.
+ await writeFile(join(dir,'posts.json'),'PRIVATE_POST_SENTINEL');
+ const site=await packageAndBuild(dir,branch),files=await readdir(join(site,'blog'));
+ assert.ok(!files.includes(slug+'.html'));assert.ok(!files.includes('avis-google-artisan.html'));
+ for(const file of ['blog.html','sitemap.xml','js/ga4.js']){
+  const text=await readFile(join(site,file),'utf8');assert.ok(!text.includes(slug));assert.ok(!text.includes('avis-google-artisan'));
+ }
+ assert.ok(!(await readdir(site)).includes('contenus'));assert.ok(!(await readdir(site)).includes('posts.json'));
+ assert.ok(!(await readFile(join(site,'_headers'),'utf8')).includes('# Efficia preview robots'));
+ assert.ok(!(await readFile(join(site,'index.html'),'utf8')).includes('data-blog-preview-banner'));
+});
+test('preview : brouillon complet et futurs visibles, bandeau et noindex sur toutes les pages, sources privées',async t=>{
+ const dir=await fixture(t),slug=await newArticle(dir);await edit(dir,slug,s=>s.replace('statut: "valide"','statut: "brouillon"'));
+ await writeFile(join(dir,'contenus/blog',slug,'posts.json'),JSON.stringify(postsFor(slug)));
+ const before=await snapshot(dir),site=await packageAndBuild(dir,'feat/blog-n8n-preview');
+ for(const name of [slug,'avis-google-artisan']){
+  const html=await readFile(join(site,'blog',name+'.html'),'utf8');assert.match(html,/Brouillon — non publié/);assert.match(html,/data-blog-preview-banner/);
+  for(const f of ['blog.html','sitemap.xml','js/ga4.js'])assert.ok((await readFile(join(site,f),'utf8')).includes(name));
+ }
+ async function verify(folder){for(const e of await readdir(folder,{withFileTypes:true})){const file=join(folder,e.name);if(e.isDirectory())await verify(file);else if(e.name.endsWith('.html')){const html=await readFile(file,'utf8');assert.match(html,/<meta name="robots" content="noindex, nofollow">/,file);assert.doesNotMatch(html,/<meta\b[^>]*content="index,\s*follow"/i,file);}assert.notEqual(e.name,'posts.json');}}
+ await verify(site);assert.match(await readFile(join(site,'_headers'),'utf8'),/\/\*\n  X-Robots-Tag: noindex, nofollow/);
+ assert.deepEqual(await snapshot(dir),before,'sources inchangées');
+ const r=spawnSync(process.execPath,[join(dir,'scripts/publish-blog.mjs'),'--today=2026-10-30'],{cwd:dir,env:{...process.env,CF_PAGES:'1',CF_PAGES_BRANCH:'feat/blog-n8n-preview'},encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+ assert.equal((await readFile(join(site,'blog',slug+'.html'),'utf8')).match(/name="robots"/g).length,1,'directives idempotentes');
 });

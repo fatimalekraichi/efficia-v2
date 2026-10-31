@@ -2,7 +2,7 @@
 
 ## Contrat pour n8n
 
-Créer uniquement trois fichiers dans `contenus/blog/<slug>/` : `article.md`, `une.png`, `illustration.png`. Les PNG doivent être des images paysage 1536 × 1024 px. Aucun HTML à modifier, aucune dépendance npm à installer.
+Créer `article.md`, `une.png`, `illustration.png` dans `contenus/blog/<slug>/`. Un quatrième fichier `posts.json` est autorisé, avec le format contrôlé ci-dessous. Aucun autre fichier ni sous-dossier. Les PNG doivent être des images paysage 1536 × 1024 px. Aucun HTML à modifier, aucune dépendance npm à installer.
 
 La PR déclenche `Images et validation du blog Markdown`. Il produit les WebP (1536 × 1024 et 768 × 512), le JPEG Open Graph (1200 × 630), Instagram (1080 × 1350) et Google (1200 × 900) dans `assets/images/blog/`. Le workflow committe uniquement ces images sur la branche de la PR. Il ne fusionne rien. Les recadrages JPEG sont centrés ; les WebP visent moins de 150 000 octets, avec avertissement si la cible est dépassée à qualité 52.
 
@@ -36,11 +36,23 @@ Le texte de cette section.
 
 Tous les champs sont des chaînes obligatoires pour un article `valide`. Les guillemets doubles suivent l’échappement JSON (`\"` pour une citation), les apostrophes simples YAML sont également acceptées (`''` pour une apostrophe interne). Une valeur et une clé par ligne ; pas de listes YAML, objets, alias, tags, blocs multilignes ou clés dupliquées. Les mots-clés secondaires sont séparés par des virgules dans une seule chaîne.
 
-Le dossier et le champ `slug` doivent être identiques : lettres minuscules ASCII, chiffres et tirets entre mots. Aucun autre fichier ou sous-dossier ne doit être ajouté par n8n. La date doit exister et respecter `AAAA-MM-JJ`. Le générateur refuse les champs inconnus et les slugs incohérents.
+Le dossier et le champ `slug` doivent être identiques : lettres minuscules ASCII, chiffres et tirets entre mots. Seuls les quatre fichiers indiqués sont admis. La date doit exister et respecter `AAAA-MM-JJ`. Le générateur refuse les champs inconnus et les slugs incohérents.
 
-`statut: brouillon` exclut l’article de la génération et retire une éventuelle ancienne page générée, sa carte, son JSON-LD, son URL du sitemap et son entrée GA4. Un brouillon peut être incomplet ; seuls son en-tête lisible, son slug et son statut sont nécessaires. Un lien provenant d’un article valide vers un brouillon bloque le build.
+En production, `statut: brouillon` exclut l’article de la génération et retire une éventuelle ancienne page générée, sa carte, son JSON-LD, son URL du sitemap et son entrée GA4. Un brouillon peut être incomplet en production ; seuls son en-tête lisible, son slug et son statut sont nécessaires. Un lien provenant d’un article valide vers un brouillon bloque le build de production. En prévisualisation reconnue, les brouillons doivent être complets et passer les mêmes contrôles que les articles valides ; ils sont alors visibles avec le bandeau « Brouillon — non publié ».
 
-`statut: valide` ne signifie pas publication immédiate : `publish-blog.mjs` applique ensuite la date de publication, selon Europe/Brussels. Les images peuvent rester publiques ; les Markdown et PNG sources ne sont jamais copiés dans le site. Un dépôt GitHub public ne rend pas les brouillons confidentiels.
+`statut: valide` ne signifie pas publication immédiate : en production, `publish-blog.mjs` applique ensuite la date de publication, selon Europe/Brussels. Les images peuvent rester publiques ; les Markdown, PNG sources et `posts.json` ne sont jamais copiés dans le site. Le packaging exclut également un `posts.json` accidentellement placé ailleurs. Un dépôt GitHub public ne rend pas les brouillons confidentiels.
+
+## Format de posts.json
+
+Fichier facultatif pour les articles existants, contrôlé dès qu'il est présent, même pour un brouillon exclu. Objet JSON UTF-8 de 100 000 octets maximum, avec exactement trois clés : `facebook`, `instagram`, `google`. Aucune clé supplémentaire. Toutes les valeurs terminales sont des chaînes non vides.
+
+| Réseau | Clés exactes | Contraintes |
+|---|---|---|
+| facebook | `text`, `url` | 400–700 caractères Unicode ; URL exacte `https://efficiadigital.com/blog/<slug>` |
+| instagram | `text`, `image` | 600–1200 caractères ; 3–5 hashtags ; aucune URL ; dernière ligne « Lien dans la bio » ; image `<slug>-instagram.jpg` |
+| google | `text`, `url`, `image`, `topicType`, `actionType` | 150–300 mots ; aucun téléphone ; même URL d'article ; image `<slug>-google.jpg` ; `STANDARD` et `LEARN_MORE` |
+
+Les textes passent les contrôles de charte (ponctuation, emoji, termes interdits, TTC sauf zéro). Les chemins d'images et liens sont fixés par le slug, pas des destinations arbitraires. Le test de format ne prouve pas l'exactitude éditoriale ni la présence d'un seul appel à l'action : la validation humaine reste requise. Ce fichier sert à n8n, jamais au navigateur.
 
 ## Markdown accepté
 
@@ -79,7 +91,15 @@ Le générateur lit les Markdown et son gabarit dans le dépôt, puis écrit uni
 
 `node scripts/build-articles.mjs --write-sources` régénère les fichiers HTML suivis par Git pour les tests et les captures locales. Cette option est refusée sur Cloudflare (`CF_PAGES`). Les sorties sont déterministes et idempotentes. Ne pas modifier manuellement ces sorties : modifier le Markdown ou le gabarit partagé `scripts/templates/article.html`.
 
-Pour l’aperçu local des articles futurs, terminer le build par `--include-future` sur **publish-blog.mjs** seulement. Les brouillons restent ignorés. Une future automatisation de validation devra produire un aperçu privé distinct si elle doit montrer un brouillon avant approbation ; ne pas rendre les brouillons publics pour contourner ce contrôle.
+## Prévisualisation et protection de la production
+
+Le mode prévisualisation exige `CF_PAGES=1` et une `CF_PAGES_BRANCH` reconnue par `scripts/blog/build-mode.mjs` : la branche de préparation `feat/blog-n8n-preview`, ou la convention n8n `blog/AAAA-MM-JJ-<slug>`. `main`, une variable absente/vide, une branche inconnue ou un environnement non Cloudflare prennent le comportement de production. Les autres noms de branches ne sont pas activés implicitement : leur ajout exige une modification revue de la règle.
+
+Dans une prévisualisation reconnue, le build inclut les brouillons complets et les articles futurs. Chaque article non publié affiche « Brouillon — non publié » au début du body. Toutes les pages HTML reçoivent `noindex, nofollow` et le package `_headers` applique également `X-Robots-Tag: noindex, nofollow` sur `/*`. Les directives existantes robots/googlebot sont remplacées, sans duplication à une seconde exécution. Aucune source Markdown, aucun PNG source ni `posts.json` n'est exposé.
+
+Le flag historique `--include-future` ne contourne plus la détection de branche : il est refusé hors prévisualisation reconnue. Pour simuler localement une prévisualisation, définir explicitement les deux variables dans un shell de test puis lancer le build complet. Ne jamais publier ce package sur le domaine de production.
+
+`noindex` n'est pas une authentification. Pour restreindre la lecture, protéger les prévisualisations avec Cloudflare Access avant d'y déposer un contenu confidentiel. Voir `docs/previsualisations-access.md`. Aucune règle Access n'est modifiée par les scripts de build.
 
 ## Migration et calendrier conservé
 
