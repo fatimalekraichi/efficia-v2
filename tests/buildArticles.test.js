@@ -154,7 +154,11 @@ test('mode preview explicite, branche absente ou inconnue = production',()=>{
 async function packageAndBuild(dir,branch){
  const env={...process.env,CF_PAGES:'1'};delete env.CF_PAGES_BRANCH;if(branch!==undefined)env.CF_PAGES_BRANCH=branch;
  for(const [script,args] of [['package-commerce.mjs',['dist/site']],['build-articles.mjs',[]],['publish-blog.mjs',['--today=2026-10-30']]]){
-  const r=spawnSync(process.execPath,[join(dir,'scripts',script),...args],{cwd:dir,env,encoding:'utf8'});assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
+  // Use the same reference date for generation and publication filtering.
+  const command=script==='build-articles.mjs'
+   ? ['--input-type=module','-e',"import {buildArticles} from './scripts/build-articles.mjs'; await buildArticles({root:process.cwd(),today:'2026-10-30'});"]
+   : [join(dir,'scripts',script),...args];
+  const r=spawnSync(process.execPath,command,{cwd:dir,env,encoding:'utf8'});assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
  }
  return join(dir,'dist/site');
 }
