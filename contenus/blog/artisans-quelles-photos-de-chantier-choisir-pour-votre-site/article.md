@@ -1,6 +1,6 @@
 ---
 slug: "artisans-quelles-photos-de-chantier-choisir-pour-votre-site"
-title_seo: "Artisans : quelles photos de chantier pour votre site ?"
+title_seo: "Quelles photos de chantier pour votre site ?"
 meta_description: "Choisissez les photos de chantier utiles pour votre site : réalisations, détails, cadrage et précautions avant de montrer votre travail."
 h1: "Artisans : quelles photos de chantier choisir pour votre site ?"
 extrait: "Une méthode simple pour trier vos images, montrer votre savoir-faire et préparer une sélection adaptée à votre site."
