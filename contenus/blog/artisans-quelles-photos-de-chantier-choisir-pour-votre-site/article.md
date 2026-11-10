@@ -7,7 +7,7 @@ extrait: "Une méthode simple pour trier vos images, montrer votre savoir-faire 
 categorie: "Site internet"
 auteur: "Fatima Lekraichi"
 date_publication: "2026-11-13"
-temps_lecture: "Quelques minutes"
+temps_lecture: "7 min"
 mot_cle_principal: "photos de chantier"
 mots_cles_secondaires: "photos réalisations artisan, photos site artisan, présenter ses chantiers"
 alt_une: "Mains d’un artisan devant un ordinateur affichant des photos de pièces rénovées et de détails de menuiserie"
