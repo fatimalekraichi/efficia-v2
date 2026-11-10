@@ -11,7 +11,7 @@ temps_lecture: "7 min"
 mot_cle_principal: "photos de chantier"
 mots_cles_secondaires: "photos réalisations artisan, photos site artisan, présenter ses chantiers"
 alt_une: "Mains d’un artisan devant un ordinateur affichant des photos de pièces rénovées et de détails de menuiserie"
-statut: "brouillon"
+statut: "valide"
 ---
 
 Votre téléphone contient beaucoup de photos de chantier. Pourtant, au moment de préparer votre site, le choix se complique. Faut-il montrer le résultat, les étapes du travail ou les détails que vous êtes seul à remarquer ? Et que faire d’une belle réalisation photographiée dans une pièce sombre ?
