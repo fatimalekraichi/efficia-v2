@@ -15,7 +15,7 @@ export async function convertImages(root=process.cwd()){
    if(!entry.isDirectory()||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.name))throw Error('Dossier article invalide');
    const slug=entry.name,dir=join(content,slug),names=await readdir(dir),png=names.filter(n=>['une.png','illustration.png'].includes(n));
    if(!png.length)continue; // Existing migrated WebP assets remain byte-identical.
-   if(png.length!==2)throw Error(`${slug} : une.png et illustration.png requis ensemble`);
+   if(!png.includes('une.png'))throw Error(`${slug} : une.png requise avec illustration.png`);
    for(const name of png){const input=join(dir,name);await regular(input);await requireSize(input,[1536,1024]);
     for(const width of [1536,768]){
      const filename=`${slug}-${name.slice(0,-4)}-${width}.webp`,output=join(temp,filename);
