@@ -1,8 +1,8 @@
-name: Publication du blog mardi et vendredi à 05 h 45 UTC
+name: Publication du blog mardi et vendredi à 5 h 45 au Luxembourg
 on:
   schedule:
-    # 06:45 au Luxembourg en hiver, 07:45 en été.
     - cron: "45 5 * * 2,5"
+      timezone: "Europe/Luxembourg"
   workflow_dispatch:
 permissions: {}
 concurrency:
