@@ -119,6 +119,10 @@ test('conversion réelle : sept images, dimensions et résultat reproductible', 
  for(const file of files){const b=await readFile(join(dir,file));const expected=file.endsWith('-og.jpg')?[1200,630]:file.endsWith('-instagram.jpg')?[1080,1350]:file.endsWith('-google.jpg')?[1200,900]:file.endsWith('-768.webp')?[768,512]:[1536,1024];assert.deepEqual(imageSize(b),expected);hashes.push(createHash('sha256').update(b).digest('hex'));}
  assert.equal(await readFile(join(assets,'legacy.webp'),'utf8'),'inchangé');assert.deepEqual(await convertImages(dir),files);
  for(let i=0;i<files.length;i++)assert.equal(createHash('sha256').update(await readFile(join(dir,files[i]))).digest('hex'),hashes[i]);
+ await rm(join(content,'illustration.png'));
+ const heroFiles=await convertImages(dir);
+ assert.equal(heroFiles.length,5);
+ assert.ok(heroFiles.every(file=>!file.includes('-illustration-')));
 });
 
 function postsFor(slug){
@@ -150,7 +154,11 @@ test('mode preview explicite, branche absente ou inconnue = production',()=>{
 async function packageAndBuild(dir,branch){
  const env={...process.env,CF_PAGES:'1'};delete env.CF_PAGES_BRANCH;if(branch!==undefined)env.CF_PAGES_BRANCH=branch;
  for(const [script,args] of [['package-commerce.mjs',['dist/site']],['build-articles.mjs',[]],['publish-blog.mjs',['--today=2026-10-30']]]){
-  const r=spawnSync(process.execPath,[join(dir,'scripts',script),...args],{cwd:dir,env,encoding:'utf8'});assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
+  // Use the same reference date for generation and publication filtering.
+  const command=script==='build-articles.mjs'
+   ? ['--input-type=module','-e',"import {buildArticles} from './scripts/build-articles.mjs'; await buildArticles({root:process.cwd(),today:'2026-10-30'});"]
+   : [join(dir,'scripts',script),...args];
+  const r=spawnSync(process.execPath,command,{cwd:dir,env,encoding:'utf8'});assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
  }
  return join(dir,'dist/site');
 }
@@ -181,4 +189,31 @@ test('preview : brouillon complet et futurs visibles, bandeau et noindex sur tou
  assert.deepEqual(await snapshot(dir),before,'sources inchangées');
  const r=spawnSync(process.execPath,[join(dir,'scripts/publish-blog.mjs'),'--today=2026-10-30'],{cwd:dir,env:{...process.env,CF_PAGES:'1',CF_PAGES_BRANCH:'feat/blog-n8n-preview'},encoding:'utf8'});assert.equal(r.status,0,r.stderr);
  assert.equal((await readFile(join(site,'blog',slug+'.html'),'utf8')).match(/name="robots"/g).length,1,'directives idempotentes');
+});
+
+test('article à une image : rendu sans illustration et métadonnées incohérentes refusées',async t=>{
+ const dir=await fixture(t),slug=await newArticle(dir);
+ await rm(join(dir,'contenus/blog',slug,'illustration.png'));
+ await edit(dir,slug,s=>s.replace(/^(alt_illustration|illustration_apres):.*\n/gm,''));
+ await run(dir);
+ const html=await readFile(join(dir,'blog',slug+'.html'),'utf8');
+ assert.ok(html.includes(slug+'-une-1536.webp'));
+ assert.ok(!html.includes(slug+'-illustration'));
+ await edit(dir,slug,s=>s.replace('statut:', 'alt_illustration: "Description orpheline"\nstatut:'));
+ await assert.rejects(run(dir),/métadonnées illustration sans/);
+});
+
+test('prévisualisation reconnue pour les branches du workflow simplifié',()=>{
+ assert.equal(isPreviewBuild({CF_PAGES:'1',CF_PAGES_BRANCH:'essai/article-photos-chantier-57'}),true);
+ assert.equal(isPreviewBuild({CF_PAGES:'1',CF_PAGES_BRANCH:'essai/inconnue'}),false);
+});
+
+test('conversion : illustration seule refusée avant écriture',async t=>{
+ const {convertImages}=await import('../scripts/convert-blog-images.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'efficia-orphan-'));
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ await mkdir(join(dir,'contenus/blog/exemple'),{recursive:true});
+ await mkdir(join(dir,'assets/images/blog'),{recursive:true});
+ await writeFile(join(dir,'contenus/blog/exemple/illustration.png'),'test');
+ await assert.rejects(convertImages(dir),/une.png requise/);
 });

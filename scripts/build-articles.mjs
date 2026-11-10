@@ -42,7 +42,7 @@ function makeArticle(template,article){
    if(index===undefined||index<0)throw Error(`Placement historique introuvable : ${m.slug}`);
    insertions.set(index,legacy.images[i+1].figure);
   }
- } else {
+ } else if(images.inline) {
   const matches=blocks.map((b,n)=>['heading','paragraph'].includes(b.kind)&&b.text.startsWith(m.illustration_apres)?n:-1).filter(n=>n>=0);
   if(matches.length!==1)throw Error(`${m.slug} : illustration_apres doit désigner un seul titre ou début de paragraphe`);
   insertions.set(matches[0],figure(images.inline,m.alt_illustration));
@@ -79,19 +79,25 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
   if(m.slug!==entry.name||known.has(m.slug))throw Error(`Slug unique identique au dossier requis : ${entry.name}`);known.add(m.slug);
   if(!['valide','brouillon'].includes(m.statut))throw Error(`Statut invalide : ${m.slug}`);
   if(m.statut==='brouillon'){drafts.add(m.slug);if(!preview)continue;}
-  for(const field of fields)if(!m[field]?.trim())throw Error(`${m.slug} : champ obligatoire ${field}`);
+  for(const field of fields.filter(name=>!['alt_illustration','illustration_apres'].includes(name)))if(!m[field]?.trim())throw Error(`${m.slug} : champ obligatoire ${field}`);
   for(const key of Object.keys(m))if(!fields.includes(key))throw Error(`Champ inconnu : ${key}`);
   if(!validDate(m.date_publication))throw Error(`Date invalide : ${m.date_publication}`);
   const legacy=migration[m.slug];
+  const hasIllustration=legacy||await exists(join(content,m.slug,'illustration.png'));
+  if(hasIllustration){
+   for(const field of ['alt_illustration','illustration_apres'])if(!m[field]?.trim())throw Error(`${m.slug} : champ obligatoire ${field}`);
+  }else if(m.alt_illustration?.trim()||m.illustration_apres?.trim()){
+   throw Error(`${m.slug} : métadonnées illustration sans illustration.png`);
+  }
   // Migration policy is explicit and versioned, never controlled by article YAML.
   const errors=editorialErrors(m,body);
   if(errors.length)throw Error(`${m.slug} : ${errors.join('; ')}`);
 
-  const images=legacy?{hero:legacy.images[0].base,inline:legacy.images[1].base,og:legacy.og,schema:legacy.schemaImages}:{hero:m.slug+'-une',inline:m.slug+'-illustration',og:m.slug+'-og.jpg',schema:[origin+'/assets/images/blog/'+m.slug+'-une-1536.webp',origin+'/assets/images/blog/'+m.slug+'-og.jpg']};
-  const bases=legacy?legacy.images.map(i=>i.base):[images.hero,images.inline];
+  const images=legacy?{hero:legacy.images[0].base,inline:legacy.images[1].base,og:legacy.og,schema:legacy.schemaImages}:{hero:m.slug+'-une',inline:hasIllustration?m.slug+'-illustration':null,og:m.slug+'-og.jpg',schema:[origin+'/assets/images/blog/'+m.slug+'-une-1536.webp',origin+'/assets/images/blog/'+m.slug+'-og.jpg']};
+  const bases=legacy?legacy.images.map(i=>i.base):[images.hero,images.inline].filter(Boolean);
   for(const base of bases)for(const [w,h] of [[1536,1024],[768,512]])await requireSize(join(out,'assets/images/blog',base+`-${w}.webp`),[w,h]);
   await requireSize(join(out,'assets/images/blog',images.og),[1200,630]);
-  if(!legacy){for(const name of ['une','illustration'])await requireSize(join(content,m.slug,name+'.png'),[1536,1024]);for(const [suffix,size] of [['instagram',[1080,1350]],['google',[1200,900]]])await requireSize(join(out,'assets/images/blog',m.slug+'-'+suffix+'.jpg'),size);}
+  if(!legacy){for(const name of (hasIllustration?['une','illustration']:['une']))await requireSize(join(content,m.slug,name+'.png'),[1536,1024]);for(const [suffix,size] of [['instagram',[1080,1350]],['google',[1200,900]]])await requireSize(join(out,'assets/images/blog',m.slug+'-'+suffix+'.jpg'),size);}
   const blocks=renderMarkdown(body);articles.push({meta:m,body,blocks,legacy,images});
  }
  articles.sort((a,b)=>b.meta.date_publication.localeCompare(a.meta.date_publication)||a.meta.slug.localeCompare(b.meta.slug));
