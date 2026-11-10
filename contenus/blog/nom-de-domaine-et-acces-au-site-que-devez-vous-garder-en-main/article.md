@@ -7,7 +7,7 @@ extrait: "Titulaire du domaine, comptes de connexion et renouvellement : les vé
 categorie: "Site internet"
 auteur: "Fatima Lekraichi"
 date_publication: "2026-11-17"
-temps_lecture: "À votre rythme"
+temps_lecture: "8 min"
 mot_cle_principal: "nom de domaine de votre entreprise"
 mots_cles_secondaires: "accès au site internet, titulaire du domaine, renouvellement du domaine, changement de prestataire"
 alt_une: "Mains d’un artisan sur le clavier d’un ordinateur portable, à côté d’un carnet ouvert sur un établi en bois."
@@ -122,9 +122,3 @@ Si votre site existe déjà, voici un message à adapter :
 Chez Efficia, la [création ou refonte de site](https://efficiadigital.com/refonte-site-internet) prévoit le domaine et les accès au nom du client. Les frais de domaine et d’hébergement sont précisés avant de commencer. Le suivi après livraison reste facultatif, avec un contenu et un prix définis sur devis.
 
 Que vous prépariez un nouveau site ou repreniez un site existant, commencez par ce récapitulatif écrit. Vous pourrez déléguer la technique tout en sachant comment reprendre la main lorsque votre entreprise en aura besoin.
-
-## Sources
-
-[Création ou refonte de site — Efficia Digital](https://efficiadigital.com/refonte-site-internet), informations de référence datées du 31 octobre 2026 pour les engagements propres à Efficia.
-
-Pour votre site, consultez aussi les informations des comptes, le contrat et les procédures des prestataires concernés. Les accès disponibles, les transferts et les possibilités d’export dépendent de la solution retenue.
