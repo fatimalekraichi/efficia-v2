@@ -1,7 +1,9 @@
-name: Publication quotidienne du blog
+name: Publication du blog mardi et vendredi à 6 h
 on:
   schedule:
-    - cron: "0 5 * * *"
+    # 05:00 UTC en hiver, 04:00 UTC en été.
+    - cron: "0 6 * * 2,5"
+      timezone: "Europe/Luxembourg"
   workflow_dispatch:
 permissions: {}
 concurrency:
