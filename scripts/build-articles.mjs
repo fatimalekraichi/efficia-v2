@@ -54,7 +54,7 @@ function makeArticle(template,article){
  const values={cssversion:legacy?.cssVersion||'20261030-novembre',date:m.date_publication,title:escape(m.title_seo),description:escape(m.meta_description),h1:escape(m.h1),url,og:origin+'/assets/images/blog/'+images.og,alt:escape(m.alt_une),post:json(post),breadcrumb:json(breadcrumb),article:articleHtml};
  return {html:template.replace(/\{\{([a-z][a-z0-9_]*)\}\}/g,(_,key)=>{if(!(key in values))throw Error('Gabarit inconnu : '+key);return values[key];}),post,card:`<article class="blog-card" data-blog-slug="${m.slug}" data-publish-date="${m.date_publication}">\n<img class="blog-card-image" src="/assets/images/blog/${images.hero}-768.webp" width="768" height="512" loading="lazy" decoding="async" alt="">\n<div class="blog-card-content">\n<span class="section-kicker">${escape(m.categorie)}</span>\n<h2><a href="/blog/${m.slug}">${escape(m.h1)}</a></h2>\n<p>${escape(m.extrait)}</p>\n<time datetime="${m.date_publication}">${dateLabel(m.date_publication)}</time>\n<a class="site-text-link" href="/blog/${m.slug}">Lire l'article →</a>\n</div>\n</article>`};
 }
-export async function buildArticles({root=sourceRoot,site='dist/site',writeSources=false,today=dateInBrussels()}={}){
+export async function buildArticles({root=sourceRoot,site='dist/site',writeSources=false,today=dateInBrussels(),tolerateImageErrors=false}={}){
  root=resolve(root);if(writeSources&&process.env.CF_PAGES)throw Error('--write-sources réservé au local');
  if(!validDate(today))throw Error('Date de build invalide');
  const preview=!writeSources&&isPreviewBuild();
@@ -62,6 +62,8 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
  const out=writeSources?root:join(root,'dist/site');
  if(!writeSources){for(const p of [join(root,'dist'),out]){if(!(await exists(p))||!(await lstat(p)).isDirectory())throw Error('Packaging manquant ou lien symbolique : préparer dist/site');}}
  const content=join(root,'contenus/blog');await noSymlinks(content);await noSymlinks(join(out,'assets/images/blog'));if(!writeSources)await noSymlinks(out);
+ const imageSkipped=new Set();
+ let sourceImageFailures=[];if(tolerateImageErrors)try{sourceImageFailures=JSON.parse(await readFile(join(root,'.blog-image-preparation.json'),'utf8')).failures||[];}catch(e){if(e.code!=='ENOENT')throw e;}
  const migration=JSON.parse(await readFile(join(root,'scripts/blog/migration.json'),'utf8'));
  const template=await readFile(join(root,'scripts/templates/article.html'),'utf8');const articles=[],drafts=new Set(),known=new Set();
  for(const entry of (await readdir(content,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
@@ -94,10 +96,12 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
   if(errors.length)throw Error(`${m.slug} : ${errors.join('; ')}`);
 
   const images=legacy?{hero:legacy.images[0].base,inline:legacy.images[1].base,og:legacy.og,schema:legacy.schemaImages}:{hero:m.slug+'-une',inline:hasIllustration?m.slug+'-illustration':null,og:m.slug+'-og.jpg',schema:[origin+'/assets/images/blog/'+m.slug+'-une-1536.webp',origin+'/assets/images/blog/'+m.slug+'-og.jpg']};
+  try {
   const bases=legacy?legacy.images.map(i=>i.base):[images.hero,images.inline].filter(Boolean);
   for(const base of bases)for(const [w,h] of [[1536,1024],[768,512]])await requireSize(join(out,'assets/images/blog',base+`-${w}.webp`),[w,h]);
   await requireSize(join(out,'assets/images/blog',images.og),[1200,630]);
-  if(!legacy){for(const name of (hasIllustration?['une','illustration']:['une']))await requireSize(join(content,m.slug,name+'.png'),[1536,1024]);for(const [suffix,size] of [['instagram',[1080,1350]],['google',[1200,900]]])await requireSize(join(out,'assets/images/blog',m.slug+'-'+suffix+'.jpg'),size);}
+  if(!legacy&&!sourceImageFailures.includes(m.slug)){for(const name of (hasIllustration?['une','illustration']:['une']))await requireSize(join(content,m.slug,name+'.png'),[1536,1024]);for(const [suffix,size] of [['instagram',[1080,1350]],['google',[1200,900]]])await requireSize(join(out,'assets/images/blog',m.slug+'-'+suffix+'.jpg'),size);}
+  }catch(error){if(!tolerateImageErrors)throw error;imageSkipped.add(m.slug);console.warn(`[images] ${m.slug} : ${error.message}. Article ignoré pour ce build faute d’images utilisables.`);continue;}
   const blocks=renderMarkdown(body);articles.push({meta:m,body,blocks,legacy,images});
  }
  articles.sort((a,b)=>b.meta.date_publication.localeCompare(a.meta.date_publication)||a.meta.slug.localeCompare(b.meta.slug));
@@ -109,6 +113,7 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
   if(a.meta.statut==='brouillon')a.html=a.html.replace('</head>','<meta name="efficia:status" content="brouillon">\n</head>');
  }
  // Check links against the final catalogue, including dates and anchors, before any write.
+ if(imageSkipped.size)for(const a of generated.values())a.html=a.html.replace(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,(whole,href,label)=>{let target;try{const u=new URL(plain(href),origin);if(u.origin===origin)target=decodeURIComponent(u.pathname).replace(/\/$/,'').replace(/\.html$/,'').match(/^\/blog\/([^/]+)$/)?.[1];}catch{}return imageSkipped.has(target)?label:whole;});
  for(const [slug,a] of generated)for(const [,encoded] of a.html.match(/<main[^>]*>([\s\S]*?)<\/main>/)[1].matchAll(/href="([^"]+)"/g)){
   const href=plain(encoded);let u;try{u=new URL(href,origin+'/blog/'+slug);}catch{throw Error('Lien invalide : '+href);}
   if(![origin,'https://www.efficiadigital.com','http://efficiadigital.com','http://www.efficiadigital.com'].includes(u.origin))continue;
@@ -132,5 +137,5 @@ export async function buildArticles({root=sourceRoot,site='dist/site',writeSourc
  return {articles:[...generated.keys()],drafts:[...drafts]};
 }
 if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
- try{const args=process.argv.slice(2);if(args.some(a=>!['--site=dist/site','--write-sources'].includes(a))||new Set(args).size!==args.length)throw Error('Usage : node scripts/build-articles.mjs [--site=dist/site | --write-sources]');await buildArticles({writeSources:args.includes('--write-sources')});}catch(e){console.error('Génération interrompue : '+e.message);process.exitCode=1;}
+ try{const args=process.argv.slice(2);if(args.some(a=>!['--site=dist/site','--write-sources','--tolerate-image-errors'].includes(a))||new Set(args).size!==args.length)throw Error('Usage : node scripts/build-articles.mjs [--site=dist/site | --write-sources]');await buildArticles({writeSources:args.includes('--write-sources'),tolerateImageErrors:args.includes('--tolerate-image-errors')});}catch(e){console.error('Génération interrompue : '+e.message);process.exitCode=1;}
 }

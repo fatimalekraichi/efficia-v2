@@ -217,3 +217,5 @@ test('conversion : illustration seule refusée avant écriture',async t=>{
  await writeFile(join(dir,'contenus/blog/exemple/illustration.png'),'test');
  await assert.rejects(convertImages(dir),/une.png requise/);
 });
+
+test('build tolérant : image invalide isolée, autre article conservé, aucune ancienne page du défectueux',async t=>{const dir=await fixture(t),slug=await newArticle(dir);await writeFile(join(dir,'assets/images/blog',slug+'-og.jpg'),'image invalide');const result=await buildArticles({root:dir,writeSources:true,tolerateImageErrors:true,today:'2026-12-02'});assert.ok(!result.articles.includes(slug));assert.ok(result.articles.includes(first));for(const name of ['blog.html','sitemap.xml','js/ga4.js'])assert.ok(!(await readFile(join(dir,name),'utf8')).includes(slug));});
